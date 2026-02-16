@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./db.sqlite"
+}
+
+model Market {
+  id                 String   @id
+  name               String
+  slug               String   @unique
+  branding           String?  // JSON
+  isActive           Boolean  @default(true)
+  sortOrder          Int?
+  paymentCapabilities String?  // JSON { cash, card }
+}
+
+model Tenant {
+  id                    String   @id
+  slug                  String   @unique
+  name                  String
+  logoUrl               String
+  primaryColor          String
+  secondaryColor        String
+  fontFamily            String
+  radiusScale           Float
+  layoutStyle           String
+  enabled               Boolean  @default(true)
+  createdAt             String
+  templateId            String?
+  hero                  String?  // JSON
+  banners               String?  // JSON
+  whatsappPhone         String?
+  type                  String?
+  businessType          String?  @default("RETAIL")  // RETAIL | RESTAURANT | SERVICE (multi-sector)
+  marketCategory        String?
+  marketId              String?
+  isListedInMarket      Boolean?
+  marketSortOrder       Int?
+  tenantType            String?
+  deliveryProviderMode   String?
+  allowMarketCourierFallback Boolean?
+  defaultPrepTimeMin    Int?
+  financialConfig       String?  // JSON
+  paymentCapabilities   String?  // JSON
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  role      String
+  marketId  String?
+  tenantId  String?
+  courierId String?
+  password  String?
+}
+
+model Courier {
+  id            String   @id
+  scopeType     String
+  scopeId       String
+  marketId      String?
+  name          String
+  phone         String?
+  isActive      Boolean  @default(true)
+  isOnline      Boolean  @default(false)
+  capacity      Int      @default(1)
+  isAvailable   Boolean?
+  deliveryCount Int?
+}
+
+model Customer {
+  id        String   @id
+  phone     String   @unique
+  createdAt String
+}
+
+model Order {
+  id               String   @id
+  tenantId         String?
+  courierId        String?
+  marketId         String?
+  status           String?
+  fulfillmentType   String?
+  orderType        String?  @default("PRODUCT")  // PRODUCT | FOOD | SERVICE (multi-sector)
+  total            Float?
+  createdAt        String?
+  payment          String?  // JSON (kept for response shape; Payment table is source of truth for finance)
+  deliveryTimeline String?  // JSON
+  payload          String?  // JSON: items, delivery, customerName, etc.
+  paymentRecord    Payment?
+}
+
+// --- Payments (cash-first, card-ready; no gateway integration yet) ---
+model Payment {
+  id          String   @id
+  orderId     String   @unique
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method      String   // CASH | CARD
+  status      String   // PENDING | COLLECTED | AUTHORIZED | CAPTURED | REFUNDED
+  amount      Float
+  currency    String   @default("ILS")
+  provider    String?  // future: stripe, tap, etc.
+  providerRef String?  // future: gateway transaction id
+  createdAt   String
+  updatedAt   String
+  @@index([orderId])
+}
+
+// --- Catalog (tenant-scoped) ---
+model CatalogCategory {
+  id          String   @id
+  tenantId    String
+  name        String
+  slug        String
+  description String?
+  imageUrl    String?
+  sortOrder   Int
+  parentId    String?
+  isVisible   Boolean? @default(true)
+  @@index([tenantId])
+}
+
+model CatalogProduct {
+  id           String  @id
+  tenantId     String
+  categoryId   String
+  name         String
+  slug         String
+  description  String?
+  type         String
+  basePrice    Float
+  currency     String
+  imageUrl     String?
+  images       String?  // JSON: ProductImage[]
+  optionGroups String?  // JSON: OptionGroup[] (embedded)
+  variants     String?  // JSON: ProductVariant[]
+  stock        Int?
+  isAvailable  Boolean
+  createdAt    String?
+  isFeatured   Boolean?
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+}
+
+model CatalogOptionGroup {
+  id                 String   @id
+  tenantId           String
+  name               String
+  type               String?
+  required           Boolean
+  minSelected        Int
+  maxSelected        Int
+  selectionType      String
+  scope              String?
+  scopeId            String?
+  allowHalfPlacement Boolean?
+  items              String?  // JSON: OptionItem[]
+  @@index([tenantId])
+}
+
+// --- Delivery (tenant-scoped) ---
+model TenantDeliverySettings {
+  tenantId     String  @id
+  modes        String? // JSON: { pickup, delivery }
+  minimumOrder Float   @default(0)
+  deliveryFee   Float   @default(0)
+  payload      String? // JSON: extra fields (zones, etc.)
+}
+
+model DeliveryZone {
+  id          String  @id
+  tenantId    String
+  name        String
+  fee         Float
+  etaMinutes  Int?
+  minimumOrder Float?
+  geo         String? // JSON: polygon/geo for future
+  isActive    Boolean @default(true)
+  sortOrder   Int?
+  @@index([tenantId])
+}
+

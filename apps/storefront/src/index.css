@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #0f766e;
+  --color-secondary: #d4a574;
+  --radius: 8px;
+  --font: "Cairo", system-ui, sans-serif;
+  --cart-bar-height: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+body {
+  font-family: var(--font);
+  margin: 0;
+}
+
+/* Chip toggle: 160ms transition (transform + opacity + colors) */
+.chip-transition {
+  transition: transform 160ms ease-out, opacity 160ms ease-out,
+    background-color 160ms, border-color 160ms, box-shadow 160ms;
+}
+
+/* Chip animations - disabled when user prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-chip-activate,
+  .animate-chip-pulse {
+    animation: none !important;
+  }
+  .chip-transition {
+    transition: none !important;
+  }
+}

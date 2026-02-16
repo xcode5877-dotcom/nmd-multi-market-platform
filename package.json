@@ -1,0 +1,36 @@
+{
+  "name": "nmd-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm run --parallel dev",
+    "dev:storefront": "pnpm --filter storefront dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "dev:mall": "pnpm --filter nmd-mall dev",
+    "dev:superadmin": "pnpm --filter nmd-admin dev",
+    "dev:courier": "pnpm --filter courier dev",
+    "dev:mock-api": "pnpm --filter mock-api dev",
+    "build": "pnpm -r run build",
+    "build:storefront": "pnpm --filter storefront build",
+    "build:admin": "pnpm --filter admin build",
+    "build:mall": "pnpm --filter nmd-mall build",
+    "build:superadmin": "pnpm --filter nmd-admin build",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-react": "^7.37.2",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.15.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@9.14.2"
+}

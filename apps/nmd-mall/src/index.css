@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* NMD Brand Colors */
+  --color-primary-dark: #0F172A;
+  --color-accent-purple: #7C3AED;
+  --color-accent-teal: #14B8A6;
+  --color-light-bg: #F8FAFC;
+  --color-dark-surface: #1E293B;
+  /* Dabburiyya Market - warm accent */
+  --color-warm-amber: #D97706;
+  --color-warm-amber-soft: #FEF3C7;
+
+  --color-primary: var(--color-accent-purple);
+  --color-secondary: var(--color-accent-teal);
+  --radius: 8px;
+  --font: "Cairo", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font);
+  margin: 0;
+  overflow-x: hidden;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.nmd-card-hover:hover {
+  transform: scale(1.02);
+}
+
+.nmd-btn-active:active {
+  transform: scale(0.97);
+}

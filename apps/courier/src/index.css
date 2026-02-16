@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #0f766e;
+  --radius: 8px;
+  --font: "Cairo", system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font);
+  margin: 0;
+}

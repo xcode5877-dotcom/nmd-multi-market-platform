@@ -1,0 +1,1 @@
+import{c as e,j as t}from"./index-BYQekpkv.js";import{b as a}from"./api-CiuOvftP.js";function o(){const{data:s=[],isLoading:i}=e({queryKey:["audit-events"],queryFn:()=>a("/audit-events?limit=100"),enabled:!1});return t.jsx("div",{className:"p-4 text-amber-600",children:"يتطلب mock-api"})}export{o as default};

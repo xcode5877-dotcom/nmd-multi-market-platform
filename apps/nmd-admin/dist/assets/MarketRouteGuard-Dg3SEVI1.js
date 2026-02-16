@@ -1,0 +1,1 @@
+import{d as a,c as r,j as e,M as s}from"./index-BYQekpkv.js";const n=new s;function m({children:t}){const{id:o}=a(),{data:u,isLoading:i}=r({queryKey:["me"],queryFn:()=>n.getMe(),enabled:!1});return e.jsx(e.Fragment,{children:t})}export{m as MarketRouteGuard};

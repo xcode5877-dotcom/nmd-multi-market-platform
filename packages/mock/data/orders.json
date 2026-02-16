@@ -1,0 +1,1944 @@
+[
+  {
+    "id": "76ed2324-c0ce-4e1b-a141-26188ce7e147",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "2a939e4c-d6cc-47ff-8d3c-a7b844121774",
+        "productName": "jeans jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 3,
+        "basePrice": 220,
+        "selectedOptions": [
+          {
+            "optionGroupId": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "optionItemIds": [
+              "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b",
+                "name": "xl",
+                "sortOrder": 0
+              },
+              {
+                "id": "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14",
+                "name": "m",
+                "sortOrder": 1
+              },
+              {
+                "id": "bf9ca34e-bbbd-4a2d-8664-993be425124a",
+                "name": "s",
+                "sortOrder": 2
+              }
+            ]
+          }
+        ],
+        "totalPrice": 660,
+        "imageUrl": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+        "id": "3263b897-5558-4650-9097-4ceef8e43453"
+      }
+    ],
+    "subtotal": 660,
+    "total": 660,
+    "currency": "ILS",
+    "createdAt": "2026-02-13T16:39:13.244Z",
+    "notes": "اشي فاخر من الاخر",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "courierId": null,
+    "deliveryStatus": "UNASSIGNED",
+    "contactLog": {},
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "5410f384-20c6-48bc-b423-d128836651d9",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+        "productName": "white jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 1,
+        "basePrice": 270,
+        "selectedOptions": [],
+        "optionGroups": [
+          {
+            "id": "e345456e-2425-49b9-959d-c67b8bfe8efc",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": []
+          }
+        ],
+        "totalPrice": 270,
+        "imageUrl": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+        "id": "6cea3dc2-dbbc-4f3d-9899-57cafecde757"
+      },
+      {
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 1,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "optionItemIds": [
+              "8a15d3ab-3688-42a0-9a85-c68bd5449221"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                "name": "36",
+                "sortOrder": 0
+              },
+              {
+                "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                "name": "38",
+                "sortOrder": 1
+              }
+            ]
+          }
+        ],
+        "totalPrice": 160,
+        "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+        "id": "bf33a94f-18b5-4331-a060-d962807ed351"
+      }
+    ],
+    "subtotal": 430,
+    "total": 430,
+    "currency": "ILS",
+    "createdAt": "2026-02-13T16:56:09.557Z",
+    "notes": "اشي فاخر من الاخر",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "courierId": null,
+    "deliveryStatus": "UNASSIGNED",
+    "contactLog": {},
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "96d66609-db6b-4187-aecd-ec4b85cea345",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 2,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "fd7e7ed3-8626-4cbc-beb2-02aef429de97",
+            "optionItemIds": [
+              "81c9f9a2-f14b-4fc1-99b4-ad302684e406"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "fd7e7ed3-8626-4cbc-beb2-02aef429de97",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "81c9f9a2-f14b-4fc1-99b4-ad302684e406",
+                "name": "40",
+                "sortOrder": 0
+              }
+            ]
+          }
+        ],
+        "totalPrice": 320,
+        "imageUrl": "http://localhost:5190/uploads/1770998287981-glutnh1v.jpg",
+        "id": "dcbb62b2-7c9a-4306-81d6-2721e18ad749"
+      },
+      {
+        "productId": "2a939e4c-d6cc-47ff-8d3c-a7b844121774",
+        "productName": "jeans jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 2,
+        "basePrice": 220,
+        "selectedOptions": [
+          {
+            "optionGroupId": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "optionItemIds": [
+              "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b",
+                "name": "xl",
+                "sortOrder": 0
+              },
+              {
+                "id": "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14",
+                "name": "m",
+                "sortOrder": 1
+              },
+              {
+                "id": "bf9ca34e-bbbd-4a2d-8664-993be425124a",
+                "name": "s",
+                "sortOrder": 2
+              }
+            ]
+          }
+        ],
+        "totalPrice": 440,
+        "imageUrl": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+        "id": "ad2087f1-63bd-4353-b7bb-bc0e7c886cb0"
+      }
+    ],
+    "subtotal": 760,
+    "total": 770,
+    "currency": "ILS",
+    "createdAt": "2026-02-15T12:03:16.221Z",
+    "customerName": "محمد",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "البستان 4",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "البستان 4"
+    },
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-02-15T12:03:16.221Z",
+    "fallbackTriggeredAt": "2026-02-15T12:17:59.199Z",
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "DELIVERED",
+    "contactLog": {},
+    "deliveryTimeline": {
+      "acknowledgedAt": "2026-02-15T19:18:15.363Z",
+      "pickedUpAt": "2026-02-15T19:18:37.525Z",
+      "deliveredAt": "2026-02-15T19:18:41.849Z",
+      "closedAt": "2026-02-15T19:18:45.437Z"
+    },
+    "deliveredAt": "2026-02-15T19:18:41.849Z",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "7c65feda-54ac-4fee-b9e4-742b0f2d0299",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 1,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "optionItemIds": [
+              "821cb6c4-2d96-44e5-8ab2-4666556085f3"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                "name": "36",
+                "sortOrder": 0
+              },
+              {
+                "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                "name": "38",
+                "sortOrder": 1
+              }
+            ]
+          }
+        ],
+        "totalPrice": 160,
+        "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+        "id": "e27e3a7c-5916-446e-9703-23d4a0bfb150"
+      }
+    ],
+    "subtotal": 160,
+    "total": 170,
+    "currency": "ILS",
+    "createdAt": "2026-02-15T12:16:08.908Z",
+    "customerName": "ليث",
+    "customerPhone": "0504699545",
+    "deliveryAddress": "البستان",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "البستان"
+    },
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-02-15T12:16:08.908Z",
+    "fallbackTriggeredAt": "2026-02-15T12:31:24.621Z",
+    "courierId": "courier-dab-002",
+    "deliveryStatus": "ASSIGNED",
+    "contactLog": {},
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "4535af47-7f09-40b7-9081-c247c361e1cd",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 1,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "optionItemIds": [
+              "8a15d3ab-3688-42a0-9a85-c68bd5449221"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                "name": "36",
+                "sortOrder": 0
+              },
+              {
+                "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                "name": "38",
+                "sortOrder": 1
+              }
+            ]
+          }
+        ],
+        "totalPrice": 160,
+        "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+        "id": "97ca3f2b-fa45-447b-8f00-a3218038a5d5"
+      }
+    ],
+    "subtotal": 160,
+    "total": 170,
+    "currency": "ILS",
+    "createdAt": "2026-02-15T12:16:50.411Z",
+    "customerName": "ليث",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "البستان 4",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "البستان 4"
+    },
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-02-15T12:16:50.411Z",
+    "fallbackTriggeredAt": "2026-02-15T12:31:24.621Z",
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "DELIVERED",
+    "contactLog": {},
+    "deliveryTimeline": {
+      "acknowledgedAt": "2026-02-15T19:18:48.821Z",
+      "pickedUpAt": "2026-02-15T19:18:49.297Z",
+      "deliveredAt": "2026-02-15T19:18:49.487Z",
+      "closedAt": "2026-02-15T19:18:51.638Z"
+    },
+    "deliveredAt": "2026-02-15T19:18:49.487Z",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "6bf0f454-1347-4772-8500-82c6942e3788",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 1,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "optionItemIds": [
+              "8a15d3ab-3688-42a0-9a85-c68bd5449221"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                "name": "36",
+                "sortOrder": 0
+              },
+              {
+                "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                "name": "38",
+                "sortOrder": 1
+              }
+            ]
+          }
+        ],
+        "totalPrice": 160,
+        "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+        "id": "67f78f28-1f75-49df-99bd-dc1f2c84410d"
+      }
+    ],
+    "subtotal": 160,
+    "total": 170,
+    "currency": "ILS",
+    "createdAt": "2026-02-15T14:45:30.129Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "البستان",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "البستان"
+    },
+    "marketId": "market-dabburiyya",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-02-15T14:45:30.129Z",
+    "fallbackTriggeredAt": "2026-02-15T14:54:18.672Z",
+    "courierId": null,
+    "deliveryStatus": "UNASSIGNED",
+    "contactLog": {},
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "3e64a61c-2f3f-46d9-9e02-8d2d4a4968b6",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "PENDING",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 2,
+        "basePrice": 160,
+        "selectedOptions": [
+          {
+            "optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "optionItemIds": [
+              "8a15d3ab-3688-42a0-9a85-c68bd5449221"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+            "name": "مقاس",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                "name": "36",
+                "sortOrder": 0
+              },
+              {
+                "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                "name": "38",
+                "sortOrder": 1
+              }
+            ]
+          }
+        ],
+        "totalPrice": 320,
+        "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+        "id": "e939b996-506c-4435-b869-22f78e678aeb"
+      }
+    ],
+    "subtotal": 320,
+    "total": 330,
+    "currency": "ILS",
+    "createdAt": "2026-02-15T21:50:14.912Z",
+    "customerName": "طلاتات",
+    "customerPhone": "0546666688",
+    "deliveryAddress": "نتم",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "نتم"
+    },
+    "marketId": "market-dabburiyya",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-02-15T21:50:14.912Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 320,
+        "deliveryFee": 10
+      },
+      "financials": {
+        "gross": 330,
+        "commission": 33,
+        "gatewayFee": 0,
+        "netToMerchant": 297,
+        "netToMarket": 33
+      }
+    },
+    "fallbackTriggeredAt": "2026-02-15T23:13:43.128Z",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:30:46.728Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:32:27.685Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:32:28.285Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:32:58.787Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:32:59.380Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:33:24.095Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:33:24.672Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:34:02.453Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:34:03.037Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:34:29.065Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:34:29.683Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:35:38.650Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:35:39.249Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:37:16.552Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:37:17.150Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:37:49.384Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:37:50.020Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:38:24.954Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-15T23:38:25.539Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T12:06:18.519Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T12:08:27.276Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T12:09:18.690Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T12:09:37.957Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T13:59:16.373Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "94698611-469f-48fb-917a-8d5c6dd75b4d",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+        "productName": "white jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 2,
+        "basePrice": 270,
+        "selectedOptions": [],
+        "optionGroups": [
+          {
+            "id": "e345456e-2425-49b9-959d-c67b8bfe8efc",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": []
+          }
+        ],
+        "totalPrice": 540,
+        "imageUrl": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+        "id": "ee4094f9-0f02-4854-805d-aa259d8a9b52"
+      }
+    ],
+    "subtotal": 540,
+    "total": 550,
+    "currency": "ILS",
+    "createdAt": "2026-02-16T17:03:21.003Z",
+    "customerName": "ليان",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "البستان",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+      "zoneName": "التوصيل العام",
+      "fee": 10,
+      "addressText": "البستان"
+    },
+    "marketId": "market-dabburiyya",
+    "deliveryAssignmentMode": "TENANT",
+    "readyAt": "2026-02-16T17:03:21.003Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 540,
+        "deliveryFee": 10
+      },
+      "financials": {
+        "gross": 550,
+        "commission": 55,
+        "gatewayFee": 0,
+        "netToMerchant": 495,
+        "netToMarket": 55
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:00:28.377Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:01:03.459Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:01:23.500Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:01:37.386Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:02:09.442Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:05:13.183Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:05:56.814Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:07:30.038Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "a10ec2ed-d6d2-4079-b32c-94ed09ac4011",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:09:07.942Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "a8f73818-46b9-409b-bc03-4a1fe365010e",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:11:01.449Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "65480ff0-a206-4e7d-b799-3e04a6fabb33",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:12:31.527Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "9825b835-d046-45bd-b982-493f5391ae69",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T20:17:17.758Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "c2ae3afc-01d1-481a-b9a3-f97181aca090",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T21:02:03.508Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "2738a0ba-f3b6-4ea3-9729-21812bb8989c",
+    "orderType": "PRODUCT"
+  },
+  {
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "fulfillmentType": "PICKUP",
+    "status": "PREPARING",
+    "items": [
+      {
+        "name": "Test Item",
+        "quantity": 1,
+        "totalPrice": 10
+      }
+    ],
+    "subtotal": 10,
+    "total": 10,
+    "createdAt": "2026-02-16T21:03:18.712Z",
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 10,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 10,
+        "commission": 1,
+        "gatewayFee": 0,
+        "netToMerchant": 9,
+        "netToMarket": 1
+      }
+    },
+    "id": "b69bd926-95cd-4c87-a5e7-e28e9f7ea0da",
+    "orderType": "PRODUCT"
+  }
+]

@@ -1,0 +1,2199 @@
+{
+  "markets": [
+    {
+      "id": "market-dabburiyya",
+      "name": "سوق دبورية الرقمي",
+      "slug": "dabburiyya",
+      "isActive": true,
+      "sortOrder": 0,
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "id": "market-iksal",
+      "name": "سوق إكسال الرقمي",
+      "slug": "iksal",
+      "isActive": true,
+      "sortOrder": 1,
+      "branding": {
+        "primaryColor": "#353ca7"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "id": "48fc79fc-c6ed-481a-b6cd-1dcdb6641a83",
+      "name": "سوق الناصرة الرقمي",
+      "slug": "nazareth",
+      "branding": {
+        "primaryColor": "#c36c09"
+      },
+      "isActive": true,
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    }
+  ],
+  "tenants": [
+    {
+      "slug": "ms-brands",
+      "name": "MS BRANDS",
+      "logoUrl": "",
+      "primaryColor": "#000000",
+      "secondaryColor": "#f7f7f7",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "createdAt": "2026-02-13T09:43:17.616Z",
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "اكتشف أفضل المنتجات لدينا",
+        "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [
+        {
+          "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+          "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+          "enabled": true,
+          "sortOrder": 0,
+          "title": "تخفيضات هائلة",
+          "ctaHref": "",
+          "link": ""
+        }
+      ],
+      "whatsappPhone": "972505595957",
+      "addressLine": "دبورية، شارع الرئيسي ١",
+      "location": {
+        "lat": 32.6925,
+        "lng": 35.3719
+      },
+      "type": "CLOTHING",
+      "marketCategory": "CLOTHING",
+      "isListedInMarket": true,
+      "marketId": "market-dabburiyya",
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "defaultPrepTimeMin": 30,
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "slug": "buffalo-28",
+      "name": "BUFFALO28",
+      "logoUrl": "",
+      "primaryColor": "#c5be02",
+      "secondaryColor": "#d10000",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "createdAt": "2026-02-13T18:08:11.815Z",
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "بيتسا ايطالية",
+        "imageUrl": "http://localhost:5190/uploads/1771019865035-d4ngiy0b.jpg",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [],
+      "whatsappPhone": "9720503013669",
+      "addressLine": "دبورية، شارع الشبلي ٢٨",
+      "location": {
+        "lat": 32.6918,
+        "lng": 35.3725
+      },
+      "type": "FOOD",
+      "marketCategory": "FOOD",
+      "isListedInMarket": true,
+      "marketId": "market-dabburiyya",
+      "tenantType": "RESTAURANT",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "defaultPrepTimeMin": 30,
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "slug": "سوق-طلعت-للخضار-والفوكه",
+      "name": "سوق طلعت للخضار والفوكه",
+      "logoUrl": "",
+      "primaryColor": "#164541",
+      "secondaryColor": "#b5aea6",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "marketCategory": "GROCERIES",
+      "marketId": "market-dabburiyya",
+      "isListedInMarket": true,
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "addressLine": "دبورية، سوق الخضار",
+      "location": {
+        "lat": 32.693,
+        "lng": 35.37
+      },
+      "id": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+      "createdAt": "2026-02-13T18:36:32.188Z",
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "اكتشف أحدث صيحات الموضة",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [
+        {
+          "id": "f0c26518-22a2-4a3d-a335-248d6c2c188e",
+          "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+          "title": "عرض خاص",
+          "subtitle": "خصومات حتى 30%",
+          "ctaText": "تسوقي الآن",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 0
+        },
+        {
+          "id": "3d85739e-84bf-4892-a2de-f7c6b3dbcd63",
+          "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+          "title": "عرض محدود",
+          "subtitle": "ينتهي قريباً",
+          "ctaText": "اكتشفي",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 1,
+          "expiresAt": "2026-02-20T18:28:05.603Z",
+          "showCountdown": true
+        },
+        {
+          "id": "31b28df7-41ee-40d5-86b5-46b2c8c74395",
+          "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+          "title": "وصل حديثاً",
+          "subtitle": "موديلات جديدة",
+          "ctaText": "عرض الكل",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 2
+        }
+      ],
+      "tenantType": "SHOP",
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "slug": "obr",
+      "name": "OBR",
+      "logoUrl": "",
+      "primaryColor": "#ff0066",
+      "secondaryColor": "#ffffff",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "marketCategory": "GENERAL",
+      "marketId": "market-dabburiyya",
+      "isListedInMarket": true,
+      "id": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+      "createdAt": "2026-02-13T18:37:54.524Z",
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "اكتشف أحدث صيحات الموضة",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [
+        {
+          "id": "47fba69d-ebc5-4f48-9dd1-34c2e2c83c43",
+          "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+          "title": "عرض خاص",
+          "subtitle": "خصومات حتى 30%",
+          "ctaText": "تسوقي الآن",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 0
+        },
+        {
+          "id": "c16752e9-da3d-4ccf-8f53-435f1050854b",
+          "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+          "title": "عرض محدود",
+          "subtitle": "ينتهي قريباً",
+          "ctaText": "اكتشفي",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 1,
+          "expiresAt": "2026-02-20T18:28:05.603Z",
+          "showCountdown": true
+        },
+        {
+          "id": "c91157ed-b362-4437-a0e6-ee4b71490482",
+          "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+          "title": "وصل حديثاً",
+          "subtitle": "موديلات جديدة",
+          "ctaText": "عرض الكل",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 2
+        }
+      ],
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "addressLine": "دبورية، شارع التسوق",
+      "location": {
+        "lat": 32.692,
+        "lng": 35.371
+      },
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "slug": "بيتسا-اشرف",
+      "name": "بيتسا اشرف",
+      "logoUrl": "",
+      "primaryColor": "#aab5b4",
+      "secondaryColor": "#d1df0c",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "FOOD",
+      "marketCategory": "FOOD",
+      "marketId": "market-dabburiyya",
+      "isListedInMarket": true,
+      "id": "1cc59722-3687-45a1-9121-e7a608fba225",
+      "createdAt": "2026-02-14T17:32:32.647Z",
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "اكتشف أحدث صيحات الموضة",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [
+        {
+          "id": "eae7591e-6ca1-4934-b15a-a37e9c7de967",
+          "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+          "title": "عرض خاص",
+          "subtitle": "خصومات حتى 30%",
+          "ctaText": "تسوقي الآن",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 0
+        },
+        {
+          "id": "aa54809f-b83c-4694-bb2b-1e5d14730e85",
+          "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+          "title": "عرض محدود",
+          "subtitle": "ينتهي قريباً",
+          "ctaText": "اكتشفي",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 1,
+          "expiresAt": "2026-02-21T17:09:00.217Z",
+          "showCountdown": true
+        },
+        {
+          "id": "5d8139cf-64a1-4901-b007-1abbcdb5b3b5",
+          "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+          "title": "وصل حديثاً",
+          "subtitle": "موديلات جديدة",
+          "ctaText": "عرض الكل",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 2
+        }
+      ],
+      "tenantType": "RESTAURANT",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "defaultPrepTimeMin": 30,
+      "addressLine": "دبورية، بيتسا اشرف",
+      "location": {
+        "lat": 32.6915,
+        "lng": 35.372
+      },
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    },
+    {
+      "slug": "توب-ماركت",
+      "name": "توب ماركت",
+      "logoUrl": "",
+      "primaryColor": "#010404",
+      "secondaryColor": "#cec0b1",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "marketCategory": "GROCERIES",
+      "marketId": "market-dabburiyya",
+      "isListedInMarket": true,
+      "id": "60904bcc-970a-45e3-8669-8015ee2afe64",
+      "createdAt": "2026-02-14T17:35:27.948Z",
+      "addressLine": "دبورية، توب ماركت",
+      "location": {
+        "lat": 32.6922,
+        "lng": 35.3715
+      },
+      "hero": {
+        "title": "مرحباً بك",
+        "subtitle": "اكتشف أحدث صيحات الموضة",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [
+        {
+          "id": "74ff4fcb-0e28-43b4-bb12-b143f236aa04",
+          "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+          "title": "عرض خاص",
+          "subtitle": "خصومات حتى 30%",
+          "ctaText": "تسوقي الآن",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 0
+        },
+        {
+          "id": "47e3bf44-03be-436f-80f5-2d3048e92413",
+          "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+          "title": "عرض محدود",
+          "subtitle": "ينتهي قريباً",
+          "ctaText": "اكتشفي",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 1,
+          "expiresAt": "2026-02-21T17:34:49.776Z",
+          "showCountdown": true
+        },
+        {
+          "id": "b6436add-0828-4157-ab1b-6e1da2e05002",
+          "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+          "title": "وصل حديثاً",
+          "subtitle": "موديلات جديدة",
+          "ctaText": "عرض الكل",
+          "ctaHref": "#",
+          "enabled": true,
+          "sortOrder": 2
+        }
+      ],
+      "marketSortOrder": 0,
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "user-root-admin",
+      "email": "root@nmd.com",
+      "role": "ROOT_ADMIN",
+      "password": "123456"
+    },
+    {
+      "id": "user-dab-admin",
+      "email": "dab@nmd.com",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "password": "123456"
+    },
+    {
+      "id": "user-iks-admin",
+      "email": "iks@nmd.com",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-iksal",
+      "password": "123456"
+    },
+    {
+      "id": "user-buffalo-admin",
+      "email": "buffalo@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "password": "123456"
+    },
+    {
+      "id": "user-tenant-ms-brands",
+      "email": "ms-brands@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "password": "ms-brands@2026"
+    },
+    {
+      "id": "user-tenant-obr",
+      "email": "obr@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+      "password": "obr@2026"
+    },
+    {
+      "id": "user-tenant-top-market",
+      "email": "top-market@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+      "password": "top-market@2026"
+    },
+    {
+      "id": "user-courier-dab-1",
+      "email": "ahmed@courier.nmd.com",
+      "role": "COURIER",
+      "marketId": "market-dabburiyya",
+      "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+      "password": "123456"
+    },
+    {
+      "id": "user-courier-iksal-1",
+      "email": "courier@iksal.nmd.com",
+      "role": "COURIER",
+      "marketId": "market-iksal",
+      "courierId": "courier-iksal-001",
+      "password": "123456"
+    }
+  ],
+  "auditEvents": [
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+      "reason": "مش",
+      "emergencyMode": true,
+      "before": {
+        "slug": "سوق-طلعت-للخضار-والفوكه",
+        "name": "سوق طلعت للخضار والفوكه",
+        "logoUrl": "",
+        "primaryColor": "#164541",
+        "secondaryColor": "#b5aea6",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "marketCategory": "GROCERIES",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "id": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+        "createdAt": "2026-02-13T18:36:32.188Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أحدث صيحات الموضة",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "f0c26518-22a2-4a3d-a335-248d6c2c188e",
+            "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+            "title": "عرض خاص",
+            "subtitle": "خصومات حتى 30%",
+            "ctaText": "تسوقي الآن",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "3d85739e-84bf-4892-a2de-f7c6b3dbcd63",
+            "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+            "title": "عرض محدود",
+            "subtitle": "ينتهي قريباً",
+            "ctaText": "اكتشفي",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 1,
+            "expiresAt": "2026-02-20T18:28:05.603Z",
+            "showCountdown": true
+          },
+          {
+            "id": "31b28df7-41ee-40d5-86b5-46b2c8c74395",
+            "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+            "title": "وصل حديثاً",
+            "subtitle": "موديلات جديدة",
+            "ctaText": "عرض الكل",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "after": {
+        "slug": "سوق-طلعت-للخضار-والفوكه",
+        "name": "سوق طلعت للخضار والفوكه",
+        "logoUrl": "",
+        "primaryColor": "#164541",
+        "secondaryColor": "#b5aea6",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": false,
+        "type": "GENERAL",
+        "marketCategory": "GROCERIES",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "id": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+        "createdAt": "2026-02-13T18:36:32.188Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أحدث صيحات الموضة",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "f0c26518-22a2-4a3d-a335-248d6c2c188e",
+            "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+            "title": "عرض خاص",
+            "subtitle": "خصومات حتى 30%",
+            "ctaText": "تسوقي الآن",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "3d85739e-84bf-4892-a2de-f7c6b3dbcd63",
+            "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+            "title": "عرض محدود",
+            "subtitle": "ينتهي قريباً",
+            "ctaText": "اكتشفي",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 1,
+            "expiresAt": "2026-02-20T18:28:05.603Z",
+            "showCountdown": true
+          },
+          {
+            "id": "31b28df7-41ee-40d5-86b5-46b2c8c74395",
+            "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+            "title": "وصل حديثاً",
+            "subtitle": "موديلات جديدة",
+            "ctaText": "عرض الكل",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "id": "audit-8aa102fa-027b-4fbe-9e69-5769dbd9109a",
+      "at": "2026-02-14T20:22:22.842Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+      "reason": "مش",
+      "emergencyMode": true,
+      "before": {
+        "slug": "سوق-طلعت-للخضار-والفوكه",
+        "name": "سوق طلعت للخضار والفوكه",
+        "logoUrl": "",
+        "primaryColor": "#164541",
+        "secondaryColor": "#b5aea6",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": false,
+        "type": "GENERAL",
+        "marketCategory": "GROCERIES",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "id": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+        "createdAt": "2026-02-13T18:36:32.188Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أحدث صيحات الموضة",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "f0c26518-22a2-4a3d-a335-248d6c2c188e",
+            "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+            "title": "عرض خاص",
+            "subtitle": "خصومات حتى 30%",
+            "ctaText": "تسوقي الآن",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "3d85739e-84bf-4892-a2de-f7c6b3dbcd63",
+            "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+            "title": "عرض محدود",
+            "subtitle": "ينتهي قريباً",
+            "ctaText": "اكتشفي",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 1,
+            "expiresAt": "2026-02-20T18:28:05.603Z",
+            "showCountdown": true
+          },
+          {
+            "id": "31b28df7-41ee-40d5-86b5-46b2c8c74395",
+            "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+            "title": "وصل حديثاً",
+            "subtitle": "موديلات جديدة",
+            "ctaText": "عرض الكل",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "after": {
+        "slug": "سوق-طلعت-للخضار-والفوكه",
+        "name": "سوق طلعت للخضار والفوكه",
+        "logoUrl": "",
+        "primaryColor": "#164541",
+        "secondaryColor": "#b5aea6",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "marketCategory": "GROCERIES",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "id": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+        "createdAt": "2026-02-13T18:36:32.188Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أحدث صيحات الموضة",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "f0c26518-22a2-4a3d-a335-248d6c2c188e",
+            "imageUrl": "https://placehold.co/1200x400/e2e8f0/64748b?text=عرض+خاص",
+            "title": "عرض خاص",
+            "subtitle": "خصومات حتى 30%",
+            "ctaText": "تسوقي الآن",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "3d85739e-84bf-4892-a2de-f7c6b3dbcd63",
+            "imageUrl": "https://placehold.co/1200x400/f1f5f9/475569?text=عرض+محدود",
+            "title": "عرض محدود",
+            "subtitle": "ينتهي قريباً",
+            "ctaText": "اكتشفي",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 1,
+            "expiresAt": "2026-02-20T18:28:05.603Z",
+            "showCountdown": true
+          },
+          {
+            "id": "31b28df7-41ee-40d5-86b5-46b2c8c74395",
+            "imageUrl": "https://placehold.co/1200x400/ede9fe/6d28d9?text=وصل+حديثاً",
+            "title": "وصل حديثاً",
+            "subtitle": "موديلات جديدة",
+            "ctaText": "عرض الكل",
+            "ctaHref": "#",
+            "enabled": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "id": "audit-0dac4e79-6324-490f-8a41-96054a6c705c",
+      "at": "2026-02-14T20:22:26.098Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30
+      },
+      "id": "audit-8aead781-2866-48bf-b047-1806ce05b177",
+      "at": "2026-02-15T12:02:46.135Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30
+      },
+      "id": "audit-b571491b-5e64-4c2e-9e25-df0832759b78",
+      "at": "2026-02-15T13:23:59.964Z"
+    },
+    {
+      "id": "audit-4ce0f5f8-1dd3-4d76-a75d-93eb80843332",
+      "at": "2026-02-15T16:02:22.729Z",
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "96d66609-db6b-4187-aecd-ec4b85cea345",
+      "reason": "assign-courier courier-50971b77-4811-49e8-825b-78bd84041782",
+      "before": {},
+      "after": {
+        "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "deliveryStatus": "ASSIGNED"
+      }
+    },
+    {
+      "id": "audit-de60b77d-c717-4648-9dac-635e75e8b95c",
+      "at": "2026-02-15T18:18:04.442Z",
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "7c65feda-54ac-4fee-b9e4-742b0f2d0299",
+      "reason": "assign-courier courier-dab-002",
+      "before": {
+        "courierId": null,
+        "deliveryStatus": "UNASSIGNED"
+      },
+      "after": {
+        "courierId": "courier-dab-002",
+        "deliveryStatus": "ASSIGNED"
+      }
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "courier",
+      "entityId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+      "emergencyMode": false,
+      "before": {
+        "id": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "scopeType": "MARKET",
+        "scopeId": "market-dabburiyya",
+        "marketId": "market-dabburiyya",
+        "name": "احمد",
+        "phone": "0546111668",
+        "isActive": true,
+        "isOnline": true,
+        "capacity": 3,
+        "isAvailable": false,
+        "deliveryCount": 0
+      },
+      "after": {
+        "id": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "scopeType": "MARKET",
+        "scopeId": "market-dabburiyya",
+        "marketId": "market-dabburiyya",
+        "name": "احمد",
+        "phone": "0546111668",
+        "isActive": true,
+        "isOnline": true,
+        "capacity": 3,
+        "isAvailable": true,
+        "deliveryCount": 0
+      },
+      "id": "audit-19d665a6-3b55-416b-bc46-371abb8f636d",
+      "at": "2026-02-15T18:18:43.610Z"
+    },
+    {
+      "id": "audit-f22398e6-af30-4ade-987b-3d5fb56c42f0",
+      "at": "2026-02-15T18:19:09.542Z",
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "4535af47-7f09-40b7-9081-c247c361e1cd",
+      "reason": "assign-courier courier-50971b77-4811-49e8-825b-78bd84041782",
+      "before": {
+        "courierId": null,
+        "deliveryStatus": "UNASSIGNED"
+      },
+      "after": {
+        "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "deliveryStatus": "ASSIGNED"
+      }
+    }
+  ],
+  "catalog": {
+    "5b35539f-90e1-49cc-8c32-8d26cdce20f2": {
+      "categories": [
+        {
+          "id": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "name": "Jeans",
+          "slug": "jeans",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "name": "Jacket",
+          "slug": "Jacket",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [
+        {
+          "id": "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+          "name": "jeans new collection",
+          "slug": "jeans new collection",
+          "type": "APPAREL",
+          "basePrice": 160,
+          "currency": "SAR",
+          "imageUrl": "http://localhost:5190/uploads/1770998287981-glutnh1v.jpg",
+          "images": [
+            {
+              "id": "85c4e881-67b8-4e82-b1ae-b04f934d695c",
+              "url": "http://localhost:5190/uploads/1770998287981-glutnh1v.jpg",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [
+            {
+              "id": "fd7e7ed3-8626-4cbc-beb2-02aef429de97",
+              "name": "مقاس",
+              "type": "SIZE",
+              "required": true,
+              "minSelected": 1,
+              "maxSelected": 1,
+              "selectionType": "single",
+              "items": [
+                {
+                  "id": "81c9f9a2-f14b-4fc1-99b4-ad302684e406",
+                  "name": "40",
+                  "sortOrder": 0
+                }
+              ]
+            }
+          ],
+          "createdAt": "2026-02-13T15:58:33.389Z",
+          "isFeatured": false,
+          "isAvailable": true,
+          "inStock": true,
+          "stock": 6,
+          "quantity": 6,
+          "lowStockThreshold": 3,
+          "isLastItems": false,
+          "lastItemsCount": 0,
+          "variants": []
+        },
+        {
+          "id": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+          "name": "jeans new collection",
+          "slug": "jeans new collection",
+          "type": "APPAREL",
+          "basePrice": 160,
+          "currency": "SAR",
+          "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+          "images": [
+            {
+              "id": "1f4a2ea6-be2f-4de4-847d-245bf24946e7",
+              "url": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [
+            {
+              "id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7",
+              "name": "مقاس",
+              "type": "SIZE",
+              "required": true,
+              "minSelected": 1,
+              "maxSelected": 1,
+              "selectionType": "single",
+              "items": [
+                {
+                  "id": "821cb6c4-2d96-44e5-8ab2-4666556085f3",
+                  "name": "36",
+                  "sortOrder": 0
+                },
+                {
+                  "id": "8a15d3ab-3688-42a0-9a85-c68bd5449221",
+                  "name": "38",
+                  "sortOrder": 1
+                }
+              ]
+            }
+          ],
+          "variants": [],
+          "createdAt": "2026-02-13T16:16:13.802Z",
+          "isFeatured": false,
+          "isAvailable": true,
+          "inStock": true,
+          "stock": 6,
+          "quantity": 6,
+          "lowStockThreshold": 3,
+          "isLastItems": false
+        },
+        {
+          "id": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+          "name": "white jacket",
+          "slug": "white jacket",
+          "type": "APPAREL",
+          "basePrice": 270,
+          "currency": "SAR",
+          "imageUrl": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+          "images": [
+            {
+              "id": "c11c0d3c-32b6-4e9a-b502-e83c263f4479",
+              "url": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+              "sortOrder": 0
+            },
+            {
+              "id": "6abc892f-14b3-4d99-931f-24aabeba2d72",
+              "url": "http://localhost:5190/uploads/1770999466289-zq4xwmcx.jpg",
+              "sortOrder": 1
+            },
+            {
+              "id": "bc505085-d605-44ff-90e6-3caa8993ba5c",
+              "url": "http://localhost:5190/uploads/1770999469096-b6qwfze4.jpg",
+              "sortOrder": 2
+            }
+          ],
+          "optionGroups": [
+            {
+              "id": "e345456e-2425-49b9-959d-c67b8bfe8efc",
+              "name": "",
+              "type": "SIZE",
+              "required": true,
+              "minSelected": 1,
+              "maxSelected": 1,
+              "selectionType": "single",
+              "items": []
+            }
+          ],
+          "variants": [],
+          "createdAt": "2026-02-13T16:18:16.998Z",
+          "isFeatured": false,
+          "isAvailable": true,
+          "inStock": true,
+          "stock": 6,
+          "quantity": 6,
+          "lowStockThreshold": 3,
+          "isLastItems": false,
+          "description": "قماش ناعم",
+          "lastItemsCount": 0
+        },
+        {
+          "id": "2a939e4c-d6cc-47ff-8d3c-a7b844121774",
+          "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+          "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+          "name": "jeans jacket",
+          "slug": "jeans jacket",
+          "type": "APPAREL",
+          "basePrice": 220,
+          "currency": "SAR",
+          "imageUrl": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+          "images": [
+            {
+              "id": "eba0c1cb-b82a-4887-88c8-47d5cb7cfe29",
+              "url": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+              "sortOrder": 0
+            },
+            {
+              "id": "c0e7bd64-626e-4da3-ab68-14957cdb4290",
+              "url": "http://localhost:5190/uploads/1770999524993-jckv0ylk.jpg",
+              "sortOrder": 1
+            }
+          ],
+          "optionGroups": [
+            {
+              "id": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+              "name": "",
+              "type": "SIZE",
+              "required": true,
+              "minSelected": 1,
+              "maxSelected": 1,
+              "selectionType": "single",
+              "items": [
+                {
+                  "id": "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b",
+                  "name": "xl",
+                  "sortOrder": 0
+                },
+                {
+                  "id": "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14",
+                  "name": "m",
+                  "sortOrder": 1
+                },
+                {
+                  "id": "bf9ca34e-bbbd-4a2d-8664-993be425124a",
+                  "name": "s",
+                  "sortOrder": 2
+                }
+              ]
+            }
+          ],
+          "variants": [],
+          "createdAt": "2026-02-13T16:19:13.632Z",
+          "isFeatured": false,
+          "isAvailable": true,
+          "inStock": true,
+          "stock": 8,
+          "quantity": 8,
+          "lowStockThreshold": 3,
+          "isLastItems": false
+        }
+      ],
+      "optionGroups": [],
+      "optionItems": []
+    },
+    "78463821-ccb7-48af-841b-84a18c42abb6": {
+      "categories": [
+        {
+          "id": "072b42ec-9cac-4ee5-af56-88e87abf1bf6",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "بيتسا",
+          "slug": "بيتسا",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "601d6878-6e93-4c24-96c4-6899e8f3dc65",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "بيتسا مميزة",
+          "slug": "بيتسا مميزة",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "cdd5ac02-5d68-4b84-8e6b-0941efd418b6",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "مقبلات",
+          "slug": "مقبلات",
+          "sortOrder": 2,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "5ec24dcd-d4ac-4da2-b9f6-16e2775865b6",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "سلطات ",
+          "slug": "سلطات",
+          "sortOrder": 3,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [
+        {
+          "id": "8aa3e339-4266-4899-9ec4-9346cd74ccb7",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "categoryId": "072b42ec-9cac-4ee5-af56-88e87abf1bf6",
+          "name": "بيتسا",
+          "slug": "بيتسا",
+          "description": "بيتسا ايطالية لكل الاعئلة",
+          "type": "PIZZA",
+          "basePrice": 60,
+          "currency": "ILS",
+          "imageUrl": "http://localhost:5190/uploads/1771088330600-1136m0r3.jpg",
+          "images": [
+            {
+              "id": "61e9243e-a57a-430a-b8e1-0ae4f6f8503c",
+              "url": "http://localhost:5190/uploads/1771088330600-1136m0r3.jpg",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [
+            {
+              "id": "2353392e-e3af-43e8-8760-74af87acd7eb",
+              "name": "اضافات بيتسا",
+              "type": "CUSTOM",
+              "required": true,
+              "minSelected": 1,
+              "maxSelected": 1,
+              "selectionType": "single",
+              "items": [
+                {
+                  "id": "3be8fa85-d4c8-48be-8361-b0e193e5303a",
+                  "name": "زيتون",
+                  "sortOrder": 0,
+                  "placement": "HALF",
+                  "priceDelta": 0
+                },
+                {
+                  "id": "da5b2498-1991-4c03-bbd8-b4da44d9caeb",
+                  "name": "بصل",
+                  "sortOrder": 1,
+                  "placement": "HALF",
+                  "priceDelta": 0
+                },
+                {
+                  "id": "f2129fcc-a57f-4885-88d2-b4116fd73537",
+                  "name": "جبنة",
+                  "sortOrder": 2,
+                  "placement": "HALF",
+                  "priceDelta": 5
+                }
+              ],
+              "allowHalfPlacement": true
+            }
+          ],
+          "variants": [
+            {
+              "id": "fb010cc1-583d-4ca8-a855-28ba8379f1d1",
+              "optionValues": [
+                {
+                  "groupId": "2353392e-e3af-43e8-8760-74af87acd7eb",
+                  "optionId": "3be8fa85-d4c8-48be-8361-b0e193e5303a"
+                }
+              ],
+              "stock": 10,
+              "priceOverride": 0
+            },
+            {
+              "id": "b4c079ab-693c-481f-9c4b-a3705f3b2270",
+              "optionValues": [
+                {
+                  "groupId": "2353392e-e3af-43e8-8760-74af87acd7eb",
+                  "optionId": "da5b2498-1991-4c03-bbd8-b4da44d9caeb"
+                }
+              ],
+              "stock": 10,
+              "priceOverride": 0
+            },
+            {
+              "id": "69250d9c-79d9-448a-9993-d06bad35ab32",
+              "optionValues": [
+                {
+                  "groupId": "2353392e-e3af-43e8-8760-74af87acd7eb",
+                  "optionId": "f2129fcc-a57f-4885-88d2-b4116fd73537"
+                }
+              ],
+              "stock": 10,
+              "priceOverride": 4.97
+            }
+          ],
+          "createdAt": "2026-02-14T17:00:09.356Z",
+          "isFeatured": false,
+          "isAvailable": false,
+          "inStock": true,
+          "stock": 29,
+          "quantity": 50,
+          "lowStockThreshold": 5,
+          "isLastItems": false,
+          "lastItemsCount": 0
+        }
+      ],
+      "optionGroups": [
+        {
+          "id": "4593e030-74ee-424c-ada0-497c5c80a9b8",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "مقاسات ملابس",
+          "type": "SIZE",
+          "required": true,
+          "minSelected": 1,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "0e620409-69c8-43aa-be93-2c412e5dca1c",
+              "name": "S",
+              "sortOrder": 0
+            },
+            {
+              "id": "45259ffb-c090-4199-aa00-bd2e9bfa0289",
+              "name": "M",
+              "sortOrder": 1
+            },
+            {
+              "id": "d86909b4-6c26-4670-bde5-2b52d0d5366b",
+              "name": "L",
+              "sortOrder": 2
+            },
+            {
+              "id": "ce0cc93d-8a47-4f30-92ad-b4d6465455c2",
+              "name": "XL",
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "21ddaec8-a955-4b7f-8481-d179f418dcdd",
+          "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+          "name": "ألوان شائعة",
+          "type": "COLOR",
+          "required": false,
+          "minSelected": 0,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "a4ec0ce4-f6d3-405a-9c53-23256bdc7944",
+              "name": "أسود",
+              "sortOrder": 0
+            },
+            {
+              "id": "a63a8e3e-57ae-48fb-bf65-fc1873bb04b0",
+              "name": "أبيض",
+              "sortOrder": 1
+            },
+            {
+              "id": "203603cb-496f-4ad4-b828-f3485127a4d4",
+              "name": "بيج",
+              "sortOrder": 2
+            },
+            {
+              "id": "35ecf1a3-5bdb-4798-9866-688fc138d113",
+              "name": "أزرق",
+              "sortOrder": 3
+            },
+            {
+              "id": "d015abe6-5ca2-4b9d-9a51-20d17204a09d",
+              "name": "وردي",
+              "sortOrder": 4
+            }
+          ]
+        }
+      ],
+      "optionItems": []
+    },
+    "f741d517-e7e6-48c9-a046-18d85acf1d25": {
+      "categories": [
+        {
+          "id": "be51dd05-83fe-4ba8-a6f6-003174fc7695",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "فساتين",
+          "slug": "فساتين",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "8753e0d7-749d-4d3e-9ee9-75e0cec314eb",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "بلايز",
+          "slug": "بلايز",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "df08e6ab-e97a-496d-a880-bd3b3f12ab5f",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "بناطيل",
+          "slug": "بناطيل",
+          "sortOrder": 2,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "78e7fa6f-6228-4e23-8172-8a7d326ca9b7",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "جاكيتات",
+          "slug": "جاكيتات",
+          "sortOrder": 3,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "80a61598-436a-4a3d-9de7-ef4a863eb9c5",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "أطقم",
+          "slug": "أطقم",
+          "sortOrder": 4,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [
+        {
+          "id": "40aa5054-4b7c-4061-b6fe-14c0262dee15",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "مقاسات ملابس",
+          "type": "SIZE",
+          "required": true,
+          "minSelected": 1,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "b9128f88-1dd4-41ce-8358-35c9e56ead5f",
+              "name": "S",
+              "sortOrder": 0
+            },
+            {
+              "id": "25c3b4b4-1457-4dcf-b0ea-af6a1d513408",
+              "name": "M",
+              "sortOrder": 1
+            },
+            {
+              "id": "04a91785-3b15-4e36-9bf7-5842c925f2cc",
+              "name": "L",
+              "sortOrder": 2
+            },
+            {
+              "id": "908400f4-70e3-4e71-bc3b-1af36a01a81d",
+              "name": "XL",
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "1f168a6f-7451-400f-a6e7-a6399656faa1",
+          "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+          "name": "ألوان شائعة",
+          "type": "COLOR",
+          "required": false,
+          "minSelected": 0,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "44933994-7920-42a2-a49c-75104db71216",
+              "name": "أسود",
+              "sortOrder": 0
+            },
+            {
+              "id": "8206a9d1-c597-44e4-929f-1de841a1eb9f",
+              "name": "أبيض",
+              "sortOrder": 1
+            },
+            {
+              "id": "52de8dd5-1c4e-42a3-81e4-194419f07afc",
+              "name": "بيج",
+              "sortOrder": 2
+            },
+            {
+              "id": "93d44cb3-484b-4839-975a-13d3f85701fd",
+              "name": "أزرق",
+              "sortOrder": 3
+            },
+            {
+              "id": "cdd83f1a-cdc0-4673-9552-3147dd156ed2",
+              "name": "وردي",
+              "sortOrder": 4
+            }
+          ]
+        }
+      ],
+      "optionItems": []
+    },
+    "3f801fb9-f6f9-4e81-b3a2-f8954498cdac": {
+      "categories": [
+        {
+          "id": "d9a7f7f6-b4ea-40d8-b52e-69ee511cd56f",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "فساتين",
+          "slug": "فساتين",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "f27d8eeb-4c9e-4862-8cf7-f7482e0b7646",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "بلايز",
+          "slug": "بلايز",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "9e147253-6f65-432b-8883-442c199a6efd",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "بناطيل",
+          "slug": "بناطيل",
+          "sortOrder": 2,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "74a25179-1692-46c0-8066-f9a59f5ac37b",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "جاكيتات",
+          "slug": "جاكيتات",
+          "sortOrder": 3,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "8e2f15b3-6d72-4fbb-90bb-e00df5fa41c3",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "أطقم",
+          "slug": "أطقم",
+          "sortOrder": 4,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [
+        {
+          "id": "69cc0052-7fa3-421b-8adc-dc221cd0e77c",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "مقاسات ملابس",
+          "type": "SIZE",
+          "required": true,
+          "minSelected": 1,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "c11958fb-d990-421e-a040-3bacec63991f",
+              "name": "S",
+              "sortOrder": 0
+            },
+            {
+              "id": "3d6275ce-e60e-4e0a-ad8a-a6e172bcd8c8",
+              "name": "M",
+              "sortOrder": 1
+            },
+            {
+              "id": "91938817-c5cc-4f53-bf57-1c9456b9d5f9",
+              "name": "L",
+              "sortOrder": 2
+            },
+            {
+              "id": "5aa98b80-98d4-446b-99d4-f6faf2954be2",
+              "name": "XL",
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "5786248c-8d04-4ee1-b85e-f2083d2e0983",
+          "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+          "name": "ألوان شائعة",
+          "type": "COLOR",
+          "required": false,
+          "minSelected": 0,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "f1fc991b-f49a-49dd-9508-6aa3d5d74ba4",
+              "name": "أسود",
+              "sortOrder": 0
+            },
+            {
+              "id": "df685c97-eee4-44da-867b-f74db008d8e9",
+              "name": "أبيض",
+              "sortOrder": 1
+            },
+            {
+              "id": "4d036c2e-87e3-440d-a256-24d5758bc191",
+              "name": "بيج",
+              "sortOrder": 2
+            },
+            {
+              "id": "3921bf0a-c000-425f-9d11-e6a31ca1988c",
+              "name": "أزرق",
+              "sortOrder": 3
+            },
+            {
+              "id": "fdbcac9e-7dad-409e-8550-9928ff8f8abc",
+              "name": "وردي",
+              "sortOrder": 4
+            }
+          ]
+        }
+      ],
+      "optionItems": []
+    },
+    "1cc59722-3687-45a1-9121-e7a608fba225": {
+      "categories": [
+        {
+          "id": "b8b7324f-d0b7-4815-b730-cdd6906e0514",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "فساتين",
+          "slug": "فساتين",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "fe1ae3c2-2bb2-43e1-9b56-479b40045768",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "بلايز",
+          "slug": "بلايز",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "8e7ffff3-8884-4a32-8487-d8685a3ccda4",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "بناطيل",
+          "slug": "بناطيل",
+          "sortOrder": 2,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "3a19342d-aa0b-41c3-bd5e-96e3e884418e",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "جاكيتات",
+          "slug": "جاكيتات",
+          "sortOrder": 3,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "48e685db-25d6-4992-9aff-f42367c3ec2c",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "أطقم",
+          "slug": "أطقم",
+          "sortOrder": 4,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [
+        {
+          "id": "30e4262c-d61b-4d47-82c0-be95ebdfaee6",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "مقاسات ملابس",
+          "type": "SIZE",
+          "required": true,
+          "minSelected": 1,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "16be366b-19cd-4553-9eb0-9a4c7ed53c59",
+              "name": "S",
+              "sortOrder": 0
+            },
+            {
+              "id": "7bf4ba88-9806-4434-9f91-2682d8daab2c",
+              "name": "M",
+              "sortOrder": 1
+            },
+            {
+              "id": "8c0943f3-42be-42a5-ac3b-7f6851ec851e",
+              "name": "L",
+              "sortOrder": 2
+            },
+            {
+              "id": "8c6fb185-0ecd-48d8-90f8-76eebdb34099",
+              "name": "XL",
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "b2a84f05-3d08-4e35-8152-a69607c279f4",
+          "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+          "name": "ألوان شائعة",
+          "type": "COLOR",
+          "required": false,
+          "minSelected": 0,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "9c4ce7b2-6317-4201-a71d-e36e46b5e17d",
+              "name": "أسود",
+              "sortOrder": 0
+            },
+            {
+              "id": "ab97072a-eeb5-4e33-855f-62376f049639",
+              "name": "أبيض",
+              "sortOrder": 1
+            },
+            {
+              "id": "82c93ad9-faf6-46a2-bc77-1a41a8ddcc00",
+              "name": "بيج",
+              "sortOrder": 2
+            },
+            {
+              "id": "d53575a5-47d9-42e3-8e2e-b2bddf310bad",
+              "name": "أزرق",
+              "sortOrder": 3
+            },
+            {
+              "id": "e3710571-f941-4418-85c9-538b2114a251",
+              "name": "وردي",
+              "sortOrder": 4
+            }
+          ]
+        }
+      ],
+      "optionItems": []
+    },
+    "60904bcc-970a-45e3-8669-8015ee2afe64": {
+      "categories": [
+        {
+          "id": "00de19f2-0677-41fb-a47a-1da0f10fb9df",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "فساتين",
+          "slug": "فساتين",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "d041352a-542e-4745-a4d4-42830b66da5b",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "بلايز",
+          "slug": "بلايز",
+          "sortOrder": 1,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "1a5b2d5d-0050-4e77-9250-1659648e4c46",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "بناطيل",
+          "slug": "بناطيل",
+          "sortOrder": 2,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "0a0e4c11-3512-43be-b6d0-0a41d3a83c08",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "جاكيتات",
+          "slug": "جاكيتات",
+          "sortOrder": 3,
+          "parentId": null,
+          "isVisible": true
+        },
+        {
+          "id": "8bd4ccfa-73b0-4e7f-b8df-ff41e1a4addb",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "أطقم",
+          "slug": "أطقم",
+          "sortOrder": 4,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [
+        {
+          "id": "8060d543-c992-48ba-9b41-d1561fb7fd9c",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "مقاسات ملابس",
+          "type": "SIZE",
+          "required": true,
+          "minSelected": 1,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "cd8fab14-0094-4f88-8494-19789333705f",
+              "name": "S",
+              "sortOrder": 0
+            },
+            {
+              "id": "0d73572c-e6ad-4571-b86d-09bd912000d4",
+              "name": "M",
+              "sortOrder": 1
+            },
+            {
+              "id": "7e8d8f01-c283-4d40-8b09-e224a959b6c8",
+              "name": "L",
+              "sortOrder": 2
+            },
+            {
+              "id": "8676ca2a-e290-4eb1-a257-edebbe48472d",
+              "name": "XL",
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "5df32ce3-9486-4155-8576-faef4545d47f",
+          "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+          "name": "ألوان شائعة",
+          "type": "COLOR",
+          "required": false,
+          "minSelected": 0,
+          "maxSelected": 1,
+          "selectionType": "single",
+          "items": [
+            {
+              "id": "b02b0f5d-a63c-4ffb-becc-764f8729d543",
+              "name": "أسود",
+              "sortOrder": 0
+            },
+            {
+              "id": "7e28c6c7-1480-455a-81f5-5afe099468c9",
+              "name": "أبيض",
+              "sortOrder": 1
+            },
+            {
+              "id": "9d8a7757-49b1-4c49-9cec-407227c3085f",
+              "name": "بيج",
+              "sortOrder": 2
+            },
+            {
+              "id": "1a8bfd88-47d4-4a27-8b60-da6591cd3d4f",
+              "name": "أزرق",
+              "sortOrder": 3
+            },
+            {
+              "id": "fa467c29-6ed1-4619-9a9f-4b9f7e797f5a",
+              "name": "وردي",
+              "sortOrder": 4
+            }
+          ]
+        }
+      ],
+      "optionItems": []
+    }
+  },
+  "orders": [],
+  "campaigns": [],
+  "delivery": {
+    "5b35539f-90e1-49cc-8c32-8d26cdce20f2": {
+      "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    },
+    "78463821-ccb7-48af-841b-84a18c42abb6": {
+      "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    },
+    "f741d517-e7e6-48c9-a046-18d85acf1d25": {
+      "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    },
+    "3f801fb9-f6f9-4e81-b3a2-f8954498cdac": {
+      "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    },
+    "1cc59722-3687-45a1-9121-e7a608fba225": {
+      "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    },
+    "60904bcc-970a-45e3-8669-8015ee2afe64": {
+      "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+      "modes": {
+        "pickup": true,
+        "delivery": true
+      },
+      "minimumOrder": 0,
+      "deliveryFee": 5,
+      "zones": []
+    }
+  },
+  "deliveryZones": {
+    "5b35539f-90e1-49cc-8c32-8d26cdce20f2": [
+      {
+        "id": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1",
+        "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "name": "التوصيل العام",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ],
+    "78463821-ccb7-48af-841b-84a18c42abb6": [
+      {
+        "id": "dz-78463821-ccb7-48af-841b-84a18c42abb6-1",
+        "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "name": "الشبلي",
+        "fee": 20,
+        "etaMinutes": 25,
+        "isActive": true,
+        "sortOrder": 0
+      },
+      {
+        "id": "9cc7366b-0b45-42d9-a5b9-7639f2e6726c",
+        "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "name": "دبورية",
+        "fee": 11,
+        "etaMinutes": 16,
+        "isActive": true,
+        "sortOrder": 1
+      }
+    ],
+    "f741d517-e7e6-48c9-a046-18d85acf1d25": [
+      {
+        "id": "dz-f741d517-e7e6-48c9-a046-18d85acf1d25-1",
+        "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ],
+    "3f801fb9-f6f9-4e81-b3a2-f8954498cdac": [
+      {
+        "id": "dz-3f801fb9-f6f9-4e81-b3a2-f8954498cdac-1",
+        "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ],
+    "1cc59722-3687-45a1-9121-e7a608fba225": [
+      {
+        "id": "dz-1cc59722-3687-45a1-9121-e7a608fba225-1",
+        "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ],
+    "60904bcc-970a-45e3-8669-8015ee2afe64": [
+      {
+        "id": "dz-60904bcc-970a-45e3-8669-8015ee2afe64-1",
+        "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ]
+  },
+  "couriers": [
+    {
+      "id": "courier-50971b77-4811-49e8-825b-78bd84041782",
+      "scopeType": "MARKET",
+      "scopeId": "market-dabburiyya",
+      "marketId": "market-dabburiyya",
+      "name": "احمد",
+      "phone": "0546111668",
+      "isActive": true,
+      "isOnline": true,
+      "capacity": 3,
+      "isAvailable": true,
+      "deliveryCount": 2
+    },
+    {
+      "id": "courier-dab-002",
+      "scopeType": "MARKET",
+      "scopeId": "market-dabburiyya",
+      "marketId": "market-dabburiyya",
+      "name": "خالد",
+      "phone": "0542223344",
+      "isActive": true,
+      "isOnline": true,
+      "capacity": 3,
+      "isAvailable": false,
+      "deliveryCount": 12
+    },
+    {
+      "id": "courier-dab-003",
+      "scopeType": "MARKET",
+      "scopeId": "market-dabburiyya",
+      "marketId": "market-dabburiyya",
+      "name": "محمود",
+      "phone": "0543334455",
+      "isActive": true,
+      "isOnline": true,
+      "capacity": 2,
+      "isAvailable": true,
+      "deliveryCount": 5
+    },
+    {
+      "id": "courier-iksal-001",
+      "scopeType": "MARKET",
+      "scopeId": "market-iksal",
+      "marketId": "market-iksal",
+      "name": "سائق إكسال",
+      "phone": "0541234567",
+      "isActive": true,
+      "isOnline": true,
+      "capacity": 3,
+      "isAvailable": true,
+      "deliveryCount": 0
+    },
+    {
+      "id": "courier-iksal-002",
+      "scopeType": "MARKET",
+      "scopeId": "market-iksal",
+      "marketId": "market-iksal",
+      "name": "عمر",
+      "phone": "0545556677",
+      "isActive": true,
+      "isOnline": true,
+      "capacity": 3,
+      "isAvailable": true,
+      "deliveryCount": 8
+    }
+  ],
+  "customers": [
+    {
+      "id": "customer-8012c0f1-9015-4011-9524-f581f96c4d94",
+      "phone": "0501234567",
+      "createdAt": "2026-02-16T12:06:18.478Z"
+    }
+  ],
+  "deliveryJobs": [],
+  "templates": [],
+  "staff": []
+}

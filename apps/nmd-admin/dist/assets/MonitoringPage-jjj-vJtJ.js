@@ -1,0 +1,1 @@
+import{c as t,j as a}from"./index-BYQekpkv.js";import{b as s}from"./api-CiuOvftP.js";function n(){const{data:e=[],isLoading:i}=t({queryKey:["monitoring-stats"],queryFn:()=>s("/monitoring/stats"),enabled:!1});return a.jsx("div",{className:"p-4 text-amber-600",children:"يتطلب mock-api"})}export{n as default};

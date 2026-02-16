@@ -1,0 +1,44 @@
+---
+description: WhatsApp phone is per-tenant only, no global fallback
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# WhatsApp Phone: Per-Tenant Only
+
+## Source of Truth
+
+**ONLY** source: `tenant.branding.whatsappPhone`
+
+- Stored at tenant root in registry/mock-api as `tenant.whatsappPhone`
+- Exposed to storefront as `tenant.branding.whatsappPhone` via `registryToTenant`
+
+## No Fallbacks
+
+- **Never** use seed defaults (e.g. `966500000000`) for WhatsApp
+- **Never** add country-code fallbacks in `buildWhatsAppUrl` (e.g. `966` prefix)
+- Use `isValidWhatsAppPhone()` from `@nmd/core` before opening WhatsApp
+
+## Checkout Flow
+
+1. Always create order first (mock-api)
+2. If `tenant.branding.whatsappPhone` exists and `isValidWhatsAppPhone(phone)` → open `wa.me/{phone}?text=...`
+3. Else → **DO NOT** open WhatsApp; show toast: `"تم تسجيل الطلب، لكن المحل لم يحدد رقم واتساب بعد."`
+4. Always redirect to `/order/{id}/success`
+
+## Admin Branding
+
+- Every tenant has "رقم واتساب لاستقبال الطلبات" in Branding page
+- Digits-only validation; save to `tenant.branding.whatsappPhone`
+
+## Validation
+
+```typescript
+import { isValidWhatsAppPhone, buildWhatsAppUrl } from '@nmd/core';
+
+// Before opening WhatsApp:
+if (isValidWhatsAppPhone(tenant?.branding?.whatsappPhone)) {
+  const url = buildWhatsAppUrl(phone, message);
+  window.open(url, '_blank');
+}
+```

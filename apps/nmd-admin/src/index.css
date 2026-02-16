@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* NMD Brand Colors */
+  --color-primary-dark: #0F172A;
+  --color-accent-purple: #7C3AED;
+  --color-accent-teal: #14B8A6;
+  --color-light-bg: #F8FAFC;
+  --color-dark-surface: #1E293B;
+
+  --color-primary: var(--color-accent-purple);
+  --color-secondary: var(--color-accent-teal);
+  --color-success: var(--color-accent-teal);
+  --radius: 8px;
+  --font: "Cairo", system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font);
+  margin: 0;
+}
+
+/* NMD Admin: Table contrast */
+main table thead {
+  @apply bg-[#1E293B] text-gray-200;
+}
+main table th {
+  @apply font-semibold;
+}
+main table tbody tr {
+  @apply border-t border-gray-200;
+}
+main table tbody tr:hover {
+  @apply bg-[#F8FAFC];
+}

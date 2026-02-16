@@ -1,0 +1,1 @@
+import{j as n,T as r,e as t}from"./index-BYQekpkv.js";function s({children:e}){const{me:i,isLoading:a}=t();return n.jsx(n.Fragment,{children:e})}function u({children:e}){return n.jsx(r,{children:n.jsx(s,{children:e})})}export{u as RequireTenant};

@@ -1,0 +1,1 @@
+import{j as e,C as s}from"./index-BYQekpkv.js";function a(){return e.jsxs("div",{children:[e.jsx("h1",{className:"text-2xl font-bold text-gray-900 mb-6",children:"Plans"}),e.jsx(s,{children:e.jsx("div",{className:"p-12 text-center text-gray-500",children:"Plans placeholder"})})]})}export{a as default};
