@@ -37,16 +37,16 @@ export function Header() {
 
   return (
     <header className={`sticky top-0 z-40 ${layoutHeaderClass(layoutStyle)}`}>
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-        <Link to={tenant?.slug ? `/${tenant.slug}` : '/'} className="flex items-center gap-2 flex-shrink-0">
+      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4 min-w-0">
+        <Link to={tenant?.slug ? `/${tenant.slug}` : '/'} className="flex items-center gap-2 min-w-0 flex-shrink">
           {tenant?.branding.logoUrl ? (
-            <img src={tenant.branding.logoUrl} alt={tenant.name} className="h-8" />
+            <img src={tenant.branding.logoUrl} alt={tenant.name} className="h-8 shrink-0" />
           ) : (
-            <span className="font-bold text-lg text-primary">{tenant?.name ?? 'Store'}</span>
+            <span className="font-bold text-lg text-primary truncate max-w-[120px] sm:max-w-none">{tenant?.name ?? 'Store'}</span>
           )}
           {tenant && <StatusBadge tenant={tenant} variant="header" />}
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div className={`relative overflow-hidden transition-all ${searchFocused ? 'w-28 sm:w-44' : 'w-24'}`}>
             <Search className="absolute top-1/2 -translate-y-1/2 end-2 w-4 h-4 text-gray-400 pointer-events-none" />
             <input

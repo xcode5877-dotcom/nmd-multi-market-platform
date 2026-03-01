@@ -9,7 +9,7 @@ export default function Layout() {
   const isCartOrCheckout = pathname.endsWith('/cart') || pathname.endsWith('/checkout');
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden">
       <Header />
       <div className={isCartOrCheckout ? 'hidden md:block' : undefined}>
         <TrustBar />
