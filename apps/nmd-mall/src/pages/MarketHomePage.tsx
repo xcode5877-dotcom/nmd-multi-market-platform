@@ -1,15 +1,38 @@
 import { useParams, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { MarketCategory } from '@nmd/core';
 import { Skeleton } from '@nmd/ui';
 import { useState, useEffect, useRef } from 'react';
-import { Banknote, Truck, Heart, MessageCircle, Store, ShoppingCart, Package, Search } from 'lucide-react';
+import { Store, Search } from 'lucide-react';
 import { StoreCard } from '../components/StoreCard';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
 
-const TYPE_LABELS: Record<string, string> = {
+/** Promo banner shape. linkTo = tenantSlug. API-ready. */
+export interface PromoBanner {
+  id: string;
+  imageUrl: string;
+  title: string;
+  linkTo: string; // tenantSlug
+  active: boolean;
+}
+
+/** Tenant slugs that get "مميز" (Featured) badge on cards. */
+export const FEATURED_TENANT_SLUGS: string[] = ['buffalo'];
+
+/** Tenant slugs that get "ممول" (Sponsored) badge. */
+export const SPONSORED_TENANT_SLUGS: string[] = [];
+
+/** Section shape for dynamic marketplace. API-ready. */
+export interface Section {
+  id: string;
+  title: string;
+  type: 'SLIDER';
+  storeIds: string[];
+}
+
+export const TYPE_LABELS: Record<string, string> = {
   FOOD: 'طعام',
   CLOTHING: 'ملابس',
   GROCERIES: 'خضار',
@@ -35,6 +58,7 @@ interface MarketTenant {
   marketCategory: string;
   operationalStatus?: 'open' | 'closed' | 'busy';
   businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
+  isFeatured?: boolean;
 }
 
 const CATEGORY_TILES: { marketCategory: MarketCategory; label: string; icon: string }[] = [
@@ -45,12 +69,6 @@ const CATEGORY_TILES: { marketCategory: MarketCategory; label: string; icon: str
   { marketCategory: 'OFFERS', label: 'عروض', icon: '📦' },
 ];
 
-const ORDER_STEPS = [
-  { icon: Store, label: 'اختر المحل' },
-  { icon: ShoppingCart, label: 'أضف منتجاتك' },
-  { icon: Package, label: 'استلم أو اطلب توصيل' },
-];
-
 export default function MarketHomePage() {
   const { marketSlug } = useParams<{ marketSlug: string }>();
   const [market, setMarket] = useState<Market | null>(null);
@@ -58,12 +76,20 @@ export default function MarketHomePage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<'ALL' | MarketCategory>('ALL');
   const [search, setSearch] = useState('');
+  const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerImageLoaded, setBannerImageLoaded] = useState<Record<string, boolean>>({});
   const shopsRef = useRef<HTMLDivElement>(null);
+
+  const [promos, setPromos] = useState<PromoBanner[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const activeBanners = promos.filter((b) => b.active);
 
   useEffect(() => {
     if (!marketSlug || !MOCK_API_URL) {
       setMarket(null);
       setTenants([]);
+      setPromos([]);
+      setSections([]);
       setLoading(false);
       return;
     }
@@ -76,14 +102,26 @@ export default function MarketHomePage() {
           return;
         }
         setMarket(m);
-        const res = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants?_t=${Date.now()}`);
-        const list = await res.json();
-        if (!cancelled) setTenants(list ?? []);
+        const [tenantsRes, bannersRes, layoutRes] = await Promise.all([
+          fetch(`${MOCK_API_URL}/markets/${m.id}/tenants?_t=${Date.now()}`),
+          fetch(`${MOCK_API_URL}/markets/by-slug/${marketSlug}/banners`),
+          fetch(`${MOCK_API_URL}/markets/by-slug/${marketSlug}/layout`),
+        ]);
+        const list = await tenantsRes.json();
+        const banners = bannersRes.ok ? await bannersRes.json() : [];
+        const layout = layoutRes.ok ? await layoutRes.json() : [];
+        if (!cancelled) {
+          setTenants(list ?? []);
+          setPromos(banners);
+          setSections(layout);
+        }
       })
       .catch(() => {
         if (!cancelled) {
           setMarket(null);
           setTenants([]);
+          setPromos([]);
+          setSections([]);
         }
       })
       .finally(() => {
@@ -92,9 +130,30 @@ export default function MarketHomePage() {
     return () => { cancelled = true; };
   }, [marketSlug]);
 
+  useEffect(() => {
+    if (activeBanners.length <= 1) return;
+    const t = setInterval(() => setBannerIdx((i) => (i + 1) % activeBanners.length), 5000);
+    return () => clearInterval(t);
+  }, []);
+
   const handleCategoryClick = (cat: MarketCategory) => {
     setActiveCategory((prev) => (prev === cat ? 'ALL' : cat));
     shopsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const getStoreBadge = (slug: string): 'featured' | 'sponsored' | undefined => {
+    if (SPONSORED_TENANT_SLUGS.includes(slug)) return 'sponsored';
+    if (FEATURED_TENANT_SLUGS.includes(slug)) return 'featured';
+    return undefined;
+  };
+
+  /** Resolve tenants for a section by storeIds (id or slug). Preserves order. */
+  const getTenantsForSection = (storeIds: string[]): MarketTenant[] => {
+    const byId = new Map(tenants.map((t) => [t.id, t]));
+    const bySlug = new Map(tenants.map((t) => [t.slug, t]));
+    return storeIds
+      .map((id) => byId.get(id) ?? bySlug.get(id))
+      .filter((t): t is MarketTenant => t != null);
   };
 
   const visibleTenants = tenants
@@ -114,209 +173,256 @@ export default function MarketHomePage() {
     );
   }
 
-  const marketName = market?.name ?? 'السوق';
-  const shortName = market?.slug === 'dabburiyya' ? 'دبورية' : market?.slug === 'iksal' ? 'إكسال' : market?.slug ?? '';
-
   return (
     <div>
-      {/* First Order Banner */}
-      <div className="flex justify-center py-2 px-4 bg-[#FEF3C7]/50 border-b border-[#FEF3C7]">
-        <span className="text-sm text-gray-700">أول طلب لك؟ استخدم السوق الآن بدون تسجيل.</span>
-      </div>
-
-      {/* 1. Hero */}
-      <section className="relative py-16 md:py-20 overflow-hidden bg-gradient-to-b from-[#FEF3C7]/40 via-white to-white">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(217,119,6,0.08),transparent)]" />
-        <div className="relative max-w-4xl mx-auto px-4 text-center">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="text-4xl md:text-5xl font-bold text-gray-900 mb-4"
-          >
-            كل محلات {shortName} في مكان واحد.
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-lg text-gray-600 mb-8"
-          >
-            تسوق بسهولة. اطلب بسرعة. ادعم مشروعك المحلي.
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="flex flex-wrap justify-center gap-3"
-          >
-            <button
-              type="button"
-              onClick={() => shopsRef.current?.scrollIntoView({ behavior: 'smooth' })}
-              className="nmd-btn-active px-6 py-3 rounded-xl bg-[#B45309] text-white font-semibold hover:bg-[#92400E] transition-all shadow-lg shadow-[#D97706]/25"
-            >
-              تصفح المحلات
-            </button>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* 2. Trust Bar */}
-      <section className="py-6 border-b border-gray-100 bg-white">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-6 md:gap-10">
-            {[
-              { icon: Banknote, label: 'دفع نقدي' },
-              { icon: Truck, label: 'توصيل محلي' },
-              { icon: Heart, label: 'خدمة محلية' },
-              { icon: MessageCircle, label: 'دعم مباشر' },
-            ].map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-center gap-2 text-gray-700">
-                <div className="w-8 h-8 rounded-lg bg-[#FEF3C7] flex items-center justify-center text-[#D97706]">
-                  <Icon className="w-4 h-4" />
-                </div>
-                <span className="text-sm font-medium">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Quick Start - Category tiles */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.4 }}
-        className="py-12 md:py-14"
-      >
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">كيف تحب تتسوّق اليوم؟</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6">
-            {CATEGORY_TILES.map((c) => {
-              const isActive = activeCategory === c.marketCategory;
-              return (
-                <button
-                  key={c.marketCategory}
-                  type="button"
-                  onClick={() => handleCategoryClick(c.marketCategory)}
-                  className={`nmd-card-hover p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-2 min-h-[120px] justify-center ${
-                    isActive ? 'bg-[#FEF3C7] border-[#D97706] ring-2 ring-[#D97706]/30 shadow-md' : 'bg-white border-gray-200 hover:border-[#D97706]/50 hover:shadow-md'
-                  }`}
-                >
-                  <span className="text-4xl">{c.icon}</span>
-                  <span className={`font-semibold text-center ${isActive ? 'text-[#B45309]' : 'text-gray-900'}`}>{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </motion.section>
-
-      {/* 4. 3 Steps */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.4 }}
-        className="py-12 border-t border-gray-100 bg-white"
-      >
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-xl font-bold text-gray-900 mb-8 text-center">كيف تطلب خلال 3 خطوات؟</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-            {ORDER_STEPS.map(({ icon: Icon, label }, i) => (
-              <div key={i} className="flex flex-col items-center gap-3 p-6 rounded-xl bg-gray-50/80 border border-gray-100">
-                <div className="w-12 h-12 rounded-xl bg-[#FEF3C7] flex items-center justify-center text-[#D97706]">
-                  <Icon className="w-6 h-6" />
-                </div>
-                <span className="text-sm font-medium text-gray-500">الخطوة {i + 1}</span>
-                <span className="font-semibold text-gray-900 text-center">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </motion.section>
-
-      {/* 5. محلات مميزة */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.4 }}
-        className="py-12 md:py-14 border-t border-gray-100"
-      >
-        <div id="shops" ref={shopsRef} className="max-w-6xl mx-auto px-4">
-          <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span>🏬</span> محلات مميزة
-          </h2>
-          <div className="relative mb-6">
+      {/* 1. Global Search (Crown) - Sticky top-0, glassmorphism */}
+      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/80 shadow-sm">
+        <div className="px-4 py-3">
+          <div className="relative max-w-6xl mx-auto">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
               placeholder="ابحث باسم المحل..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full ps-4 pe-12 py-3 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706]/50 focus:border-[#D97706]"
+              className="w-full ps-4 pe-12 py-2.5 rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-[#D97706]/30 focus:border-[#D97706] focus:bg-white/90 text-sm shadow-sm"
             />
           </div>
+        </div>
+      </div>
+
+      {/* 2. Promo Hero (Banner Slider) */}
+      <motion.section
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="relative overflow-hidden"
+      >
+        {activeBanners.length > 0 ? (
+          <div className="relative aspect-[21/9] w-full rounded-b-2xl overflow-hidden shadow-lg">
+            <AnimatePresence mode="wait">
+              {activeBanners.map((b, i) => {
+                if (i !== bannerIdx) return null;
+                const storeUrl = `${STOREFRONT_URL}/${b.linkTo}`;
+                return (
+                  <motion.a
+                    key={b.id}
+                    href={storeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ duration: 0.4 }}
+                    className="block absolute inset-0"
+                  >
+                    <div className="absolute inset-0 bg-gray-900/30 z-10 flex flex-col justify-end p-4 md:p-6">
+                      <h2 className="text-xl md:text-2xl font-bold text-white drop-shadow-lg">{b.title}</h2>
+                      <span className="inline-flex mt-2 w-fit px-4 py-2 rounded-xl bg-[#B45309] text-white font-semibold text-sm hover:bg-[#92400E] transition-colors shadow-lg">
+                        اطلب الآن
+                      </span>
+                    </div>
+                    {!bannerImageLoaded[b.id] && (
+                      <Skeleton variant="rectangular" className="absolute inset-0 w-full h-full" />
+                    )}
+                    <img
+                      src={b.imageUrl}
+                      alt={b.title}
+                      className={`w-full h-full object-cover transition-opacity duration-300 ${bannerImageLoaded[b.id] ? 'opacity-100' : 'opacity-0'}`}
+                      onLoad={() => setBannerImageLoaded((prev) => ({ ...prev, [b.id]: true }))}
+                    />
+                  </motion.a>
+                );
+              })}
+            </AnimatePresence>
+            {activeBanners.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-1.5">
+                {activeBanners.map((_, i) => (
+                  <motion.button
+                    key={i}
+                    type="button"
+                    onClick={() => setBannerIdx(i)}
+                    whileTap={{ scale: 0.9 }}
+                    className={`w-2 h-2 rounded-full transition-colors ${i === bannerIdx ? 'bg-white' : 'bg-white/50'}`}
+                    aria-label={`Slide ${i + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="relative aspect-[21/9] w-full rounded-b-2xl overflow-hidden bg-gradient-to-b from-[#FEF3C7]/40 to-white" />
+        )}
+      </motion.section>
+
+      {/* 3. Sticky Capsule Categories */}
+      <motion.section
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.05 }}
+        className="sticky top-32 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm"
+      >
+        <div className="px-4 py-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-2 min-w-max">
+            <motion.button
+              type="button"
+              onClick={() => handleCategoryClick('ALL' as MarketCategory)}
+              whileTap={{ scale: 0.97 }}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
+                activeCategory === 'ALL'
+                  ? 'bg-[#B45309] text-white border-[#B45309]'
+                  : 'bg-white text-gray-700 border-gray-200 hover:border-[#D97706]/50'
+              }`}
+            >
+              الكل
+            </motion.button>
+            {CATEGORY_TILES.map((c) => {
+              const isActive = activeCategory === c.marketCategory;
+              return (
+                <motion.button
+                  key={c.marketCategory}
+                  type="button"
+                  onClick={() => handleCategoryClick(c.marketCategory)}
+                  whileTap={{ scale: 0.97 }}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
+                    isActive ? 'bg-[#B45309] text-white border-[#B45309]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#D97706]/50'
+                  }`}
+                >
+                  <span>{c.icon}</span>
+                  {c.label}
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+      </motion.section>
+
+      {/* 4. Dynamic Sections (all horizontal sliders) */}
+      {sections.map((section, idx) => {
+        const sectionTenants = getTenantsForSection(section.storeIds);
+        return (
+          <motion.section
+            key={section.id}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-20px' }}
+            transition={{ duration: 0.35, delay: idx * 0.05 }}
+            className="py-4 border-b border-gray-100 bg-white"
+          >
+            <div className="max-w-6xl mx-auto px-4">
+              <div className="flex flex-row items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-900">{section.title}</h2>
+                <motion.button
+                  type="button"
+                  onClick={() => shopsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                  whileTap={{ scale: 0.97 }}
+                  className="text-sm font-medium text-[#D97706] hover:underline"
+                >
+                  عرض الكل
+                </motion.button>
+              </div>
+              {loading ? (
+                <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-[260px] min-w-[210px] shrink-0 snap-start rounded-xl" />
+                  ))}
+                </div>
+              ) : sectionTenants.length === 0 ? (
+                <div className="py-6 text-center rounded-xl bg-gray-50 border border-dashed border-gray-200">
+                  <p className="text-sm text-gray-500">لا توجد محلات في هذا القسم</p>
+                </div>
+              ) : (
+                <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory snap-start [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 scroll-smooth">
+                  {sectionTenants.map((t) => (
+                    <motion.div key={t.id} className="shrink-0 snap-start min-w-[210px]" whileTap={{ scale: 0.97 }}>
+                      <StoreCard
+                        id={t.id}
+                        slug={t.slug}
+                        name={t.name}
+                        marketCategory={t.marketCategory}
+                        type={t.type}
+                        branding={t.branding ?? {}}
+                        operationalStatus={t.operationalStatus}
+                        businessHours={t.businessHours}
+                        storeUrl={`${STOREFRONT_URL}/${t.slug}`}
+                        categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                        badge={getStoreBadge(t.slug)}
+                        compact
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.section>
+        );
+      })}
+
+      {/* 5. All Stores (horizontal slider) */}
+      <motion.section
+        id="shops"
+        ref={shopsRef}
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-20px' }}
+        transition={{ duration: 0.35 }}
+        className="py-4 border-b border-gray-100 bg-white"
+      >
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex flex-row items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-gray-900">كل المحلات</h2>
+            <Link
+              to={marketSlug ? `/m/${marketSlug}/all-stores` : '/markets'}
+              className="text-sm font-medium text-[#D97706] hover:underline"
+            >
+              <motion.span whileTap={{ scale: 0.97 }} className="inline-block">
+                عرض الكل
+              </motion.span>
+            </Link>
+          </div>
           {loading ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 md:gap-6 justify-items-center">
+            <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-[320px] w-full max-w-[220px] rounded-xl" />
+                <Skeleton key={i} className="h-[260px] min-w-[210px] shrink-0 snap-start rounded-xl" />
               ))}
             </div>
           ) : visibleTenants.length === 0 ? (
-            <div className="py-16 text-center rounded-xl bg-white border border-gray-200 shadow-sm">
-              <span className="text-4xl mb-4 block">🏬</span>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <div className="py-6 text-center rounded-xl bg-gray-50 border border-dashed border-gray-200">
+              <span className="text-4xl mb-2 block">🏬</span>
+              <p className="text-sm text-gray-500">
                 {tenants.length === 0 && !search.trim() && activeCategory === 'ALL'
                   ? 'لا توجد محلات بعد'
                   : 'لا توجد محلات تطابق البحث أو الفئة'}
-              </h3>
-              <p className="text-gray-600 max-w-md mx-auto">
-                {tenants.length === 0 ? 'هذا السوق جاهز لانضمام محلات جديدة.' : 'جرّب تغيير كلمة البحث أو اختر فئة أخرى'}
               </p>
               {tenants.length === 0 && (
-                <Link to="/markets" className="inline-block mt-4 text-[#D97706] font-medium hover:underline">
+                <Link to="/markets" className="inline-block mt-3 text-[#D97706] font-medium hover:underline">
                   ← العودة لاختيار السوق
                 </Link>
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 md:gap-6 items-start content-start justify-items-center">
+            <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory snap-start [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 scroll-smooth">
               {visibleTenants.map((t) => (
-                <StoreCard
-                  key={t.id}
-                  id={t.id}
-                  slug={t.slug}
-                  name={t.name}
-                  marketCategory={t.marketCategory}
-                  type={t.type}
-                  branding={t.branding ?? {}}
-                  operationalStatus={t.operationalStatus}
-                  businessHours={t.businessHours}
-                  storeUrl={`${STOREFRONT_URL}/${t.slug}`}
-                  categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
-                />
+                <motion.div key={t.id} className="shrink-0 snap-start min-w-[210px]" whileTap={{ scale: 0.97 }}>
+                  <StoreCard
+                    id={t.id}
+                    slug={t.slug}
+                    name={t.name}
+                    marketCategory={t.marketCategory}
+                    type={t.type}
+                    branding={t.branding ?? {}}
+                    operationalStatus={t.operationalStatus}
+                    businessHours={t.businessHours}
+                    storeUrl={`${STOREFRONT_URL}/${t.slug}`}
+                    categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                    badge={getStoreBadge(t.slug)}
+                    compact
+                  />
+                </motion.div>
               ))}
             </div>
           )}
-        </div>
-      </motion.section>
-
-      {/* 6. لماذا سوقنا؟ */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.4 }}
-        className="py-16 md:py-20 border-t border-gray-100 bg-[#FEF3C7]/30"
-      >
-        <div className="max-w-2xl mx-auto px-4 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">لماذا {marketName}؟</h2>
-          <p className="text-gray-700 leading-relaxed">
-            كل شراء يدعم التجار والمحلات المحلية. نبني مجتمعاً أقوى معاً — تسوق محلياً، ادعم جيرانك.
-          </p>
         </div>
       </motion.section>
     </div>

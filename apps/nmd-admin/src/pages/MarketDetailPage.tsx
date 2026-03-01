@@ -6,6 +6,8 @@ import { MockApiClient, type RegistryTenant } from '@nmd/mock';
 import type { MarketCategory } from '@nmd/core';
 import { ArrowLeft, KeyRound } from 'lucide-react';
 import { apiHeaders } from '../api';
+import MarketBannersTab from './MarketBannersTab';
+import MarketLayoutTab from './MarketLayoutTab';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -51,6 +53,8 @@ export default function MarketDetailPage() {
     if (pathname.endsWith('/orders')) return 'orders';
     if (pathname.endsWith('/dispatch')) return 'dispatch';
     if (pathname.endsWith('/finance')) return 'finance';
+    if (pathname.endsWith('/banners')) return 'banners';
+    if (pathname.endsWith('/layout')) return 'layout';
     return 'details';
   }, [id, pathname]);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -209,12 +213,12 @@ export default function MarketDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-w-0">
         <NavLink
           to={`/markets/${id}`}
           end
           className={({ isActive }) =>
-            `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
             }`
           }
@@ -224,7 +228,7 @@ export default function MarketDetailPage() {
         <NavLink
           to={`/markets/${id}/tenants`}
           className={({ isActive }) =>
-            `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
             }`
           }
@@ -234,7 +238,7 @@ export default function MarketDetailPage() {
         <NavLink
           to={`/markets/${id}/orders`}
           className={({ isActive }) =>
-            `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
             }`
           }
@@ -246,7 +250,7 @@ export default function MarketDetailPage() {
             <NavLink
               to={`/markets/${id}/dispatch`}
               className={({ isActive }) =>
-                `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                   isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
                 }`
               }
@@ -256,7 +260,7 @@ export default function MarketDetailPage() {
             <NavLink
               to={`/markets/${id}/finance`}
               className={({ isActive }) =>
-                `px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                   isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
                 }`
               }
@@ -265,6 +269,26 @@ export default function MarketDetailPage() {
             </NavLink>
           </>
         )}
+        <NavLink
+          to={`/markets/${id}/banners`}
+          className={({ isActive }) =>
+            `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
+            }`
+          }
+        >
+          إدارة الإعلانات
+        </NavLink>
+        <NavLink
+          to={`/markets/${id}/layout`}
+          className={({ isActive }) =>
+            `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
+            }`
+          }
+        >
+          ترتيب الصفحة
+        </NavLink>
       </div>
 
       {activeTab === 'details' && (
@@ -365,6 +389,22 @@ export default function MarketDetailPage() {
               </div>
             )}
           </Card>
+      )}
+
+      {activeTab === 'banners' && market?.slug && (
+        <MarketBannersTab
+          marketSlug={market.slug}
+          marketId={id!}
+          tenants={marketTenants.map((t) => ({ id: t.id, slug: t.slug, name: t.name }))}
+        />
+      )}
+
+      {activeTab === 'layout' && market?.slug && (
+        <MarketLayoutTab
+          marketSlug={market.slug}
+          marketId={id!}
+          tenants={marketTenants.map((t) => ({ id: t.id, slug: t.slug, name: t.name }))}
+        />
       )}
 
       <Modal

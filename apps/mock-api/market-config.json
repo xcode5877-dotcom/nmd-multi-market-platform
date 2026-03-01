@@ -1,0 +1,70 @@
+{
+  "banners": {
+    "dabburiyya": [
+      {
+        "id": "b1",
+        "imageUrl": "https://placehold.co/1200x514/1e293b/ffffff?text=عرض+خاص",
+        "title": "بيتسا إيطالية طازجة",
+        "linkTo": "buffalo",
+        "active": true
+      },
+      {
+        "id": "b2",
+        "imageUrl": "https://placehold.co/1200x514/0f766e/ffffff?text=توصيل+سريع",
+        "title": "اطلب من محلاتك المفضلة",
+        "linkTo": "buffalo",
+        "active": true
+      }
+    ],
+    "iksal": [
+      {
+        "id": "b1",
+        "imageUrl": "https://placehold.co/1200x514/4f46e5/ffffff?text=سوق+إكسال",
+        "title": "مرحباً بكم في سوق إكسال",
+        "linkTo": "buffalo",
+        "active": true
+      }
+    ]
+  },
+  "layout": {
+    "dabburiyya": [
+      {
+        "id": "featured",
+        "title": "محلات مميزة",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo",
+          "ms-brands",
+          "obr"
+        ]
+      },
+      {
+        "id": "restaurants",
+        "title": "أفضل المطاعم",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo",
+          "بيتسا-اشرف"
+        ]
+      },
+      {
+        "id": "new",
+        "title": "جديد في دبورية",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo"
+        ]
+      }
+    ],
+    "iksal": [
+      {
+        "id": "featured",
+        "title": "محلات مميزة",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo"
+        ]
+      }
+    ]
+  }
+}

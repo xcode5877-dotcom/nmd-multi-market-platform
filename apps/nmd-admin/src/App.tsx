@@ -70,6 +70,8 @@ export default function App() {
               <Route path="markets/:id/orders" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
               <Route path="markets/:id/dispatch" element={<MarketRouteGuard><MarketDispatchPage /></MarketRouteGuard>} />
               <Route path="markets/:id/finance" element={<MarketRouteGuard><MarketFinancePage /></MarketRouteGuard>} />
+              <Route path="markets/:id/banners" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+              <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
               <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
               <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
               <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />

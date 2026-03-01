@@ -1,9 +1,7 @@
 import { Outlet, Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
-const ANNOUNCEMENT_KEY = 'nmd-announcement-closed';
 
 interface Market {
   id: string;
@@ -14,11 +12,6 @@ interface Market {
 export default function MarketLayout() {
   const { marketSlug } = useParams<{ marketSlug: string }>();
   const [market, setMarket] = useState<Market | null>(null);
-  const [announcementClosed, setAnnouncementClosed] = useState(false);
-
-  useEffect(() => {
-    if (localStorage.getItem(ANNOUNCEMENT_KEY) === '1') setAnnouncementClosed(true);
-  }, []);
 
   useEffect(() => {
     if (!marketSlug || !MOCK_API_URL) {
@@ -37,24 +30,11 @@ export default function MarketLayout() {
     return () => { cancelled = true; };
   }, [marketSlug]);
 
-  const closeAnnouncement = () => {
-    setAnnouncementClosed(true);
-    localStorage.setItem(ANNOUNCEMENT_KEY, '1');
-  };
-
   const marketName = market?.name ?? 'السوق';
   const marketSlugDisplay = market?.slug ?? marketSlug ?? '';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAF9] overflow-x-hidden">
-      {!announcementClosed && (
-        <div className="bg-[#FEF3C7]/80 border-b border-[#FEF3C7] py-2 px-4 flex items-center justify-center gap-2">
-          <span className="text-sm text-gray-700">🚀 السوق في مرحلته التجريبية — قريبًا انضمام محلات جديدة</span>
-          <button type="button" onClick={closeAnnouncement} className="p-1 rounded hover:bg-[#FEF3C7] transition-colors" aria-label="إغلاق">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to={marketSlug ? `/m/${marketSlug}` : '/markets'} className="flex items-center gap-2">

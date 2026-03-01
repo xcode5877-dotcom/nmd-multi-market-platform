@@ -7,6 +7,7 @@ const MarketLayout = lazy(() => import('./layouts/MarketLayout'));
 const MarketsPickerPage = lazy(() => import('./pages/MarketsPickerPage'));
 const MarketHomePage = lazy(() => import('./pages/MarketHomePage'));
 const MarketPage = lazy(() => import('./pages/MarketPage'));
+const AllStoresPage = lazy(() => import('./pages/AllStoresPage'));
 const StoresPage = lazy(() => import('./pages/StoresPage'));
 const OffersPage = lazy(() => import('./pages/OffersPage'));
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'));
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/m/:marketSlug" element={<MarketLayout />}>
               <Route index element={<MarketHomePage />} />
               <Route path="market" element={<MarketPage />} />
+              <Route path="all-stores" element={<AllStoresPage />} />
             </Route>
             <Route path="/legacy" element={<LandingLayout />}>
               <Route path="stores" element={<StoresPage />} />

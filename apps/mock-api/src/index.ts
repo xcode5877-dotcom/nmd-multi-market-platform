@@ -26,6 +26,7 @@ import {
   type Courier,
   type DeliveryJob,
 } from './store.js';
+import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
@@ -229,6 +230,8 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/storefront\/tenants$/ },
   { method: 'GET', path: /^\/markets$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/banners$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/layout$/ },
   { method: 'GET', path: /^\/markets\/[^/]+\/tenants$/ },
   { method: 'GET', path: /^\/tenants\/by-slug\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/by-id\/[^/]+$/ },
@@ -886,6 +889,48 @@ app.get('/markets/by-slug/:slug', async (req, res) => {
   if (!market) return res.status(404).json({ error: 'Market not found' });
   if (!market.isActive) return res.status(404).json({ error: 'Market not found' });
   res.json(market);
+});
+
+app.get('/markets/by-slug/:slug/banners', async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const banners = getBannersForMarket(req.params.slug);
+  res.json(banners);
+});
+
+app.get('/markets/by-slug/:slug/layout', async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const layout = getLayoutForMarket(req.params.slug);
+  res.json(layout);
+});
+
+app.put('/markets/by-slug/:slug/banners', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role !== 'ROOT_ADMIN' && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const banners = req.body as MarketBanner[];
+  if (!Array.isArray(banners)) return res.status(400).json({ error: 'banners must be an array' });
+  setBannersForMarket(req.params.slug, banners);
+  res.json(banners);
+});
+
+app.put('/markets/by-slug/:slug/layout', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role !== 'ROOT_ADMIN' && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const layout = req.body as MarketSection[];
+  if (!Array.isArray(layout)) return res.status(400).json({ error: 'layout must be an array' });
+  setLayoutForMarket(req.params.slug, layout);
+  res.json(layout);
 });
 
 app.get('/markets/:id', async (req, res) => {
