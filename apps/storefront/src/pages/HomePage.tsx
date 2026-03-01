@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -7,11 +8,51 @@ import { useAppStore } from '../store/app';
 import { useTheme } from '@nmd/ui';
 import { TopHeroCarousel } from '../components/TopHeroCarousel';
 import { ProductCard } from '../components/ProductCard';
+import { CollectionSlider } from '../components/CollectionSlider';
+import { StatusBadge } from '../components/StatusBadge';
 import { ProductGridSkeleton, CategoryTabsSkeleton } from '../components/skeletons';
-import { formatMoney, type Product } from '@nmd/core';
+import { formatMoney, getOperationalStatus, type Product } from '@nmd/core';
+import type { HomeCollection } from '@nmd/core';
 
 const api = new MockApiClient();
-const ADMIN_URL = import.meta.env.DEV ? 'http://localhost:5174' : '/admin';
+
+const ENTRANCE_ALERT_KEY = 'nmd-entrance-alert-dismissed';
+
+function EntranceAlert({
+  status,
+  orderPolicy,
+  onDismiss,
+}: {
+  status: 'busy' | 'closed';
+  orderPolicy: 'accept_always' | 'accept_only_when_open';
+  onDismiss: () => void;
+}) {
+  const busyMsg = 'نحن مشغولون حالياً، قد يستغرق تجهيز طلبك وقتاً أطول.';
+  const closedMsg =
+    orderPolicy === 'accept_only_when_open'
+      ? 'المحل مغلق حالياً، يمكنك تصفح المنتجات وسنقوم بمعالجة طلبك عند الافتتاح.'
+      : 'المحل مغلق حالياً، يمكنك التصفح والطلب وسنقوم بمعالجة طلبك عند الافتتاح.';
+
+  return (
+    <div
+      className={`mb-6 p-4 rounded-xl border-2 flex items-start justify-between gap-4 ${
+        status === 'busy'
+          ? 'bg-amber-50 border-amber-300 text-amber-900'
+          : 'bg-red-50 border-red-500/50 text-red-900'
+      }`}
+      dir="rtl"
+    >
+      <p className="font-medium flex-1">{status === 'busy' ? busyMsg : closedMsg}</p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 px-4 py-2 rounded-lg bg-white/80 hover:bg-white font-medium text-sm border border-gray-200 transition-colors"
+      >
+        فهمت
+      </button>
+    </div>
+  );
+}
 
 function CampaignBanner({ tenantId }: { tenantId: string }) {
   const { data: campaigns } = useQuery({
@@ -38,6 +79,7 @@ export default function HomePage() {
   const tenantSlug = useAppStore((s) => s.tenantSlug);
   const hero = branding.hero;
   const banners = branding.banners ?? [];
+  const collections = (branding.collections ?? []).filter((c) => c.isActive);
   const mainCategories = (categories: { id: string; name: string; parentId?: string | null; isVisible?: boolean }[]) =>
     (categories ?? []).filter((c) => !c.parentId || c.parentId === '').filter((c) => c.isVisible !== false);
   const { data: categories, isLoading, refetch } = useQuery({
@@ -58,48 +100,86 @@ export default function HomePage() {
     enabled: !!tenantId,
   });
 
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant', tenantId],
+    queryFn: () => api.getTenant(tenantId),
+    enabled: !!tenantId,
+  });
+
+  const operationalStatus = tenant ? getOperationalStatus(tenant) : 'open';
+  const orderPolicy = (tenant?.orderPolicy as 'accept_always' | 'accept_only_when_open') ?? 'accept_only_when_open';
+
+  const [alertDismissed, setAlertDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem(ENTRANCE_ALERT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const showEntranceAlert = !alertDismissed && (operationalStatus === 'busy' || operationalStatus === 'closed');
+
+  const handleDismissAlert = () => {
+    setAlertDismissed(true);
+    try {
+      sessionStorage.setItem(ENTRANCE_ALERT_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+  };
+
   const recentProducts = [...allProducts]
     .sort((a, b) => {
       const aDate = (a as Product).createdAt ?? '0';
       const bDate = (b as Product).createdAt ?? '0';
       return bDate.localeCompare(aDate);
     })
-    .slice(0, 6) as Product[];
+    .slice(0, 8) as Product[];
 
   const featuredProducts = (() => {
     const featured = (allProducts as Product[]).filter((p) => p.isFeatured === true);
-    if (featured.length >= 6) return featured.slice(0, 6);
+    if (featured.length >= 8) return featured.slice(0, 8);
     if (featured.length > 0) {
       const rest = (allProducts as Product[]).filter((p) => !p.isFeatured).sort((a, b) => {
         const aDate = a.createdAt ?? '0';
         const bDate = b.createdAt ?? '0';
         return bDate.localeCompare(aDate);
       });
-      return [...featured, ...rest].slice(0, 6);
+      return [...featured, ...rest].slice(0, 8);
     }
     return recentProducts;
   })();
+
+  /** Resolve products for a collection (category or manual) */
+  function resolveCollectionProducts(c: HomeCollection): Product[] {
+    if (c.type === 'category' && c.targetId) {
+      return (allProducts as Product[]).filter((p) => p.categoryId === c.targetId);
+    }
+    if (c.type === 'manual' && c.targetIds?.length) {
+      const idSet = new Set(c.targetIds);
+      return (allProducts as Product[]).filter((p) => idSet.has(p.id));
+    }
+    return [];
+  }
 
   const tenantName = useAppStore((s) => s.tenantName) ?? '';
   const mainCats = mainCategories(categories ?? []);
   const isEmpty = !isLoading && mainCats.length === 0 && (!categories || categories.length === 0);
 
+  /** Use dynamic collections when configured; otherwise fallback to featured + recent */
+  const useDynamicCollections = collections.length > 0;
+
   if (isEmpty) {
     return (
       <div className="max-w-6xl mx-auto p-4">
         <EmptyState
-          title="المحل جاهز ✅"
-          description="لسه ما تمت إضافة تصنيفات أو منتجات."
+          title="لا توجد منتجات متاحة"
+          description="لا توجد تصنيفات أو منتجات في هذا المتجر حالياً."
           icon={<span className="text-5xl">📦</span>}
           action={
-            <div className="flex flex-wrap justify-center gap-3">
-              <a href={`${ADMIN_URL}?tenant=${tenantSlug || tenantId}`} target="_blank" rel="noopener noreferrer">
-                <Button>افتح لوحة الإدارة لإضافة منتجات</Button>
-              </a>
-              <Button variant="outline" onClick={() => refetch()}>
-                إعادة المحاولة
-              </Button>
-            </div>
+            <Button variant="outline" onClick={() => refetch()}>
+              إعادة المحاولة
+            </Button>
           }
         />
       </div>
@@ -130,6 +210,18 @@ export default function HomePage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
     >
+      {showEntranceAlert && (
+        <EntranceAlert
+          status={operationalStatus === 'busy' ? 'busy' : 'closed'}
+          orderPolicy={orderPolicy}
+          onDismiss={handleDismissAlert}
+        />
+      )}
+      {tenant && (
+        <div className="mb-4">
+          <StatusBadge tenant={tenant} />
+        </div>
+      )}
       <CampaignBanner tenantId={tenantId} />
 
       {/* 1) Categories - minimal underline-style tabs */}
@@ -196,79 +288,96 @@ export default function HomePage() {
         <TopHeroCarousel hero={hero} banners={banners} />
       </motion.section>
 
-      {/* 3) مختارات */}
-      <section className="mb-10">
-        <h2 className="text-xl font-bold text-gray-900 mb-1">مختارات {tenantName} ⭐</h2>
-        <p className="text-sm text-gray-500 mb-4">أفضل اختياراتنا لك</p>
-        {featuredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {featuredProducts.map((prod, i) => (
-              <motion.div
-                key={prod.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-              >
-                <ProductCard product={prod} campaigns={campaigns} />
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            variant="no-data"
-            title="لا توجد منتجات مميزة"
-            description="أضف منتجات وحدّدها كمميزة في لوحة الإدارة"
-            action={
-              <a href={`${ADMIN_URL}?tenant=${tenantSlug || tenantId}`} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">افتح لوحة الإدارة</Button>
-              </a>
-            }
-          />
-        )}
-      </section>
-
-      {/* 4) وصل حديثًا */}
-      <section className="mb-10">
-        <div className="flex justify-between items-end mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">وصل حديثًا 💫</h2>
-            <p className="text-sm text-gray-500">موديلات جديدة كل أسبوع</p>
-          </div>
-          {mainCats[0] && recentProducts.length > 0 && (
-            <Link
-              to={`/${tenantSlug || tenantId}/c/${mainCats[0].id}`}
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              عرض الكل
-            </Link>
-          )}
-        </div>
-        {recentProducts.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {recentProducts.map((prod, i) => (
-              <motion.div
-                key={prod.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-              >
-                <ProductCard product={prod} campaigns={campaigns} />
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            variant="no-data"
-            title="لا توجد منتجات حديثة"
-            description="أضف منتجات في لوحة الإدارة لتظهر هنا"
-            action={
-              <a href={`${ADMIN_URL}?tenant=${tenantSlug || tenantId}`} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">افتح لوحة الإدارة</Button>
-              </a>
-            }
-          />
-        )}
-      </section>
+      {/* 3 & 4) Dynamic collections or fallback (مختارات + وصل حديثًا) */}
+      {useDynamicCollections ? (
+        [...collections]
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map((c) => {
+            const products = resolveCollectionProducts(c);
+            const viewAllHref =
+              c.type === 'category' && c.targetId
+                ? `/${tenantSlug || tenantId}/c/${c.targetId}`
+                : c.type === 'manual' && c.targetIds?.length
+                  ? `/${tenantSlug || tenantId}/products?ids=${c.targetIds.join(',')}`
+                  : mainCats[0]
+                    ? `/${tenantSlug || tenantId}/c/${mainCats[0].id}`
+                    : `/${tenantSlug || tenantId}/products`;
+            return (
+              <CollectionSlider
+                key={c.id}
+                title={c.title}
+                products={products}
+                campaigns={campaigns}
+                viewAllHref={viewAllHref}
+              />
+            );
+          })
+      ) : (
+        <>
+          <section className="mb-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-1">مختارات {tenantName} ⭐</h2>
+            <p className="text-sm text-gray-500 mb-4">أفضل اختياراتنا لك</p>
+            {featuredProducts.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+                {featuredProducts.map((prod, i) => (
+                  <motion.div
+                    key={prod.id}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="w-full"
+                  >
+                    <ProductCard product={prod} campaigns={campaigns} />
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                variant="no-data"
+                title="لا توجد منتجات مميزة"
+                description="لا توجد منتجات مميزة في هذا المتجر حالياً."
+              />
+            )}
+          </section>
+          <section className="mb-10">
+            <div className="flex justify-between items-end mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">وصل حديثًا 💫</h2>
+                <p className="text-sm text-gray-500">موديلات جديدة كل أسبوع</p>
+              </div>
+              {mainCats[0] && recentProducts.length > 0 && (
+                <Link
+                  to={`/${tenantSlug || tenantId}/c/${mainCats[0].id}`}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  عرض الكل
+                </Link>
+              )}
+            </div>
+            {recentProducts.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+                {recentProducts.map((prod, i) => (
+                  <motion.div
+                    key={prod.id}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="w-full"
+                  >
+                    <ProductCard product={prod} campaigns={campaigns} />
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                variant="no-data"
+                title="لا توجد منتجات حديثة"
+                description="لا توجد منتجات حديثة في هذا المتجر حالياً."
+              />
+            )}
+          </section>
+        </>
+      )}
 
       <section className="mt-12 py-8 rounded-2xl bg-gradient-to-b from-gray-50 to-transparent">
         <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">لماذا تختارنا</h2>

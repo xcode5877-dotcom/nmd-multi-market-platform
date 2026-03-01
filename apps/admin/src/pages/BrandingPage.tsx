@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Input, Select, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { createAdminData } from '../store/admin-data';
@@ -27,6 +27,7 @@ function normalizeHero(h: StorefrontHero | undefined): StorefrontHero {
 export default function BrandingPage() {
   const { tenantId } = useAdminContext();
   const addToast = useToast().addToast;
+  const queryClient = useQueryClient();
   const adminData = createAdminData(tenantId);
 
   const { data: tenantFromApi } = useQuery({
@@ -71,18 +72,25 @@ export default function BrandingPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const heroInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const lastUploadedLogoRef = useRef<string | null>(null);
+  const lastUploadedHeroRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (tenant) {
       setForm((f) => ({
         ...f,
         logoUrl: tenant.logoUrl ?? f.logoUrl ?? '',
+        primaryColor: tenant.primaryColor ?? f.primaryColor ?? '#0f766e',
+        secondaryColor: tenant.secondaryColor ?? f.secondaryColor ?? '#d4a574',
+        fontFamily: tenant.fontFamily ?? f.fontFamily ?? '"Cairo", system-ui, sans-serif',
+        radiusScale: tenant.radiusScale ?? f.radiusScale ?? 1,
+        layoutStyle: tenant.layoutStyle ?? f.layoutStyle ?? 'default',
         hero: normalizeHero(tenant.hero),
         banners: tenant.banners ?? [],
         whatsappPhone: (tenant as { whatsappPhone?: string }).whatsappPhone ?? f.whatsappPhone ?? '',
       }));
     }
-  }, [tenant?.id]);
+  }, [tenant?.id, tenant?.logoUrl, tenant?.primaryColor, tenant?.secondaryColor, tenant?.fontFamily, tenant?.radiusScale, tenant?.layoutStyle, tenant?.hero, tenant?.banners]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,7 +102,10 @@ export default function BrandingPage() {
     setUploadingLogo(true);
     try {
       const urls = await uploadFiles([file]);
-      if (urls[0]) setForm((f) => ({ ...f, logoUrl: urls[0] }));
+      if (urls[0]) {
+        lastUploadedLogoRef.current = urls[0];
+        setForm((f) => ({ ...f, logoUrl: urls[0] }));
+      }
       addToast('تم رفع الشعار', 'success');
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'فشل الرفع', 'error');
@@ -114,7 +125,10 @@ export default function BrandingPage() {
     setUploadingHero(true);
     try {
       const urls = await uploadFiles([file]);
-      if (urls[0]) setForm((f) => ({ ...f, hero: { ...(f.hero ?? DEFAULT_HERO), imageUrl: urls[0] } }));
+      if (urls[0]) {
+        lastUploadedHeroRef.current = urls[0];
+        setForm((f) => ({ ...f, hero: { ...(f.hero ?? DEFAULT_HERO), imageUrl: urls[0] } }));
+      }
       addToast('تم رفع صورة الهيرو', 'success');
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'فشل الرفع', 'error');
@@ -219,15 +233,41 @@ export default function BrandingPage() {
     const whatsappPhone = /^\d*$/.test(form.whatsappPhone ?? '') ? (form.whatsappPhone ?? '').trim() : (form.whatsappPhone ?? '').replace(/\D/g, '');
     try {
       if (USE_API) {
-        await api.updateBrandingApi(tenantId, { logoUrl: form.logoUrl, hero: heroToSave, banners: bannersToSave, whatsappPhone });
+        const logoUrl = form.logoUrl || lastUploadedLogoRef.current || '';
+        const heroImageUrl = (form.hero?.imageUrl || lastUploadedHeroRef.current) ?? heroToSave.imageUrl;
+        const heroWithUrl = { ...heroToSave, imageUrl: heroImageUrl };
+        await api.updateBrandingApi(tenantId, {
+          logoUrl,
+          primaryColor: form.primaryColor,
+          secondaryColor: form.secondaryColor,
+          fontFamily: form.fontFamily,
+          radiusScale: form.radiusScale,
+          layoutStyle: form.layoutStyle,
+          hero: heroWithUrl,
+          banners: bannersToSave,
+          whatsappPhone,
+        });
+        lastUploadedLogoRef.current = null;
+        lastUploadedHeroRef.current = null;
       } else {
         adminData.setBranding({ ...form, whatsappPhone });
         if (tenant) {
           const { updateTenant } = await import('@nmd/mock');
-          updateTenant(tenantId, { logoUrl: form.logoUrl, hero: heroToSave, banners: bannersToSave, whatsappPhone });
+          updateTenant(tenantId, {
+            logoUrl: form.logoUrl,
+            primaryColor: form.primaryColor,
+            secondaryColor: form.secondaryColor,
+            fontFamily: form.fontFamily,
+            radiusScale: form.radiusScale,
+            layoutStyle: form.layoutStyle,
+            hero: heroToSave,
+            banners: bannersToSave,
+            whatsappPhone,
+          });
         }
       }
       addToast('تم حفظ التغييرات', 'success');
+      if (USE_API) queryClient.invalidateQueries({ queryKey: ['tenant-registry', tenantId] });
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'حدث خطأ أثناء الحفظ', 'error');
     } finally {

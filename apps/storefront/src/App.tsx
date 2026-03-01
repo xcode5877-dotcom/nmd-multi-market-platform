@@ -12,6 +12,7 @@ const RootRedirect = lazy(() => import('./pages/RootRedirect'));
 const LegacyProductRedirect = lazy(() => import('./pages/LegacyProductRedirect'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
 const ProductPage = lazy(() => import('./pages/ProductPage'));
 const CartPage = lazy(() => import('./pages/CartPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
@@ -65,6 +66,7 @@ function TenantGate() {
                 <Route index element={<HomePage />} />
                 <Route path="p/:productId" element={<ProductPage />} />
                 <Route path="c/:categoryId" element={<CategoryPage />} />
+                <Route path="products" element={<ProductsPage />} />
                 <Route path="cart" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
                 <Route path="order/:orderId/success" element={<OrderSuccessPage />} />

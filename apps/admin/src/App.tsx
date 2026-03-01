@@ -21,6 +21,8 @@ const CampaignEditPage = lazy(() => import('./pages/CampaignEditPage'));
 const DeliverySettingsPage = lazy(() => import('./pages/DeliverySettingsPage'));
 const StaffPage = lazy(() => import('./pages/StaffPage'));
 const BrandingPage = lazy(() => import('./pages/BrandingPage'));
+const HomepageManagerPage = lazy(() => import('./pages/HomepageManagerPage'));
+const StoreSettingsPage = lazy(() => import('./pages/StoreSettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 
 const api = new MockApiClient();
@@ -117,8 +119,10 @@ function AdminApp() {
                   <Route path="campaigns/new" element={<CampaignEditPage />} />
                   <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
                   <Route path="settings/delivery" element={<DeliverySettingsPage />} />
+                  <Route path="settings/store" element={<StoreSettingsPage />} />
                   <Route path="settings/staff" element={<StaffPage />} />
                   <Route path="branding" element={<BrandingPage />} />
+                  <Route path="homepage" element={<HomepageManagerPage />} />
                 </Route>
               </Routes>
             </Suspense>
@@ -171,8 +175,10 @@ function AdminAppLegacy() {
                   <Route path="campaigns/new" element={<CampaignEditPage />} />
                   <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
                   <Route path="settings/delivery" element={<DeliverySettingsPage />} />
+                  <Route path="settings/store" element={<StoreSettingsPage />} />
                   <Route path="settings/staff" element={<StaffPage />} />
                   <Route path="branding" element={<BrandingPage />} />
+                  <Route path="homepage" element={<HomepageManagerPage />} />
                 </Route>
               </Routes>
             </Suspense>

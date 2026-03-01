@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Card, Skeleton } from '@nmd/ui';
+import { Skeleton } from '@nmd/ui';
 import { Search, Store, UtensilsCrossed, Shirt, LayoutGrid } from 'lucide-react';
+import { StoreCard } from '../components/StoreCard';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
@@ -17,6 +18,8 @@ interface MarketTenant {
   marketCategory?: string;
   branding: { logoUrl?: string; primaryColor?: string };
   isActive: boolean;
+  operationalStatus?: 'open' | 'closed' | 'busy';
+  businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
 }
 
 const TYPE_LABELS: Record<TenantType, string> = {
@@ -54,7 +57,7 @@ export default function MarketPage() {
       .then(async (m) => {
         if (cancelled || !m) return;
         setMarket(m);
-        const res = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants`);
+        const res = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants?_t=${Date.now()}`);
         const data = await res.json();
         if (!cancelled) setTenants((data ?? []).filter((t: MarketTenant) => t.isActive !== false));
       })
@@ -136,9 +139,9 @@ export default function MarketPage() {
 
       {/* Tenant grid */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 justify-items-center">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-44 rounded-xl" />
+            <Skeleton key={i} className="h-[300px] w-full max-w-[220px] rounded-xl" />
           ))}
         </div>
       ) : visibleTenants.length === 0 ? (
@@ -150,7 +153,7 @@ export default function MarketPage() {
           </p>
         </div>
       ) : (
-        <div ref={gridRef} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 items-start content-start justify-items-center">
           {visibleTenants.map((t, i) => (
             <motion.div
               key={t.id}
@@ -158,38 +161,24 @@ export default function MarketPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
             >
-              <a
-                href={`${STOREFRONT_URL}/${t.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <Card className="h-full flex flex-col items-center justify-center p-4 hover:shadow-xl transition-shadow cursor-pointer shadow-sm border-gray-100 group">
-                  <div
-                    className="w-16 h-16 rounded-full mb-3 flex items-center justify-center overflow-hidden shrink-0"
-                    style={{ backgroundColor: (t.branding as { primaryColor?: string })?.primaryColor ?? '#7C3AED' }}
-                  >
-                    {t.branding?.logoUrl ? (
-                      <img
-                        src={t.branding.logoUrl}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-white font-bold text-xl">
-                        {t.name.charAt(0)}
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-semibold text-gray-900 text-center block">{t.name}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 mt-1">
-                    {t.marketCategory === 'FOOD' ? TYPE_LABELS.FOOD : t.marketCategory === 'CLOTHING' ? TYPE_LABELS.CLOTHING : TYPE_LABELS.GENERAL}
-                  </span>
-                  <span className="mt-3 px-4 py-2 rounded-lg bg-[#D97706] text-white text-sm font-medium group-hover:bg-[#B45309] transition-colors">
-                    ادخل المحل
-                  </span>
-                </Card>
-              </a>
+              <StoreCard
+                id={t.id}
+                slug={t.slug}
+                name={t.name}
+                marketCategory={t.marketCategory}
+                type={t.type}
+                branding={t.branding ?? {}}
+                operationalStatus={t.operationalStatus}
+                businessHours={t.businessHours}
+                storeUrl={`${STOREFRONT_URL}/${t.slug}`}
+                categoryLabel={
+                  t.marketCategory === 'FOOD'
+                    ? TYPE_LABELS.FOOD
+                    : t.marketCategory === 'CLOTHING'
+                      ? TYPE_LABELS.CLOTHING
+                      : TYPE_LABELS.GENERAL
+                }
+              />
             </motion.div>
           ))}
         </div>

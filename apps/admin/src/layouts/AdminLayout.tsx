@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -14,8 +14,13 @@ import {
   Users,
   PanelLeftClose,
   PanelLeft,
+  LogOut,
+  User,
+  LayoutList,
+  Store,
 } from 'lucide-react';
 import { getStorage, setStorage } from '../lib/storage';
+import { useAuth } from '../contexts/AuthContext';
 
 const SIDEBAR_KEY = 'sidebar-collapsed';
 
@@ -28,27 +33,61 @@ const nav = [
   { to: '/catalog/options', icon: Sliders, label: 'مجموعات الخيارات' },
   { to: '/campaigns', icon: Megaphone, label: 'الحملات' },
   { to: '/settings/delivery', icon: Truck, label: 'مناطق التوصيل' },
+  { to: '/settings/store', icon: Store, label: 'إعدادات المحل' },
   { to: '/settings/staff', icon: Users, label: 'الفريق' },
   { to: '/branding', icon: Palette, label: 'واجهة المحل' },
+  { to: '/homepage', icon: LayoutList, label: 'الصفحة الرئيسية' },
 ];
+
+function clearNmdSession(): void {
+  if (typeof localStorage === 'undefined') return;
+  const keys = Object.keys(localStorage).filter((k) => k.startsWith('nmd'));
+  keys.forEach((k) => localStorage.removeItem(k));
+}
 
 export default function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(() => getStorage<boolean>(SIDEBAR_KEY) ?? false);
 
   useEffect(() => {
     setStorage(SIDEBAR_KEY, collapsed);
   }, [collapsed]);
 
+  const handleLogout = () => {
+    clearNmdSession();
+    logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col">
+      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+        <h1 className="font-bold text-lg text-primary truncate">Store OS Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-2 text-sm text-gray-600">
+            <User className="w-4 h-4" />
+            {user?.email ?? '—'}
+          </span>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors"
+            title="تسجيل الخروج"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>تسجيل الخروج</span>
+          </button>
+        </div>
+      </header>
+      <div className="flex flex-1 overflow-hidden">
       <aside
         className={`bg-white border-e border-gray-200 flex flex-col shrink-0 transition-[width] duration-200 ${
           collapsed ? 'w-[4.5rem]' : 'w-56'
         }`}
       >
-        <div className={`border-b border-gray-200 flex items-center gap-2 ${collapsed ? 'p-2 justify-center' : 'p-4 justify-between'}`}>
-          {!collapsed && <h1 className="font-bold text-lg text-primary truncate">Store OS Dashboard</h1>}
+        <div className={`border-b border-gray-200 flex items-center ${collapsed ? 'p-2 justify-center' : 'p-4 justify-end'}`}>
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
@@ -58,7 +97,7 @@ export default function AdminLayout() {
             {collapsed ? <PanelLeft className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2 space-y-1 overflow-auto">
           {nav.map((item) => (
             <NavLink
               key={item.to}
@@ -88,6 +127,7 @@ export default function AdminLayout() {
           <Outlet />
         </motion.div>
       </main>
+      </div>
     </div>
   );
 }

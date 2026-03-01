@@ -7,6 +7,7 @@ import { TenantSwitcher, useLayoutStyle, layoutHeaderClass } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 import { persistTenant } from '../lib/tenant';
+import { StatusBadge } from './StatusBadge';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
@@ -43,6 +44,7 @@ export function Header() {
           ) : (
             <span className="font-bold text-lg text-primary">{tenant?.name ?? 'Store'}</span>
           )}
+          {tenant && <StatusBadge tenant={tenant} variant="header" />}
         </Link>
         <div className="flex items-center gap-2">
           <div className={`relative overflow-hidden transition-all ${searchFocused ? 'w-28 sm:w-44' : 'w-24'}`}>

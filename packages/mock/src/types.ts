@@ -1,4 +1,4 @@
-import type { StorefrontHero, StorefrontBanner, MarketCategory } from '@nmd/core';
+import type { StorefrontHero, StorefrontBanner, MarketCategory, HomeCollection, BusinessHours, LayoutStyle } from '@nmd/core';
 
 export type TenantStoreType = 'CLOTHING' | 'FOOD' | 'GENERAL';
 
@@ -11,7 +11,7 @@ export interface RegistryTenant {
   secondaryColor: string;
   fontFamily: string;
   radiusScale: number;
-  layoutStyle: 'default' | 'compact' | 'spacious';
+  layoutStyle: LayoutStyle;
   enabled: boolean;
   createdAt: string;
   templateId?: string;
@@ -31,6 +31,16 @@ export interface RegistryTenant {
   marketSortOrder?: number;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
   paymentCapabilities?: { cash: boolean; card: boolean };
+  /** Admin-controlled homepage sections */
+  collections?: HomeCollection[];
+  /** Manual override: open | closed | busy */
+  operationalStatus?: 'open' | 'closed' | 'busy';
+  /** accept_always | accept_only_when_open */
+  orderPolicy?: 'accept_always' | 'accept_only_when_open';
+  /** Per-day hours */
+  businessHours?: BusinessHours;
+  busyBannerEnabled?: boolean;
+  busyBannerText?: string;
 }
 
 /** Market-scoped courier (from GET/POST/PATCH/DELETE /markets/:marketId/couriers) */

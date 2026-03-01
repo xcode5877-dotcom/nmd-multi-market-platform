@@ -1,12 +1,22 @@
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import type { MarketCategory } from '@nmd/core';
-import { Card, Skeleton } from '@nmd/ui';
+import { Skeleton } from '@nmd/ui';
 import { useState, useEffect, useRef } from 'react';
 import { Banknote, Truck, Heart, MessageCircle, Store, ShoppingCart, Package, Search } from 'lucide-react';
+import { StoreCard } from '../components/StoreCard';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
+
+const TYPE_LABELS: Record<string, string> = {
+  FOOD: 'طعام',
+  CLOTHING: 'ملابس',
+  GROCERIES: 'خضار',
+  BUTCHER: 'ملحمة',
+  OFFERS: 'عروض',
+  GENERAL: 'عام',
+};
 
 interface Market {
   id: string;
@@ -23,6 +33,8 @@ interface MarketTenant {
   branding: { logoUrl?: string; primaryColor?: string };
   isActive: boolean;
   marketCategory: string;
+  operationalStatus?: 'open' | 'closed' | 'busy';
+  businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
 }
 
 const CATEGORY_TILES: { marketCategory: MarketCategory; label: string; icon: string }[] = [
@@ -64,7 +76,7 @@ export default function MarketHomePage() {
           return;
         }
         setMarket(m);
-        const res = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants`);
+        const res = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants?_t=${Date.now()}`);
         const list = await res.json();
         if (!cancelled) setTenants(list ?? []);
       })
@@ -248,9 +260,9 @@ export default function MarketHomePage() {
             />
           </div>
           {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 md:gap-6 justify-items-center">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-40 rounded-xl" />
+                <Skeleton key={i} className="h-[300px] w-full max-w-[220px] rounded-xl" />
               ))}
             </div>
           ) : visibleTenants.length === 0 ? (
@@ -271,19 +283,21 @@ export default function MarketHomePage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 md:gap-6 items-start content-start justify-items-center">
               {visibleTenants.map((t) => (
-                <a key={t.id} href={`${STOREFRONT_URL}/${t.slug}`} target="_blank" rel="noopener noreferrer">
-                  <Card className="nmd-card-hover h-40 flex flex-col items-center justify-center p-4 hover:shadow-lg transition-all cursor-pointer shadow-sm border-gray-100">
-                    <div
-                      className="w-14 h-14 rounded-full mb-2 flex items-center justify-center text-white font-bold text-lg"
-                      style={{ backgroundColor: t.branding?.primaryColor ?? '#7C3AED' }}
-                    >
-                      {t.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-900 text-center text-sm">{t.name}</span>
-                  </Card>
-                </a>
+                <StoreCard
+                  key={t.id}
+                  id={t.id}
+                  slug={t.slug}
+                  name={t.name}
+                  marketCategory={t.marketCategory}
+                  type={t.type}
+                  branding={t.branding ?? {}}
+                  operationalStatus={t.operationalStatus}
+                  businessHours={t.businessHours}
+                  storeUrl={`${STOREFRONT_URL}/${t.slug}`}
+                  categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                />
               ))}
             </div>
           )}

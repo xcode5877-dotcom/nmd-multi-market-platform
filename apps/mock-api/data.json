@@ -43,9 +43,9 @@
     {
       "slug": "ms-brands",
       "name": "MS BRANDS",
-      "logoUrl": "",
-      "primaryColor": "#000000",
-      "secondaryColor": "#f7f7f7",
+      "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+      "primaryColor": "#420f0c",
+      "secondaryColor": "#fcfcfc",
       "fontFamily": "\"Cairo\", system-ui, sans-serif",
       "radiusScale": 1,
       "layoutStyle": "default",
@@ -93,12 +93,85 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RETAIL",
+      "collections": [
+        {
+          "id": "id-1772372534158-exvv6l7o886",
+          "title": "مميز",
+          "type": "manual",
+          "targetIds": [
+            "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+            "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+            "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+            "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+          ],
+          "isActive": true,
+          "sortOrder": 0
+        },
+        {
+          "id": "id-1772372644600-q86p2louxq",
+          "title": "jeans",
+          "type": "category",
+          "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+          "isActive": true,
+          "sortOrder": 1
+        },
+        {
+          "id": "id-1772372666132-6oy1fhc3j0q",
+          "title": "jackets",
+          "type": "category",
+          "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+          "isActive": true,
+          "sortOrder": 2
+        }
+      ],
+      "operationalStatus": "busy",
+      "orderPolicy": "accept_only_when_open",
+      "businessHours": {
+        "sun": {
+          "open": "10:00",
+          "close": "22:00",
+          "isClosedDay": false
+        },
+        "mon": {
+          "open": "09:00",
+          "close": "21:00",
+          "isClosedDay": false
+        },
+        "tue": {
+          "open": "09:00",
+          "close": "21:00",
+          "isClosedDay": false
+        },
+        "wed": {
+          "open": "09:00",
+          "close": "21:00",
+          "isClosedDay": false
+        },
+        "thu": {
+          "open": "09:00",
+          "close": "21:00",
+          "isClosedDay": false
+        },
+        "fri": {
+          "open": "09:00",
+          "close": "15:00",
+          "isClosedDay": false
+        },
+        "sat": {
+          "open": "10:00",
+          "close": "22:00",
+          "isClosedDay": false
+        }
+      },
+      "busyBannerEnabled": true,
+      "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
     },
     {
-      "slug": "buffalo-28",
+      "slug": "buffalo",
       "name": "BUFFALO28",
-      "logoUrl": "",
+      "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
       "primaryColor": "#c5be02",
       "secondaryColor": "#d10000",
       "fontFamily": "\"Cairo\", system-ui, sans-serif",
@@ -110,7 +183,7 @@
       "hero": {
         "title": "مرحباً بك",
         "subtitle": "بيتسا ايطالية",
-        "imageUrl": "http://localhost:5190/uploads/1771019865035-d4ngiy0b.jpg",
+        "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
         "ctaText": "تسوق الآن",
         "ctaLink": "#",
         "ctaHref": "#"
@@ -138,7 +211,20 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RESTAURANT",
+      "collections": [
+        {
+          "id": "id-1772378959074-t8lp5edyhgk",
+          "title": "سحور  رمضان",
+          "type": "manual",
+          "isActive": true,
+          "sortOrder": 0,
+          "targetIds": [
+            "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+          ]
+        }
+      ]
     },
     {
       "slug": "سوق-طلعت-للخضار-والفوكه",
@@ -213,7 +299,9 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RETAIL",
+      "collections": []
     },
     {
       "slug": "obr",
@@ -288,7 +376,9 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RETAIL",
+      "collections": []
     },
     {
       "slug": "بيتسا-اشرف",
@@ -364,7 +454,9 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RESTAURANT",
+      "collections": []
     },
     {
       "slug": "توب-ماركت",
@@ -440,7 +532,9 @@
       "paymentCapabilities": {
         "cash": true,
         "card": false
-      }
+      },
+      "businessType": "RETAIL",
+      "collections": []
     }
   ],
   "users": [
@@ -466,7 +560,7 @@
     },
     {
       "id": "user-buffalo-admin",
-      "email": "buffalo@nmd.com",
+      "email": "buffalo@admin.com",
       "role": "TENANT_ADMIN",
       "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
       "password": "123456"
@@ -1041,6 +1135,4103 @@
         "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
         "deliveryStatus": "ASSIGNED"
       }
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-6324b5f9-235f-4494-82cd-61bc741c880d",
+      "at": "2026-03-01T12:07:09.371Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-47d37605-0a99-4f08-8020-f90c93fab05d",
+      "at": "2026-03-01T12:20:21.190Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-b74c6e64-0b22-4f0f-a74b-ad521a682df6",
+      "at": "2026-03-01T12:20:44.065Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-74b31c5d-7110-484a-b60d-af73bf4f53b0",
+      "at": "2026-03-01T12:25:11.419Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-952a176b-57c2-49d2-bb0e-75cd9e090f59",
+      "at": "2026-03-01T13:02:13.483Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#000000",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-7b560b9c-9094-45b7-9910-91a12b7cac39",
+      "at": "2026-03-01T13:02:36.777Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL"
+      },
+      "id": "audit-c21d1708-d236-49cc-bae4-fdf0ff32f3db",
+      "at": "2026-03-01T13:11:36.387Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": []
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "وصل حديثا",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ]
+          }
+        ]
+      },
+      "id": "audit-c48e1fe5-eb9b-4842-917c-06ff9bfff165",
+      "at": "2026-03-01T13:43:23.272Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "وصل حديثا",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ]
+          }
+        ]
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "id": "audit-2bf094ee-4b3c-448d-8ac7-5618e8520683",
+      "at": "2026-03-01T13:44:16.155Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          }
+        ]
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ]
+      },
+      "id": "audit-35a1f0c3-e75a-46ab-b579-e99300e2ddb0",
+      "at": "2026-03-01T13:44:39.758Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": false,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-cf8d1eb1-6419-4fa4-a4e9-0e0a87b5f93d",
+      "at": "2026-03-01T14:54:18.146Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "closed",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": false,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-e75e9b4c-3ec1-46fe-9016-bec3ee3a6afd",
+      "at": "2026-03-01T14:54:20.317Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "closed",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-3723db03-5874-45af-9dc1-18cac5a2ea92",
+      "at": "2026-03-01T14:54:32.725Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "closed",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-56394287-a8ad-4d00-8666-04f496cfd9f8",
+      "at": "2026-03-01T14:54:37.882Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-6c5253b5-22a4-42ca-ab1b-9fd0e672ff99",
+      "at": "2026-03-01T14:55:00.816Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "open",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-81efaf8b-bfb2-4b57-88d6-972b9a2b70e5",
+      "at": "2026-03-01T14:55:01.701Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-75894437-7cdc-4146-97ef-d6e1dbee8d89",
+      "at": "2026-03-01T14:55:06.954Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#f7f7f7",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-94f79e24-6cdd-4201-a3d8-0f5d8e504d46",
+      "at": "2026-03-01T14:55:25.760Z"
+    },
+    {
+      "userId": "user-tenant-ms-brands",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "emergencyMode": false,
+      "before": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "after": {
+        "slug": "ms-brands",
+        "name": "MS BRANDS",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772370120646-4wvvc7wm.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://www.msclothingbrand.com/cdn/shop/files/1.jpg?v=1701018252",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://www.houseofboho.com/cdn/shop/files/4_1.png?v=1693224618&width=2000",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "addressLine": "دبورية، شارع الرئيسي ١",
+        "location": {
+          "lat": 32.6925,
+          "lng": 35.3719
+        },
+        "type": "CLOTHING",
+        "marketCategory": "CLOTHING",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RETAIL",
+        "collections": [
+          {
+            "id": "id-1772372534158-exvv6l7o886",
+            "title": "مميز",
+            "type": "manual",
+            "targetIds": [
+              "4be5e1fd-b69d-4c4b-86c8-2c157b9426c6",
+              "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+              "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+              "2a939e4c-d6cc-47ff-8d3c-a7b844121774"
+            ],
+            "isActive": true,
+            "sortOrder": 0
+          },
+          {
+            "id": "id-1772372644600-q86p2louxq",
+            "title": "jeans",
+            "type": "category",
+            "targetId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+            "isActive": true,
+            "sortOrder": 1
+          },
+          {
+            "id": "id-1772372666132-6oy1fhc3j0q",
+            "title": "jackets",
+            "type": "category",
+            "targetId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+            "isActive": true,
+            "sortOrder": 2
+          }
+        ],
+        "operationalStatus": "busy",
+        "orderPolicy": "accept_only_when_open",
+        "businessHours": {
+          "sun": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          },
+          "mon": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "tue": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "wed": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "thu": {
+            "open": "09:00",
+            "close": "21:00",
+            "isClosedDay": false
+          },
+          "fri": {
+            "open": "09:00",
+            "close": "15:00",
+            "isClosedDay": false
+          },
+          "sat": {
+            "open": "10:00",
+            "close": "22:00",
+            "isClosedDay": false
+          }
+        },
+        "busyBannerEnabled": true,
+        "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
+      },
+      "id": "audit-aaa9d3e8-d497-4c83-910b-b1cadb8ce8a1",
+      "at": "2026-03-01T15:18:23.142Z"
+    },
+    {
+      "userId": "user-buffalo-admin",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "emergencyMode": false,
+      "before": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1771019865035-d4ngiy0b.jpg",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": []
+      },
+      "after": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ]
+      },
+      "id": "audit-b6d660fd-362f-4cb9-b613-d2252e4b075f",
+      "at": "2026-03-01T15:23:48.136Z"
+    },
+    {
+      "userId": "user-buffalo-admin",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "emergencyMode": false,
+      "before": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": []
+      },
+      "after": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ]
+      },
+      "id": "audit-dca11b27-d5f4-46e2-8bb6-5f76697ac779",
+      "at": "2026-03-01T15:28:46.837Z"
+    },
+    {
+      "userId": "user-buffalo-admin",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "emergencyMode": false,
+      "before": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": []
+      },
+      "after": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ]
+      },
+      "id": "audit-fef880cd-f9cc-435c-a42a-09733fcbfb32",
+      "at": "2026-03-01T15:29:38.891Z"
     }
   ],
   "catalog": {
@@ -1075,11 +5266,11 @@
           "type": "APPAREL",
           "basePrice": 160,
           "currency": "SAR",
-          "imageUrl": "http://localhost:5190/uploads/1770998287981-glutnh1v.jpg",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772371855698-02bp3l3z.jpg",
           "images": [
             {
-              "id": "85c4e881-67b8-4e82-b1ae-b04f934d695c",
-              "url": "http://localhost:5190/uploads/1770998287981-glutnh1v.jpg",
+              "id": "id-1772371855616-mrah7lnpyr",
+              "url": "http://147.93.120.244:5190/uploads/1772371855698-02bp3l3z.jpg",
               "sortOrder": 0
             }
           ],
@@ -1121,11 +5312,11 @@
           "type": "APPAREL",
           "basePrice": 160,
           "currency": "SAR",
-          "imageUrl": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772370170699-ig3srlbm.jpg",
           "images": [
             {
-              "id": "1f4a2ea6-be2f-4de4-847d-245bf24946e7",
-              "url": "http://localhost:5190/uploads/1770999199644-hnuvfvvn.jpg",
+              "id": "id-1772370170666-4gp1cf9hctq",
+              "url": "http://147.93.120.244:5190/uploads/1772370170699-ig3srlbm.jpg",
               "sortOrder": 0
             }
           ],
@@ -1160,7 +5351,8 @@
           "stock": 6,
           "quantity": 6,
           "lowStockThreshold": 3,
-          "isLastItems": false
+          "isLastItems": false,
+          "lastItemsCount": 0
         },
         {
           "id": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
@@ -1171,22 +5363,12 @@
           "type": "APPAREL",
           "basePrice": 270,
           "currency": "SAR",
-          "imageUrl": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772371178941-wvak1nz5.jpg",
           "images": [
             {
-              "id": "c11c0d3c-32b6-4e9a-b502-e83c263f4479",
-              "url": "http://localhost:5190/uploads/1770999462473-4bd3x02n.jpg",
+              "id": "id-1772371178804-zxlqp574no",
+              "url": "http://147.93.120.244:5190/uploads/1772371178941-wvak1nz5.jpg",
               "sortOrder": 0
-            },
-            {
-              "id": "6abc892f-14b3-4d99-931f-24aabeba2d72",
-              "url": "http://localhost:5190/uploads/1770999466289-zq4xwmcx.jpg",
-              "sortOrder": 1
-            },
-            {
-              "id": "bc505085-d605-44ff-90e6-3caa8993ba5c",
-              "url": "http://localhost:5190/uploads/1770999469096-b6qwfze4.jpg",
-              "sortOrder": 2
             }
           ],
           "optionGroups": [
@@ -1222,17 +5404,12 @@
           "type": "APPAREL",
           "basePrice": 220,
           "currency": "SAR",
-          "imageUrl": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772371919604-o37wyu09.jpg",
           "images": [
             {
-              "id": "eba0c1cb-b82a-4887-88c8-47d5cb7cfe29",
-              "url": "http://localhost:5190/uploads/1770999522128-tpihm5qe.jpg",
+              "id": "id-1772371919579-b1mv433yynm",
+              "url": "http://147.93.120.244:5190/uploads/1772371919604-o37wyu09.jpg",
               "sortOrder": 0
-            },
-            {
-              "id": "c0e7bd64-626e-4da3-ab68-14957cdb4290",
-              "url": "http://localhost:5190/uploads/1770999524993-jckv0ylk.jpg",
-              "sortOrder": 1
             }
           ],
           "optionGroups": [
@@ -1271,7 +5448,8 @@
           "stock": 8,
           "quantity": 8,
           "lowStockThreshold": 3,
-          "isLastItems": false
+          "isLastItems": false,
+          "lastItemsCount": 0
         }
       ],
       "optionGroups": [],
@@ -1327,11 +5505,11 @@
           "type": "PIZZA",
           "basePrice": 60,
           "currency": "ILS",
-          "imageUrl": "http://localhost:5190/uploads/1771088330600-1136m0r3.jpg",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378550870-z3qig7fp.jpg",
           "images": [
             {
-              "id": "61e9243e-a57a-430a-b8e1-0ae4f6f8503c",
-              "url": "http://localhost:5190/uploads/1771088330600-1136m0r3.jpg",
+              "id": "id-1772378550819-4viipixym4v",
+              "url": "http://147.93.120.244:5190/uploads/1772378550870-z3qig7fp.jpg",
               "sortOrder": 0
             }
           ],

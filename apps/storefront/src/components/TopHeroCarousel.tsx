@@ -11,7 +11,7 @@ interface TopHeroCarouselProps {
   banners?: StorefrontBanner[] | null;
 }
 
-const SLIDE_HEIGHT = 'aspect-[3/1] min-h-[160px]';
+const SLIDE_HEIGHT = 'h-[250px] md:h-[450px]';
 const CTA_CLASS = 'mt-4 px-6 py-2 rounded-full bg-white text-gray-900 font-medium hover:bg-gray-100 transition-colors';
 
 const DEFAULT_HERO: StorefrontHero = {
@@ -76,7 +76,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
       if (h.imageUrl) {
         return (
           <div className={`relative rounded-2xl overflow-hidden bg-gray-100 ${SLIDE_HEIGHT}`}>
-            <img src={h.imageUrl} alt="" className="w-full h-full object-cover" />
+            <img src={h.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/40 p-6 text-white text-center">
               <h1 className="text-2xl md:text-4xl font-bold">{h.title}</h1>
               {h.subtitle && <p className="text-lg mt-2 opacity-90">{h.subtitle}</p>}
@@ -121,7 +121,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
     const countdownStr = showCountdown && b.expiresAt ? formatCountdown(b.expiresAt, now) : null;
     const content = (
       <div className={`relative rounded-2xl overflow-hidden bg-gray-100 ${SLIDE_HEIGHT}`}>
-        <img src={b.imageUrl} alt={b.title ?? ''} className="w-full h-full object-cover" />
+        <img src={b.imageUrl} alt={b.title ?? ''} className="absolute inset-0 w-full h-full object-cover" />
         {countdownStr && (
           <div className="absolute top-3 start-3 z-10">
             <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm">

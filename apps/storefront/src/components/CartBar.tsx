@@ -1,10 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 import { formatPrice } from '@nmd/core';
 
+function isHiddenPath(pathname: string): boolean {
+  if (pathname.endsWith('/cart') || pathname.endsWith('/checkout')) return true;
+  if (pathname.includes('/order/') && pathname.endsWith('/success')) return true;
+  return false;
+}
+
 export function CartBar() {
+  const { pathname } = useLocation();
   const tenantId = useAppStore((s) => s.tenantId) ?? '';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
   const count = useCartStore((s) =>
@@ -26,7 +33,7 @@ export function CartBar() {
     }
   }, [lastAddTimestamp]);
 
-  if (count === 0) return null;
+  if (count === 0 || isHiddenPath(pathname)) return null;
 
   return (
     <>

@@ -29,6 +29,19 @@ export interface StorefrontBanner {
   showCountdown?: boolean;
 }
 
+/** Homepage collection: category-based or manual product selection */
+export interface HomeCollection {
+  id: string;
+  title: string;
+  type: 'category' | 'manual';
+  /** Category ID when type='category' */
+  targetId?: string;
+  /** Product IDs when type='manual' */
+  targetIds?: string[];
+  isActive: boolean;
+  sortOrder?: number;
+}
+
 export interface TenantBranding {
   logoUrl: string;
   primaryColor: string;
@@ -40,9 +53,27 @@ export interface TenantBranding {
   banners?: StorefrontBanner[];
   /** WhatsApp number for order notifications (e.g. 966501234567) */
   whatsappPhone?: string;
+  /** Admin-controlled homepage sections */
+  collections?: HomeCollection[];
 }
 
 export type TenantStoreType = 'CLOTHING' | 'FOOD' | 'GENERAL';
+
+/** Manual override for store operational status */
+export type OperationalStatus = 'open' | 'closed' | 'busy';
+
+/** When to accept orders: always, or only when status is open */
+export type OrderPolicy = 'accept_always' | 'accept_only_when_open';
+
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface DayHours {
+  open: string;
+  close: string;
+  isClosedDay: boolean;
+}
+
+export type BusinessHours = Partial<Record<DayKey, DayHours>>;
 
 export type MarketCategory =
   | 'FOOD'
@@ -67,4 +98,14 @@ export interface Tenant {
   marketCategory?: MarketCategory;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
   paymentCapabilities?: { cash: boolean; card: boolean };
+  /** Manual override: open | closed | busy. If set, overrides businessHours. */
+  operationalStatus?: OperationalStatus;
+  /** accept_always = accept orders even when closed; accept_only_when_open = block when closed */
+  orderPolicy?: OrderPolicy;
+  /** Per-day hours: { mon: { open, close, isClosedDay }, ... } */
+  businessHours?: BusinessHours;
+  /** Show custom banner when busy (e.g. "We are busy, orders might take longer") */
+  busyBannerEnabled?: boolean;
+  /** Custom text for busy banner */
+  busyBannerText?: string;
 }

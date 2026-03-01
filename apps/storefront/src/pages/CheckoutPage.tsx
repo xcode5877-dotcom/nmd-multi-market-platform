@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
-import { formatPrice, formatAddonNameWithPlacement, buildWhatsAppMessage, buildWhatsAppUrl, isValidWhatsAppPhone } from '@nmd/core';
+import { formatPrice, formatAddonNameWithPlacement, buildWhatsAppMessage, buildWhatsAppUrl, isValidWhatsAppPhone, getOperationalStatus } from '@nmd/core';
 import { Button, Input, useToast } from '@nmd/ui';
 import { Banknote, CreditCard, Lock } from 'lucide-react';
 import { useAppStore } from '../store/app';
@@ -77,6 +77,13 @@ export default function CheckoutPage() {
   const addressValid = !needsAddress || address.trim().length > 0;
   const formValid = nameValid && phoneValid && addressValid && zoneValid;
 
+  const operationalStatus = tenant ? getOperationalStatus(tenant) : 'open';
+  const orderPolicy = (tenant?.orderPolicy as 'accept_always' | 'accept_only_when_open') ?? 'accept_only_when_open';
+  const canPlaceOrder = operationalStatus !== 'closed' || orderPolicy === 'accept_always';
+  const isBusy = operationalStatus === 'busy';
+  const showBusyBanner = isBusy && !!tenant?.busyBannerEnabled;
+  const busyBannerText = tenant?.busyBannerText ?? 'المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول';
+
   const createOrder = useMutation({
     mutationFn: () =>
       api.createOrder(tenantId, {
@@ -125,7 +132,7 @@ export default function CheckoutPage() {
 
   if (!pickupMode && !deliveryMode) {
     return (
-      <div className="max-w-2xl mx-auto p-8 text-center text-neutral-500" dir="rtl">
+      <div className="max-w-2xl mx-auto p-8 pt-6 md:pt-8 text-center text-neutral-500" dir="rtl">
         لا يوجد طريقة توصيل متاحة
       </div>
     );
@@ -133,7 +140,7 @@ export default function CheckoutPage() {
 
   if (items.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto p-8 text-center" dir="rtl">
+      <div className="max-w-2xl mx-auto p-8 pt-6 md:pt-8 text-center" dir="rtl">
         <p className="text-neutral-600 mb-6">لا توجد عناصر في السلة</p>
         <Button onClick={() => navigate(tenantSlug ? `/${tenantSlug}` : '/')}>العودة للتسوق</Button>
       </div>
@@ -141,8 +148,20 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4" dir="rtl">
+    <div className="max-w-5xl mx-auto p-4 pt-6 md:pt-4" dir="rtl">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">إتمام الطلب</h1>
+
+      {showBusyBanner && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-medium">
+          {busyBannerText}
+        </div>
+      )}
+
+      {!canPlaceOrder && (
+        <div className="mb-6 p-4 rounded-xl bg-red-50 border-2 border-red-300 text-red-800 font-medium">
+          عذراً، المتجر لا يستقبل طلبات في الوقت الحالي.
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[1fr,320px] gap-8">
         {/* Form */}
@@ -399,9 +418,9 @@ export default function CheckoutPage() {
               className="w-full h-12 rounded-xl mt-4"
               onClick={handleSubmit}
               loading={createOrder.isPending}
-              disabled={!formValid}
+              disabled={!formValid || !canPlaceOrder}
             >
-              إتمام الطلب
+              {canPlaceOrder ? 'إتمام الطلب' : 'لا نقبل الطلبات حالياً'}
             </Button>
           </div>
         </div>

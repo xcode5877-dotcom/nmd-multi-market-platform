@@ -75,7 +75,7 @@ export interface RegistryTenant {
   secondaryColor: string;
   fontFamily: string;
   radiusScale: number;
-  layoutStyle: 'default' | 'compact' | 'spacious';
+  layoutStyle: import('@nmd/core').LayoutStyle;
   enabled: boolean;
   createdAt: string;
   templateId?: string;
@@ -104,6 +104,17 @@ export interface RegistryTenant {
     deliveryFeeModel: 'MARKET' | 'TENANT';
   };
   paymentCapabilities?: { cash: boolean; card: boolean };
+  /** Admin-controlled homepage sections */
+  collections?: import('@nmd/core').HomeCollection[];
+  /** Manual override: open | closed | busy */
+  operationalStatus?: 'open' | 'closed' | 'busy';
+  /** accept_always | accept_only_when_open */
+  orderPolicy?: 'accept_always' | 'accept_only_when_open';
+  /** Per-day hours: { mon: { open, close, isClosedDay }, ... } */
+  businessHours?: import('@nmd/core').BusinessHours;
+  /** Show custom banner when busy */
+  busyBannerEnabled?: boolean;
+  busyBannerText?: string;
 }
 
 export interface TenantCatalog {
@@ -275,6 +286,9 @@ export function migrateTenant(t: Record<string, unknown>): RegistryTenant {
   }
   if (!tenant.paymentCapabilities) {
     (tenant as RegistryTenant).paymentCapabilities = { cash: true, card: false };
+  }
+  if (!tenant.collections) {
+    (tenant as RegistryTenant).collections = [];
   }
   return tenant;
 }

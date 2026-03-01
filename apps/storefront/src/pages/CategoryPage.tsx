@@ -30,8 +30,6 @@ function CampaignBanner({ tenantId }: { tenantId: string }) {
   );
 }
 
-const ADMIN_URL = import.meta.env.DEV ? 'http://localhost:5174' : '/admin';
-
 export default function CategoryPage() {
   const { categoryId } = useParams<{ categoryId: string }>();
   const navigate = useNavigate();
@@ -107,17 +105,12 @@ export default function CategoryPage() {
         )}
         <EmptyState
           title="لا توجد منتجات"
-          description="لم تتم إضافة منتجات في هذا التصنيف بعد."
+          description="لا توجد منتجات متاحة في هذا التصنيف حالياً."
           icon={<span className="text-5xl">📦</span>}
           action={
-            <div className="flex flex-wrap justify-center gap-3">
-              <Button variant="outline" onClick={() => navigate(`/${tenantSlug || tenantId}`)}>
-                العودة للمتجر
-              </Button>
-              <a href={`${ADMIN_URL}?tenant=${tenantSlug || tenantId}`} target="_blank" rel="noopener noreferrer">
-                <Button>افتح لوحة الإدارة</Button>
-              </a>
-            </div>
+            <Button variant="outline" onClick={() => navigate(`/${tenantSlug || tenantId}`)}>
+              العودة للرئيسية
+            </Button>
           }
         />
       </div>
@@ -164,13 +157,14 @@ export default function CategoryPage() {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
         {allProducts.map((prod, i) => (
           <motion.div
             key={prod.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
+            className="w-full"
           >
             <ProductCard product={prod} campaigns={campaigns ?? []} />
           </motion.div>

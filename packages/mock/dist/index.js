@@ -6,7 +6,7 @@ import {
   listTenants,
   toggleTenant,
   updateTenant
-} from "./chunk-6IZ2B3IX.js";
+} from "./chunk-PJZ2GRLW.js";
 import {
   deleteOptionGroup,
   deleteOptionItem,
@@ -18,15 +18,15 @@ import {
   setCatalog,
   upsertOptionGroup,
   upsertOptionItem
-} from "./chunk-KXTMI2NF.js";
+} from "./chunk-JGIZAQTU.js";
 import {
   getDeliverySettings,
   saveDeliverySettings
-} from "./chunk-77ON5LVH.js";
+} from "./chunk-KIB727E7.js";
 import {
   getDeliveryZones,
   setDeliveryZones
-} from "./chunk-H65H2BKD.js";
+} from "./chunk-OW2PQW5D.js";
 import {
   addOrder,
   getOrder,
@@ -35,11 +35,11 @@ import {
   listOrders,
   listOrdersByTenant,
   updateOrderStatus
-} from "./chunk-SAU2GD47.js";
+} from "./chunk-3WXOPWUB.js";
 import {
   CLOTHING_TEMPLATE,
   buildClothingTemplateForTenant
-} from "./chunk-D6QASIIW.js";
+} from "./chunk-26C32PK3.js";
 
 // src/seed.ts
 var DEMO_TENANTS = [
@@ -122,12 +122,12 @@ function loadTenants() {
 }
 
 // src/catalog-seed.ts
-function seedTenantCatalog(tenantId, slug, categories, products) {
+function seedTenantCatalog(tenantId, _slug, categories, products) {
   const existing = getCatalog(tenantId);
   if (existing.categories.length > 0 || existing.products.length > 0) return;
   const cats = categories.map((c) => ({ ...c, tenantId }));
   const prods = products.map((p) => ({ ...p, tenantId }));
-  setCatalog(tenantId, { categories: cats, products: prods, optionGroups: existing.optionGroups ?? [] });
+  setCatalog(tenantId, { categories: cats, products: prods, optionGroups: existing.optionGroups ?? [], optionItems: existing.optionItems ?? [] });
 }
 var PIZZA_CATEGORIES = [
   { id: "pcat-1", tenantId: "", name: "Pizzas", slug: "pizzas", sortOrder: 0 },
@@ -471,6 +471,9 @@ function seedStaff() {
 import { generateId as generateId2 } from "@nmd/core";
 var MOCK_API_URL = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK_API_URL || "";
 var TOKEN_KEY = "nmd-access-token";
+function getAuthToken() {
+  return typeof localStorage !== "undefined" ? localStorage.getItem("nmd-access-token") : null;
+}
 var CUSTOMER_TOKEN_KEY = "nmd-customer-token";
 var tokenProvider = null;
 function setMockApiTokenProvider(fn) {
@@ -484,9 +487,16 @@ function getToken() {
 function getCustomerToken() {
   return typeof localStorage !== "undefined" ? localStorage.getItem(CUSTOMER_TOKEN_KEY) : null;
 }
-function getApiHeaders(init) {
+function getApiHeaders(path, method, init) {
   const h = { "Content-Type": "application/json", ...init?.headers };
-  const token = getToken() ?? getCustomerToken();
+  let token = null;
+  if (path.startsWith("/customer/")) {
+    token = getCustomerToken() ?? getToken();
+  } else if (method === "POST" && path === "/orders") {
+    token = getCustomerToken();
+  } else {
+    token = getAuthToken() ?? getToken();
+  }
   if (token) {
     h["Authorization"] = `Bearer ${token}`;
   }
@@ -517,6 +527,7 @@ function registryToTenant(r) {
   const template = r.templateId ? getTemplate(r.templateId) : null;
   const layoutStyle = template?.layoutStyle ?? r.layoutStyle;
   const type = r.type === "CLOTHING" || r.type === "FOOD" ? r.type : "GENERAL";
+  const t = r;
   return {
     id: r.id,
     name: r.name,
@@ -533,8 +544,14 @@ function registryToTenant(r) {
       layoutStyle,
       hero: normalizeHero(r.hero),
       banners: r.banners ?? [],
-      whatsappPhone: r.whatsappPhone
-    }
+      whatsappPhone: r.whatsappPhone,
+      collections: r.collections ?? []
+    },
+    operationalStatus: t.operationalStatus,
+    orderPolicy: t.orderPolicy,
+    businessHours: t.businessHours,
+    busyBannerEnabled: t.busyBannerEnabled,
+    busyBannerText: t.busyBannerText
   };
 }
 function resolveTenant(idOrSlug) {
@@ -562,12 +579,21 @@ async function publicFetch(path) {
   }
   return res.json();
 }
+var PUBLIC_PATHS = ["/tenants", "/markets", "/catalog", "/campaigns", "/delivery", "/public", "/auth/login"];
+function isPublicRoute(method, path) {
+  const m = (method ?? "GET").toUpperCase();
+  const pathname = path.split("?")[0];
+  if (m === "GET") {
+    return PUBLIC_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+  }
+  if (m === "POST" && (pathname === "/orders" || pathname === "/auth/login")) return true;
+  return false;
+}
 async function apiFetch(path, init) {
   const method = init?.method ?? "GET";
   const body = mergeEmergencyMeta(init?.body, method);
-  const headers = getApiHeaders(init);
-  const isPublicOrder = method === "POST" && path === "/orders";
-  if (!headers["Authorization"] && MOCK_API_URL && !isPublicOrder) {
+  const headers = getApiHeaders(path, method, init);
+  if (!headers["Authorization"] && MOCK_API_URL && !isPublicRoute(method, path)) {
     console.warn(`[MockApiClient] Protected request to ${path} without token. Ensure you are logged in and token is in localStorage (key: ${TOKEN_KEY}).`);
   }
   const res = await fetch(`${MOCK_API_URL}${path}`, {
@@ -596,11 +622,26 @@ async function uploadFiles(files) {
   if (!MOCK_API_URL || files.length === 0) return [];
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
-  const res = await fetch(`${MOCK_API_URL}/upload`, {
+  const token = localStorage.getItem("nmd-access-token");
+  if (token) form.append("access_token", token);
+  if (typeof window !== "undefined") {
+    console.log("[Client-Debug] Token first 10 chars:", token ? token.slice(0, 10) : "null");
+  }
+  if (token === null) {
+    throw new Error("Upload blocked: No token found in localStorage");
+  }
+  const res = await fetch(`${MOCK_API_URL}/upload?token=${encodeURIComponent(token)}`, {
     method: "POST",
-    body: form
+    body: form,
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include"
   });
-  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  if (!res.ok) {
+    if (typeof window !== "undefined") {
+      console.error("[uploadFiles] Upload failed:", res.status, res.statusText, await res.text().catch(() => ""));
+    }
+    throw new Error(`Upload failed: ${res.status}`);
+  }
   const data = await res.json();
   return data.urls ?? [];
 }
@@ -832,7 +873,7 @@ var MockApiClient = class {
     if (this.useApi) {
       return apiFetch("/tenants");
     }
-    const { listTenants: lt } = await import("./tenant-registry-V2NDKWYC.js");
+    const { listTenants: lt } = await import("./tenant-registry-DQY26ZFB.js");
     return lt();
   }
   async createTenant(input) {
@@ -842,7 +883,7 @@ var MockApiClient = class {
         body: JSON.stringify(input)
       });
     }
-    const { createTenant: ct } = await import("./tenant-registry-V2NDKWYC.js");
+    const { createTenant: ct } = await import("./tenant-registry-DQY26ZFB.js");
     return ct(input);
   }
   /** Create tenant scoped to a market. Uses POST /markets/:marketId/tenants. */
@@ -853,7 +894,7 @@ var MockApiClient = class {
         body: JSON.stringify(input)
       });
     }
-    const { createTenant: ct } = await import("./tenant-registry-V2NDKWYC.js");
+    const { createTenant: ct } = await import("./tenant-registry-DQY26ZFB.js");
     return ct({ ...input, marketId });
   }
   async updateTenant(id, updates) {
@@ -864,7 +905,7 @@ var MockApiClient = class {
       });
       return res;
     }
-    const { updateTenant: ut } = await import("./tenant-registry-V2NDKWYC.js");
+    const { updateTenant: ut } = await import("./tenant-registry-DQY26ZFB.js");
     return ut(id, updates);
   }
   async toggleTenant(id) {
@@ -875,7 +916,7 @@ var MockApiClient = class {
         return null;
       }
     }
-    const { toggleTenant: tt } = await import("./tenant-registry-V2NDKWYC.js");
+    const { toggleTenant: tt } = await import("./tenant-registry-DQY26ZFB.js");
     return tt(id);
   }
   async getTenantById(id) {
@@ -969,8 +1010,8 @@ var MockApiClient = class {
     if (this.useApi) {
       return apiFetch(`/markets/${marketId}/orders`);
     }
-    const { listOrdersByTenant: listOrdersByTenant2 } = await import("./orders-store-RLSYT6H3.js");
-    const { listTenants: listTenants2 } = await import("./tenant-registry-V2NDKWYC.js");
+    const { listOrdersByTenant: listOrdersByTenant2 } = await import("./orders-store-QOY4SZWQ.js");
+    const { listTenants: listTenants2 } = await import("./tenant-registry-DQY26ZFB.js");
     const tenantIds = listTenants2().filter((t) => t.marketId === marketId).map((t) => t.id);
     const all = [];
     for (const tid of tenantIds) {
@@ -1039,7 +1080,7 @@ var MockApiClient = class {
       });
       return;
     }
-    const { setCatalog: sc } = await import("./catalog-store-2R3BPBIF.js");
+    const { setCatalog: sc } = await import("./catalog-store-AOLIEKWR.js");
     sc(tenantId, {
       categories: catalog.categories ?? [],
       products: catalog.products ?? [],
@@ -1051,7 +1092,7 @@ var MockApiClient = class {
     if (this.useApi) {
       return apiFetch(`/tenants/${encodeURIComponent(tenantId)}/orders`);
     }
-    const { listOrdersByTenant: lot } = await import("./orders-store-RLSYT6H3.js");
+    const { listOrdersByTenant: lot } = await import("./orders-store-QOY4SZWQ.js");
     return lot(tenantId);
   }
   async updateOrderStatus(orderId, status) {
@@ -1065,7 +1106,7 @@ var MockApiClient = class {
         return null;
       }
     }
-    const { updateOrderStatus: uos } = await import("./orders-store-RLSYT6H3.js");
+    const { updateOrderStatus: uos } = await import("./orders-store-QOY4SZWQ.js");
     return uos(orderId, status);
   }
   async listCampaignsApi(tenantId) {
@@ -1092,7 +1133,7 @@ var MockApiClient = class {
       });
       return;
     }
-    const { saveDeliverySettings: saveDeliverySettings2 } = await import("./delivery-store-HY2L4THJ.js");
+    const { saveDeliverySettings: saveDeliverySettings2 } = await import("./delivery-store-PXP744OF.js");
     saveDeliverySettings2(tenantId, settings);
   }
   async listDeliveryZonesApi(tenantId) {
@@ -1105,7 +1146,7 @@ var MockApiClient = class {
         body: JSON.stringify(zone)
       });
     }
-    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-T5MGZOKG.js");
+    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-CEW4CJD4.js");
     const id = generateId2();
     const newZone = { ...zone, id, tenantId };
     const zones = [...getDeliveryZones2(tenantId), newZone];
@@ -1123,7 +1164,7 @@ var MockApiClient = class {
         return null;
       }
     }
-    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-T5MGZOKG.js");
+    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-CEW4CJD4.js");
     const zones = getDeliveryZones2(tenantId);
     const idx = zones.findIndex((z) => z.id === zoneId);
     if (idx === -1) return null;
@@ -1153,11 +1194,37 @@ var MockApiClient = class {
         return false;
       }
     }
-    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-T5MGZOKG.js");
+    const { getDeliveryZones: getDeliveryZones2, setDeliveryZones: setDeliveryZones2 } = await import("./delivery-zones-store-CEW4CJD4.js");
     const zones = getDeliveryZones2(tenantId).filter((z) => z.id !== zoneId);
     if (zones.length === getDeliveryZones2(tenantId).length) return false;
     setDeliveryZones2(tenantId, zones);
     return true;
+  }
+  /** Update homepage collections (admin-controlled sections). */
+  async updateCollectionsApi(tenantId, collections) {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/collections`, {
+        method: "PUT",
+        body: JSON.stringify({ collections })
+      });
+      return;
+    }
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const t = getTenantById(tenantId);
+    if (t) updateTenant2(tenantId, { collections });
+  }
+  /** Update operational settings (status override, business hours, busy banner). */
+  async updateOperationalSettingsApi(tenantId, updates) {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/operational-settings`, {
+        method: "PUT",
+        body: JSON.stringify(updates)
+      });
+      return;
+    }
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const t = getTenantById(tenantId);
+    if (t) updateTenant2(tenantId, { ...updates });
   }
   async updateBrandingApi(tenantId, updates) {
     if (this.useApi) {
@@ -1167,13 +1234,13 @@ var MockApiClient = class {
       });
       return;
     }
-    const { updateTenant: updateTenant2 } = await import("./tenant-registry-V2NDKWYC.js");
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
     const t = getTenantById(tenantId);
     if (t) updateTenant2(tenantId, { ...updates });
   }
   /** Apply quick-start template (hero, banners, categories, option groups) for a tenant. */
   async applyTemplateApi(tenantId, _templateId) {
-    const { buildClothingTemplateForTenant: buildClothingTemplateForTenant2 } = await import("./quick-start-templates-GHIXLUVR.js");
+    const { buildClothingTemplateForTenant: buildClothingTemplateForTenant2 } = await import("./quick-start-templates-E632J24N.js");
     const template = buildClothingTemplateForTenant2(tenantId);
     await this.updateBrandingApi(tenantId, {
       hero: template.hero,
@@ -1192,6 +1259,7 @@ function getTenantListForMall() {
   return listEnabledTenants().map(registryToTenant);
 }
 function marketTenantToTenant(m) {
+  const b = m.branding ?? {};
   return {
     id: m.id,
     name: m.name,
@@ -1199,12 +1267,14 @@ function marketTenantToTenant(m) {
     type: m.type === "CLOTHING" || m.type === "FOOD" ? m.type : "GENERAL",
     marketCategory: m.marketCategory ?? "GENERAL",
     branding: {
-      logoUrl: m.branding?.logoUrl ?? "",
-      primaryColor: m.branding?.primaryColor ?? "#7C3AED",
-      secondaryColor: "#d4a574",
-      fontFamily: '"Cairo", system-ui, sans-serif',
-      radiusScale: 1,
-      layoutStyle: "default"
+      logoUrl: b.logoUrl ?? "",
+      primaryColor: b.primaryColor ?? "#7C3AED",
+      secondaryColor: b.secondaryColor ?? "#d4a574",
+      fontFamily: b.fontFamily ?? '"Cairo", system-ui, sans-serif',
+      radiusScale: b.radiusScale ?? 1,
+      layoutStyle: b.layoutStyle ?? "default",
+      hero: b.hero,
+      banners: b.banners ?? []
     }
   };
 }
@@ -1223,7 +1293,7 @@ async function getTenantListForMallAsync(marketSlugOrId) {
       if (!market?.id) return [];
       marketId = market.id;
     }
-    const list = await apiFetch(`/markets/${marketId}/tenants`);
+    const list = await apiFetch(`/markets/${marketId}/tenants?_t=${Date.now()}`);
     return (Array.isArray(list) ? list : []).map(marketTenantToTenant);
   } catch {
     return [];

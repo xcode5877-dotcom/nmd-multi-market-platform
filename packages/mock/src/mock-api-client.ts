@@ -19,6 +19,11 @@ const MOCK_API_URL =
   '';
 /** Must match AuthContext TOKEN_KEY in apps/nmd-admin - same localStorage key for JWT */
 const TOKEN_KEY = 'nmd-access-token';
+
+/** Global token helper - explicitly reads from localStorage. No internal state. */
+function getAuthToken(): string | null {
+  return typeof localStorage !== 'undefined' ? localStorage.getItem('nmd-access-token') : null;
+}
 /** Customer OTP token - used by storefront for POST /orders when logged in */
 export const CUSTOMER_TOKEN_KEY = 'nmd-customer-token';
 
@@ -52,7 +57,7 @@ function getApiHeaders(path: string, method: string, init?: RequestInit): Record
   } else if (method === 'POST' && path === '/orders') {
     token = getCustomerToken();
   } else {
-    token = getToken();
+    token = getAuthToken() ?? getToken();
   }
   if (token) {
     h['Authorization'] = `Bearer ${token}`;
@@ -87,6 +92,7 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
   const template = r.templateId ? getTemplate(r.templateId) : null;
   const layoutStyle = template?.layoutStyle ?? r.layoutStyle;
   const type = (r.type === 'CLOTHING' || r.type === 'FOOD') ? r.type : 'GENERAL';
+  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string };
   return {
     id: r.id,
     name: r.name,
@@ -104,7 +110,13 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
       hero: normalizeHero(r.hero),
       banners: r.banners ?? [],
       whatsappPhone: r.whatsappPhone,
+      collections: (r as { collections?: import('@nmd/core').HomeCollection[] }).collections ?? [],
     },
+    operationalStatus: t.operationalStatus,
+    orderPolicy: t.orderPolicy as 'accept_always' | 'accept_only_when_open' | undefined,
+    businessHours: t.businessHours,
+    busyBannerEnabled: t.busyBannerEnabled,
+    busyBannerText: t.busyBannerText,
   };
 }
 
@@ -137,12 +149,24 @@ async function publicFetch<T>(path: string): Promise<T> {
   return res.json();
 }
 
+/** Public paths: no JWT required. Storefront guests can access these without login. */
+const PUBLIC_PATHS = ['/tenants', '/markets', '/catalog', '/campaigns', '/delivery', '/public', '/auth/login'];
+
+function isPublicRoute(method: string, path: string): boolean {
+  const m = (method ?? 'GET').toUpperCase();
+  const pathname = path.split('?')[0];
+  if (m === 'GET') {
+    return PUBLIC_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+  }
+  if (m === 'POST' && (pathname === '/orders' || pathname === '/auth/login')) return true;
+  return false;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? 'GET';
   const body = mergeEmergencyMeta(init?.body as string | undefined, method);
   const headers = getApiHeaders(path, method, init);
-  const isPublicOrder = method === 'POST' && path === '/orders';
-  if (!headers['Authorization'] && MOCK_API_URL && !isPublicOrder) {
+  if (!headers['Authorization'] && MOCK_API_URL && !isPublicRoute(method, path)) {
     console.warn(`[MockApiClient] Protected request to ${path} without token. Ensure you are logged in and token is in localStorage (key: ${TOKEN_KEY}).`);
   }
   const res = await fetch(`${MOCK_API_URL}${path}`, {
@@ -168,16 +192,31 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-/** Upload files to mock-api; returns URLs. Only works when VITE_MOCK_API_URL is set. */
+/** Upload files to mock-api; returns URLs. Only works when VITE_MOCK_API_URL is set. Requires auth token. */
 export async function uploadFiles(files: File[]): Promise<string[]> {
   if (!MOCK_API_URL || files.length === 0) return [];
   const form = new FormData();
   files.forEach((f) => form.append('files', f));
-  const res = await fetch(`${MOCK_API_URL}/upload`, {
+  const token = localStorage.getItem('nmd-access-token');
+  if (token) form.append('access_token', token);
+  if (typeof window !== 'undefined') {
+    console.log('[Client-Debug] Token first 10 chars:', token ? token.slice(0, 10) : 'null');
+  }
+  if (token === null) {
+    throw new Error('Upload blocked: No token found in localStorage');
+  }
+  const res = await fetch(`${MOCK_API_URL}/upload?token=${encodeURIComponent(token)}`, {
     method: 'POST',
     body: form,
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'include',
   });
-  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  if (!res.ok) {
+    if (typeof window !== 'undefined') {
+      console.error('[uploadFiles] Upload failed:', res.status, res.statusText, await res.text().catch(() => ''));
+    }
+    throw new Error(`Upload failed: ${res.status}`);
+  }
   const data = (await res.json()) as { urls: string[] };
   return data.urls ?? [];
 }
@@ -831,9 +870,56 @@ export class MockApiClient implements ApiClient {
     return true;
   }
 
+  /** Update homepage collections (admin-controlled sections). */
+  async updateCollectionsApi(tenantId: string, collections: import('@nmd/core').HomeCollection[]): Promise<void> {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/collections`, {
+        method: 'PUT',
+        body: JSON.stringify({ collections }),
+      });
+      return;
+    }
+    const { updateTenant } = await import('./tenant-registry');
+    const t = getTenantById(tenantId);
+    if (t) updateTenant(tenantId, { collections } as Partial<RegistryTenant>);
+  }
+
+  /** Update operational settings (status override, business hours, busy banner). */
+  async updateOperationalSettingsApi(
+    tenantId: string,
+    updates: {
+      operationalStatus?: 'open' | 'closed' | 'busy';
+      orderPolicy?: 'accept_always' | 'accept_only_when_open';
+      businessHours?: import('@nmd/core').BusinessHours;
+      busyBannerEnabled?: boolean;
+      busyBannerText?: string;
+    }
+  ): Promise<void> {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/operational-settings`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+      return;
+    }
+    const { updateTenant } = await import('./tenant-registry');
+    const t = getTenantById(tenantId);
+    if (t) updateTenant(tenantId, { ...updates } as Partial<RegistryTenant>);
+  }
+
   async updateBrandingApi(
     tenantId: string,
-    updates: { logoUrl?: string; hero?: import('@nmd/core').StorefrontHero; banners?: import('@nmd/core').StorefrontBanner[]; whatsappPhone?: string }
+    updates: {
+      logoUrl?: string;
+      hero?: import('@nmd/core').StorefrontHero;
+      banners?: import('@nmd/core').StorefrontBanner[];
+      whatsappPhone?: string;
+      primaryColor?: string;
+      secondaryColor?: string;
+      fontFamily?: string;
+      radiusScale?: number;
+      layoutStyle?: string;
+    }
   ): Promise<void> {
     if (this.useApi) {
       await apiFetch(`/tenants/${tenantId}/branding`, {
@@ -877,12 +963,22 @@ interface MarketTenantResponse {
   slug: string;
   name: string;
   type: string;
-  branding: { logoUrl?: string; primaryColor?: string };
+  branding?: {
+    logoUrl?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontFamily?: string;
+    radiusScale?: number;
+    layoutStyle?: string;
+    hero?: import('@nmd/core').StorefrontHero;
+    banners?: import('@nmd/core').StorefrontBanner[];
+  };
   isActive?: boolean;
   marketCategory?: string;
 }
 
 function marketTenantToTenant(m: MarketTenantResponse): Tenant {
+  const b = m.branding ?? {};
   return {
     id: m.id,
     name: m.name,
@@ -890,12 +986,14 @@ function marketTenantToTenant(m: MarketTenantResponse): Tenant {
     type: (m.type === 'CLOTHING' || m.type === 'FOOD') ? m.type : 'GENERAL',
     marketCategory: (m.marketCategory as import('@nmd/core').MarketCategory) ?? 'GENERAL',
     branding: {
-      logoUrl: m.branding?.logoUrl ?? '',
-      primaryColor: m.branding?.primaryColor ?? '#7C3AED',
-      secondaryColor: '#d4a574',
-      fontFamily: '"Cairo", system-ui, sans-serif',
-      radiusScale: 1,
-      layoutStyle: 'default',
+      logoUrl: b.logoUrl ?? '',
+      primaryColor: b.primaryColor ?? '#7C3AED',
+      secondaryColor: b.secondaryColor ?? '#d4a574',
+      fontFamily: b.fontFamily ?? '"Cairo", system-ui, sans-serif',
+      radiusScale: b.radiusScale ?? 1,
+      layoutStyle: (b.layoutStyle as import('@nmd/core').TenantBranding['layoutStyle']) ?? 'default',
+      hero: b.hero,
+      banners: b.banners ?? [],
     },
   };
 }
@@ -919,7 +1017,7 @@ export async function getTenantListForMallAsync(marketSlugOrId?: string): Promis
       if (!market?.id) return [];
       marketId = market.id;
     }
-    const list = await apiFetch<MarketTenantResponse[]>(`/markets/${marketId}/tenants`);
+    const list = await apiFetch<MarketTenantResponse[]>(`/markets/${marketId}/tenants?_t=${Date.now()}`);
     return (Array.isArray(list) ? list : []).map(marketTenantToTenant);
   } catch {
     return [];

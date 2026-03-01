@@ -1,4 +1,5 @@
 // src/index.ts
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -24,6 +25,7 @@ var DEFAULT = {
   delivery: {},
   deliveryZones: {},
   couriers: [],
+  customers: [],
   deliveryJobs: [],
   templates: [],
   staff: []
@@ -63,6 +65,9 @@ function migrateTenant(t) {
   if (tenant.defaultPrepTimeMin === void 0 && tenant.tenantType === "RESTAURANT") {
     tenant.defaultPrepTimeMin = 30;
   }
+  if (!tenant.businessType) {
+    tenant.businessType = tenant.type === "FOOD" ? "RESTAURANT" : "RETAIL";
+  }
   if (!tenant.financialConfig) {
     tenant.financialConfig = {
       commissionType: "PERCENTAGE",
@@ -70,7 +75,20 @@ function migrateTenant(t) {
       deliveryFeeModel: "TENANT"
     };
   }
+  if (!tenant.paymentCapabilities) {
+    tenant.paymentCapabilities = { cash: true, card: false };
+  }
+  if (!tenant.collections) {
+    tenant.collections = [];
+  }
   return tenant;
+}
+function migrateMarket(m) {
+  const market = m;
+  if (!market.paymentCapabilities) {
+    market.paymentCapabilities = { cash: true, card: false };
+  }
+  return market;
 }
 function migrateCategory(c) {
   if (c.parentId === void 0) c.parentId = null;
@@ -89,7 +107,7 @@ function load() {
     if (existsSync(DATA_FILE)) {
       const raw = readFileSync(DATA_FILE, "utf-8");
       const parsed = JSON.parse(raw);
-      const markets = parsed.markets ?? [];
+      const markets = (parsed.markets ?? []).map((m) => migrateMarket(m));
       const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t));
       const catalog = {};
       for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
@@ -114,6 +132,7 @@ function load() {
         delivery: parsed.delivery ?? {},
         deliveryZones: parsed.deliveryZones ?? {},
         couriers: (parsed.couriers ?? []).map((c) => migrateCourier(c)),
+        customers: parsed.customers ?? [],
         deliveryJobs: parsed.deliveryJobs ?? [],
         templates: parsed.templates ?? [],
         staff: parsed.staff ?? []
@@ -251,11 +270,28 @@ function setCouriers(couriers) {
   getData().couriers = couriers;
   persist();
 }
+function getCustomers() {
+  return getData().customers;
+}
+function setCustomers(customers) {
+  getData().customers = customers;
+  persist();
+}
 function getDeliveryJobs() {
   return getData().deliveryJobs ?? [];
 }
 function setDeliveryJobs(jobs) {
   getData().deliveryJobs = jobs;
+  persist();
+}
+function getTemplates() {
+  return getData().templates;
+}
+function getStaff() {
+  return getData().staff;
+}
+function setStaff(staff) {
+  getData().staff = staff;
   persist();
 }
 
@@ -264,11 +300,11 @@ var NEAR_READY_WINDOW_MINUTES = 10;
 var FALLBACK_SHOP_SERVICE_MINUTES = 5;
 var FALLBACK_RESTAURANT_READY_MINUTES = 5;
 var FALLBACK_RESTAURANT_NEAR_READY_MINUTES = 7;
-function getTenant(tenantId) {
-  return getTenants().find((t) => t.id === tenantId);
+function getTenant(tenants, tenantId) {
+  return tenants.find((t) => t.id === tenantId);
 }
-function isOrderEligibleForMarketDispatch(order) {
-  const tenant = order.tenantId ? getTenant(order.tenantId) : void 0;
+function isOrderEligibleForMarketDispatch(order, tenants) {
+  const tenant = order.tenantId ? getTenant(tenants, order.tenantId) : void 0;
   const tenantType = tenant?.tenantType ?? "SHOP";
   const mode = order.deliveryAssignmentMode ?? "TENANT";
   if (mode !== "MARKET") return false;
@@ -286,17 +322,17 @@ function isOrderEligibleForMarketDispatch(order) {
   }
   return ["PREPARING", "READY", "NEW"].includes(order.status ?? "");
 }
-function evaluateFallback(marketId) {
-  const tenants = getTenants().filter((t) => t.marketId === marketId);
+async function evaluateFallback(marketId, repos2) {
+  const tenants = (await repos2.tenants.findAll()).filter((t) => t.marketId === marketId);
   const tenantIds = new Set(tenants.map((t) => t.id));
-  const orders = getOrders();
+  const orders = await repos2.orders.findAll();
   const now = Date.now();
   let changed = false;
   const updated = orders.map((o) => {
     if (!o.tenantId || !tenantIds.has(o.tenantId)) return o;
     if (o.deliveryAssignmentMode === "MARKET" || o.fallbackTriggeredAt) return o;
     if (o.fulfillmentType === "PICKUP") return o;
-    const tenant = getTenant(o.tenantId);
+    const tenant = getTenant(tenants, o.tenantId);
     if (!tenant?.allowMarketCourierFallback) return o;
     const createdAt = o.createdAt ? new Date(o.createdAt).getTime() : now;
     const elapsedMin = (now - createdAt) / (60 * 1e3);
@@ -322,18 +358,18 @@ function evaluateFallback(marketId) {
     }
     return o;
   });
-  if (changed) setOrders(updated);
+  if (changed) await repos2.orders.setAll(updated);
 }
-function getDispatchQueue(marketId) {
-  evaluateFallback(marketId);
-  const tenants = getTenants().filter((t) => t.marketId === marketId);
+async function getDispatchQueue(marketId, repos2) {
+  await evaluateFallback(marketId, repos2);
+  const tenants = (await repos2.tenants.findAll()).filter((t) => t.marketId === marketId);
   const tenantIds = new Set(tenants.map((t) => t.id));
-  const orders = getOrders();
+  const orders = await repos2.orders.findAll();
   const jobs = getDeliveryJobs();
   const activeJobOrderIds = new Set(
     jobs.filter((j) => !["CANCELED", "DONE"].includes(j.status)).flatMap((j) => j.items.map((i) => i.orderId))
   );
-  return orders.filter((o) => o.tenantId && tenantIds.has(o.tenantId)).filter((o) => isOrderEligibleForMarketDispatch(o)).filter((o) => !o.courierId).filter((o) => !activeJobOrderIds.has(o.id ?? "")).sort((a, b) => {
+  return orders.filter((o) => o.tenantId && tenantIds.has(o.tenantId)).filter((o) => isOrderEligibleForMarketDispatch(o, tenants)).filter((o) => !o.courierId).filter((o) => !activeJobOrderIds.has(o.id ?? "")).sort((a, b) => {
     const aReady = a.readyAt ? new Date(a.readyAt).getTime() : 0;
     const bReady = b.readyAt ? new Date(b.readyAt).getTime() : 0;
     if (aReady && bReady) return aReady - bReady;
@@ -341,9 +377,787 @@ function getDispatchQueue(marketId) {
   });
 }
 
+// src/repos/json-repos.ts
+function createJsonMarketsRepo() {
+  return {
+    async findAll() {
+      return getMarkets();
+    },
+    async setAll(markets) {
+      setMarkets(markets);
+    }
+  };
+}
+function createJsonTenantsRepo() {
+  return {
+    async findAll() {
+      return getTenants();
+    },
+    async setAll(tenants) {
+      setTenants(tenants);
+    }
+  };
+}
+function createJsonUsersRepo() {
+  return {
+    async findAll() {
+      return getUsers();
+    },
+    async setAll(users) {
+      setUsers(users);
+    }
+  };
+}
+function createJsonCouriersRepo() {
+  return {
+    async findAll() {
+      return getCouriers();
+    },
+    async setAll(couriers) {
+      setCouriers(couriers);
+    }
+  };
+}
+function createJsonCustomersRepo() {
+  return {
+    async findAll() {
+      return getCustomers();
+    },
+    async setAll(customers) {
+      setCustomers(customers);
+    }
+  };
+}
+function createJsonOrdersRepo() {
+  return {
+    async findAll() {
+      const orders = getOrders();
+      return orders.map((o) => ({ ...o, orderType: o.orderType ?? "PRODUCT" }));
+    },
+    async setAll(orders) {
+      setOrders(orders);
+    },
+    async addOrderWithPayment(order) {
+      const orders = getOrders();
+      setOrders([...orders, { ...order, orderType: order.orderType ?? "PRODUCT" }]);
+    }
+  };
+}
+function createJsonCatalogRepo() {
+  return {
+    async getCatalog(tenantId) {
+      return getCatalog(tenantId);
+    },
+    async setCatalog(tenantId, catalog) {
+      setCatalog(tenantId, catalog);
+    }
+  };
+}
+function defaultDeliverySettings(tenantId) {
+  return {
+    tenantId,
+    modes: { pickup: true, delivery: true },
+    minimumOrder: 0,
+    deliveryFee: 5,
+    zones: []
+  };
+}
+function createJsonDeliveryRepo() {
+  return {
+    async getSettings(tenantId) {
+      const d = getDelivery();
+      const s = d[tenantId];
+      return s != null ? s : defaultDeliverySettings(tenantId);
+    },
+    async setSettings(tenantId, settings) {
+      const d = getDelivery();
+      d[tenantId] = { ...settings, tenantId };
+      setDelivery(d);
+    }
+  };
+}
+function createJsonDeliveryZonesRepo() {
+  return {
+    async getByTenant(tenantId) {
+      return getDeliveryZones(tenantId);
+    },
+    async setAll(tenantId, zones) {
+      setDeliveryZones(tenantId, zones);
+    }
+  };
+}
+function createJsonPaymentsRepo() {
+  return {
+    async createForOrder() {
+    }
+  };
+}
+
+// src/repos/db-repos.ts
+import { PrismaClient } from "@prisma/client";
+var prisma = new PrismaClient();
+function marketToDomain(m) {
+  return {
+    id: m.id,
+    name: m.name,
+    slug: m.slug,
+    branding: m.branding ? JSON.parse(m.branding) : void 0,
+    isActive: m.isActive,
+    sortOrder: m.sortOrder ?? void 0,
+    paymentCapabilities: m.paymentCapabilities ? JSON.parse(m.paymentCapabilities) : void 0
+  };
+}
+function tenantToDomain(t) {
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    logoUrl: t.logoUrl,
+    primaryColor: t.primaryColor,
+    secondaryColor: t.secondaryColor,
+    fontFamily: t.fontFamily,
+    radiusScale: t.radiusScale,
+    layoutStyle: t.layoutStyle,
+    enabled: t.enabled,
+    createdAt: t.createdAt,
+    templateId: t.templateId ?? void 0,
+    hero: t.hero ? JSON.parse(t.hero) : void 0,
+    banners: t.banners ? JSON.parse(t.banners) : void 0,
+    whatsappPhone: t.whatsappPhone ?? void 0,
+    type: t.type ?? void 0,
+    businessType: t.businessType ?? void 0,
+    marketCategory: t.marketCategory ?? void 0,
+    marketId: t.marketId ?? void 0,
+    isListedInMarket: t.isListedInMarket ?? void 0,
+    marketSortOrder: t.marketSortOrder ?? void 0,
+    tenantType: t.tenantType ?? void 0,
+    deliveryProviderMode: t.deliveryProviderMode ?? void 0,
+    allowMarketCourierFallback: t.allowMarketCourierFallback ?? void 0,
+    defaultPrepTimeMin: t.defaultPrepTimeMin ?? void 0,
+    financialConfig: t.financialConfig ? JSON.parse(t.financialConfig) : void 0,
+    paymentCapabilities: t.paymentCapabilities ? JSON.parse(t.paymentCapabilities) : void 0
+  };
+}
+function orderToDomain(o) {
+  const base = {
+    id: o.id,
+    tenantId: o.tenantId ?? void 0,
+    courierId: o.courierId ?? void 0,
+    marketId: o.marketId ?? void 0,
+    status: o.status ?? void 0,
+    fulfillmentType: o.fulfillmentType ?? void 0,
+    orderType: o.orderType ?? "PRODUCT",
+    total: o.total ?? void 0,
+    createdAt: o.createdAt ?? void 0
+  };
+  if (o.payment) base.payment = JSON.parse(o.payment);
+  if (o.deliveryTimeline) base.deliveryTimeline = JSON.parse(o.deliveryTimeline);
+  if (o.payload) {
+    const payload = JSON.parse(o.payload);
+    Object.assign(base, payload);
+  }
+  return base;
+}
+function orderToDb(order) {
+  const { id, tenantId, courierId, marketId, status, fulfillmentType, orderType, total, createdAt, payment, deliveryTimeline, ...rest } = order;
+  return {
+    id: String(id ?? ""),
+    tenantId: tenantId != null ? String(tenantId) : null,
+    courierId: courierId != null ? String(courierId) : null,
+    marketId: marketId != null ? String(marketId) : null,
+    status: status != null ? String(status) : null,
+    fulfillmentType: fulfillmentType != null ? String(fulfillmentType) : null,
+    orderType: orderType != null ? String(orderType) : "PRODUCT",
+    total: typeof total === "number" ? total : null,
+    createdAt: createdAt != null ? String(createdAt) : null,
+    payment: payment != null ? JSON.stringify(payment) : null,
+    deliveryTimeline: deliveryTimeline != null ? JSON.stringify(deliveryTimeline) : null,
+    payload: Object.keys(rest).length > 0 ? JSON.stringify(rest) : null
+  };
+}
+function createDbMarketsRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.market.findMany();
+      return rows.map(marketToDomain);
+    },
+    async setAll(markets) {
+      await prisma.market.deleteMany();
+      if (markets.length > 0) {
+        await prisma.market.createMany({
+          data: markets.map((m) => ({
+            id: m.id,
+            name: m.name,
+            slug: m.slug,
+            branding: m.branding ? JSON.stringify(m.branding) : null,
+            isActive: m.isActive ?? true,
+            sortOrder: m.sortOrder ?? null,
+            paymentCapabilities: m.paymentCapabilities ? JSON.stringify(m.paymentCapabilities) : null
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbTenantsRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.tenant.findMany();
+      return rows.map(tenantToDomain);
+    },
+    async setAll(tenants) {
+      await prisma.tenant.deleteMany();
+      if (tenants.length > 0) {
+        await prisma.tenant.createMany({
+          data: tenants.map((t) => ({
+            id: t.id,
+            slug: t.slug,
+            name: t.name,
+            logoUrl: t.logoUrl ?? "",
+            primaryColor: t.primaryColor ?? "#000",
+            secondaryColor: t.secondaryColor ?? "#fff",
+            fontFamily: t.fontFamily ?? "inherit",
+            radiusScale: t.radiusScale ?? 1,
+            layoutStyle: t.layoutStyle ?? "default",
+            enabled: t.enabled ?? true,
+            createdAt: t.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+            templateId: t.templateId ?? null,
+            hero: t.hero ? JSON.stringify(t.hero) : null,
+            banners: t.banners ? JSON.stringify(t.banners) : null,
+            whatsappPhone: t.whatsappPhone ?? null,
+            type: t.type ?? null,
+            businessType: t.businessType ?? (t.type === "FOOD" ? "RESTAURANT" : "RETAIL"),
+            marketCategory: t.marketCategory ?? null,
+            marketId: t.marketId ?? null,
+            isListedInMarket: t.isListedInMarket ?? null,
+            marketSortOrder: t.marketSortOrder ?? null,
+            tenantType: t.tenantType ?? null,
+            deliveryProviderMode: t.deliveryProviderMode ?? null,
+            allowMarketCourierFallback: t.allowMarketCourierFallback ?? null,
+            defaultPrepTimeMin: t.defaultPrepTimeMin ?? null,
+            financialConfig: t.financialConfig ? JSON.stringify(t.financialConfig) : null,
+            paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbUsersRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.user.findMany();
+      return rows.map((u) => ({
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        marketId: u.marketId ?? void 0,
+        tenantId: u.tenantId ?? void 0,
+        courierId: u.courierId ?? void 0,
+        password: u.password ?? void 0
+      }));
+    },
+    async setAll(users) {
+      await prisma.user.deleteMany();
+      if (users.length > 0) {
+        await prisma.user.createMany({
+          data: users.map((u) => ({
+            id: u.id,
+            email: u.email,
+            role: u.role,
+            marketId: u.marketId ?? null,
+            tenantId: u.tenantId ?? null,
+            courierId: u.courierId ?? null,
+            password: u.password ?? null
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbCouriersRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.courier.findMany();
+      return rows.map((c) => ({
+        id: c.id,
+        scopeType: c.scopeType,
+        scopeId: c.scopeId,
+        marketId: c.marketId ?? void 0,
+        name: c.name,
+        phone: c.phone ?? void 0,
+        isActive: c.isActive,
+        isOnline: c.isOnline,
+        capacity: c.capacity,
+        isAvailable: c.isAvailable ?? void 0,
+        deliveryCount: c.deliveryCount ?? void 0
+      }));
+    },
+    async setAll(couriers) {
+      await prisma.courier.deleteMany();
+      if (couriers.length > 0) {
+        await prisma.courier.createMany({
+          data: couriers.map((c) => ({
+            id: c.id,
+            scopeType: c.scopeType,
+            scopeId: c.scopeId,
+            marketId: c.marketId ?? null,
+            name: c.name,
+            phone: c.phone ?? null,
+            isActive: c.isActive ?? true,
+            isOnline: c.isOnline ?? false,
+            capacity: c.capacity ?? 1,
+            isAvailable: c.isAvailable ?? null,
+            deliveryCount: c.deliveryCount ?? null
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbCustomersRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.customer.findMany();
+      return rows.map((c) => ({
+        id: c.id,
+        phone: c.phone,
+        createdAt: c.createdAt
+      }));
+    },
+    async setAll(customers) {
+      await prisma.customer.deleteMany();
+      if (customers.length > 0) {
+        await prisma.customer.createMany({
+          data: customers.map((c) => ({
+            id: c.id,
+            phone: c.phone,
+            createdAt: c.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbOrdersRepo() {
+  return {
+    async findAll() {
+      const rows = await prisma.order.findMany();
+      return rows.map(orderToDomain);
+    },
+    async setAll(orders) {
+      await prisma.order.deleteMany();
+      if (orders.length > 0) {
+        for (const o of orders) {
+          const rec = orderToDb(o);
+          if (rec.id) await prisma.order.create({ data: rec });
+        }
+      }
+    },
+    async addOrderWithPayment(order, payment) {
+      const rec = orderToDb(order);
+      const orderId = rec.id;
+      if (!orderId) throw new Error("Order id required");
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const paymentId = `pay-${orderId}`;
+      await prisma.$transaction([
+        prisma.order.create({ data: rec }),
+        prisma.payment.upsert({
+          where: { id: paymentId },
+          create: {
+            id: paymentId,
+            orderId,
+            method: payment.method,
+            status: payment.status,
+            amount: payment.amount,
+            currency: payment.currency ?? "ILS",
+            provider: null,
+            providerRef: null,
+            createdAt: now,
+            updatedAt: now
+          },
+          update: {
+            status: payment.status,
+            amount: payment.amount,
+            updatedAt: now
+          }
+        })
+      ]);
+    }
+  };
+}
+function catalogToDomain(categories, products, optionGroups) {
+  const catArr = categories.map((c) => ({
+    id: c.id,
+    tenantId: c.tenantId,
+    name: c.name,
+    slug: c.slug,
+    description: c.description ?? void 0,
+    imageUrl: c.imageUrl ?? void 0,
+    sortOrder: c.sortOrder,
+    parentId: c.parentId ?? void 0,
+    isVisible: c.isVisible ?? true
+  }));
+  const prodArr = products.map((p) => {
+    const base = {
+      id: p.id,
+      tenantId: p.tenantId,
+      categoryId: p.categoryId,
+      name: p.name,
+      slug: p.slug,
+      description: p.description ?? void 0,
+      type: p.type,
+      basePrice: p.basePrice,
+      currency: p.currency,
+      imageUrl: p.imageUrl ?? void 0,
+      stock: p.stock ?? void 0,
+      isAvailable: p.isAvailable,
+      createdAt: p.createdAt ?? void 0,
+      isFeatured: p.isFeatured ?? void 0
+    };
+    if (p.images) base.images = JSON.parse(p.images);
+    if (p.optionGroups) base.optionGroups = JSON.parse(p.optionGroups);
+    if (p.variants) base.variants = JSON.parse(p.variants);
+    return base;
+  });
+  const grpArr = optionGroups.map((g) => {
+    const base = {
+      id: g.id,
+      tenantId: g.tenantId,
+      name: g.name,
+      type: g.type ?? void 0,
+      required: g.required,
+      minSelected: g.minSelected,
+      maxSelected: g.maxSelected,
+      selectionType: g.selectionType,
+      scope: g.scope ?? void 0,
+      scopeId: g.scopeId ?? void 0,
+      allowHalfPlacement: g.allowHalfPlacement ?? void 0
+    };
+    base.items = g.items ? JSON.parse(g.items) : [];
+    return base;
+  });
+  const itemArr = grpArr.flatMap((g) => g.items ?? []);
+  return {
+    categories: catArr,
+    products: prodArr,
+    optionGroups: grpArr,
+    optionItems: itemArr
+  };
+}
+function createDbCatalogRepo() {
+  return {
+    async getCatalog(tenantId) {
+      const [categories, products, optionGroups] = await Promise.all([
+        prisma.catalogCategory.findMany({ where: { tenantId } }),
+        prisma.catalogProduct.findMany({ where: { tenantId } }),
+        prisma.catalogOptionGroup.findMany({ where: { tenantId } })
+      ]);
+      return catalogToDomain(categories, products, optionGroups);
+    },
+    async setCatalog(tenantId, catalog) {
+      await prisma.$transaction([
+        prisma.catalogCategory.deleteMany({ where: { tenantId } }),
+        prisma.catalogProduct.deleteMany({ where: { tenantId } }),
+        prisma.catalogOptionGroup.deleteMany({ where: { tenantId } })
+      ]);
+      const cats = catalog.categories ?? [];
+      const prods = catalog.products ?? [];
+      const grps = catalog.optionGroups ?? [];
+      for (const c of cats) {
+        if (c.id) {
+          await prisma.catalogCategory.create({
+            data: {
+              id: c.id,
+              tenantId,
+              name: c.name ?? "",
+              slug: c.slug ?? "",
+              description: c.description ?? null,
+              imageUrl: c.imageUrl ?? null,
+              sortOrder: c.sortOrder ?? 0,
+              parentId: c.parentId ?? null,
+              isVisible: c.isVisible ?? true
+            }
+          });
+        }
+      }
+      for (const p of prods) {
+        if (p.id) {
+          await prisma.catalogProduct.create({
+            data: {
+              id: p.id,
+              tenantId,
+              categoryId: p.categoryId ?? "",
+              name: p.name ?? "",
+              slug: p.slug ?? "",
+              description: p.description ?? null,
+              type: p.type ?? "SIMPLE",
+              basePrice: p.basePrice ?? 0,
+              currency: p.currency ?? "ILS",
+              imageUrl: p.imageUrl ?? null,
+              images: p.images != null ? JSON.stringify(p.images) : null,
+              optionGroups: p.optionGroups != null ? JSON.stringify(p.optionGroups) : null,
+              variants: p.variants != null ? JSON.stringify(p.variants) : null,
+              stock: p.stock ?? null,
+              isAvailable: p.isAvailable ?? true,
+              createdAt: p.createdAt ?? null,
+              isFeatured: p.isFeatured ?? null
+            }
+          });
+        }
+      }
+      for (const g of grps) {
+        if (g.id) {
+          await prisma.catalogOptionGroup.create({
+            data: {
+              id: g.id,
+              tenantId,
+              name: g.name ?? "",
+              type: g.type ?? null,
+              required: g.required ?? false,
+              minSelected: g.minSelected ?? 0,
+              maxSelected: g.maxSelected ?? 1,
+              selectionType: g.selectionType ?? "single",
+              scope: g.scope ?? null,
+              scopeId: g.scopeId ?? null,
+              allowHalfPlacement: g.allowHalfPlacement ?? null,
+              items: g.items != null ? JSON.stringify(g.items) : null
+            }
+          });
+        }
+      }
+    }
+  };
+}
+function defaultDeliverySettings2(tenantId) {
+  return {
+    tenantId,
+    modes: { pickup: true, delivery: true },
+    minimumOrder: 0,
+    deliveryFee: 5,
+    zones: []
+  };
+}
+function createDbDeliveryRepo() {
+  return {
+    async getSettings(tenantId) {
+      const row = await prisma.tenantDeliverySettings.findUnique({ where: { tenantId } });
+      if (!row) {
+        const def = defaultDeliverySettings2(tenantId);
+        await this.setSettings(tenantId, def);
+        return def;
+      }
+      const out = {
+        tenantId: row.tenantId,
+        minimumOrder: row.minimumOrder,
+        deliveryFee: row.deliveryFee
+      };
+      if (row.modes) out.modes = JSON.parse(row.modes);
+      if (row.payload) Object.assign(out, JSON.parse(row.payload));
+      return out;
+    },
+    async setSettings(tenantId, settings) {
+      const { modes, minimumOrder, deliveryFee, ...rest } = settings;
+      const payload = Object.keys(rest).length > 0 ? JSON.stringify(rest) : null;
+      await prisma.tenantDeliverySettings.upsert({
+        where: { tenantId },
+        create: {
+          tenantId,
+          modes: modes != null ? JSON.stringify(modes) : null,
+          minimumOrder: typeof minimumOrder === "number" ? minimumOrder : 0,
+          deliveryFee: typeof deliveryFee === "number" ? deliveryFee : 0,
+          payload
+        },
+        update: {
+          modes: modes != null ? JSON.stringify(modes) : void 0,
+          minimumOrder: typeof minimumOrder === "number" ? minimumOrder : void 0,
+          deliveryFee: typeof deliveryFee === "number" ? deliveryFee : void 0,
+          payload: payload ?? void 0
+        }
+      });
+    }
+  };
+}
+function createDbDeliveryZonesRepo() {
+  return {
+    async getByTenant(tenantId) {
+      const rows = await prisma.deliveryZone.findMany({
+        where: { tenantId },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }]
+      });
+      return rows.map((z) => ({
+        id: z.id,
+        tenantId: z.tenantId,
+        name: z.name,
+        fee: z.fee,
+        etaMinutes: z.etaMinutes ?? void 0,
+        isActive: z.isActive,
+        sortOrder: z.sortOrder ?? void 0
+      }));
+    },
+    async setAll(tenantId, zones) {
+      await prisma.deliveryZone.deleteMany({ where: { tenantId } });
+      if (zones.length > 0) {
+        await prisma.deliveryZone.createMany({
+          data: zones.map((z) => ({
+            id: z.id,
+            tenantId,
+            name: z.name,
+            fee: z.fee,
+            etaMinutes: z.etaMinutes ?? null,
+            minimumOrder: z.minimumOrder != null ? Number(z.minimumOrder) : null,
+            geo: z.geo != null ? JSON.stringify(z.geo) : null,
+            isActive: z.isActive ?? true,
+            sortOrder: z.sortOrder ?? null
+          }))
+        });
+      }
+    }
+  };
+}
+function createDbPaymentsRepo() {
+  return {
+    async createForOrder(orderId, payment) {
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new Error(`Order ${orderId} not found; cannot create Payment`);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const id = `pay-${orderId}`;
+      await prisma.payment.upsert({
+        where: { id },
+        create: {
+          id,
+          orderId,
+          method: payment.method,
+          status: payment.status,
+          amount: payment.amount,
+          currency: payment.currency ?? "ILS",
+          provider: null,
+          providerRef: null,
+          createdAt: now,
+          updatedAt: now
+        },
+        update: {
+          status: payment.status,
+          amount: payment.amount,
+          updatedAt: now
+        }
+      });
+    }
+  };
+}
+
+// src/repos/index.ts
+var STORAGE_DRIVER = (process.env.STORAGE_DRIVER ?? "json").toLowerCase();
+function createRepos() {
+  if (STORAGE_DRIVER === "db") {
+    return {
+      markets: createDbMarketsRepo(),
+      tenants: createDbTenantsRepo(),
+      users: createDbUsersRepo(),
+      couriers: createDbCouriersRepo(),
+      customers: createDbCustomersRepo(),
+      orders: createDbOrdersRepo(),
+      catalog: createDbCatalogRepo(),
+      delivery: createDbDeliveryRepo(),
+      deliveryZones: createDbDeliveryZonesRepo(),
+      payments: createDbPaymentsRepo()
+    };
+  }
+  return {
+    markets: createJsonMarketsRepo(),
+    tenants: createJsonTenantsRepo(),
+    users: createJsonUsersRepo(),
+    couriers: createJsonCouriersRepo(),
+    customers: createJsonCustomersRepo(),
+    orders: createJsonOrdersRepo(),
+    catalog: createJsonCatalogRepo(),
+    delivery: createJsonDeliveryRepo(),
+    deliveryZones: createJsonDeliveryZonesRepo(),
+    payments: createJsonPaymentsRepo()
+  };
+}
+
+// src/customer-auth.ts
+import { createHash, randomInt } from "crypto";
+var OTP_TTL_MS = 5 * 60 * 1e3;
+var MAX_ATTEMPTS = 3;
+var RATE_LIMIT_WINDOW_MS = 60 * 60 * 1e3;
+var RATE_LIMIT_START_MAX = 5;
+var LOCK_MS = 10 * 60 * 1e3;
+var otpStore = /* @__PURE__ */ new Map();
+var rateLimitStore = /* @__PURE__ */ new Map();
+function normalizePhone(phone) {
+  return String(phone ?? "").replace(/\D/g, "").slice(-10) || phone;
+}
+function hashCode(code) {
+  return createHash("sha256").update(String(code).trim()).digest("hex");
+}
+function generateOtp() {
+  return String(randomInt(1e5, 999999));
+}
+function createOtp(phone) {
+  const key = normalizePhone(phone);
+  if (!key || key.length < 9) return { ok: false, error: "Invalid phone", code: "INVALID_PHONE" };
+  const now = Date.now();
+  const rl = rateLimitStore.get(key);
+  if (rl) {
+    if (now - rl.windowStart > RATE_LIMIT_WINDOW_MS) {
+      rateLimitStore.set(key, { count: 1, windowStart: now });
+    } else if (rl.count >= RATE_LIMIT_START_MAX) {
+      return { ok: false, error: "Too many requests", code: "RATE_LIMITED" };
+    } else {
+      rl.count++;
+    }
+  } else {
+    rateLimitStore.set(key, { count: 1, windowStart: now });
+  }
+  const code = generateOtp();
+  otpStore.set(key, {
+    codeHash: hashCode(code),
+    expiresAt: now + OTP_TTL_MS,
+    attempts: 0,
+    lockedUntil: 0
+  });
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[dev] OTP for ${phone}: ${code} (expires in 5 min)`);
+  }
+  return { ok: true };
+}
+function verifyOtp(phone, code) {
+  const key = normalizePhone(phone);
+  const entry = otpStore.get(key);
+  if (!entry) return { ok: false, error: "Invalid or expired code", code: "OTP_INVALID" };
+  const now = Date.now();
+  if (now < entry.lockedUntil) {
+    return { ok: false, error: "Too many failed attempts. Try again later.", code: "OTP_LOCKED" };
+  }
+  if (now > entry.expiresAt) {
+    otpStore.delete(key);
+    return { ok: false, error: "Code expired", code: "OTP_EXPIRED" };
+  }
+  entry.attempts++;
+  const inputHash = hashCode(code);
+  if (inputHash !== entry.codeHash) {
+    if (entry.attempts >= MAX_ATTEMPTS) {
+      entry.lockedUntil = now + LOCK_MS;
+      return { ok: false, error: "Too many failed attempts. Locked for 10 minutes.", code: "OTP_LOCKED" };
+    }
+    return { ok: false, error: "Invalid code", code: "OTP_INVALID" };
+  }
+  otpStore.delete(key);
+  return { ok: true };
+}
+
 // src/index.ts
 var PORT = Number(process.env.PORT ?? 5190);
-var JWT_SECRET = process.env.JWT_SECRET ?? "nmd-dev-secret-change-in-production";
+var repos = createRepos();
+function wrapAsync(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+var JWT_SECRET = process.env.JWT_SECRET ?? "nmd-dev-secret-2026";
+console.log("[MockAPI] JWT_SECRET loaded:", JWT_SECRET ? `${JWT_SECRET.slice(0, 8)}...` : "MISSING (using default)");
 var app = express();
 var DABBURIYYA_MARKET_ID = "market-dabburiyya";
 var IKSAL_MARKET_ID = "market-iksal";
@@ -351,8 +1165,8 @@ var ROOT_ADMIN_ID = "user-root-admin";
 var BUFFALO28_TENANT_ID = "78463821-ccb7-48af-841b-84a18c42abb6";
 var OBR_TENANT_ID = "3f801fb9-f6f9-4e81-b3a2-f8954498cdac";
 var TOP_MARKET_TENANT_ID = "60904bcc-970a-45e3-8669-8015ee2afe64";
-function seedUsersIfNeeded() {
-  const users = getUsers();
+async function seedUsersIfNeeded() {
+  const users = await repos.users.findAll();
   const seeds = [
     { id: ROOT_ADMIN_ID, email: "root@nmd.com", role: "ROOT_ADMIN", password: "123456" },
     { id: "user-dab-admin", email: "dab@nmd.com", role: "MARKET_ADMIN", marketId: DABBURIYYA_MARKET_ID, password: "123456" },
@@ -365,7 +1179,7 @@ function seedUsersIfNeeded() {
     { id: "user-courier-iksal-1", email: "courier@iksal.nmd.com", role: "COURIER", marketId: IKSAL_MARKET_ID, courierId: "courier-iksal-001", password: "123456" }
   ];
   if (users.length === 0) {
-    setUsers(seeds);
+    await repos.users.setAll(seeds);
     return;
   }
   let changed = false;
@@ -382,21 +1196,22 @@ function seedUsersIfNeeded() {
       changed = true;
     }
   }
-  if (changed) setUsers(next);
+  if (changed) await repos.users.setAll(next);
 }
-function seedMarketsIfNeeded() {
-  const markets = getMarkets();
+async function seedMarketsIfNeeded() {
+  const markets = await repos.markets.findAll();
   if (markets.length > 0) return;
   const newMarkets = [
     { id: DABBURIYYA_MARKET_ID, name: "\u0633\u0648\u0642 \u062F\u0628\u0648\u0631\u064A\u0629 \u0627\u0644\u0631\u0642\u0645\u064A", slug: "dabburiyya", isActive: true, sortOrder: 0 },
     { id: IKSAL_MARKET_ID, name: "\u0633\u0648\u0642 \u0625\u0643\u0633\u0627\u0644 \u0627\u0644\u0631\u0642\u0645\u064A", slug: "iksal", isActive: true, sortOrder: 1 }
   ];
-  setMarkets(newMarkets);
+  await repos.markets.setAll(newMarkets);
 }
-function seedTenantMarketIdsIfNeeded() {
-  const dabburiyya = getMarkets().find((m) => m.slug === "dabburiyya");
+async function seedTenantMarketIdsIfNeeded() {
+  const markets = await repos.markets.findAll();
+  const dabburiyya = markets.find((m) => m.slug === "dabburiyya");
   if (!dabburiyya) return;
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   let changed = false;
   for (const t of tenants) {
     if (!t.marketId) {
@@ -405,12 +1220,13 @@ function seedTenantMarketIdsIfNeeded() {
       changed = true;
     }
   }
-  if (changed) setTenants(tenants);
+  if (changed) await repos.tenants.setAll(tenants);
 }
-function seedOrdersIfNeeded() {
-  const orders = getOrders();
+async function seedOrdersIfNeeded() {
+  const orders = await repos.orders.findAll();
   if (orders.length > 0) return;
-  const msBrands = getTenants().find((t) => t.slug === "ms-brands");
+  const tenants = await repos.tenants.findAll();
+  const msBrands = tenants.find((t) => t.slug === "ms-brands");
   if (!msBrands?.marketId) return;
   const seed = {
     id: "order-seed-delivery-1",
@@ -428,12 +1244,12 @@ function seedOrdersIfNeeded() {
     customerName: "Test",
     customerPhone: "0501234567"
   };
-  setOrders([seed]);
+  await repos.orders.setAll([seed]);
 }
-function seedDeliveryZonesIfNeeded() {
-  const tenants = getTenants();
+async function seedDeliveryZonesIfNeeded() {
+  const tenants = await repos.tenants.findAll();
   for (const t of tenants) {
-    const existing = getDeliveryZones(t.id);
+    const existing = await repos.deliveryZones.getByTenant(t.id);
     if (existing.length > 0) continue;
     const slug = t.slug ?? "";
     let zones = [];
@@ -454,7 +1270,7 @@ function seedDeliveryZonesIfNeeded() {
         { id: `dz-${t.id}-1`, tenantId: t.id, name: "\u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629", fee: 10, etaMinutes: 45, isActive: true, sortOrder: 0 }
       ];
     }
-    setDeliveryZones(t.id, zones);
+    await repos.deliveryZones.setAll(t.id, zones);
   }
 }
 var UPLOADS_DIR = join2(process.cwd(), "..", "..", "packages", "mock", "uploads");
@@ -475,9 +1291,32 @@ var upload = multer({
     else cb(new Error("Only image files allowed"));
   }
 });
-app.use(cors());
+var corsOptions = {
+  origin: true,
+  // Reflect request origin (required when credentials: true; * not allowed)
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "X-Emergency-Mode"],
+  exposedHeaders: ["Authorization"],
+  credentials: true
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.headers.origin) res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
+  next();
+});
 app.use(express.json({ limit: "1mb" }));
-app.use("/uploads", express.static(UPLOADS_DIR));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/upload") {
+    return upload.array("files", 20)(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      next();
+    });
+  }
+  next();
+});
+app.use("/uploads", cors({ origin: "*", methods: ["GET", "OPTIONS"] }), express.static(UPLOADS_DIR));
 var PUBLIC_ROUTES = [
   { method: "POST", path: /^\/auth\/login$/ },
   { method: "GET", path: /^\/health$/ },
@@ -489,6 +1328,8 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/tenants\/by-id\/[^/]+$/ },
   { method: "GET", path: /^\/catalog\/[^/]+$/ },
   { method: "POST", path: /^\/orders$/ },
+  { method: "POST", path: /^\/customer\/auth\/start$/ },
+  { method: "POST", path: /^\/customer\/auth\/verify$/ },
   { method: "GET", path: /^\/campaigns$/ },
   { method: "GET", path: /^\/delivery\/[^/]+$/ },
   { method: "GET", path: /^\/tenants\/[^/]+\/delivery-zones$/ },
@@ -497,32 +1338,54 @@ var PUBLIC_ROUTES = [
 function isPublicRoute(method, path) {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
 }
-app.use((req, _res, next) => {
-  const header = req.headers.authorization;
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+app.use(async (req, _res, next) => {
+  const token = req.query.token || req.headers.authorization?.split(" ")[1] || req.body?.access_token;
+  const isUpload = req.method === "POST" && req.path === "/upload";
+  if (isUpload) {
+    console.log("[DEBUG-AUTH] Header:", req.headers.authorization, "Query:", req.query.token, "Body:", req.body?.access_token);
+    const source = token ? req.query.token ? "query" : req.headers.authorization ? "header" : "body" : "MISSING";
+    console.log("[Auth] POST /upload - token from:", source, token ? `${token.slice(0, 20)}...` : "");
+    if (!token) console.log("[Auth] Incoming Headers (full):", req.headers);
+  }
+  req.user = void 0;
+  req.customer = void 0;
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      const user = getUsers().find((u) => u.id === decoded.sub);
-      if (user) req.user = { ...user, password: void 0 };
-    } catch {
-      req.user = void 0;
+      if (decoded.role === "CUSTOMER") {
+        const customers = await repos.customers.findAll();
+        const customer = customers.find((c) => c.id === decoded.sub);
+        if (customer) req.customer = { id: customer.id, phone: customer.phone };
+      } else {
+        const users = await repos.users.findAll();
+        const user = users.find((u) => u.id === decoded.sub);
+        if (user) {
+          req.user = { ...user, password: void 0 };
+          if (isUpload) console.log("[Auth] req.user set from DB:", user.id, user.role);
+        } else if (decoded.role && ["ROOT_ADMIN", "TENANT_ADMIN", "MARKET_ADMIN"].includes(decoded.role)) {
+          req.user = { id: decoded.sub, email: `${decoded.sub}@jwt`, role: decoded.role, tenantId: decoded.tenantId, marketId: decoded.marketId };
+          if (isUpload) console.log("[Auth] req.user set from JWT fallback (user not in DB):", decoded.sub, decoded.role);
+        } else if (isUpload) {
+          console.log("[Auth] User not found for sub:", decoded.sub, "role:", decoded.role, "- users:", users.map((u) => u.id));
+        }
+      }
+    } catch (err) {
+      console.log("[Auth] JWT verify failed:", err instanceof Error ? err.message : err, isUpload ? "(POST /upload)" : "");
     }
-  } else {
-    req.user = void 0;
   }
   req.emergencyMode = String(req.headers["x-emergency-mode"] ?? "").toLowerCase() === "true";
   req.emergencyReason = req.body?._meta?.emergencyReason ?? "";
   next();
 });
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   if (req.method !== "GET" || req.path !== "/courier/events") return next();
   if (req.user) return next();
   const token = req.query.token;
   if (!token) return next();
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = getUsers().find((u) => u.id === decoded.sub);
+    const users = await repos.users.findAll();
+    const user = users.find((u) => u.id === decoded.sub);
     if (user) req.user = { ...user, password: void 0 };
   } catch {
   }
@@ -531,25 +1394,33 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   if (req.path.startsWith("/uploads")) return next();
   if (isPublicRoute(req.method, req.path)) return next();
-  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-  next();
+  if (req.path.startsWith("/customer/") && !req.path.startsWith("/customer/auth/")) {
+    if (!req.customer) return res.status(401).json({ error: "Unauthorized" });
+    return next();
+  }
+  if (req.user) return next();
+  if (req.method === "POST" && req.path === "/upload") {
+    const hasAuth = !!req.get("Authorization");
+    console.log("[Auth] 401 on POST /upload - token", hasAuth ? "present but invalid or user not found" : "MISSING");
+  }
+  return res.status(401).json({ error: "Unauthorized" });
 });
-app.post("/auth/login", (req, res) => {
+app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
-  const users = getUsers();
+  const users = await repos.users.findAll();
   const user = users.find((u) => u.email?.toLowerCase() === String(email).trim().toLowerCase());
   if (!user || user.password !== password) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
   const token = jwt.sign(
-    { sub: user.id },
+    { sub: user.id, role: user.role, tenantId: user.tenantId, marketId: user.marketId },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
   res.json({ accessToken: token });
 });
-app.get("/auth/me", (req, res) => {
+app.get("/auth/me", async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const u = req.user;
   res.json({
@@ -561,6 +1432,41 @@ app.get("/auth/me", (req, res) => {
     courierId: u.courierId
   });
 });
+app.post("/customer/auth/start", async (req, res) => {
+  const { phone } = req.body;
+  if (!phone || typeof phone !== "string") return res.status(400).json({ error: "phone required" });
+  const result = createOtp(phone);
+  if (!result.ok) return res.status(429).json({ error: result.error, code: result.code });
+  res.json({ ok: true });
+});
+function normalizePhoneForMatch(phone) {
+  return String(phone ?? "").replace(/\D/g, "").slice(-10);
+}
+app.post("/customer/auth/verify", async (req, res) => {
+  const { phone, code } = req.body;
+  if (!phone || !code) return res.status(400).json({ error: "phone and code required" });
+  const result = verifyOtp(phone, code);
+  if (!result.ok) {
+    const status = result.code === "OTP_LOCKED" || result.code === "RATE_LIMITED" ? 429 : 401;
+    return res.status(status).json({ error: result.error, code: result.code });
+  }
+  const key = normalizePhoneForMatch(phone);
+  const customers = await repos.customers.findAll();
+  let customer = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  if (!customer) {
+    const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
+    customer = { id, phone: String(phone).trim(), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const next = [...customers, customer];
+    await repos.customers.setAll(next);
+  }
+  const token = jwt.sign({ sub: customer.id, role: "CUSTOMER" }, JWT_SECRET, { expiresIn: "30d" });
+  res.json({ token, customer: { id: customer.id, phone: customer.phone } });
+});
+app.get("/customer/me", async (req, res) => {
+  const customer = req.customer;
+  if (!customer) return res.status(401).json({ error: "Unauthorized" });
+  res.json({ id: customer.id, phone: customer.phone });
+});
 function requireCourier(req, res) {
   const user = req.user;
   if (!user || user.role !== "COURIER" || !user.courierId || !user.marketId) {
@@ -569,11 +1475,11 @@ function requireCourier(req, res) {
   }
   return { courierId: user.courierId, marketId: user.marketId };
 }
-app.get("/courier/me", (req, res) => {
+app.get("/courier/me", async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const courier = getCouriers().find((c) => c.id === scope.courierId);
-  const market = getMarkets().find((m) => m.id === scope.marketId);
+  const courier = (await repos.couriers.findAll()).find((c) => c.id === scope.courierId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === scope.marketId);
   if (!courier || !market) return res.status(404).json({ error: "Courier or market not found" });
   if (courier.marketId !== scope.marketId) return res.status(403).json({ error: "Forbidden" });
   res.json({
@@ -586,27 +1492,28 @@ app.get("/courier/me", (req, res) => {
     market: { id: market.id, name: market.name }
   });
 });
-app.get("/courier/orders", (req, res) => {
+app.get("/courier/orders", wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const orders = getOrders().filter((o) => o.fulfillmentType === "DELIVERY" && o.courierId === scope.courierId && o.status !== "CANCELED");
-  const tenants = getTenants();
+  const orders = (await repos.orders.findAll()).filter((o) => o.fulfillmentType === "DELIVERY" && o.courierId === scope.courierId && o.status !== "CANCELED");
+  const tenants = await repos.tenants.findAll();
   const enriched = orders.map((o) => {
     const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : void 0;
     const tenant = t ? { name: t.name ?? "", phone: t.whatsappPhone, address: t.addressLine, location: t.location } : { name: "", phone: void 0, address: void 0, location: void 0 };
     const customer = { name: o.customerName ?? "", phone: o.customerPhone ?? "", deliveryAddress: o.deliveryAddress ?? "", deliveryLocation: o.deliveryLocation };
     const currency = o.currency ?? "ILS";
-    const orderTotal = o.payment?.financials?.gross ?? (Number(o.total) || 0);
-    const paymentMethod = o.payment?.method ?? (o.paymentMethod === "CARD" ? "CARD" : "CASH");
+    const pay = o.payment;
+    const orderTotal = pay?.financials?.gross ?? (Number(o.total) || 0);
+    const paymentMethod = pay?.method ?? (o.paymentMethod === "CARD" ? "CARD" : "CASH");
     const amountToCollect = paymentMethod === "CASH" ? orderTotal : 0;
     return { ...o, tenant, customer, currency, orderTotal, paymentMethod, amountToCollect, cashChangeFor: o.cashChangeFor };
   });
   res.json(enriched);
-});
-app.get("/courier/stats", (req, res) => {
+}));
+app.get("/courier/stats", async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const metrics = computeCourierMetrics(scope.marketId, scope.courierId);
+  const metrics = await computeCourierMetrics(scope.marketId, scope.courierId);
   res.json(metrics);
 });
 var VALID_ACTION_FROM_DELIVERY = {
@@ -634,11 +1541,12 @@ var DELIVERY_STATUS_TO_ACTION = {
   DELIVERED: "DELIVERED"
 };
 var VALID_ACTIONS = ["ACKNOWLEDGE", "PICKED_UP", "DELIVERED", "FINISH"];
-function computePaymentForOrder(order, tenantId) {
+async function computePaymentForOrder(order, tenantId) {
   const itemsTotal = order.subtotal ?? (order.items ?? []).reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
-  const deliveryFee = order.delivery?.fee ?? getDelivery()[tenantId]?.deliveryFee ?? 0;
+  const deliverySettings = await repos.delivery.getSettings(tenantId);
+  const deliveryFee = order.delivery?.fee ?? deliverySettings?.deliveryFee ?? 0;
   const gross = Number(order.total) || itemsTotal + deliveryFee;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   const cfg = tenant?.financialConfig ?? { commissionType: "PERCENTAGE", commissionValue: 10, deliveryFeeModel: "TENANT" };
   const commission = cfg.commissionType === "PERCENTAGE" ? Math.round(gross * (cfg.commissionValue / 100) * 100) / 100 : cfg.commissionValue;
   const gatewayFee = 0;
@@ -654,7 +1562,7 @@ function computePaymentForOrder(order, tenantId) {
     financials: { gross, commission, gatewayFee, netToMerchant, netToMarket }
   };
 }
-app.post("/courier/orders/:orderId/status", (req, res) => {
+app.post("/courier/orders/:orderId/status", async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const { orderId } = req.params;
@@ -669,7 +1577,7 @@ app.post("/courier/orders/:orderId/status", (req, res) => {
   if (!VALID_ACTIONS.includes(action)) {
     return res.status(400).json({ error: "Invalid action or deliveryStatus", code: "BAD_REQUEST", details: { received: body.action ?? body.deliveryStatus, validActions: VALID_ACTIONS } });
   }
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   const order = orders[idx];
@@ -698,11 +1606,11 @@ app.post("/courier/orders/:orderId/status", (req, res) => {
   if (action === "DELIVERED") {
     tl.deliveredAt = tl.deliveredAt ?? now;
     tl.durations = computeDurations(tl);
-    const couriers = getCouriers();
+    const couriers = await repos.couriers.findAll();
     const cIdx = couriers.findIndex((c) => c.id === scope.courierId);
     if (cIdx >= 0) {
       couriers[cIdx] = { ...couriers[cIdx], isAvailable: true, deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1 };
-      setCouriers(couriers);
+      await repos.couriers.setAll(couriers);
     }
   }
   if (action === "FINISH") {
@@ -726,11 +1634,11 @@ app.post("/courier/orders/:orderId/status", (req, res) => {
     }
   }
   orders[idx] = updated;
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
 var courierEventListeners = /* @__PURE__ */ new Map();
-app.get("/courier/events", (req, res) => {
+app.get("/courier/events", async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   res.setHeader("Content-Type", "text/event-stream");
@@ -759,13 +1667,13 @@ function emitCourierUnassigned(courierId, orderId) {
   const send = courierEventListeners.get(courierId);
   if (send) send(JSON.stringify({ type: "order_unassigned", orderId }));
 }
-app.post("/auth/change-password", (req, res) => {
+app.post("/auth/change-password", async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: "currentPassword and newPassword required" });
   }
-  const users = getUsers();
+  const users = await repos.users.findAll();
   const user = users.find((u) => u.id === req.user.id);
   if (!user) return res.status(401).json({ error: "User not found" });
   if (user.password !== currentPassword) {
@@ -774,7 +1682,7 @@ app.post("/auth/change-password", (req, res) => {
   const updated = users.map(
     (u) => u.id === req.user.id ? { ...u, password: newPassword } : u
   );
-  setUsers(updated);
+  await repos.users.setAll(updated);
   res.json({ ok: true });
 });
 function requireWrite(req) {
@@ -821,17 +1729,17 @@ function normalizeTenantResponse(t) {
     banners: t.banners ?? []
   };
 }
-app.get("/audit-events", (req, res) => {
+app.get("/audit-events", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const events = getAuditEvents().slice(-limit).reverse();
   res.json(events);
 });
-app.get("/monitoring/stats", (req, res) => {
+app.get("/monitoring/stats", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
-  const markets = getMarkets();
-  const tenants = getTenants();
-  const orders = getOrders();
+  const markets = await repos.markets.findAll();
+  const tenants = await repos.tenants.findAll();
+  const orders = await repos.orders.findAll();
   const stats = markets.map((m) => {
     const marketTenants = tenants.filter((t) => t.marketId === m.id);
     const tenantIds = new Set(marketTenants.map((t) => t.id));
@@ -847,14 +1755,14 @@ app.get("/monitoring/stats", (req, res) => {
   });
   res.json(stats);
 });
-app.get("/users", (req, res) => {
+app.get("/users", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
-  const users = getUsers().map((u) => ({ ...u, password: void 0 }));
+  const users = (await repos.users.findAll()).map((u) => ({ ...u, password: void 0 }));
   res.json(users);
 });
-app.get("/markets", (req, res) => {
+app.get("/markets", async (req, res) => {
   const user = req.user;
-  let markets = getMarkets();
+  let markets = await repos.markets.findAll();
   if (user?.role === "MARKET_ADMIN" && user.marketId) {
     markets = markets.filter((m) => m.id === user.marketId);
   } else {
@@ -863,7 +1771,7 @@ app.get("/markets", (req, res) => {
   }
   res.json([...markets].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)));
 });
-app.post("/markets", (req, res) => {
+app.post("/markets", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (!requireWriteWithReason(req, res)) return;
   const body = req.body;
@@ -876,9 +1784,9 @@ app.post("/markets", (req, res) => {
     isActive: body.isActive ?? true,
     sortOrder: body.sortOrder
   };
-  const markets = getMarkets();
+  const markets = await repos.markets.findAll();
   markets.push(market);
-  setMarkets(markets);
+  await repos.markets.setAll(markets);
   appendAuditEvent({
     userId: req.user.id,
     role: req.user.role,
@@ -891,17 +1799,17 @@ app.post("/markets", (req, res) => {
   });
   res.status(201).json(market);
 });
-app.put("/markets/:id", (req, res) => {
+app.put("/markets/:id", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (!requireWriteWithReason(req, res)) return;
   const { id } = req.params;
   const body = req.body;
-  const markets = getMarkets();
+  const markets = await repos.markets.findAll();
   const idx = markets.findIndex((m) => m.id === id);
   if (idx === -1) return res.status(404).json({ error: "Market not found" });
   const before = markets[idx];
   markets[idx] = { ...markets[idx], ...body };
-  setMarkets(markets);
+  await repos.markets.setAll(markets);
   appendAuditEvent({
     userId: req.user.id,
     role: req.user.role,
@@ -915,29 +1823,29 @@ app.put("/markets/:id", (req, res) => {
   });
   res.json(markets[idx]);
 });
-app.get("/markets/by-slug/:slug", (req, res) => {
-  const market = getMarkets().find((m) => m.slug === req.params.slug);
+app.get("/markets/by-slug/:slug", async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (!market.isActive) return res.status(404).json({ error: "Market not found" });
   res.json(market);
 });
-app.get("/markets/:id", (req, res) => {
-  const market = getMarkets().find((m) => m.id === req.params.id);
+app.get("/markets/:id", async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.id === req.params.id);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== market.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
   res.json(market);
 });
-app.get("/markets/:marketId/admins", (req, res) => {
+app.get("/markets/:marketId/admins", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
-  const admins = getUsers().filter((u) => u.role === "MARKET_ADMIN" && u.marketId === marketId);
+  const admins = (await repos.users.findAll()).filter((u) => u.role === "MARKET_ADMIN" && u.marketId === marketId);
   res.json(admins);
 });
-app.post("/markets/:marketId/admins", (req, res) => {
+app.post("/markets/:marketId/admins", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (!requireWriteWithReason(req, res)) return;
   const { marketId } = req.params;
@@ -945,9 +1853,9 @@ app.post("/markets/:marketId/admins", (req, res) => {
   if (!email || typeof email !== "string" || !email.trim()) {
     return res.status(400).json({ error: "email is required" });
   }
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
-  const users = getUsers();
+  const users = await repos.users.findAll();
   const existing = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
   if (existing) return res.status(409).json({ error: "User with this email already exists" });
   const id = `user-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -958,7 +1866,7 @@ app.post("/markets/:marketId/admins", (req, res) => {
     marketId
   };
   users.push(newUser);
-  setUsers(users);
+  await repos.users.setAll(users);
   appendAuditEvent({
     userId: req.user.id,
     role: req.user.role,
@@ -972,14 +1880,14 @@ app.post("/markets/:marketId/admins", (req, res) => {
   });
   res.status(201).json(newUser);
 });
-app.get("/markets/:marketId/tenants", (req, res) => {
+app.get("/markets/:marketId/tenants", async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenants = getTenants().filter((t) => t.marketId === marketId && t.enabled && t.isListedInMarket !== false).sort((a, b) => {
+  const tenants = (await repos.tenants.findAll()).filter((t) => t.marketId === marketId && t.enabled && t.isListedInMarket !== false).sort((a, b) => {
     const soA = a.marketSortOrder ?? 999;
     const soB = b.marketSortOrder ?? 999;
     if (soA !== soB) return soA - soB;
@@ -991,14 +1899,26 @@ app.get("/markets/:marketId/tenants", (req, res) => {
       slug: n.slug,
       name: n.name,
       type: n.type === "CLOTHING" || n.type === "FOOD" ? n.type : "GENERAL",
-      branding: { logoUrl: n.logoUrl ?? "", primaryColor: n.primaryColor ?? "#7C3AED" },
+      branding: {
+        logoUrl: n.logoUrl ?? "",
+        primaryColor: n.primaryColor ?? "#7C3AED",
+        secondaryColor: n.secondaryColor ?? "#d4a574",
+        fontFamily: n.fontFamily ?? '"Cairo", system-ui, sans-serif',
+        radiusScale: n.radiusScale ?? 1,
+        layoutStyle: n.layoutStyle ?? "default",
+        hero: n.hero,
+        banners: n.banners ?? []
+      },
       isActive: n.enabled,
-      marketCategory: n.marketCategory ?? "GENERAL"
+      marketCategory: n.marketCategory ?? "GENERAL",
+      operationalStatus: n.operationalStatus,
+      orderPolicy: n.orderPolicy,
+      businessHours: n.businessHours
     };
   });
   res.json(tenants);
 });
-app.post("/markets/:marketId/tenants", (req, res) => {
+app.post("/markets/:marketId/tenants", async (req, res) => {
   const { marketId } = req.params;
   const user = req.user;
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -1006,7 +1926,7 @@ app.post("/markets/:marketId/tenants", (req, res) => {
   if (user.role === "MARKET_ADMIN" && user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   const input = req.body;
   const id = crypto.randomUUID?.() ?? `t-${Date.now()}`;
@@ -1018,20 +1938,19 @@ app.post("/markets/:marketId/tenants", (req, res) => {
     hero: input.hero ?? DEFAULT_HERO2,
     banners: input.banners ?? []
   };
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   tenants.push(tenant);
-  setTenants(tenants);
-  const cat = getCatalog(tenant.id);
-  setCatalog(tenant.id, cat);
-  const delivery = getDelivery();
-  if (!delivery[tenant.id]) {
-    delivery[tenant.id] = {
+  await repos.tenants.setAll(tenants);
+  const cat = await repos.catalog.getCatalog(tenant.id);
+  await repos.catalog.setCatalog(tenant.id, cat);
+  const existingDelivery = await repos.delivery.getSettings(tenant.id);
+  if (!existingDelivery) {
+    await repos.delivery.setSettings(tenant.id, {
       tenantId: tenant.id,
       modes: { pickup: true, delivery: true },
       deliveryFee: 5,
       zones: []
-    };
-    setDelivery(delivery);
+    });
   }
   appendAuditEvent({
     userId: user.id,
@@ -1046,29 +1965,38 @@ app.post("/markets/:marketId/tenants", (req, res) => {
   });
   res.status(201).json(tenant);
 });
-app.get("/tenants", (req, res) => {
-  let tenants = getTenants();
+app.get("/tenants", async (req, res) => {
+  let tenants = await repos.tenants.findAll();
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId) {
     tenants = tenants.filter((t) => t.marketId === req.user.marketId);
   }
   res.json(tenants.map(normalizeTenantResponse));
 });
-app.get("/storefront/tenants", (_req, res) => {
-  const tenants = getTenants().filter((t) => t.enabled).map((t) => {
+app.get("/storefront/tenants", async (_req, res) => {
+  const tenants = (await repos.tenants.findAll()).filter((t) => t.enabled).map((t) => {
     const n = normalizeTenantResponse(t);
     return {
       id: n.id,
       slug: n.slug,
       name: n.name,
       type: n.type === "CLOTHING" || n.type === "FOOD" ? n.type : "GENERAL",
-      branding: { logoUrl: n.logoUrl ?? "", primaryColor: n.primaryColor ?? "#7C3AED" },
+      branding: {
+        logoUrl: n.logoUrl ?? "",
+        primaryColor: n.primaryColor ?? "#7C3AED",
+        secondaryColor: n.secondaryColor ?? "#d4a574",
+        fontFamily: n.fontFamily ?? '"Cairo", system-ui, sans-serif',
+        radiusScale: n.radiusScale ?? 1,
+        layoutStyle: n.layoutStyle ?? "default",
+        hero: n.hero,
+        banners: n.banners ?? []
+      },
       isActive: n.enabled,
       marketCategory: n.marketCategory ?? "GENERAL"
     };
   });
   res.json(tenants);
 });
-app.post("/tenants", (req, res) => {
+app.post("/tenants", async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (user.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
@@ -1084,7 +2012,7 @@ app.post("/tenants", (req, res) => {
     if (!marketId || !marketId.trim()) {
       return res.status(400).json({ error: "marketId is required", code: "MARKET_ID_REQUIRED" });
     }
-    const market = getMarkets().find((m) => m.id === marketId);
+    const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
     if (!market) return res.status(400).json({ error: "Invalid marketId" });
   }
   const id = crypto.randomUUID?.() ?? `t-${Date.now()}`;
@@ -1096,20 +2024,19 @@ app.post("/tenants", (req, res) => {
     hero: input.hero ?? DEFAULT_HERO2,
     banners: input.banners ?? []
   };
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   tenants.push(tenant);
-  setTenants(tenants);
-  const cat = getCatalog(tenant.id);
-  setCatalog(tenant.id, cat);
-  const delivery = getDelivery();
-  if (!delivery[tenant.id]) {
-    delivery[tenant.id] = {
+  await repos.tenants.setAll(tenants);
+  const cat = await repos.catalog.getCatalog(tenant.id);
+  await repos.catalog.setCatalog(tenant.id, cat);
+  const existingDelivery = await repos.delivery.getSettings(tenant.id);
+  if (!existingDelivery) {
+    await repos.delivery.setSettings(tenant.id, {
       tenantId: tenant.id,
       modes: { pickup: true, delivery: true },
       deliveryFee: 5,
       zones: []
-    };
-    setDelivery(delivery);
+    });
   }
   appendAuditEvent({
     userId: req.user.id,
@@ -1124,10 +2051,10 @@ app.post("/tenants", (req, res) => {
   });
   res.status(201).json(tenant);
 });
-function handleTenantUpdate(req, res) {
+async function handleTenantUpdate(req, res) {
   const { id } = req.params;
   let updates = req.body;
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   const idx = tenants.findIndex((t) => t.id === id);
   if (idx === -1) {
     res.status(404).json({ error: "Tenant not found" });
@@ -1148,7 +2075,7 @@ function handleTenantUpdate(req, res) {
   }
   const before = { ...tenants[idx] };
   tenants[idx] = { ...tenants[idx], ...updates };
-  setTenants(tenants);
+  await repos.tenants.setAll(tenants);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1165,10 +2092,10 @@ function handleTenantUpdate(req, res) {
 }
 app.put("/tenants/:id", handleTenantUpdate);
 app.patch("/tenants/:id", handleTenantUpdate);
-app.post("/tenants/:id/toggle", (req, res) => {
+app.post("/tenants/:id/toggle", async (req, res) => {
   const { id } = req.params;
   const user = req.user;
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   const idx = tenants.findIndex((t) => t.id === id);
   if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
   const tenant = tenants[idx];
@@ -1178,7 +2105,7 @@ app.post("/tenants/:id/toggle", (req, res) => {
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
   const before = { ...tenants[idx] };
   tenants[idx] = { ...tenants[idx], enabled: !tenants[idx].enabled };
-  setTenants(tenants);
+  await repos.tenants.setAll(tenants);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1193,8 +2120,8 @@ app.post("/tenants/:id/toggle", (req, res) => {
   });
   res.json(normalizeTenantResponse(tenants[idx]));
 });
-app.get("/tenants/by-id/:id", (req, res) => {
-  const tenant = getTenants().find((t) => t.id === req.params.id);
+app.get("/tenants/by-id/:id", async (req, res) => {
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === req.params.id);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId !== req.params.id) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1204,11 +2131,11 @@ app.get("/tenants/by-id/:id", (req, res) => {
   }
   res.json(normalizeTenantResponse(tenant));
 });
-app.get("/tenants/by-slug/:slug", (req, res) => {
+app.get("/tenants/by-slug/:slug", async (req, res) => {
   const slug = req.params.slug;
-  let tenant = getTenants().find((t) => t.slug === slug);
+  let tenant = (await repos.tenants.findAll()).find((t) => t.slug === slug);
   if (!tenant && slug === "top-market") {
-    tenant = getTenants().find((t) => t.id === TOP_MARKET_TENANT_ID);
+    tenant = (await repos.tenants.findAll()).find((t) => t.id === TOP_MARKET_TENANT_ID);
   }
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (req.user?.role === "MARKET_ADMIN" && tenant.marketId !== req.user.marketId) {
@@ -1216,28 +2143,35 @@ app.get("/tenants/by-slug/:slug", (req, res) => {
   }
   res.json(normalizeTenantResponse(tenant));
 });
-app.put("/tenants/:id/branding", (req, res) => {
+app.put("/tenants/:id/branding", async (req, res) => {
   const { id } = req.params;
   const user = req.user;
-  const tenants = getTenants();
+  console.log("[Branding] Incoming Config:", req.body);
+  const tenants = await repos.tenants.findAll();
   const t = tenants.find((x) => x.id === id);
   if (!t) return res.status(404).json({ error: "Tenant not found" });
   if (user?.role === "MARKET_ADMIN" && t.marketId !== user.marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const { logoUrl, hero, banners, whatsappPhone } = req.body;
+  const body = req.body;
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
-  if (logoUrl !== void 0) tenants[idx].logoUrl = logoUrl;
-  if (hero !== void 0) tenants[idx].hero = normalizeHero(hero);
-  if (banners !== void 0) tenants[idx].banners = banners;
-  if (whatsappPhone !== void 0) {
-    const cleaned = typeof whatsappPhone === "string" ? whatsappPhone.replace(/\D/g, "") : "";
+  if (body.logoUrl !== void 0) tenants[idx].logoUrl = body.logoUrl;
+  if (body.hero !== void 0) tenants[idx].hero = normalizeHero(body.hero);
+  if (body.banners !== void 0) tenants[idx].banners = body.banners;
+  if (body.whatsappPhone !== void 0) {
+    const cleaned = typeof body.whatsappPhone === "string" ? body.whatsappPhone.replace(/\D/g, "") : "";
     tenants[idx].whatsappPhone = cleaned || void 0;
   }
+  if (body.primaryColor !== void 0) tenants[idx].primaryColor = body.primaryColor;
+  if (body.secondaryColor !== void 0) tenants[idx].secondaryColor = body.secondaryColor;
+  if (body.fontFamily !== void 0) tenants[idx].fontFamily = body.fontFamily;
+  if (body.radiusScale !== void 0) tenants[idx].radiusScale = body.radiusScale;
+  if (body.layoutStyle !== void 0) tenants[idx].layoutStyle = body.layoutStyle;
   const before = { ...tenants[idx] };
-  setTenants(tenants);
+  await repos.tenants.setAll(tenants);
+  console.log("[Branding] Persisted tenant", id, "to store (data.json)");
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1252,19 +2186,85 @@ app.put("/tenants/:id/branding", (req, res) => {
   });
   res.json(normalizeTenantResponse(tenants[idx]));
 });
-app.post("/upload", (req, res, next) => {
-  upload.array("files", 20)(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    const files = req.files ?? [];
-    const base = `http://localhost:${PORT}`;
-    const urls = files.map((f) => `${base}/uploads/${f.filename}`);
-    res.json({ urls });
+app.put("/tenants/:id/collections", async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: "Tenant not found" });
+  if (user?.role === "MARKET_ADMIN" && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
+  const body = req.body;
+  const collections = Array.isArray(body.collections) ? body.collections : [];
+  const idx = tenants.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
+  const before = { ...tenants[idx] };
+  tenants[idx].collections = collections;
+  await repos.tenants.setAll(tenants);
+  appendAuditEvent({
+    userId: user.id,
+    role: user.role,
+    marketId: t.marketId,
+    action: "update",
+    entity: "tenant",
+    entityId: id,
+    reason: user.role === "ROOT_ADMIN" ? getEmergencyReason(req) : void 0,
+    emergencyMode: user.role === "ROOT_ADMIN",
+    before,
+    after: tenants[idx]
   });
+  res.json(normalizeTenantResponse(tenants[idx]));
 });
-app.get("/catalog/:tenantId", (req, res) => {
-  const catalog = getCatalog(req.params.tenantId);
+app.put("/tenants/:id/operational-settings", async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: "Tenant not found" });
+  if (user?.role === "MARKET_ADMIN" && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
+  const body = req.body;
+  const idx = tenants.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
+  if (body.operationalStatus !== void 0) tenants[idx].operationalStatus = body.operationalStatus;
+  if (body.orderPolicy !== void 0) tenants[idx].orderPolicy = body.orderPolicy;
+  if (body.businessHours !== void 0) tenants[idx].businessHours = body.businessHours;
+  if (body.busyBannerEnabled !== void 0) tenants[idx].busyBannerEnabled = body.busyBannerEnabled;
+  if (body.busyBannerText !== void 0) tenants[idx].busyBannerText = body.busyBannerText;
+  const before = { ...tenants[idx] };
+  await repos.tenants.setAll(tenants);
+  appendAuditEvent({
+    userId: user.id,
+    role: user.role,
+    marketId: t.marketId,
+    action: "update",
+    entity: "tenant",
+    entityId: id,
+    reason: user.role === "ROOT_ADMIN" ? getEmergencyReason(req) : void 0,
+    emergencyMode: user.role === "ROOT_ADMIN",
+    before,
+    after: tenants[idx]
+  });
+  res.json(normalizeTenantResponse(tenants[idx]));
+});
+var UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+app.post("/upload", async (req, res) => {
+  console.log("Query Params:", req.query);
+  console.log("Incoming Headers:", req.headers);
+  const files = req.files ?? [];
+  const base = UPLOAD_BASE;
+  const urls = files.map((f) => `${base}/uploads/${f.filename}`);
+  console.log("[Upload] Success:", files.length, "files, base:", base);
+  res.json({ urls });
+});
+app.get("/catalog/:tenantId", wrapAsync(async (req, res) => {
+  const catalog = await repos.catalog.getCatalog(req.params.tenantId);
   res.json(catalog);
-});
+}));
 function normalizeProductForCompat(p) {
   const images = p.images ?? [];
   if (images.length > 0) {
@@ -1272,21 +2272,23 @@ function normalizeProductForCompat(p) {
   }
   return p;
 }
-app.put("/catalog/:tenantId", (req, res) => {
+app.put("/catalog/:tenantId", wrapAsync(async (req, res) => {
   const catalog = req.body;
   const products = (catalog.products ?? []).map(
     (p) => normalizeProductForCompat(p)
   );
   const normalized = { ...catalog, products };
-  setCatalog(req.params.tenantId, normalized);
-  res.json(getCatalog(req.params.tenantId));
-});
-function getMarketTenantIds(marketId) {
-  return new Set(getTenants().filter((t) => t.marketId === marketId).map((t) => t.id));
+  await repos.catalog.setCatalog(req.params.tenantId, normalized);
+  const updated = await repos.catalog.getCatalog(req.params.tenantId);
+  res.json(updated);
+}));
+async function getMarketTenantIds(marketId) {
+  const tenants = await repos.tenants.findAll();
+  return new Set(tenants.filter((t) => t.marketId === marketId).map((t) => t.id));
 }
-app.get("/orders", (req, res) => {
+app.get("/orders", wrapAsync(async (req, res) => {
   const tenantId = req.query.tenantId;
-  let orders = getOrders();
+  let orders = await repos.orders.findAll();
   if (req.user?.role === "TENANT_ADMIN") {
     const ownTenantId = req.user.tenantId;
     if (!ownTenantId) return res.status(403).json({ error: "Forbidden" });
@@ -1296,14 +2298,14 @@ app.get("/orders", (req, res) => {
     orders = orders.filter((o) => o.tenantId === tenantId);
   }
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId) {
-    const allowed = getMarketTenantIds(req.user.marketId);
+    const allowed = await getMarketTenantIds(req.user.marketId);
     orders = orders.filter((o) => o.tenantId && allowed.has(o.tenantId));
   }
   res.json(orders);
-});
-app.get("/tenants/:tenantId/orders", (req, res) => {
+}));
+app.get("/tenants/:tenantId/orders", wrapAsync(async (req, res) => {
   const { tenantId } = req.params;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1311,23 +2313,25 @@ app.get("/tenants/:tenantId/orders", (req, res) => {
   if (req.user?.role === "MARKET_ADMIN" && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const orders = getOrders().filter((o) => o.tenantId === tenantId);
+  const orders = (await repos.orders.findAll()).filter((o) => o.tenantId === tenantId);
   res.json(orders);
-});
-app.post("/orders", (req, res) => {
+}));
+app.post("/orders", wrapAsync(async (req, res) => {
   const order = req.body;
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId) {
-    const tenant2 = getTenants().find((t) => t.id === order.tenantId);
+    const tenant2 = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant2 || tenant2.marketId !== req.user.marketId) {
       return res.status(403).json({ error: "Forbidden" });
     }
   }
-  const tenant = order.tenantId ? getTenants().find((t) => t.id === order.tenantId) : void 0;
+  const tenant = order.tenantId ? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) : void 0;
   const tenantType = tenant?.tenantType ?? (tenant?.type === "FOOD" ? "RESTAURANT" : "SHOP");
   const deliveryMode = tenant?.deliveryProviderMode ?? "TENANT";
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const created = { ...order, createdAt: order.createdAt ?? now };
   if (tenant?.marketId) created.marketId = tenant.marketId;
+  const customer = req.customer;
+  if (customer) created.customerId = customer.id;
   if (created.fulfillmentType === "PICKUP" || deliveryMode === "PICKUP_ONLY") {
     created.status = created.status ?? "PREPARING";
     created.deliveryAssignmentMode = void 0;
@@ -1345,31 +2349,34 @@ app.post("/orders", (req, res) => {
       created.readyAt = created.createdAt ?? now;
     }
   }
-  const payment = computePaymentForOrder(created, created.tenantId ?? "");
-  created.payment = {
-    ...payment,
-    method: created.paymentMethod === "CARD" ? "CARD" : "CASH"
-  };
-  const orders = getOrders();
-  orders.push(created);
-  setOrders(orders);
+  const payment = await computePaymentForOrder(created, created.tenantId ?? "");
+  const method = created.paymentMethod === "CARD" ? "CARD" : "CASH";
+  created.payment = { ...payment, method };
+  created.id = created.id ?? crypto.randomUUID?.() ?? `order-${Date.now()}`;
+  created.orderType = created.orderType ?? "PRODUCT";
+  await repos.orders.addOrderWithPayment(created, {
+    method,
+    status: payment.status,
+    amount: payment.financials.gross,
+    currency: payment.currency
+  });
   res.status(201).json(created);
-});
-app.get("/orders/:orderId", (req, res) => {
-  const order = getOrders().find((o) => o.id === req.params.orderId);
+}));
+app.get("/orders/:orderId", wrapAsync(async (req, res) => {
+  const order = (await repos.orders.findAll()).find((o) => o.id === req.params.orderId);
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId) {
-    const tenant = getTenants().find((t) => t.id === order.tenantId);
+    const tenant = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant || tenant.marketId !== req.user.marketId) {
       return res.status(403).json({ error: "Forbidden" });
     }
   }
   res.json(order);
-});
-app.get("/public/orders/:orderId", (req, res) => {
-  const order = getOrders().find((o) => o.id === req.params.orderId);
+}));
+app.get("/public/orders/:orderId", wrapAsync(async (req, res) => {
+  const order = (await repos.orders.findAll()).find((o) => o.id === req.params.orderId);
   if (!order) return res.status(404).json({ error: "Order not found" });
-  const tenant = order.tenantId ? getTenants().find((t) => t.id === order.tenantId) : void 0;
+  const tenant = order.tenantId ? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) : void 0;
   const safe = {
     id: order.id,
     status: order.status,
@@ -1388,15 +2395,15 @@ app.get("/public/orders/:orderId", (req, res) => {
     tenantSlug: tenant?.slug
   };
   res.json(safe);
-});
-app.patch("/orders/:orderId/status", (req, res) => {
+}));
+app.patch("/orders/:orderId/status", wrapAsync(async (req, res) => {
   const { status } = req.body;
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === req.params.orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   const order = orders[idx];
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId) {
-    const tenant = getTenants().find((t) => t.id === order.tenantId);
+    const tenant = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant || tenant.marketId !== req.user.marketId) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -1404,7 +2411,7 @@ app.patch("/orders/:orderId/status", (req, res) => {
   const updated = { ...orders[idx], status };
   if (status === "DELIVERED" && order.courierId) {
     updated.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
-    const couriers = getCouriers();
+    const couriers = await repos.couriers.findAll();
     const cIdx = couriers.findIndex((c) => c.id === order.courierId);
     if (cIdx >= 0) {
       couriers[cIdx] = {
@@ -1412,27 +2419,27 @@ app.patch("/orders/:orderId/status", (req, res) => {
         isAvailable: true,
         deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1
       };
-      setCouriers(couriers);
+      await repos.couriers.setAll(couriers);
     }
   }
   orders[idx] = updated;
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
-});
-app.get("/campaigns", (req, res) => {
+}));
+app.get("/campaigns", async (req, res) => {
   const tenantId = req.query.tenantId;
   let campaigns = getCampaigns();
   if (tenantId) campaigns = campaigns.filter((c) => c.tenantId === tenantId);
   res.json(campaigns);
 });
-app.post("/campaigns", (req, res) => {
+app.post("/campaigns", async (req, res) => {
   const campaign = req.body;
   const campaigns = getCampaigns();
   campaigns.push(campaign);
   setCampaigns(campaigns);
   res.status(201).json(campaign);
 });
-app.put("/campaigns/:id", (req, res) => {
+app.put("/campaigns/:id", async (req, res) => {
   const campaigns = getCampaigns();
   const idx = campaigns.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Campaign not found" });
@@ -1440,24 +2447,23 @@ app.put("/campaigns/:id", (req, res) => {
   setCampaigns(campaigns);
   res.json(campaigns[idx]);
 });
-app.delete("/campaigns/:id", (req, res) => {
+app.delete("/campaigns/:id", async (req, res) => {
   const campaigns = getCampaigns();
   const next = campaigns.filter((c) => c.id !== req.params.id);
   if (next.length === campaigns.length) return res.status(404).json({ error: "Campaign not found" });
   setCampaigns(next);
   res.json({ deleted: true });
 });
-app.get("/delivery/:tenantId", (req, res) => {
-  const settings = getDelivery()[req.params.tenantId];
-  if (!settings) return res.status(404).json({ error: "Delivery settings not found" });
+app.get("/delivery/:tenantId", wrapAsync(async (req, res) => {
+  const settings = await repos.delivery.getSettings(req.params.tenantId);
   res.json(settings);
-});
-app.put("/delivery/:tenantId", (req, res) => {
-  const delivery = getDelivery();
-  delivery[req.params.tenantId] = { ...req.body, tenantId: req.params.tenantId };
-  setDelivery(delivery);
-  res.json(delivery[req.params.tenantId]);
-});
+}));
+app.put("/delivery/:tenantId", wrapAsync(async (req, res) => {
+  const tenantId = req.params.tenantId;
+  const settings = { ...req.body, tenantId };
+  await repos.delivery.setSettings(tenantId, settings);
+  res.json(settings);
+}));
 function sortZones(zones) {
   return [...zones].sort((a, b) => {
     const soA = a.sortOrder ?? 999;
@@ -1466,11 +2472,11 @@ function sortZones(zones) {
     return (a.name ?? "").localeCompare(b.name ?? "");
   });
 }
-app.get("/tenants/:tenantId/delivery-zones", (req, res) => {
-  const zones = getDeliveryZones(req.params.tenantId);
+app.get("/tenants/:tenantId/delivery-zones", wrapAsync(async (req, res) => {
+  const zones = await repos.deliveryZones.getByTenant(req.params.tenantId);
   res.json(sortZones(zones));
-});
-app.post("/tenants/:tenantId/delivery-zones", (req, res) => {
+}));
+app.post("/tenants/:tenantId/delivery-zones", wrapAsync(async (req, res) => {
   const { tenantId } = req.params;
   const body = req.body;
   const id = crypto.randomUUID?.() ?? `dz-${Date.now()}`;
@@ -1483,42 +2489,43 @@ app.post("/tenants/:tenantId/delivery-zones", (req, res) => {
     isActive: body.isActive ?? true,
     sortOrder: body.sortOrder
   };
-  const zones = getDeliveryZones(tenantId);
+  const zones = await repos.deliveryZones.getByTenant(tenantId);
   zones.push(zone);
-  setDeliveryZones(tenantId, zones);
+  await repos.deliveryZones.setAll(tenantId, zones);
   res.status(201).json(zone);
-});
-app.put("/tenants/:tenantId/delivery-zones/:zoneId", (req, res) => {
+}));
+app.put("/tenants/:tenantId/delivery-zones/:zoneId", wrapAsync(async (req, res) => {
   const { tenantId, zoneId } = req.params;
   const body = req.body;
-  const zones = getDeliveryZones(tenantId);
+  const zones = await repos.deliveryZones.getByTenant(tenantId);
   const idx = zones.findIndex((z) => z.id === zoneId);
   if (idx === -1) return res.status(404).json({ error: "Zone not found" });
   zones[idx] = { ...zones[idx], ...body };
-  setDeliveryZones(tenantId, zones);
+  await repos.deliveryZones.setAll(tenantId, zones);
   res.json(zones[idx]);
-});
-app.patch("/tenants/:tenantId/delivery-zones/:zoneId", (req, res) => {
+}));
+app.patch("/tenants/:tenantId/delivery-zones/:zoneId", wrapAsync(async (req, res) => {
   const { tenantId, zoneId } = req.params;
   const body = req.body;
-  const zones = getDeliveryZones(tenantId);
+  const zones = await repos.deliveryZones.getByTenant(tenantId);
   const idx = zones.findIndex((z) => z.id === zoneId);
   if (idx === -1) return res.status(404).json({ error: "Zone not found" });
   zones[idx] = { ...zones[idx], ...body };
-  setDeliveryZones(tenantId, zones);
+  await repos.deliveryZones.setAll(tenantId, zones);
   res.json(zones[idx]);
-});
-app.delete("/tenants/:tenantId/delivery-zones/:zoneId", (req, res) => {
+}));
+app.delete("/tenants/:tenantId/delivery-zones/:zoneId", wrapAsync(async (req, res) => {
   const { tenantId, zoneId } = req.params;
-  const zones = getDeliveryZones(tenantId).filter((z) => z.id !== zoneId);
-  if (zones.length === getDeliveryZones(tenantId).length) return res.status(404).json({ error: "Zone not found" });
-  setDeliveryZones(tenantId, zones);
+  const zones = await repos.deliveryZones.getByTenant(tenantId);
+  const filtered = zones.filter((z) => z.id !== zoneId);
+  if (filtered.length === zones.length) return res.status(404).json({ error: "Zone not found" });
+  await repos.deliveryZones.setAll(tenantId, filtered);
   res.json({ deleted: true });
-});
-app.patch("/tenants/:tenantId/settings/delivery", (req, res) => {
+}));
+app.patch("/tenants/:tenantId/settings/delivery", async (req, res) => {
   const { tenantId } = req.params;
   const user = req.user;
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   const tenant = tenants.find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (user?.role === "TENANT_ADMIN" && user.tenantId !== tenantId) {
@@ -1537,7 +2544,7 @@ app.patch("/tenants/:tenantId/settings/delivery", (req, res) => {
   const idx = tenants.findIndex((t) => t.id === tenantId);
   const before = { ...tenants[idx] };
   tenants[idx] = { ...tenants[idx], ...updates };
-  setTenants(tenants);
+  await repos.tenants.setAll(tenants);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1552,10 +2559,10 @@ app.patch("/tenants/:tenantId/settings/delivery", (req, res) => {
   });
   res.json(tenants[idx]);
 });
-app.post("/tenants/:tenantId/orders/:orderId/ready", (req, res) => {
+app.post("/tenants/:tenantId/orders/:orderId/ready", async (req, res) => {
   const { tenantId, orderId } = req.params;
   const user = req.user;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (user?.role === "TENANT_ADMIN" && user.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1564,13 +2571,13 @@ app.post("/tenants/:tenantId/orders/:orderId/ready", (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   if (orders[idx].tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
   const now = (/* @__PURE__ */ new Date()).toISOString();
   orders[idx] = { ...orders[idx], status: "READY", readyAt: now };
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
 function courierMarketId(c) {
@@ -1610,9 +2617,9 @@ function computeGamification(orders, period) {
   }
   return { points, badges, rankScore: points };
 }
-function computeCourierMetrics(marketId, courierId) {
-  const tenantIds = getMarketTenantIds(marketId);
-  const orders = getOrders().filter(
+async function computeCourierMetrics(marketId, courierId) {
+  const tenantIds = await getMarketTenantIds(marketId);
+  const orders = (await repos.orders.findAll()).filter(
     (o) => o.fulfillmentType === "DELIVERY" && o.courierId === courierId && o.status === "DELIVERED" && o.tenantId && tenantIds.has(o.tenantId)
   );
   const withDeliveredAt = orders.filter((o) => o.deliveryTimeline?.deliveredAt);
@@ -1650,36 +2657,36 @@ function computeCourierMetrics(marketId, courierId) {
     badgesWeek: gamificationWeek.badges
   };
 }
-app.get("/markets/:marketId/couriers", (req, res) => {
+app.get("/markets/:marketId/couriers", async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot access couriers from another market", code: "CROSS_MARKET_ACCESS" });
   }
-  const couriers = getCouriers().filter((c) => courierMarketId(c) === marketId);
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
   res.json(couriers);
 });
-app.get("/markets/:marketId/couriers/stats", (req, res) => {
+app.get("/markets/:marketId/couriers/stats", async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot access couriers from another market", code: "CROSS_MARKET_ACCESS" });
   }
-  const couriers = getCouriers().filter((c) => courierMarketId(c) === marketId);
-  const list = couriers.map((c) => ({
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
+  const list = await Promise.all(couriers.map(async (c) => ({
     ...c,
-    ...computeCourierMetrics(marketId, c.id)
-  }));
+    ...await computeCourierMetrics(marketId, c.id)
+  })));
   res.json(list);
 });
-app.get("/markets/:marketId/leaderboard", (req, res) => {
+app.get("/markets/:marketId/leaderboard", async (req, res) => {
   const { marketId } = req.params;
   const period = req.query.period || "week";
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
@@ -1689,12 +2696,12 @@ app.get("/markets/:marketId/leaderboard", (req, res) => {
     return res.status(403).json({ error: "Courier can only access own market leaderboard", code: "CROSS_MARKET_ACCESS" });
   }
   if (period !== "week") return res.status(400).json({ error: "period=week only" });
-  const couriers = getCouriers().filter((c) => courierMarketId(c) === marketId);
-  const withMetrics = couriers.map((c) => ({
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
+  const withMetrics = await Promise.all(couriers.map(async (c) => ({
     courierId: c.id,
     name: c.name,
-    ...computeCourierMetrics(marketId, c.id)
-  }));
+    ...await computeCourierMetrics(marketId, c.id)
+  })));
   withMetrics.sort((a, b) => {
     const pa = a.pointsWeek ?? 0;
     const pb = b.pointsWeek ?? 0;
@@ -1722,10 +2729,10 @@ app.get("/markets/:marketId/leaderboard", (req, res) => {
     myRank: myRow?.rank ?? null
   });
 });
-app.post("/markets/:marketId/couriers", (req, res) => {
+app.post("/markets/:marketId/couriers", async (req, res) => {
   const { marketId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
@@ -1747,9 +2754,9 @@ app.post("/markets/:marketId/couriers", (req, res) => {
     isAvailable: true,
     deliveryCount: 0
   };
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   couriers.push(courier);
-  setCouriers(couriers);
+  await repos.couriers.setAll(couriers);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1763,17 +2770,17 @@ app.post("/markets/:marketId/couriers", (req, res) => {
   });
   res.status(201).json(courier);
 });
-app.patch("/markets/:marketId/couriers/:courierId", (req, res) => {
+app.patch("/markets/:marketId/couriers/:courierId", async (req, res) => {
   const { marketId, courierId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot update couriers in another market", code: "CROSS_MARKET_ACCESS" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   const idx = couriers.findIndex((c) => c.id === courierId && courierMarketId(c) === marketId);
   if (idx === -1) {
     const other = couriers.find((c) => c.id === courierId);
@@ -1785,7 +2792,7 @@ app.patch("/markets/:marketId/couriers/:courierId", (req, res) => {
   const before = { ...couriers[idx] };
   const body = req.body;
   couriers[idx] = { ...couriers[idx], ...body };
-  setCouriers(couriers);
+  await repos.couriers.setAll(couriers);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1800,17 +2807,17 @@ app.patch("/markets/:marketId/couriers/:courierId", (req, res) => {
   });
   res.json(couriers[idx]);
 });
-app.delete("/markets/:marketId/couriers/:courierId", (req, res) => {
+app.delete("/markets/:marketId/couriers/:courierId", async (req, res) => {
   const { marketId, courierId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot delete couriers in another market", code: "CROSS_MARKET_ACCESS" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   const idx = couriers.findIndex((c) => c.id === courierId && courierMarketId(c) === marketId);
   if (idx === -1) {
     const other = couriers.find((c) => c.id === courierId);
@@ -1821,7 +2828,7 @@ app.delete("/markets/:marketId/couriers/:courierId", (req, res) => {
   }
   const before = { ...couriers[idx] };
   couriers[idx] = { ...couriers[idx], isActive: false };
-  setCouriers(couriers);
+  await repos.couriers.setAll(couriers);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1836,9 +2843,9 @@ app.delete("/markets/:marketId/couriers/:courierId", (req, res) => {
   });
   res.json(couriers[idx]);
 });
-app.get("/tenants/:tenantId/couriers", (req, res) => {
+app.get("/tenants/:tenantId/couriers", async (req, res) => {
   const { tenantId } = req.params;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1846,13 +2853,13 @@ app.get("/tenants/:tenantId/couriers", (req, res) => {
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== tenant.marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const couriers = getCouriers().filter((c) => c.scopeType === "TENANT" && c.scopeId === tenantId);
+  const couriers = (await repos.couriers.findAll()).filter((c) => c.scopeType === "TENANT" && c.scopeId === tenantId);
   res.json(couriers);
 });
-app.post("/tenants/:tenantId/couriers", (req, res) => {
+app.post("/tenants/:tenantId/couriers", async (req, res) => {
   const { tenantId } = req.params;
   const user = req.user;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (user?.role === "TENANT_ADMIN" && user.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1873,15 +2880,15 @@ app.post("/tenants/:tenantId/couriers", (req, res) => {
     isOnline: false,
     capacity: 3
   };
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   couriers.push(courier);
-  setCouriers(couriers);
+  await repos.couriers.setAll(couriers);
   res.status(201).json(courier);
 });
-app.patch("/tenants/:tenantId/couriers/:courierId", (req, res) => {
+app.patch("/tenants/:tenantId/couriers/:courierId", async (req, res) => {
   const { tenantId, courierId } = req.params;
   const user = req.user;
-  const tenant = getTenants().find((t) => t.id === tenantId);
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (user?.role === "TENANT_ADMIN" && user.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
@@ -1890,27 +2897,27 @@ app.patch("/tenants/:tenantId/couriers/:courierId", (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   const idx = couriers.findIndex((c) => c.id === courierId && c.scopeType === "TENANT" && c.scopeId === tenantId);
   if (idx === -1) return res.status(404).json({ error: "Courier not found" });
   const body = req.body;
   couriers[idx] = { ...couriers[idx], ...body };
-  setCouriers(couriers);
+  await repos.couriers.setAll(couriers);
   res.json(couriers[idx]);
 });
-app.get("/markets/:marketId/orders", (req, res) => {
+app.get("/markets/:marketId/orders", wrapAsync(async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenantIds = getMarketTenantIds(marketId);
-  const orders = getOrders().filter(
+  const tenantIds = await getMarketTenantIds(marketId);
+  const orders = (await repos.orders.findAll()).filter(
     (o) => o.tenantId && tenantIds.has(o.tenantId)
   );
   res.json(orders);
-});
+}));
 function ordersInDateRange(orders, from, to) {
   if (!from && !to) return orders;
   const fromMs = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
@@ -1938,17 +2945,17 @@ function computeOrderFinancials(o) {
   const isCashCollected = Boolean(pay?.cashLedger?.collected);
   return { gross, itemsTotal, deliveryFee, commission, netToMerchant, isCash, isCashCollected };
 }
-app.get("/markets/:marketId/finance/summary", (req, res) => {
+app.get("/markets/:marketId/finance/summary", wrapAsync(async (req, res) => {
   const { marketId } = req.params;
   const from = req.query.from;
   const to = req.query.to;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenantIds = getMarketTenantIds(marketId);
-  const allOrders = getOrders().filter(
+  const tenantIds = await getMarketTenantIds(marketId);
+  const allOrders = (await repos.orders.findAll()).filter(
     (o) => o.tenantId && tenantIds.has(o.tenantId)
   );
   const orders = ordersInDateRange(allOrders, from, to);
@@ -1993,22 +3000,22 @@ app.get("/markets/:marketId/finance/summary", (req, res) => {
     activeDeliveryOrders,
     cashOrders
   });
-});
-app.get("/markets/:marketId/finance/tenants", (req, res) => {
+}));
+app.get("/markets/:marketId/finance/tenants", wrapAsync(async (req, res) => {
   const { marketId } = req.params;
   const from = req.query.from;
   const to = req.query.to;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenantIds = getMarketTenantIds(marketId);
-  const allOrders = getOrders().filter(
+  const tenantIds = await getMarketTenantIds(marketId);
+  const allOrders = (await repos.orders.findAll()).filter(
     (o) => o.tenantId && tenantIds.has(o.tenantId)
   );
   const orders = ordersInDateRange(allOrders, from, to);
-  const tenants = getTenants();
+  const tenants = await repos.tenants.findAll();
   const byTenant = /* @__PURE__ */ new Map();
   for (const o of orders) {
     const tid = o.tenantId ?? "";
@@ -2037,22 +3044,22 @@ app.get("/markets/:marketId/finance/tenants", (req, res) => {
     };
   });
   res.json(result);
-});
-app.get("/markets/:marketId/finance/couriers", (req, res) => {
+}));
+app.get("/markets/:marketId/finance/couriers", wrapAsync(async (req, res) => {
   const { marketId } = req.params;
   const from = req.query.from;
   const to = req.query.to;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenantIds = getMarketTenantIds(marketId);
-  const allOrders = getOrders().filter(
+  const tenantIds = await getMarketTenantIds(marketId);
+  const allOrders = (await repos.orders.findAll()).filter(
     (o) => o.tenantId && tenantIds.has(o.tenantId) && o.courierId
   );
   const orders = ordersInDateRange(allOrders, from, to);
-  const couriers = getCouriers().filter((c) => courierMarketId(c) === marketId);
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
   const ACTIVE_STATUSES = /* @__PURE__ */ new Set(["ASSIGNED", "IN_PROGRESS", "PICKED_UP"]);
   const byCourier = /* @__PURE__ */ new Map();
   for (const o of orders) {
@@ -2082,11 +3089,11 @@ app.get("/markets/:marketId/finance/couriers", (req, res) => {
     };
   });
   res.json(result);
-});
-app.post("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
+}));
+app.post("/markets/:marketId/orders/:orderId/assign-courier", async (req, res) => {
   const { marketId, orderId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot assign couriers in another market", code: "CROSS_MARKET_ACCESS" });
@@ -2097,11 +3104,11 @@ app.post("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
   if (!courierId || typeof courierId !== "string") {
     return res.status(400).json({ error: "courierId is required" });
   }
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   const order = orders[idx];
-  const orderMarketId = order.marketId ?? getTenants().find((t) => t.id === order.tenantId)?.marketId;
+  const orderMarketId = order.marketId ?? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId)?.marketId;
   if (orderMarketId !== marketId) {
     return res.status(403).json({ error: "Order not in this market", code: "CROSS_MARKET_ACCESS" });
   }
@@ -2112,7 +3119,7 @@ app.post("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
   if (currentStatus !== "UNASSIGNED" && !body.reassign) {
     return res.status(409).json({ error: "Order already assigned. Use reassign: true to change courier.", code: "CONCURRENCY_CONFLICT" });
   }
-  const couriers = getCouriers();
+  const couriers = await repos.couriers.findAll();
   const courier = couriers.find((c) => c.id === courierId);
   if (!courier) return res.status(404).json({ error: "Courier not found" });
   const cMarketId = courierMarketId(courier);
@@ -2135,15 +3142,13 @@ app.post("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
     deliveryStatus: "ASSIGNED",
     deliveryTimeline: { ...timeline, assignedAt }
   };
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   const courierIdx = couriers.findIndex((c) => c.id === courierId);
   if (courierIdx >= 0) {
     couriers[courierIdx] = { ...couriers[courierIdx], isAvailable: false };
-    setCouriers(couriers);
+    await repos.couriers.setAll(couriers);
   }
   appendAuditEvent({
-    id: `audit-${Date.now()}`,
-    at: (/* @__PURE__ */ new Date()).toISOString(),
     userId: user.id,
     role: user.role,
     marketId,
@@ -2157,10 +3162,10 @@ app.post("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
   emitCourierAssigned(courierId, orders[idx]);
   res.json(orders[idx]);
 });
-app.post("/markets/:marketId/orders/:orderId/contact", (req, res) => {
+app.post("/markets/:marketId/orders/:orderId/contact", async (req, res) => {
   const { marketId, orderId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden", code: "SCOPE_VIOLATION" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
@@ -2170,11 +3175,11 @@ app.post("/markets/:marketId/orders/:orderId/contact", (req, res) => {
   const body = req.body;
   const notes = body.notes?.trim() || body.message?.trim() || void 0;
   const channel = body.channel?.trim() || void 0;
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   const order = orders[idx];
-  const orderMarketId = order.marketId ?? getTenants().find((t) => t.id === order.tenantId)?.marketId;
+  const orderMarketId = order.marketId ?? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId)?.marketId;
   if (orderMarketId !== marketId) return res.status(403).json({ error: "Order not in this market", code: "CROSS_MARKET_ACCESS" });
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const contactLog = order.contactLog ?? {};
@@ -2195,47 +3200,45 @@ app.post("/markets/:marketId/orders/:orderId/contact", (req, res) => {
       entries
     }
   };
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
-app.delete("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
+app.delete("/markets/:marketId/orders/:orderId/assign-courier", async (req, res) => {
   const { marketId, orderId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
     return res.status(403).json({ error: "Cannot unassign in another market", code: "CROSS_MARKET_ACCESS" });
   }
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  const orders = getOrders();
+  const orders = await repos.orders.findAll();
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   const order = orders[idx];
-  const orderMarketId = order.marketId ?? getTenants().find((t) => t.id === order.tenantId)?.marketId;
+  const orderMarketId = order.marketId ?? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId)?.marketId;
   if (orderMarketId !== marketId) {
     return res.status(403).json({ error: "Order not in this market", code: "CROSS_MARKET_ACCESS" });
   }
   const courierId = order.courierId;
   const before = { ...order };
   orders[idx] = { ...order, courierId: void 0, deliveryStatus: "UNASSIGNED" };
-  setOrders(orders);
+  await repos.orders.setAll(orders);
   if (courierId) {
     emitCourierUnassigned(courierId, orderId);
     const otherAssigned = orders.filter(
       (o) => o.courierId === courierId && o.id !== orderId && o.status !== "DELIVERED" && o.status !== "CANCELED"
     );
     if (otherAssigned.length === 0) {
-      const couriers = getCouriers();
+      const couriers = await repos.couriers.findAll();
       const cIdx = couriers.findIndex((c) => c.id === courierId);
       if (cIdx >= 0) {
         couriers[cIdx] = { ...couriers[cIdx], isAvailable: true };
-        setCouriers(couriers);
+        await repos.couriers.setAll(couriers);
       }
     }
   }
   appendAuditEvent({
-    id: `audit-${Date.now()}`,
-    at: (/* @__PURE__ */ new Date()).toISOString(),
     userId: user.id,
     role: user.role,
     marketId,
@@ -2248,20 +3251,20 @@ app.delete("/markets/:marketId/orders/:orderId/assign-courier", (req, res) => {
   });
   res.json(orders[idx]);
 });
-app.get("/markets/:marketId/dispatch/queue", (req, res) => {
+app.get("/markets/:marketId/dispatch/queue", async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const queue = getDispatchQueue(marketId);
+  const queue = await getDispatchQueue(marketId, repos);
   res.json(queue);
 });
-app.get("/markets/:marketId/delivery-jobs", (req, res) => {
+app.get("/markets/:marketId/delivery-jobs", async (req, res) => {
   const { marketId } = req.params;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
@@ -2270,10 +3273,10 @@ app.get("/markets/:marketId/delivery-jobs", (req, res) => {
   const jobs = getDeliveryJobs().filter((j) => j.marketId === marketId);
   res.json(jobs);
 });
-app.post("/markets/:marketId/delivery-jobs", (req, res) => {
+app.post("/markets/:marketId/delivery-jobs", async (req, res) => {
   const { marketId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
@@ -2282,7 +3285,7 @@ app.post("/markets/:marketId/delivery-jobs", (req, res) => {
   if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
   const body = req.body;
   const items = body.items ?? [];
-  const tenantIds = new Set(getTenants().filter((t) => t.marketId === marketId).map((t) => t.id));
+  const tenantIds = new Set((await repos.tenants.findAll()).filter((t) => t.marketId === marketId).map((t) => t.id));
   for (const it of items) {
     if (!tenantIds.has(it.tenantId)) return res.status(400).json({ error: `Order ${it.orderId} tenant not in market` });
   }
@@ -2299,10 +3302,10 @@ app.post("/markets/:marketId/delivery-jobs", (req, res) => {
   setDeliveryJobs(jobs);
   res.status(201).json(job);
 });
-app.patch("/markets/:marketId/delivery-jobs/:jobId/assign", (req, res) => {
+app.patch("/markets/:marketId/delivery-jobs/:jobId/assign", async (req, res) => {
   const { marketId, jobId } = req.params;
   const user = req.user;
-  const market = getMarkets().find((m) => m.id === marketId);
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (user?.role === "TENANT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (user?.role === "MARKET_ADMIN" && user.marketId !== marketId) {
@@ -2313,7 +3316,7 @@ app.patch("/markets/:marketId/delivery-jobs/:jobId/assign", (req, res) => {
   const jobs = getDeliveryJobs();
   const idx = jobs.findIndex((j) => j.id === jobId && j.marketId === marketId);
   if (idx === -1) return res.status(404).json({ error: "Delivery job not found" });
-  const courier = getCouriers().find((c) => c.id === body.courierId);
+  const courier = (await repos.couriers.findAll()).find((c) => c.id === body.courierId);
   if (!courier) return res.status(404).json({ error: "Courier not found" });
   if (courierMarketId(courier) !== marketId) {
     return res.status(403).json({ error: "Courier belongs to another market", code: "CROSS_MARKET_ACCESS" });
@@ -2322,33 +3325,45 @@ app.patch("/markets/:marketId/delivery-jobs/:jobId/assign", (req, res) => {
   setDeliveryJobs(jobs);
   res.json(jobs[idx]);
 });
-app.get("/templates", (_req, res) => {
+app.get("/templates", async (_req, res) => {
   res.json(getTemplates());
 });
-app.get("/staff", (req, res) => {
+app.get("/staff", async (req, res) => {
   const tenantId = req.query.tenantId;
   let staff = getStaff();
   if (tenantId) staff = staff.filter((s) => s.tenantId === tenantId);
   res.json(staff);
 });
-app.post("/staff", (req, res) => {
+app.post("/staff", async (req, res) => {
   const user = req.body;
   const staff = getStaff();
   staff.push(user);
   setStaff(staff);
   res.status(201).json(user);
 });
-app.get("/health", (_req, res) => {
+app.get("/health", async (_req, res) => {
   res.json({ ok: true });
 });
-seedUsersIfNeeded();
-seedMarketsIfNeeded();
-seedTenantMarketIdsIfNeeded();
-seedOrdersIfNeeded();
-seedDeliveryZonesIfNeeded();
-app.listen(PORT, () => {
-  console.log(`Mock API server running at http://localhost:${PORT}`);
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  const status = err.status ?? 500;
+  const body = {
+    error: err.message || "Internal server error"
+  };
+  if (err.code) body.code = err.code;
+  if (process.env.NODE_ENV !== "production") body.details = err.stack;
+  res.status(status).json(body);
 });
+(async () => {
+  await seedUsersIfNeeded();
+  await seedMarketsIfNeeded();
+  await seedTenantMarketIdsIfNeeded();
+  await seedOrdersIfNeeded();
+  await seedDeliveryZonesIfNeeded();
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "json"})`);
+  });
+})();
 export {
   emitCourierAssigned,
   emitCourierUnassigned

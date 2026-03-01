@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -39,7 +40,8 @@ function wrapAsync(fn: RequestHandler): RequestHandler {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
-const JWT_SECRET = process.env.JWT_SECRET ?? 'nmd-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET ?? 'nmd-dev-secret-2026';
+console.log('[MockAPI] JWT_SECRET loaded:', JWT_SECRET ? `${JWT_SECRET.slice(0, 8)}...` : 'MISSING (using default)');
 const app = express();
 
 const DABBURIYYA_MARKET_ID = 'market-dabburiyya';
@@ -56,7 +58,7 @@ async function seedUsersIfNeeded(): Promise<void> {
     { id: ROOT_ADMIN_ID, email: 'root@nmd.com', role: 'ROOT_ADMIN', password: '123456' },
     { id: 'user-dab-admin', email: 'dab@nmd.com', role: 'MARKET_ADMIN', marketId: DABBURIYYA_MARKET_ID, password: '123456' },
     { id: 'user-iks-admin', email: 'iks@nmd.com', role: 'MARKET_ADMIN', marketId: IKSAL_MARKET_ID, password: '123456' },
-    { id: 'user-buffalo-admin', email: 'buffalo@nmd.com', role: 'TENANT_ADMIN', tenantId: BUFFALO28_TENANT_ID, password: '123456' },
+    { id: 'user-buffalo-admin', email: 'buffalo@admin.com', role: 'TENANT_ADMIN', tenantId: BUFFALO28_TENANT_ID, password: '123456' },
     { id: 'user-tenant-ms-brands', email: 'ms-brands@nmd.com', role: 'TENANT_ADMIN', tenantId: '5b35539f-90e1-49cc-8c32-8d26cdce20f2', password: 'ms-brands@2026' },
     { id: 'user-tenant-obr', email: 'obr@nmd.com', role: 'TENANT_ADMIN', tenantId: OBR_TENANT_ID, password: 'obr@2026' },
     { id: 'user-tenant-top-market', email: 'top-market@nmd.com', role: 'TENANT_ADMIN', tenantId: TOP_MARKET_TENANT_ID, password: 'top-market@2026' },
@@ -143,7 +145,7 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
     if (existing.length > 0) continue;
     const slug = (t as { slug?: string }).slug ?? '';
     let zones: DeliveryZoneRecord[] = [];
-    if (slug === 'buffalo-28' || slug === 'pizza') {
+    if (slug === 'buffalo' || slug === 'pizza') {
       zones = [
         { id: `dz-${t.id}-1`, tenantId: t.id, name: 'المنطقة الوسطى', fee: 15, etaMinutes: 30, isActive: true, sortOrder: 0 },
         { id: `dz-${t.id}-2`, tenantId: t.id, name: 'الشمال', fee: 20, etaMinutes: 45, isActive: true, sortOrder: 1 },
@@ -185,9 +187,32 @@ const upload = multer({
   },
 });
 
-app.use(cors());
+const corsOptions = {
+  origin: true, // Reflect request origin (required when credentials: true; * not allowed)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Emergency-Mode'],
+  exposedHeaders: ['Authorization'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.headers.origin) res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+/** Parse multipart for POST /upload BEFORE auth so req.body.access_token is available */
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/upload') {
+    return upload.array('files', 20)(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      next();
+    });
+  }
+  next();
+});
+app.use('/uploads', cors({ origin: '*', methods: ['GET', 'OPTIONS'] }), express.static(UPLOADS_DIR));
 
 declare global {
   namespace Express {
@@ -197,7 +222,7 @@ declare global {
   }
 }
 
-/** Public routes: no auth required */
+/** Public routes: no auth required. Storefront guests can access these without JWT. */
 const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'POST', path: /^\/auth\/login$/ },
   { method: 'GET', path: /^\/health$/ },
@@ -221,10 +246,16 @@ function isPublicRoute(method: string, path: string): boolean {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
 }
 
-/** Parse JWT from Authorization: Bearer <token>, set req.user or req.customer */
+/** Parse JWT from query.token (highest), Authorization header, or req.body.access_token. Set req.user or req.customer */
 app.use(async (req, _res, next) => {
-  const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = (req.query.token as string) || (req.headers.authorization?.split(' ')[1]) || (req.body?.access_token);
+  const isUpload = req.method === 'POST' && req.path === '/upload';
+  if (isUpload) {
+    console.log('[DEBUG-AUTH] Header:', req.headers.authorization, 'Query:', req.query.token, 'Body:', req.body?.access_token);
+    const source = token ? (req.query.token ? 'query' : req.headers.authorization ? 'header' : 'body') : 'MISSING';
+    console.log('[Auth] POST /upload - token from:', source, token ? `${token.slice(0, 20)}...` : '');
+    if (!token) console.log('[Auth] Incoming Headers (full):', req.headers);
+  }
   req.user = undefined;
   (req as express.Request & { customer?: { id: string; phone: string } }).customer = undefined;
   if (token) {
@@ -237,10 +268,18 @@ app.use(async (req, _res, next) => {
       } else {
         const users = await repos.users.findAll();
         const user = users.find((u) => u.id === decoded.sub);
-        if (user) req.user = { ...user, password: undefined };
+        if (user) {
+          req.user = { ...user, password: undefined };
+          if (isUpload) console.log('[Auth] req.user set from DB:', user.id, user.role);
+        } else if (decoded.role && ['ROOT_ADMIN', 'TENANT_ADMIN', 'MARKET_ADMIN'].includes(decoded.role)) {
+          req.user = { id: decoded.sub, email: `${decoded.sub}@jwt`, role: decoded.role, tenantId: (decoded as { tenantId?: string }).tenantId, marketId: (decoded as { marketId?: string }).marketId } as User;
+          if (isUpload) console.log('[Auth] req.user set from JWT fallback (user not in DB):', decoded.sub, decoded.role);
+        } else if (isUpload) {
+          console.log('[Auth] User not found for sub:', decoded.sub, 'role:', decoded.role, '- users:', users.map((u) => u.id));
+        }
       }
-    } catch {
-      /* leave undefined */
+    } catch (err) {
+      console.log('[Auth] JWT verify failed:', err instanceof Error ? err.message : err, isUpload ? '(POST /upload)' : '');
     }
   }
   (req as express.Request & { emergencyMode?: boolean; emergencyReason?: string }).emergencyMode =
@@ -267,7 +306,7 @@ app.use(async (req, res, next) => {
   next();
 });
 
-/** Require auth for non-public routes (admin req.user or customer req.customer) */
+/** Require auth for non-public routes. GET /tenants, /markets, /catalog, /campaigns, /delivery, /public are allowed without token. */
 app.use((req, res, next) => {
   if (req.path.startsWith('/uploads')) return next();
   if (isPublicRoute(req.method, req.path)) return next();
@@ -275,8 +314,12 @@ app.use((req, res, next) => {
     if (!(req as express.Request & { customer?: unknown }).customer) return res.status(401).json({ error: 'Unauthorized' });
     return next();
   }
-  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  next();
+  if (req.user) return next();
+  if (req.method === 'POST' && req.path === '/upload') {
+    const hasAuth = !!req.get('Authorization');
+    console.log('[Auth] 401 on POST /upload - token', hasAuth ? 'present but invalid or user not found' : 'MISSING');
+  }
+  return res.status(401).json({ error: 'Unauthorized' });
 });
 
 // --- Auth ---
@@ -289,7 +332,7 @@ app.post('/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   const token = jwt.sign(
-    { sub: user.id },
+    { sub: user.id, role: user.role, tenantId: user.tenantId, marketId: user.marketId },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -838,9 +881,21 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
         slug: n.slug,
         name: n.name,
         type: (n.type === 'CLOTHING' || n.type === 'FOOD') ? n.type : 'GENERAL',
-        branding: { logoUrl: n.logoUrl ?? '', primaryColor: n.primaryColor ?? '#7C3AED' },
+        branding: {
+          logoUrl: n.logoUrl ?? '',
+          primaryColor: n.primaryColor ?? '#7C3AED',
+          secondaryColor: n.secondaryColor ?? '#d4a574',
+          fontFamily: n.fontFamily ?? '"Cairo", system-ui, sans-serif',
+          radiusScale: n.radiusScale ?? 1,
+          layoutStyle: n.layoutStyle ?? 'default',
+          hero: n.hero,
+          banners: n.banners ?? [],
+        },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
+        operationalStatus: (n as RegistryTenant).operationalStatus,
+        orderPolicy: (n as RegistryTenant).orderPolicy,
+        businessHours: (n as RegistryTenant).businessHours,
       };
     });
   res.json(tenants);
@@ -903,18 +958,27 @@ app.get('/tenants', async (req, res) => {
   res.json(tenants.map(normalizeTenantResponse));
 });
 
-/** Storefront/Market: list active tenants with id, slug, name, type, branding.logoUrl, isActive */
+/** Storefront/Market: list active tenants with full branding */
 app.get('/storefront/tenants', async (_req, res) => {
   const tenants = (await repos.tenants.findAll())
     .filter((t) => t.enabled)
     .map((t) => {
       const n = normalizeTenantResponse(t);
-        return {
+      return {
         id: n.id,
         slug: n.slug,
         name: n.name,
         type: (n.type === 'CLOTHING' || n.type === 'FOOD') ? n.type : 'GENERAL',
-        branding: { logoUrl: n.logoUrl ?? '', primaryColor: n.primaryColor ?? '#7C3AED' },
+        branding: {
+          logoUrl: n.logoUrl ?? '',
+          primaryColor: n.primaryColor ?? '#7C3AED',
+          secondaryColor: n.secondaryColor ?? '#d4a574',
+          fontFamily: n.fontFamily ?? '"Cairo", system-ui, sans-serif',
+          radiusScale: n.radiusScale ?? 1,
+          layoutStyle: n.layoutStyle ?? 'default',
+          hero: n.hero,
+          banners: n.banners ?? [],
+        },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
       };
@@ -1084,6 +1148,7 @@ app.get('/tenants/by-slug/:slug', async (req, res) => {
 app.put('/tenants/:id/branding', async (req, res) => {
   const { id } = req.params;
   const user = req.user;
+  console.log('[Branding] Incoming Config:', req.body);
   const tenants = (await repos.tenants.findAll());
   const t = tenants.find((x) => x.id === id);
   if (!t) return res.status(404).json({ error: 'Tenant not found' });
@@ -1091,16 +1156,105 @@ app.put('/tenants/:id/branding', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
-  const { logoUrl, hero, banners, whatsappPhone } = req.body as { logoUrl?: string; hero?: StorefrontHero; banners?: StorefrontBanner[]; whatsappPhone?: string };
+  const body = req.body as {
+    logoUrl?: string;
+    hero?: StorefrontHero;
+    banners?: StorefrontBanner[];
+    whatsappPhone?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontFamily?: string;
+    radiusScale?: number;
+    layoutStyle?: string;
+  };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
-  if (logoUrl !== undefined) tenants[idx].logoUrl = logoUrl;
-  if (hero !== undefined) tenants[idx].hero = normalizeHero(hero);
-  if (banners !== undefined) tenants[idx].banners = banners;
-  if (whatsappPhone !== undefined) {
-    const cleaned = typeof whatsappPhone === 'string' ? whatsappPhone.replace(/\D/g, '') : '';
+  if (body.logoUrl !== undefined) tenants[idx].logoUrl = body.logoUrl;
+  if (body.hero !== undefined) tenants[idx].hero = normalizeHero(body.hero);
+  if (body.banners !== undefined) tenants[idx].banners = body.banners;
+  if (body.whatsappPhone !== undefined) {
+    const cleaned = typeof body.whatsappPhone === 'string' ? body.whatsappPhone.replace(/\D/g, '') : '';
     tenants[idx].whatsappPhone = cleaned || undefined;
   }
+  if (body.primaryColor !== undefined) tenants[idx].primaryColor = body.primaryColor;
+  if (body.secondaryColor !== undefined) tenants[idx].secondaryColor = body.secondaryColor;
+  if (body.fontFamily !== undefined) tenants[idx].fontFamily = body.fontFamily;
+  if (body.radiusScale !== undefined) tenants[idx].radiusScale = body.radiusScale;
+  if (body.layoutStyle !== undefined) tenants[idx].layoutStyle = body.layoutStyle as RegistryTenant['layoutStyle'];
+  const before = { ...tenants[idx] };
+  await repos.tenants.setAll(tenants);
+  console.log('[Branding] Persisted tenant', id, 'to store (data.json)');
+  appendAuditEvent({
+    userId: user!.id,
+    role: user!.role,
+    marketId: t.marketId,
+    action: 'update',
+    entity: 'tenant',
+    entityId: id,
+    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
+    emergencyMode: user!.role === 'ROOT_ADMIN',
+    before,
+    after: tenants[idx],
+  });
+  res.json(normalizeTenantResponse(tenants[idx]));
+});
+
+app.put('/tenants/:id/collections', async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: 'Tenant not found' });
+  if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  const body = req.body as { collections?: import('@nmd/core').HomeCollection[] };
+  const collections = Array.isArray(body.collections) ? body.collections : [];
+  const idx = tenants.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
+  const before = { ...tenants[idx] };
+  (tenants[idx] as RegistryTenant).collections = collections;
+  await repos.tenants.setAll(tenants);
+  appendAuditEvent({
+    userId: user!.id,
+    role: user!.role,
+    marketId: t.marketId,
+    action: 'update',
+    entity: 'tenant',
+    entityId: id,
+    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
+    emergencyMode: user!.role === 'ROOT_ADMIN',
+    before,
+    after: tenants[idx],
+  });
+  res.json(normalizeTenantResponse(tenants[idx]));
+});
+
+app.put('/tenants/:id/operational-settings', async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: 'Tenant not found' });
+  if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  const body = req.body as {
+    operationalStatus?: 'open' | 'closed' | 'busy';
+    orderPolicy?: 'accept_always' | 'accept_only_when_open';
+    businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
+    busyBannerEnabled?: boolean;
+    busyBannerText?: string;
+  };
+  const idx = tenants.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
+  if (body.operationalStatus !== undefined) (tenants[idx] as RegistryTenant).operationalStatus = body.operationalStatus;
+  if (body.orderPolicy !== undefined) (tenants[idx] as RegistryTenant).orderPolicy = body.orderPolicy;
+  if (body.businessHours !== undefined) (tenants[idx] as RegistryTenant).businessHours = body.businessHours;
+  if (body.busyBannerEnabled !== undefined) (tenants[idx] as RegistryTenant).busyBannerEnabled = body.busyBannerEnabled;
+  if (body.busyBannerText !== undefined) (tenants[idx] as RegistryTenant).busyBannerText = body.busyBannerText;
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
@@ -1119,14 +1273,15 @@ app.put('/tenants/:id/branding', async (req, res) => {
 });
 
 // --- Upload ---
-app.post('/upload', async (req, res, next) => {
-  upload.array('files', 20)(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    const files = (req as { files?: Express.Multer.File[] }).files ?? [];
-    const base = `http://localhost:${PORT}`;
-    const urls = files.map((f) => `${base}/uploads/${f.filename}`);
-    res.json({ urls });
-  });
+const UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+app.post('/upload', async (req, res) => {
+  console.log('Query Params:', req.query);
+  console.log('Incoming Headers:', req.headers);
+  const files = (req as { files?: Express.Multer.File[] }).files ?? [];
+  const base = UPLOAD_BASE;
+  const urls = files.map((f) => `${base}/uploads/${f.filename}`);
+  console.log('[Upload] Success:', files.length, 'files, base:', base);
+  res.json({ urls });
 });
 
 // --- Catalog ---
@@ -2434,7 +2589,7 @@ app.use((err: Error & { status?: number; code?: string }, _req: express.Request,
   await seedOrdersIfNeeded();
   await seedDeliveryZonesIfNeeded();
 
-  app.listen(PORT, () => {
-    console.log(`Mock API server running at http://localhost:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);
   });
 })();

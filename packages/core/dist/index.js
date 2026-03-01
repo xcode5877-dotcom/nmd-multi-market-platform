@@ -88,6 +88,37 @@ function resolveTenantId(hostname, searchParams) {
   return parseSubdomainTenant(hostname);
 }
 var LAST_TENANT_KEY = "nmd.lastTenant";
+var DAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+var STORE_TIMEZONE = "Asia/Jerusalem";
+var WEEKDAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function getNowInStoreTz() {
+  const now = /* @__PURE__ */ new Date();
+  const tz = { timeZone: STORE_TIMEZONE };
+  const dayStr = new Intl.DateTimeFormat("en-US", { ...tz, weekday: "short" }).format(now);
+  const dayIdx = WEEKDAY_MAP[dayStr] ?? 0;
+  const timeStr = new Intl.DateTimeFormat("en-CA", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  return { dayIdx, hour: hour ?? 0, minute: minute ?? 0 };
+}
+function getOperationalStatus(tenant) {
+  if (tenant.operationalStatus) return tenant.operationalStatus;
+  const hours = tenant.businessHours;
+  if (!hours || Object.keys(hours).length === 0) return "open";
+  const { dayIdx, hour, minute } = getNowInStoreTz();
+  const dayKey = DAY_ORDER[dayIdx];
+  const day = hours[dayKey];
+  if (!day || day.isClosedDay) return "closed";
+  const [openH, openM] = (day.open || "00:00").split(":").map(Number);
+  const [closeH, closeM] = (day.close || "23:59").split(":").map(Number);
+  const nowMin = hour * 60 + minute;
+  const openMin = openH * 60 + openM;
+  const closeMin = closeH * 60 + closeM;
+  if (nowMin >= openMin && nowMin < closeMin) return "open";
+  return "closed";
+}
+function isStoreOpen(tenant) {
+  return getOperationalStatus(tenant) === "open";
+}
 function resolveTenantFromUrl() {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
@@ -414,6 +445,8 @@ export {
   formatPlacementAr,
   formatPrice,
   generateId,
+  getOperationalStatus,
+  isStoreOpen,
   isValidWhatsAppPhone,
   mockCategories,
   mockProducts,
