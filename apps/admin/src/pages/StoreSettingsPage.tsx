@@ -4,9 +4,11 @@ import { Card, Button, Input, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
-import { Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, XCircle, Shield } from 'lucide-react';
 
 const api = new MockApiClient();
+const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+const MIN_PASSWORD_LENGTH = 6;
 
 const DAY_LABELS: Record<DayKey, string> = {
   sun: 'الأحد',
@@ -43,6 +45,10 @@ export default function StoreSettingsPage() {
 
   const [busyBannerText, setBusyBannerText] = useState('المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول');
   const [hours, setHours] = useState<BusinessHours>(() => defaultBusinessHours());
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     if (tenant) {
@@ -110,6 +116,31 @@ export default function StoreSettingsPage() {
       addToast('تم حفظ أوقات العمل', 'success');
     } catch {
       addToast('حدث خطأ', 'error');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    if (!currentPassword.trim()) {
+      setPasswordError('أدخل كلمة المرور الحالية');
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setPasswordError(`كلمة المرور الجديدة يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('كلمة المرور الجديدة وتأكيدها غير متطابقتين');
+      return;
+    }
+    try {
+      await api.changePassword(currentPassword, newPassword);
+      addToast('تم تغيير كلمة المرور بنجاح', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch {
+      addToast('فشل تغيير كلمة المرور — تحقق من كلمة المرور الحالية', 'error');
     }
   };
 
@@ -238,6 +269,45 @@ export default function StoreSettingsPage() {
           </label>
         </div>
       </Card>
+
+      {/* Security - Change Password */}
+      {MOCK_API_URL && (
+        <Card className="p-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            الأمان
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">غيّر كلمة المرور الخاصة بك. لا يوجد استعادة عبر البريد — إدارة كلمة المرور تتم داخلياً.</p>
+          <div className="space-y-4 max-w-md">
+            <Input
+              type="password"
+              label="كلمة المرور الحالية"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+            <Input
+              type="password"
+              label="كلمة المرور الجديدة"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder={`${MIN_PASSWORD_LENGTH} أحرف على الأقل`}
+              autoComplete="new-password"
+            />
+            <Input
+              type="password"
+              label="تأكيد كلمة المرور الجديدة"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="new-password"
+            />
+            {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+            <Button onClick={handleChangePassword}>حفظ كلمة المرور الجديدة</Button>
+          </div>
+        </Card>
+      )}
 
       {/* Busy Banner Toggle */}
       <Card className="p-6">

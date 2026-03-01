@@ -9,6 +9,7 @@ export interface AuthUser {
   role: string;
   marketId?: string;
   tenantId?: string;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextValue {
@@ -17,6 +18,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refetchUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -42,6 +44,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setToken(null);
   }, [setToken]);
+
+  const refetchUser = useCallback(async () => {
+    if (!MOCK_API_URL || !token) return;
+    try {
+      const res = await fetch(`${MOCK_API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setToken(null);
+        return;
+      }
+      const u = (await res.json()) as AuthUser;
+      setUser(u);
+    } catch {
+      setToken(null);
+    }
+  }, [token, setToken]);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${MOCK_API_URL}/auth/login`, {
@@ -78,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(null);
           return;
         }
-        const u = (await res.json()) as AuthUser;
+        const u = (await res.json()) as AuthUser & { mustChangePassword?: boolean };
         if (!cancelled) setUser(u);
       } catch {
         if (!cancelled) setToken(null);
@@ -90,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token, setToken]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );

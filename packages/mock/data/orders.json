@@ -1437,7 +1437,7 @@
       "addressText": "البستان"
     },
     "marketId": "market-dabburiyya",
-    "deliveryAssignmentMode": "TENANT",
+    "deliveryAssignmentMode": "MARKET",
     "readyAt": "2026-02-16T17:03:21.003Z",
     "payment": {
       "method": "CASH",
@@ -1456,7 +1456,8 @@
         "netToMarket": 55
       }
     },
-    "orderType": "PRODUCT"
+    "orderType": "PRODUCT",
+    "fallbackTriggeredAt": "2026-03-01T15:52:08.530Z"
   },
   {
     "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",

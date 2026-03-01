@@ -869,6 +869,26 @@ var MockApiClient = class {
       body: JSON.stringify({ currentPassword, newPassword })
     });
   }
+  /** ROOT_ADMIN only: List all users (passwords omitted). */
+  async listUsers() {
+    if (!this.useApi) return [];
+    return apiFetch("/users");
+  }
+  /** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset tenant admins in their market only. */
+  async resetUserPassword(userId, newPassword) {
+    if (!this.useApi) throw new Error("Reset password requires API");
+    return apiFetch(`/admin/users/${userId}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ newPassword })
+    });
+  }
+  /** MARKET_ADMIN: List tenant admins for a market. ROOT_ADMIN: any market. */
+  async listTenantAdminsForMarket(marketId) {
+    if (!this.useApi) return [];
+    return apiFetch(
+      `/markets/${marketId}/tenant-admins`
+    );
+  }
   async listTenants() {
     if (this.useApi) {
       return apiFetch("/tenants");

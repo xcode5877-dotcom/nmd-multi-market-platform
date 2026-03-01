@@ -444,10 +444,10 @@ export class MockApiClient implements ApiClient {
   }
 
   // --- Admin/OS Control API (used by nmd-admin, admin) ---
-  async getMe(): Promise<{ id: string; email: string; role: string; marketId?: string; tenantId?: string } | null> {
+  async getMe(): Promise<{ id: string; email: string; role: string; marketId?: string; tenantId?: string; mustChangePassword?: boolean } | null> {
     if (!this.useApi) return { id: 'local', email: 'local@dev', role: 'ROOT_ADMIN' };
     try {
-      return await apiFetch<{ id: string; email: string; role: string; marketId?: string; tenantId?: string }>('/auth/me');
+      return await apiFetch<{ id: string; email: string; role: string; marketId?: string; tenantId?: string; mustChangePassword?: boolean }>('/auth/me');
     } catch {
       return null;
     }
@@ -460,6 +460,41 @@ export class MockApiClient implements ApiClient {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     });
+  }
+
+  /** ROOT_ADMIN only: List all users (passwords omitted). */
+  async listUsers(): Promise<{ id: string; email: string; role: string; tenantId?: string; marketId?: string }[]> {
+    if (!this.useApi) return [];
+    return apiFetch<{ id: string; email: string; role: string; tenantId?: string; marketId?: string }[]>('/users');
+  }
+
+  /** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset tenant admins in their market only. */
+  async resetUserPassword(userId: string, newPassword: string): Promise<{ ok: boolean }> {
+    if (!this.useApi) throw new Error('Reset password requires API');
+    return apiFetch<{ ok: boolean }>(`/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+  }
+
+  /** MARKET_ADMIN: List tenant admins for a market. ROOT_ADMIN: any market. */
+  async listTenantAdminsForMarket(marketId: string): Promise<{ id: string; email: string; role: string; tenantId?: string }[]> {
+    if (!this.useApi) return [];
+    return apiFetch<{ id: string; email: string; role: string; tenantId?: string }[]>(
+      `/markets/${marketId}/tenant-admins`
+    );
+  }
+
+  /** Get tenant admin for a specific tenant. ROOT_ADMIN: any. MARKET_ADMIN: only tenants in their market. */
+  async getTenantAdmin(tenantId: string): Promise<{ id: string; email: string; role: string; tenantId?: string } | null> {
+    if (!this.useApi) return null;
+    try {
+      return await apiFetch<{ id: string; email: string; role: string; tenantId?: string }>(
+        `/tenants/${tenantId}/tenant-admin`
+      );
+    } catch {
+      return null;
+    }
   }
 
   async listTenants(): Promise<RegistryTenant[]> {

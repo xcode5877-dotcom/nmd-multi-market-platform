@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Modal, Button } from '@nmd/ui';
 
 function getSafeReturnTo(returnTo: string | null): string | null {
   if (!returnTo || typeof returnTo !== 'string') return null;
@@ -9,11 +10,16 @@ function getSafeReturnTo(returnTo: string | null): string | null {
   return decoded;
 }
 
+const SUPPORT_EMAIL = 'admin@nmd.marketing';
+const SUPPORT_WHATSAPP = '972548289765';
+const SUPPORT_WHATSAPP_MESSAGE = 'مرحباً، نسيت كلمة المرور الخاصة بحسابي في سوق دبورية وأرغب في استعادتها.';
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const { login, token, isLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -51,7 +57,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#7C3AED] focus:outline-none"
-              placeholder="admin@nmd.com"
+              placeholder="أدخل البريد الإلكتروني"
               required
               autoComplete="email"
             />
@@ -75,11 +81,47 @@ export default function LoginPage() {
           >
             {loading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
           </button>
+          <button
+            type="button"
+            onClick={() => setForgotPasswordOpen(true)}
+            className="w-full mt-2 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+          >
+            نسيت كلمة المرور؟
+          </button>
         </form>
-        <p className="mt-4 text-xs text-gray-500 text-center">
-          root@nmd.com / dab@nmd.com / iks@nmd.com — كلمة المرور: 123456
-        </p>
       </div>
+
+      <Modal
+        open={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
+        title="نسيت كلمة المرور؟"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            يرجى التواصل مع إدارة سوق دبورية أو الدعم الفني لطلب إعادة تعيين حسابك.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-[#7C3AED] hover:bg-[#6D28D9] rounded-lg transition-colors"
+            >
+              بريد الدعم
+            </a>
+            <a
+              href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(SUPPORT_WHATSAPP_MESSAGE)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-[#25D366] hover:bg-[#20BD5A] rounded-lg transition-colors"
+            >
+              واتساب
+            </a>
+          </div>
+          <Button variant="outline" onClick={() => setForgotPasswordOpen(false)} className="w-full">
+            إغلاق
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

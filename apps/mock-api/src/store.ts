@@ -145,6 +145,8 @@ export interface User {
   courierId?: string; // required for COURIER
   /** Plain password for MVP; use hashing in production */
   password?: string;
+  /** When true, redirect to change-password on next login */
+  mustChangePassword?: boolean;
 }
 
 /** Courier: MARKET or TENANT scoped. Option 1: market-scoped only - every courier has marketId. */

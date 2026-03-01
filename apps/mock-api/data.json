@@ -224,7 +224,8 @@
             "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
           ]
         }
-      ]
+      ],
+      "marketSortOrder": 0
     },
     {
       "slug": "سوق-طلعت-للخضار-والفوكه",
@@ -549,7 +550,8 @@
       "email": "dab@nmd.com",
       "role": "MARKET_ADMIN",
       "marketId": "market-dabburiyya",
-      "password": "123456"
+      "password": "123456789",
+      "mustChangePassword": true
     },
     {
       "id": "user-iks-admin",
@@ -5232,6 +5234,273 @@
       },
       "id": "audit-fef880cd-f9cc-435c-a42a-09733fcbfb32",
       "at": "2026-03-01T15:29:38.891Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "emergencyMode": false,
+      "before": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ]
+      },
+      "after": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": false,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ],
+        "marketSortOrder": 0
+      },
+      "id": "audit-e69b94de-2b43-4257-bca6-d769062a7d68",
+      "at": "2026-03-01T15:57:47.984Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "78463821-ccb7-48af-841b-84a18c42abb6",
+      "emergencyMode": false,
+      "before": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": false,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ],
+        "marketSortOrder": 0
+      },
+      "after": {
+        "slug": "buffalo",
+        "name": "BUFFALO28",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
+        "primaryColor": "#c5be02",
+        "secondaryColor": "#d10000",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "78463821-ccb7-48af-841b-84a18c42abb6",
+        "createdAt": "2026-02-13T18:08:11.815Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "بيتسا ايطالية",
+          "imageUrl": "http://147.93.120.244:5190/uploads/1772378919638-za4vfoxh.png",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "9720503013669",
+        "addressLine": "دبورية، شارع الشبلي ٢٨",
+        "location": {
+          "lat": 32.6918,
+          "lng": 35.3725
+        },
+        "type": "FOOD",
+        "marketCategory": "FOOD",
+        "isListedInMarket": true,
+        "marketId": "market-dabburiyya",
+        "tenantType": "RESTAURANT",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "businessType": "RESTAURANT",
+        "collections": [
+          {
+            "id": "id-1772378959074-t8lp5edyhgk",
+            "title": "سحور  رمضان",
+            "type": "manual",
+            "isActive": true,
+            "sortOrder": 0,
+            "targetIds": [
+              "8aa3e339-4266-4899-9ec4-9346cd74ccb7"
+            ]
+          }
+        ],
+        "marketSortOrder": 0
+      },
+      "id": "audit-e286e643-5c28-4fb2-a608-b14fa41bfe3e",
+      "at": "2026-03-01T15:58:07.806Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "action": "update",
+      "entity": "user",
+      "entityId": "user-dab-admin",
+      "reason": "Password reset by root@nmd.com",
+      "id": "audit-dd34b255-e455-476e-b8c5-eee962e8b460",
+      "at": "2026-03-01T16:20:56.990Z"
     }
   ],
   "catalog": {

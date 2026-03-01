@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings } from 'lucide-react';
 import { setEmergencyHeaders } from '../api';
@@ -10,9 +10,23 @@ import { useAuth } from '../contexts/AuthContext';
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
 
+function clearNmdSession(): void {
+  if (typeof localStorage === 'undefined') return;
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith('nmd'))
+    .forEach((k) => localStorage.removeItem(k));
+}
+
 export default function AdminLayout() {
   const auth = useAuth();
+  const navigate = useNavigate();
   const emergency = useEmergencyMode();
+
+  const handleLogout = () => {
+    clearNmdSession();
+    auth.logout();
+    navigate('/login', { replace: true });
+  };
 
   const { data: me } = useQuery({
     queryKey: ['me', auth.token],
@@ -61,14 +75,7 @@ export default function AdminLayout() {
           <h1 className="font-bold text-lg text-white">NMD OS Control</h1>
           {MOCK_API_URL && auth.user && (
             <div className="mt-3">
-              <p className="text-xs text-gray-400">{auth.user.email}</p>
-              <button
-                onClick={() => auth.logout()}
-                className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-white"
-              >
-                <LogOut className="w-3 h-3" />
-                تسجيل الخروج
-              </button>
+              <p className="text-xs text-gray-400 truncate" title={auth.user.email}>{auth.user.email}</p>
             </div>
           )}
           {MOCK_API_URL && isRootAdmin && (
@@ -110,6 +117,18 @@ export default function AdminLayout() {
             </>
           )}
         </nav>
+        {MOCK_API_URL && auth.user && (
+          <div className="p-2 border-t border-[#0F172A]/50 mt-auto">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+            >
+              <LogOut className="w-5 h-5 shrink-0" />
+              <span>تسجيل الخروج</span>
+            </button>
+          </div>
+        )}
       </aside>
       <main className="flex-1 overflow-auto bg-[#F8FAFC]">
         <div className="p-6">

@@ -262,7 +262,7 @@ export default function MarketHomePage() {
           {loading ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4 md:gap-6 justify-items-center">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-[300px] w-full max-w-[220px] rounded-xl" />
+                <Skeleton key={i} className="h-[320px] w-full max-w-[220px] rounded-xl" />
               ))}
             </div>
           ) : visibleTenants.length === 0 ? (

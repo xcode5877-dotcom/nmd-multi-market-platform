@@ -1171,7 +1171,7 @@ async function seedUsersIfNeeded() {
     { id: ROOT_ADMIN_ID, email: "root@nmd.com", role: "ROOT_ADMIN", password: "123456" },
     { id: "user-dab-admin", email: "dab@nmd.com", role: "MARKET_ADMIN", marketId: DABBURIYYA_MARKET_ID, password: "123456" },
     { id: "user-iks-admin", email: "iks@nmd.com", role: "MARKET_ADMIN", marketId: IKSAL_MARKET_ID, password: "123456" },
-    { id: "user-buffalo-admin", email: "buffalo@nmd.com", role: "TENANT_ADMIN", tenantId: BUFFALO28_TENANT_ID, password: "123456" },
+    { id: "user-buffalo-admin", email: "buffalo@admin.com", role: "TENANT_ADMIN", tenantId: BUFFALO28_TENANT_ID, password: "123456" },
     { id: "user-tenant-ms-brands", email: "ms-brands@nmd.com", role: "TENANT_ADMIN", tenantId: "5b35539f-90e1-49cc-8c32-8d26cdce20f2", password: "ms-brands@2026" },
     { id: "user-tenant-obr", email: "obr@nmd.com", role: "TENANT_ADMIN", tenantId: OBR_TENANT_ID, password: "obr@2026" },
     { id: "user-tenant-top-market", email: "top-market@nmd.com", role: "TENANT_ADMIN", tenantId: TOP_MARKET_TENANT_ID, password: "top-market@2026" },
@@ -1253,7 +1253,7 @@ async function seedDeliveryZonesIfNeeded() {
     if (existing.length > 0) continue;
     const slug = t.slug ?? "";
     let zones = [];
-    if (slug === "buffalo-28" || slug === "pizza") {
+    if (slug === "buffalo" || slug === "pizza") {
       zones = [
         { id: `dz-${t.id}-1`, tenantId: t.id, name: "\u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u0648\u0633\u0637\u0649", fee: 15, etaMinutes: 30, isActive: true, sortOrder: 0 },
         { id: `dz-${t.id}-2`, tenantId: t.id, name: "\u0627\u0644\u0634\u0645\u0627\u0644", fee: 20, etaMinutes: 45, isActive: true, sortOrder: 1 },
@@ -1429,7 +1429,8 @@ app.get("/auth/me", async (req, res) => {
     role: u.role,
     marketId: u.marketId,
     tenantId: u.tenantId,
-    courierId: u.courierId
+    courierId: u.courierId,
+    mustChangePassword: u.mustChangePassword ?? false
   });
 });
 app.post("/customer/auth/start", async (req, res) => {
@@ -1680,7 +1681,7 @@ app.post("/auth/change-password", async (req, res) => {
     return res.status(400).json({ error: "Current password is incorrect" });
   }
   const updated = users.map(
-    (u) => u.id === req.user.id ? { ...u, password: newPassword } : u
+    (u) => u.id === req.user.id ? { ...u, password: newPassword, mustChangePassword: false } : u
   );
   await repos.users.setAll(updated);
   res.json({ ok: true });
@@ -1759,6 +1760,61 @@ app.get("/users", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   const users = (await repos.users.findAll()).map((u) => ({ ...u, password: void 0 }));
   res.json(users);
+});
+app.post("/admin/users/:userId/reset-password", async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  const { userId } = req.params;
+  const { newPassword } = req.body;
+  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+    return res.status(400).json({ error: "newPassword required (min 6 chars)" });
+  }
+  const users = await repos.users.findAll();
+  const idx = users.findIndex((u) => u.id === userId);
+  if (idx === -1) return res.status(404).json({ error: "User not found" });
+  const target = users[idx];
+  if (caller.role === "ROOT_ADMIN") {
+  } else if (caller.role === "MARKET_ADMIN" && caller.marketId) {
+    if (target.role !== "TENANT_ADMIN" || !target.tenantId) {
+      return res.status(403).json({ error: "Can only reset tenant admin passwords for stores in your market" });
+    }
+    const tenants = await repos.tenants.findAll();
+    const tenant = tenants.find((t) => t.id === target.tenantId);
+    if (!tenant || tenant.marketId !== caller.marketId) {
+      return res.status(403).json({ error: "Store is not in your market" });
+    }
+  } else {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  users[idx] = { ...users[idx], password: newPassword, mustChangePassword: true };
+  await repos.users.setAll(users);
+  appendAuditEvent({
+    userId: caller.id,
+    role: caller.role,
+    marketId: caller.marketId,
+    action: "update",
+    entity: "user",
+    entityId: userId,
+    reason: `Password reset by ${caller.email}`
+  });
+  res.json({ ok: true });
+});
+app.get("/markets/:marketId/tenant-admins", async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  const { marketId } = req.params;
+  if (caller.role === "MARKET_ADMIN" && caller.marketId !== marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const users = (await repos.users.findAll()).filter(
+    (u) => u.role === "TENANT_ADMIN" && u.tenantId
+  );
+  const tenants = await repos.tenants.findAll();
+  const marketTenantIds = new Set(
+    tenants.filter((t) => t.marketId === marketId).map((t) => t.id)
+  );
+  const result = users.filter((u) => u.tenantId && marketTenantIds.has(u.tenantId)).map((u) => ({ ...u, password: void 0 }));
+  res.json(result);
 });
 app.get("/markets", async (req, res) => {
   const user = req.user;

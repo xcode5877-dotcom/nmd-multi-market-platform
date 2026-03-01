@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Input, Select } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
 import type { MarketCategory } from '@nmd/core';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, KeyRound } from 'lucide-react';
 import { apiHeaders } from '../api';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -315,6 +315,7 @@ export default function MarketDetailPage() {
                         marketCategories={MARKET_CATEGORIES}
                         onSave={(updates) => updateMutation.mutate({ tenantId: t.id, updates })}
                         isSaving={updateMutation.isPending && updateMutation.variables?.tenantId === t.id}
+                        canResetPassword={canManageTenants}
                       />
                     ))}
                   </tbody>
@@ -588,9 +589,10 @@ interface MarketTenantRowProps {
   marketCategories: { value: MarketCategory; label: string }[];
   onSave: (updates: Partial<RegistryTenant>) => void;
   isSaving: boolean;
+  canResetPassword?: boolean;
 }
 
-function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving }: MarketTenantRowProps) {
+function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving, canResetPassword }: MarketTenantRowProps) {
   const [marketCategory, setMarketCategory] = useState<MarketCategory>(tenant.marketCategory ?? 'GENERAL');
   const [isListedInMarket, setIsListedInMarket] = useState(tenant.isListedInMarket !== false);
   const [marketSortOrder, setMarketSortOrder] = useState(String(tenant.marketSortOrder ?? 0));
@@ -677,6 +679,16 @@ function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving 
           >
             فتح
           </Link>
+          {canResetPassword && (
+            <Link
+              to={`/markets/${marketId}/tenants/${tenant.id}`}
+              state={{ openResetPassword: true }}
+              className="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700 hover:underline"
+              title="إعادة تعيين كلمة المرور"
+            >
+              <KeyRound className="w-4 h-4" />
+            </Link>
+          )}
           <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSaving}>
             {isSaving ? '...' : 'حفظ'}
           </Button>

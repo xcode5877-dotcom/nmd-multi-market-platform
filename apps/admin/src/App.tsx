@@ -24,6 +24,7 @@ const BrandingPage = lazy(() => import('./pages/BrandingPage'));
 const HomepageManagerPage = lazy(() => import('./pages/HomepageManagerPage'));
 const StoreSettingsPage = lazy(() => import('./pages/StoreSettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -55,6 +56,14 @@ function AdminApp() {
     queryFn: () => api.getMe(),
     enabled: !!MOCK_API_URL && !!token,
   });
+
+  if (me?.mustChangePassword) {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+        <ChangePasswordPage />
+      </Suspense>
+    );
+  }
 
   const tenantId = me?.tenantId ?? null;
 

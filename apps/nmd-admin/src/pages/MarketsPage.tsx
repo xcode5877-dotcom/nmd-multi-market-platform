@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Store, Plus, UserPlus } from 'lucide-react';
+import { Store, Plus, UserPlus, KeyRound } from 'lucide-react';
 import { Card, Button, Modal, Input, useToast } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { apiFetch, apiHeaders } from '../api';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+const MIN_PASSWORD_LENGTH = 6;
 
 interface Market {
   id: string;
@@ -35,6 +36,10 @@ export default function MarketsPage() {
   const [form, setForm] = useState({ name: '', slug: '', primaryColor: '#D97706', isActive: true });
   const [addAdminModal, setAddAdminModal] = useState<Market | null>(null);
   const [addAdminEmail, setAddAdminEmail] = useState('');
+  const [resetAdminModal, setResetAdminModal] = useState<{ market: Market; user: User } | null>(null);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState('');
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -52,6 +57,36 @@ export default function MarketsPage() {
     enabled: !!MOCK_API_URL,
   });
   const markets = Array.isArray(marketsData) ? marketsData : [];
+
+  const resetAdminMutation = useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      api.resetUserPassword(userId, newPassword),
+    onSuccess: () => {
+      addToast('تم تعيين كلمة المرور الجديدة بنجاح', 'success');
+      setResetAdminModal(null);
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setResetError('');
+      queryClient.invalidateQueries({ queryKey: ['market-admins'] });
+    },
+    onError: (err: Error) => {
+      addToast(err?.message ?? 'فشل تعيين كلمة المرور', 'error');
+    },
+  });
+
+  const handleResetAdminPassword = () => {
+    setResetError('');
+    if (!resetAdminModal) return;
+    if (resetNewPassword.length < MIN_PASSWORD_LENGTH) {
+      setResetError(`كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError('كلمة المرور وتأكيدها غير متطابقتين');
+      return;
+    }
+    resetAdminMutation.mutate({ userId: resetAdminModal.user.id, newPassword: resetNewPassword });
+  };
 
   const addAdminMutation = useMutation({
     mutationFn: async ({ marketId, email }: { marketId: string; email: string }) => {
@@ -181,10 +216,17 @@ export default function MarketsPage() {
             canEdit={canEdit}
             onNavigate={() => navigate(`/markets/${m.id}`)}
             onAddAdmin={(e) => {
-            e.stopPropagation();
-            setAddAdminModal(m);
-            setAddAdminEmail('');
-          }}
+              e.stopPropagation();
+              setAddAdminModal(m);
+              setAddAdminEmail('');
+            }}
+            onResetAdmin={(e, user) => {
+              e.stopPropagation();
+              setResetAdminModal({ market: m, user });
+              setResetNewPassword('');
+              setResetConfirmPassword('');
+              setResetError('');
+            }}
           />
         ))}
       </div>
@@ -192,6 +234,45 @@ export default function MarketsPage() {
       {markets.length === 0 && !creating && (
         <p className="text-gray-500 py-8">لا توجد أسواق. اضغط &quot;إضافة سوق&quot; لإنشاء سوق.</p>
       )}
+
+      <Modal
+        open={!!resetAdminModal}
+        onClose={() => { setResetAdminModal(null); setResetNewPassword(''); setResetConfirmPassword(''); setResetError(''); }}
+        title="إعادة تعيين كلمة مرور مسؤول السوق"
+        size="sm"
+      >
+        {resetAdminModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              تعيين كلمة مرور جديدة لـ {resetAdminModal.user.email}. سيُطلب منه تغييرها عند أول تسجيل دخول.
+            </p>
+            <Input
+              type="password"
+              label="كلمة المرور الجديدة"
+              value={resetNewPassword}
+              onChange={(e) => setResetNewPassword(e.target.value)}
+              placeholder={`${MIN_PASSWORD_LENGTH} أحرف على الأقل`}
+            />
+            <Input
+              type="password"
+              label="تأكيد كلمة المرور"
+              value={resetConfirmPassword}
+              onChange={(e) => setResetConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            {resetError && <p className="text-sm text-red-600">{resetError}</p>}
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setResetAdminModal(null)}>إلغاء</Button>
+              <Button
+                onClick={handleResetAdminPassword}
+                disabled={resetAdminMutation.isPending}
+              >
+                {resetAdminMutation.isPending ? 'جاري الحفظ...' : 'تعيين كلمة المرور'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={!!addAdminModal}
@@ -234,12 +315,14 @@ function MarketCard({
   canEdit,
   onNavigate,
   onAddAdmin,
+  onResetAdmin,
 }: {
   market: Market;
   isRootAdmin: boolean;
   canEdit: boolean;
   onNavigate: () => void;
   onAddAdmin: (e: React.MouseEvent) => void;
+  onResetAdmin?: (e: React.MouseEvent, user: User) => void;
 }) {
   const { data: admins = [] } = useQuery({
     queryKey: ['market-admins', market.id],
@@ -266,9 +349,23 @@ function MarketCard({
             {market.isActive ? 'نشط' : 'غير نشط'}
           </span>
           {isRootAdmin && admins.length > 0 && (
-            <p className="text-xs text-gray-500 mt-1">
-              مسؤولون: {admins.map((a) => a.email).join(', ')}
-            </p>
+            <div className="flex flex-wrap items-center gap-1 mt-1">
+              مسؤولون: {admins.map((a) => (
+                <span key={a.id} className="inline-flex items-center gap-0.5">
+                  <span className="text-xs text-gray-500">{a.email}</span>
+                  {onResetAdmin && (
+                    <button
+                      type="button"
+                      onClick={(e) => onResetAdmin(e, a)}
+                      className="p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-amber-600"
+                      title="إعادة تعيين كلمة المرور"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
           )}
         </div>
         {isRootAdmin && (

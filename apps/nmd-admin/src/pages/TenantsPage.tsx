@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, DataTable } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { LayoutDashboard, Store, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, Store, ExternalLink, KeyRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
 const api = new MockApiClient();
+const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
 const ADMIN_URL = import.meta.env?.DEV ? 'http://localhost:5174' : '/admin';
 const STOREFRONT_URL = import.meta.env?.DEV ? 'http://localhost:5173' : '/storefront';
 
@@ -15,8 +17,14 @@ export default function TenantsPage() {
     queryKey: ['tenants'],
     queryFn: () => api.listTenants(),
   });
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api.listUsers(),
+    enabled: USE_API,
+  });
 
   const rows = tenants.map((t) => {
+    const tenantAdmin = users.find((u) => u.role === 'TENANT_ADMIN' && u.tenantId === t.id);
     const marketId = (t as { marketId?: string }).marketId;
     return {
     name: (
@@ -45,6 +53,17 @@ export default function TenantsPage() {
     ),
     actions: (
       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {USE_API && tenantAdmin && (
+          <Link
+            to={`/tenants/${t.id}`}
+            state={{ openResetPassword: true }}
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+            title="إعادة تعيين كلمة المرور"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <KeyRound className="w-4 h-4" />
+          </Link>
+        )}
         {marketId && (
           <Link
             to={`/markets/${marketId}/tenants/${t.id}`}

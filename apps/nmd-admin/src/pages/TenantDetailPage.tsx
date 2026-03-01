@@ -1,20 +1,24 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast } from '@nmd/ui';
+import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input } from '@nmd/ui';
 import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatPrice } from '@nmd/core';
-import { Sparkles, ArrowLeft, Settings } from 'lucide-react';
+import { Sparkles, ArrowLeft, Settings, KeyRound } from 'lucide-react';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const MIN_PASSWORD_LENGTH = 6;
 const ADMIN_PORT = 5174;
 const STOREFRONT_PORT = 5173;
 
 export default function TenantDetailPage() {
   const params = useParams<{ id?: string; tenantId?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const id = params.tenantId ?? params.id;
+  const openResetFromState = (location.state as { openResetPassword?: boolean })?.openResetPassword ?? false;
   const queryClient = useQueryClient();
   const { data: tenantFromApi, isLoading } = useQuery({
     queryKey: ['tenant-registry', id],
@@ -31,8 +35,36 @@ export default function TenantDetailPage() {
     queryFn: () => api.listOrdersByTenant(id!),
     enabled: !!id && USE_API,
   });
-
-  const addToast = useToast().addToast;
+  const marketId = params.tenantId ? params.id : undefined;
+  const { data: usersFromList = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api.listUsers(),
+    enabled: USE_API && !marketId,
+  });
+  const { data: tenantAdminFromApi } = useQuery({
+    queryKey: ['tenant-admin', id],
+    queryFn: () => api.getTenantAdmin(id!),
+    enabled: USE_API && !!marketId && !!id,
+  });
+  const { data: tenantAdminsForMarket = [] } = useQuery({
+    queryKey: ['tenant-admins', marketId],
+    queryFn: () => api.listTenantAdminsForMarket(marketId!),
+    enabled: USE_API && !!marketId,
+  });
+  const tenantAdmin =
+    marketId && tenantAdminFromApi
+      ? tenantAdminFromApi
+      : (marketId ? tenantAdminsForMarket : usersFromList).find((u) => u.role === 'TENANT_ADMIN' && u.tenantId === id);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  useEffect(() => {
+    if (openResetFromState && tenantAdmin) {
+      setResetPasswordOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [openResetFromState, tenantAdmin, location.pathname, navigate]);
   const markReadyMutation = useMutation({
     mutationFn: (orderId: string) => api.markOrderReady(id!, orderId),
     onSuccess: () => {
@@ -50,6 +82,36 @@ export default function TenantDetailPage() {
     },
     onError: (err) => addToast(err instanceof Error ? err.message : 'فشل تطبيق القالب', 'error'),
   });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      api.resetUserPassword(userId, newPassword),
+    onSuccess: () => {
+      addToast('تم تعيين كلمة المرور الجديدة بنجاح', 'success');
+      setResetPasswordOpen(false);
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setResetError('');
+    },
+    onError: (err) => addToast(err instanceof Error ? err.message : 'فشل تعيين كلمة المرور', 'error'),
+  });
+
+  const handleResetPassword = () => {
+    setResetError('');
+    if (!tenantAdmin) {
+      setResetError('لا يوجد مدير لهذا المحل');
+      return;
+    }
+    if (resetNewPassword.length < MIN_PASSWORD_LENGTH) {
+      setResetError(`كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError('كلمة المرور وتأكيدها غير متطابقتين');
+      return;
+    }
+    resetPasswordMutation.mutate({ userId: tenantAdmin.id, newPassword: resetNewPassword });
+  };
 
   const tenant = id ? (USE_API ? tenantFromApi : getTenantById(id)) : null;
   const [tab, setTab] = useState('branding');
@@ -79,8 +141,6 @@ export default function TenantDetailPage() {
   const adminUrl = `http://localhost:${ADMIN_PORT}/?tenant=${tenant.slug}`;
   const storefrontUrl = `http://localhost:${STOREFRONT_PORT}/?tenant=${tenant.slug}`;
 
-  const marketId = params.tenantId ? params.id : undefined;
-
   return (
     <div>
       {marketId && (
@@ -103,7 +163,7 @@ export default function TenantDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-gray-900">{tenant.name}</h1>
-              {tenant?.businessType && <Badge className="text-xs">{tenant.businessType}</Badge>}
+              {(tenant as { businessType?: string })?.businessType && <Badge className="text-xs">{(tenant as { businessType?: string }).businessType}</Badge>}
             </div>
             <p className="text-gray-500">/{tenant.slug}</p>
           </div>
@@ -119,6 +179,12 @@ export default function TenantDetailPage() {
             <Sparkles className="w-4 h-4" />
             {applyTemplateMutation.isPending ? 'جاري التطبيق...' : 'تطبيق قالب جاهز'}
           </Button>
+          {USE_API && tenantAdmin && (
+            <Button size="sm" variant="outline" onClick={() => setResetPasswordOpen(true)} className="gap-1.5">
+              <KeyRound className="w-4 h-4" />
+              إعادة تعيين كلمة المرور
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
             فتح لوحة المستأجر
           </Button>
@@ -227,6 +293,37 @@ export default function TenantDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Modal open={resetPasswordOpen} onClose={() => setResetPasswordOpen(false)} title="إعادة تعيين كلمة المرور" size="sm">
+        <p className="text-sm text-gray-500 mb-4">
+          تعيين كلمة مرور جديدة لـ {tenantAdmin?.email ?? 'مدير المحل'}. سيُطلب منه تغييرها عند أول تسجيل دخول.
+        </p>
+        <div className="space-y-4">
+          <Input
+            type="password"
+            label="كلمة المرور الجديدة"
+            value={resetNewPassword}
+            onChange={(e) => setResetNewPassword(e.target.value)}
+            placeholder={`${MIN_PASSWORD_LENGTH} أحرف على الأقل`}
+            autoComplete="new-password"
+          />
+          <Input
+            type="password"
+            label="تأكيد كلمة المرور"
+            value={resetConfirmPassword}
+            onChange={(e) => setResetConfirmPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="new-password"
+          />
+          {resetError && <p className="text-sm text-red-600">{resetError}</p>}
+          <Button
+            onClick={handleResetPassword}
+            disabled={resetPasswordMutation.isPending}
+          >
+            {resetPasswordMutation.isPending ? 'جاري الحفظ...' : 'تعيين كلمة المرور'}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

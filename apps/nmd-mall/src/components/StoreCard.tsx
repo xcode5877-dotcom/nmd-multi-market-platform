@@ -36,11 +36,11 @@ export function StoreCard({
 
   return (
     <a href={storeUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-w-[220px] group">
-      <Card className="w-full max-w-[220px] h-[300px] flex flex-col overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100">
-        {/* Logo area - fixed height, object-cover fills exact pixel area */}
+      <Card className="w-full max-w-[220px] h-[320px] flex flex-col overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100">
+        {/* Logo area - aspect-square, object-cover, MS Brands fit */}
         <div
-          className={`relative h-[220px] w-full overflow-hidden shrink-0 ${
-            branding.logoUrl ? 'bg-gray-100' : ''
+          className={`relative aspect-square w-full overflow-hidden shrink-0 ${
+            branding.logoUrl ? 'bg-white' : ''
           }`}
           style={branding.logoUrl ? undefined : { backgroundColor: primaryColor }}
         >
@@ -64,8 +64,8 @@ export function StoreCard({
           </div>
         </div>
 
-        {/* Text area - fixed h-[80px], line-clamp prevents expansion */}
-        <div className="h-[80px] flex flex-col justify-center px-2 py-2 shrink-0">
+        {/* Text area - fixed height, line-clamp prevents expansion */}
+        <div className="flex-1 min-h-0 flex flex-col justify-center px-2 py-2 shrink-0">
           <h3 className="text-sm font-bold text-gray-900 text-center line-clamp-1 truncate">
             {name}
           </h3>

@@ -341,7 +341,7 @@ app.post('/auth/login', async (req, res) => {
 
 app.get('/auth/me', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const u = req.user as { id: string; email: string; role: string; marketId?: string; tenantId?: string; courierId?: string };
+  const u = req.user as { id: string; email: string; role: string; marketId?: string; tenantId?: string; courierId?: string; mustChangePassword?: boolean };
   res.json({
     id: u.id,
     email: u.email,
@@ -349,6 +349,7 @@ app.get('/auth/me', async (req, res) => {
     marketId: u.marketId,
     tenantId: u.tenantId,
     courierId: u.courierId,
+    mustChangePassword: u.mustChangePassword ?? false,
   });
 });
 
@@ -636,7 +637,7 @@ app.post('/auth/change-password', async (req, res) => {
     return res.status(400).json({ error: 'Current password is incorrect' });
   }
   const updated = users.map((u) =>
-    u.id === req.user!.id ? { ...u, password: newPassword } : u
+    u.id === req.user!.id ? { ...u, password: newPassword, mustChangePassword: false } : u
   );
   await repos.users.setAll(updated);
   res.json({ ok: true });
@@ -729,6 +730,88 @@ app.get('/users', async (req, res) => {
   if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
   const users = (await repos.users.findAll()).map((u) => ({ ...u, password: undefined }));
   res.json(users);
+});
+
+/** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset only TENANT_ADMIN whose tenant is in their market. */
+app.post('/admin/users/:userId/reset-password', async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const { userId } = req.params;
+  const { newPassword } = req.body as { newPassword?: string };
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({ error: 'newPassword required (min 6 chars)' });
+  }
+  const users = await repos.users.findAll();
+  const idx = users.findIndex((u) => u.id === userId);
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  const target = users[idx];
+
+  if (caller.role === 'ROOT_ADMIN') {
+    // Root can reset anyone
+  } else if (caller.role === 'MARKET_ADMIN' && caller.marketId) {
+    if (target.role !== 'TENANT_ADMIN' || !target.tenantId) {
+      return res.status(403).json({ error: 'Can only reset tenant admin passwords for stores in your market' });
+    }
+    const tenants = await repos.tenants.findAll();
+    const tenant = tenants.find((t) => t.id === target.tenantId);
+    if (!tenant || (tenant as { marketId?: string }).marketId !== caller.marketId) {
+      return res.status(403).json({ error: 'Store is not in your market' });
+    }
+  } else {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  users[idx] = { ...users[idx], password: newPassword, mustChangePassword: true };
+  await repos.users.setAll(users);
+
+  appendAuditEvent({
+    userId: caller.id,
+    role: caller.role,
+    marketId: (caller as { marketId?: string }).marketId,
+    action: 'update',
+    entity: 'user',
+    entityId: userId,
+    reason: `Password reset by ${caller.email}`,
+  });
+
+  res.json({ ok: true });
+});
+
+/** MARKET_ADMIN: List tenant admins for a market. ROOT_ADMIN: any market. */
+app.get('/markets/:marketId/tenant-admins', async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const { marketId } = req.params;
+  if (caller.role === 'MARKET_ADMIN' && caller.marketId !== marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const users = (await repos.users.findAll()).filter(
+    (u) => u.role === 'TENANT_ADMIN' && u.tenantId
+  );
+  const tenants = await repos.tenants.findAll();
+  const marketTenantIds = new Set(
+    tenants.filter((t) => (t as { marketId?: string }).marketId === marketId).map((t) => t.id)
+  );
+  const result = users
+    .filter((u) => u.tenantId && marketTenantIds.has(u.tenantId))
+    .map((u) => ({ ...u, password: undefined }));
+  res.json(result);
+});
+
+/** Get tenant admin for a specific tenant. ROOT_ADMIN: any. MARKET_ADMIN: only tenants in their market. */
+app.get('/tenants/:tenantId/tenant-admin', async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (caller.role === 'MARKET_ADMIN' && (tenant as { marketId?: string }).marketId !== caller.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const users = await repos.users.findAll();
+  const admin = users.find((u) => u.role === 'TENANT_ADMIN' && u.tenantId === tenantId);
+  if (!admin) return res.status(404).json({ error: 'No tenant admin found' });
+  res.json({ ...admin, password: undefined });
 });
 
 // --- Markets ---
