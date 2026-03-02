@@ -29,7 +29,7 @@ export function Header() {
     staleTime: 0,
   });
   const storeType = useAppStore((s) => s.storeType);
-  const { customer } = useCustomerAuth();
+  const { customer, logout } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
   const count = useCartStore((s) => {
     const items = s.getItems(tenantId);
@@ -86,13 +86,27 @@ export function Header() {
             visible={import.meta.env.DEV}
           />
           {customer ? (
-            <Link
-              to={tenant?.slug ? `/${tenant.slug}/my-activity` : '/my-activity'}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              <User className="w-5 h-5" />
-              <span className="hidden sm:inline">حسابي</span>
-            </Link>
+            <>
+              <Link
+                to={tenant?.slug ? `/${tenant.slug}/my-activity` : '/my-activity'}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <User className="w-5 h-5" />
+                <span className="hidden sm:inline">حسابي</span>
+              </Link>
+              <span className="hidden sm:inline text-sm text-gray-500 truncate max-w-[100px]" title={customer.name || customer.phone}>
+                {customer.name || customer.phone}
+              </span>
+              {/* Ultimate Auth Sync: logout clears only nmd-customer-token and customer state */}
+              <button
+                type="button"
+                onClick={logout}
+                aria-label="تسجيل الخروج"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              >
+                <span className="hidden sm:inline">تسجيل الخروج</span>
+              </button>
+            </>
           ) : (
             <button
               type="button"

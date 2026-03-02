@@ -1,6 +1,6 @@
 import { createContext, useContext, useCallback, useState, useEffect, type ReactNode } from 'react';
 
-/** Must match CUSTOMER_TOKEN_KEY in @nmd/mock - used for POST /orders Authorization */
+/** Ultimate Auth Sync: Customer session only. Key nmd-customer-token; distinct from admin (nmd-access-token). Logout removes only this token and resets customer state. */
 const CUSTOMER_TOKEN_KEY = 'nmd-customer-token';
 const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) || '';
 
@@ -15,7 +15,8 @@ interface CustomerAuthContextValue {
   isLoading: boolean;
   checkPhone: (phone: string) => Promise<{ exists: boolean }>;
   start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string }>;
-  verify: (phone: string, code: string, name?: string) => Promise<{ ok: boolean; error?: string; customer?: Customer }>;
+  verify: (phone: string, code: string, name?: string) => Promise<{ ok: boolean; error?: string; customer?: Customer; isNewUser?: boolean }>;
+  updateProfile: (name: string) => Promise<{ ok: boolean; error?: string; customer?: Customer }>;
   me: () => Promise<Customer | null>;
   logout: () => void;
 }
@@ -88,7 +89,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const verify = useCallback(async (phone: string, code: string, name?: string): Promise<{ ok: boolean; error?: string; customer?: Customer }> => {
+  const verify = useCallback(async (phone: string, code: string, name?: string): Promise<{ ok: boolean; error?: string; customer?: Customer; isNewUser?: boolean }> => {
     if (!API_BASE) return { ok: false, error: 'API غير متاح' };
     try {
       const res = await fetch(`${API_BASE}/customer/auth/verify`, {
@@ -96,7 +97,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phone.trim(), code: code.trim(), name: name?.trim() || undefined }),
       });
-      const data = (await res.json()) as { token?: string; customer?: Customer; error?: string };
+      const data = (await res.json()) as { token?: string; customer?: Customer; isNewUser?: boolean; error?: string };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
       if (!data.token) return { ok: false, error: 'لم يتم استلام رمز الدخول' };
       if (typeof localStorage !== 'undefined') {
@@ -104,11 +105,30 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
       const meData = (data.customer ?? (await fetchMe())) as Customer | null;
       setCustomer(meData);
-      return { ok: true, customer: meData ?? undefined };
+      return { ok: true, customer: meData ?? undefined, isNewUser: !!data.isNewUser };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
     }
   }, [fetchMe]);
+
+  const updateProfile = useCallback(async (name: string): Promise<{ ok: boolean; error?: string; customer?: Customer }> => {
+    if (!API_BASE) return { ok: false, error: 'API غير متاح' };
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem(CUSTOMER_TOKEN_KEY) : null;
+    if (!token) return { ok: false, error: 'غير مسجّل الدخول' };
+    try {
+      const res = await fetch(`${API_BASE}/customer/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = (await res.json()) as { customer?: Customer; error?: string };
+      if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
+      if (data.customer) setCustomer(data.customer);
+      return { ok: true, customer: data.customer };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
+    }
+  }, []);
 
   const me = useCallback(async (): Promise<Customer | null> => {
     const c = await fetchMe();
@@ -129,6 +149,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     checkPhone,
     start,
     verify,
+    updateProfile,
     me,
     logout,
   };

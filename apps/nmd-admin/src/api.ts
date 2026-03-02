@@ -1,5 +1,21 @@
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
-const TOKEN_KEY = 'nmd-access-token';
+export const TOKEN_KEY = 'nmd-access-token';
+
+function logFetchUrl(url: string, method: string): void {
+  if (import.meta.env?.DEV && typeof console !== 'undefined') {
+    console.log('[API] Fetch:', method, url);
+  }
+}
+
+/** List categories from the central source (GET /categories). Used for tenant category select. */
+export async function listCategories(): Promise<Array<{ id: string; title: string; nameAr?: string; icon?: string; sortOrder?: number; legacyCode?: string }>> {
+  const url = `${MOCK_API_URL}/categories`;
+  logFetchUrl(url, 'GET');
+  const res = await fetch(url, { headers: apiHeaders() });
+  if (!res.ok) throw new Error(`Categories: ${res.status}`);
+  const raw = await res.json();
+  return Array.isArray(raw) ? raw : [];
+}
 
 let emergencyMode = false;
 let emergencyReason = '';
@@ -36,8 +52,10 @@ function mergeEmergencyMeta(body: string | undefined, method: string): string | 
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? 'GET';
+  const url = `${MOCK_API_URL}${path}`;
+  logFetchUrl(url, method);
   const body = mergeEmergencyMeta(init?.body as string | undefined, method);
-  const res = await fetch(`${MOCK_API_URL}${path}`, {
+  const res = await fetch(url, {
     ...init,
     method,
     body,
@@ -70,7 +88,9 @@ export async function apiUploadBanner(file: File): Promise<{ urls: string[]; rel
   if (emergencyMode) headers['X-Emergency-Mode'] = 'true';
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${MOCK_API_URL}/upload/banner`, {
+  const url = `${MOCK_API_URL}/upload/banner`;
+  logFetchUrl(url, 'POST');
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: form,

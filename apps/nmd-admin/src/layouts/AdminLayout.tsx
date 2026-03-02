@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users } from 'lucide-react';
-import { setEmergencyHeaders } from '../api';
+import { setEmergencyHeaders, TOKEN_KEY } from '../api';
 import { MockApiClient } from '@nmd/mock';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,20 +10,14 @@ import { useAuth } from '../contexts/AuthContext';
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
 
-function clearNmdSession(): void {
-  if (typeof localStorage === 'undefined') return;
-  Object.keys(localStorage)
-    .filter((k) => k.startsWith('nmd'))
-    .forEach((k) => localStorage.removeItem(k));
-}
-
 export default function AdminLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
   const emergency = useEmergencyMode();
 
+  /** Ultimate Auth Sync: Admin logout — remove only nmd-access-token, then redirect. Do not clear nmd-customer-token (storefront). */
   const handleLogout = () => {
-    clearNmdSession();
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_KEY);
     auth.logout();
     navigate('/login', { replace: true });
   };
