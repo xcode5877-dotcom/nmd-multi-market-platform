@@ -16,6 +16,10 @@ import {
   getTemplates,
   getStaff,
   setStaff,
+  getGlobalCategories,
+  setGlobalCategories,
+  getLeads,
+  appendLead,
   type RegistryTenant,
   type TenantCatalog,
   type StorefrontHero,
@@ -25,6 +29,7 @@ import {
   type User,
   type Courier,
   type DeliveryJob,
+  type GlobalCategory,
 } from './store.js';
 import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
@@ -63,6 +68,7 @@ async function seedUsersIfNeeded(): Promise<void> {
     { id: 'user-tenant-ms-brands', email: 'ms-brands@nmd.com', role: 'TENANT_ADMIN', tenantId: '5b35539f-90e1-49cc-8c32-8d26cdce20f2', password: 'ms-brands@2026' },
     { id: 'user-tenant-obr', email: 'obr@nmd.com', role: 'TENANT_ADMIN', tenantId: OBR_TENANT_ID, password: 'obr@2026' },
     { id: 'user-tenant-top-market', email: 'top-market@nmd.com', role: 'TENANT_ADMIN', tenantId: TOP_MARKET_TENANT_ID, password: 'top-market@2026' },
+    { id: 'user-tenant-lawyer-falan', email: 'lawyer@nmd.com', role: 'TENANT_ADMIN', tenantId: 'a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d', password: '123456' },
     { id: 'user-courier-dab-1', email: 'ahmed@courier.nmd.com', role: 'COURIER', marketId: DABBURIYYA_MARKET_ID, courierId: 'courier-50971b77-4811-49e8-825b-78bd84041782', password: '123456' },
     { id: 'user-courier-iksal-1', email: 'courier@iksal.nmd.com', role: 'COURIER', marketId: IKSAL_MARKET_ID, courierId: 'courier-iksal-001', password: '123456' },
   ];
@@ -243,6 +249,8 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/delivery\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: 'GET', path: /^\/public\/orders\/[^/]+$/ },
+  { method: 'GET', path: /^\/global-categories$/ },
+  { method: 'POST', path: /^\/leads$/ },
 ];
 
 function isPublicRoute(method: string, path: string): boolean {
@@ -688,6 +696,7 @@ function normalizeHero(h: StorefrontHero | undefined): StorefrontHero {
   return { ...base, ctaLink: cta, ctaHref: cta } as StorefrontHero;
 }
 
+/** Returns full tenant including name, about, officeHours - used by GET /tenants/by-slug and PUT responses */
 function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
   const type = (t.type === 'CLOTHING' || t.type === 'FOOD') ? t.type : 'GENERAL';
   return {
@@ -697,6 +706,54 @@ function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
     banners: t.banners ?? [],
   };
 }
+
+// --- Leads (public POST for storefront tracking; GET requires auth) ---
+app.post('/leads', (req, res) => {
+  const body = req.body as {
+    tenantId?: string;
+    type?: string;
+    status?: string;
+    contactType?: string;
+    metadata?: Record<string, unknown>;
+  };
+  console.log('LEAD RECEIVED!', body);
+  const tenantId = body.tenantId;
+  const rawType = body.type;
+  const type =
+    rawType === 'PROFESSIONAL_CONTACT'
+      ? 'PROFESSIONAL_CONTACT'
+      : (rawType === 'whatsapp' || rawType === 'call' || rawType === 'cta')
+        ? rawType
+        : 'cta';
+  if (!tenantId || typeof tenantId !== 'string') {
+    return res.status(400).json({ error: 'tenantId required' });
+  }
+  const userAgent = req.headers['user-agent'] ?? '';
+  const metadata = { ...(body.metadata ?? {}), userAgent: userAgent || (body.metadata as Record<string, unknown>)?.userAgent };
+  const lead = appendLead({
+    tenantId: tenantId.trim(),
+    type,
+    status: body.status,
+    contactType: body.contactType,
+    metadata,
+  });
+  res.status(201).json(lead);
+});
+
+app.get('/leads', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = req.user as { role?: string; marketId?: string; tenantId?: string };
+  let leads = getLeads();
+  if (caller.role === 'TENANT_ADMIN' && caller.tenantId) {
+    const myTenantId = String(caller.tenantId).trim();
+    leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === myTenantId);
+  } else if (caller.role === 'MARKET_ADMIN' && caller.marketId) {
+    const tenants = await repos.tenants.findAll();
+    const marketTenantIds = new Set(tenants.filter((t) => (t as { marketId?: string }).marketId === caller.marketId).map((t) => t.id));
+    leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+  }
+  res.json(leads);
+});
 
 // --- Audit (ROOT only) ---
 app.get('/audit-events', async (req, res) => {
@@ -815,6 +872,134 @@ app.get('/tenants/:tenantId/tenant-admin', async (req, res) => {
   const admin = users.find((u) => u.role === 'TENANT_ADMIN' && u.tenantId === tenantId);
   if (!admin) return res.status(404).json({ error: 'No tenant admin found' });
   res.json({ ...admin, password: undefined });
+});
+
+/** Create TENANT_ADMIN for an existing tenant (legacy stores). ROOT_ADMIN: any. MARKET_ADMIN: only tenants in their market. */
+app.post('/tenants/:tenantId/create-admin', async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const { tenantId } = req.params;
+  const body = req.body as { email?: string; password?: string };
+  const email = body.email?.trim();
+  const password = body.password;
+  if (!email || !password || password.length < 6) {
+    return res.status(400).json({ error: 'email and password required (password min 6 chars)' });
+  }
+  const tenants = await repos.tenants.findAll();
+  const tenant = tenants.find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (caller.role === 'MARKET_ADMIN' && (tenant as { marketId?: string }).marketId !== caller.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const users = await repos.users.findAll();
+  const existingAdmin = users.find((u) => u.role === 'TENANT_ADMIN' && u.tenantId === tenantId);
+  if (existingAdmin) {
+    return res.status(400).json({ error: 'Tenant already has an admin account' });
+  }
+  const emailLower = email.toLowerCase();
+  if (users.some((u) => u.email?.toLowerCase() === emailLower)) {
+    return res.status(400).json({ error: 'Email already in use' });
+  }
+  const userId = crypto.randomUUID?.() ?? `user-${Date.now()}`;
+  users.push({
+    id: userId,
+    email: emailLower,
+    role: 'TENANT_ADMIN',
+    tenantId,
+    password,
+  });
+  await repos.users.setAll(users);
+  appendAuditEvent({
+    userId: caller.id,
+    role: caller.role,
+    marketId: (caller as { marketId?: string }).marketId,
+    action: 'create',
+    entity: 'user',
+    entityId: userId,
+    reason: `Created tenant admin for ${tenant.name}`,
+  });
+  res.status(201).json({ id: userId, email: emailLower, role: 'TENANT_ADMIN', tenantId });
+});
+
+// --- Global Categories (platform-level, for mall homepage) ---
+app.get('/global-categories', (_req, res) => {
+  res.json(getGlobalCategories());
+});
+
+app.post('/global-categories', async (req, res) => {
+  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = req.body as { title: string; icon: string; isProfessional?: boolean; sortOrder?: number };
+  const id = crypto.randomUUID?.() ?? `cat-${Date.now()}`;
+  const cat: GlobalCategory = {
+    id,
+    title: body.title ?? '',
+    icon: body.icon ?? '📦',
+    isProfessional: body.isProfessional ?? false,
+    sortOrder: body.sortOrder ?? 999,
+  };
+  const cats = getGlobalCategories();
+  cats.push(cat);
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'create',
+    entity: 'globalCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    after: cat,
+  });
+  res.status(201).json(cat);
+});
+
+app.put('/global-categories/:id', async (req, res) => {
+  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as Partial<Omit<GlobalCategory, 'id'>>;
+  const cats = getGlobalCategories();
+  const idx = cats.findIndex((c) => c.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Category not found' });
+  const before = cats[idx];
+  cats[idx] = { ...cats[idx], ...body };
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'update',
+    entity: 'globalCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before,
+    after: cats[idx],
+  });
+  res.json(cats[idx]);
+});
+
+app.delete('/global-categories/:id', async (req, res) => {
+  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const cats = getGlobalCategories();
+  const idx = cats.findIndex((c) => c.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Category not found' });
+  const removed = cats[idx];
+  cats.splice(idx, 1);
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'delete',
+    entity: 'globalCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before: removed,
+  });
+  res.status(204).send();
 });
 
 // --- Markets ---
@@ -1039,18 +1224,51 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
   }
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  const input = req.body as Omit<RegistryTenant, 'id' | 'createdAt' | 'marketId'>;
+  const body = req.body as Omit<RegistryTenant, 'id' | 'createdAt' | 'marketId'> & { adminEmail?: string; adminPassword?: string };
+  const { adminEmail, adminPassword, ...input } = body;
+  const name = (input.name ?? '').trim();
+  if (!name) return res.status(400).json({ error: 'Store name is required' });
+  const slug = (input.slug ?? name).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || `store-${Date.now()}`;
+  const existingTenants = await repos.tenants.findAll();
+  if (existingTenants.some((t) => t.slug === slug)) {
+    return res.status(400).json({ error: `Slug "${slug}" already exists. Use a unique slug.` });
+  }
   const id = crypto.randomUUID?.() ?? `t-${Date.now()}`;
+  const hero = input.hero ?? { ...DEFAULT_HERO, title: name };
   const tenant: RegistryTenant = {
     ...input,
     id,
+    slug,
+    name,
     marketId,
     createdAt: new Date().toISOString(),
-    hero: input.hero ?? DEFAULT_HERO,
+    logoUrl: input.logoUrl ?? '',
+    primaryColor: input.primaryColor ?? '#0f766e',
+    secondaryColor: input.secondaryColor ?? '#d4a574',
+    fontFamily: input.fontFamily ?? '"Cairo", system-ui, sans-serif',
+    radiusScale: input.radiusScale ?? 1,
+    layoutStyle: (input.layoutStyle as RegistryTenant['layoutStyle']) ?? 'default',
+    enabled: input.enabled ?? true,
+    hero: normalizeHero(hero),
     banners: input.banners ?? [],
+    isListedInMarket: input.isListedInMarket ?? true,
+    type: (input.type === 'CLOTHING' || input.type === 'FOOD') ? input.type : 'GENERAL',
+    marketCategory: input.marketCategory ?? 'GENERAL',
+    tenantType: input.tenantType ?? (input.type === 'FOOD' ? 'RESTAURANT' : 'SHOP'),
+    deliveryProviderMode: input.deliveryProviderMode ?? 'TENANT',
+    allowMarketCourierFallback: input.allowMarketCourierFallback ?? true,
+    financialConfig: input.financialConfig ?? { commissionType: 'PERCENTAGE', commissionValue: 10, deliveryFeeModel: 'TENANT' },
+    paymentCapabilities: input.paymentCapabilities ?? { cash: true, card: false },
+    collections: input.collections ?? [],
   };
-  const tenants = (await repos.tenants.findAll());
-  tenants.push(tenant);
+  if (adminEmail && adminPassword && adminPassword.length >= 6) {
+    const users = await repos.users.findAll();
+    const emailLower = adminEmail.trim().toLowerCase();
+    if (users.some((u) => u.email?.toLowerCase() === emailLower)) {
+      return res.status(400).json({ error: 'Email already in use for another user' });
+    }
+  }
+  const tenants = [...existingTenants, tenant];
   await repos.tenants.setAll(tenants);
   const cat = await repos.catalog.getCatalog(tenant.id);
   await repos.catalog.setCatalog(tenant.id, cat);
@@ -1063,6 +1281,19 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
       zones: [],
     });
   }
+  if (adminEmail && adminPassword && adminPassword.length >= 6) {
+    const users = await repos.users.findAll();
+    const emailLower = adminEmail.trim().toLowerCase();
+    const userId = crypto.randomUUID?.() ?? `user-${Date.now()}`;
+    users.push({
+      id: userId,
+      email: emailLower,
+      role: 'TENANT_ADMIN',
+      tenantId: tenant.id,
+      password: adminPassword,
+    });
+    await repos.users.setAll(users);
+  }
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -1074,7 +1305,7 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
     emergencyMode: user.role === 'ROOT_ADMIN',
     after: tenant,
   });
-  res.status(201).json(tenant);
+  res.status(201).json(normalizeTenantResponse(tenant));
 });
 
 // --- Tenants ---
@@ -1298,11 +1529,19 @@ app.put('/tenants/:id/branding', async (req, res) => {
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
   if (body.logoUrl !== undefined) tenants[idx].logoUrl = body.logoUrl;
-  if (body.hero !== undefined) tenants[idx].hero = normalizeHero(body.hero);
+  if (body.hero !== undefined) {
+    tenants[idx].hero = normalizeHero(body.hero);
+    // Sync: when hero.title is updated, also update tenant.name so Store Settings and Branding stay in sync
+    if (body.hero.title != null && String(body.hero.title).trim()) {
+      const title = String(body.hero.title).trim();
+      if (title.length <= 50) tenants[idx].name = title;
+    }
+  }
   if (body.banners !== undefined) tenants[idx].banners = body.banners;
   if (body.whatsappPhone !== undefined) {
     const cleaned = typeof body.whatsappPhone === 'string' ? body.whatsappPhone.replace(/\D/g, '') : '';
     tenants[idx].whatsappPhone = cleaned || undefined;
+    (tenants[idx] as RegistryTenant).phone = cleaned || undefined;
   }
   if (body.primaryColor !== undefined) tenants[idx].primaryColor = body.primaryColor;
   if (body.secondaryColor !== undefined) tenants[idx].secondaryColor = body.secondaryColor;
@@ -1375,14 +1614,42 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
     busyBannerEnabled?: boolean;
     busyBannerText?: string;
+    bookingEnabled?: boolean;
+    about?: string;
+    officeHours?: string;
+    name?: string;
+    phone?: string;
+    whatsappPhone?: string;
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
+  if (body.name !== undefined) {
+    const trimmed = String(body.name).trim();
+    if (trimmed.length === 0) return res.status(400).json({ error: 'Store name cannot be empty' });
+    if (trimmed.length > 50) return res.status(400).json({ error: 'Store name must be 50 characters or less' });
+    tenants[idx].name = trimmed;
+    // Sync: when name is updated in Store Settings, also update hero.title so Branding and Store Settings stay in sync
+    const existingHero = tenants[idx].hero ?? DEFAULT_HERO;
+    tenants[idx].hero = normalizeHero({ ...existingHero, title: trimmed });
+  }
   if (body.operationalStatus !== undefined) (tenants[idx] as RegistryTenant).operationalStatus = body.operationalStatus;
   if (body.orderPolicy !== undefined) (tenants[idx] as RegistryTenant).orderPolicy = body.orderPolicy;
   if (body.businessHours !== undefined) (tenants[idx] as RegistryTenant).businessHours = body.businessHours;
   if (body.busyBannerEnabled !== undefined) (tenants[idx] as RegistryTenant).busyBannerEnabled = body.busyBannerEnabled;
   if (body.busyBannerText !== undefined) (tenants[idx] as RegistryTenant).busyBannerText = body.busyBannerText;
+  if (body.bookingEnabled !== undefined) (tenants[idx] as RegistryTenant).bookingEnabled = body.bookingEnabled;
+  if (body.about !== undefined) (tenants[idx] as RegistryTenant).about = body.about;
+  if (body.officeHours !== undefined) (tenants[idx] as RegistryTenant).officeHours = body.officeHours;
+  if (body.phone !== undefined) {
+    const cleaned = String(body.phone).replace(/\D/g, '');
+    (tenants[idx] as RegistryTenant).phone = cleaned || undefined;
+    if (!(tenants[idx] as RegistryTenant).whatsappPhone) (tenants[idx] as RegistryTenant).whatsappPhone = cleaned || undefined;
+  }
+  if (body.whatsappPhone !== undefined) {
+    const cleaned = String(body.whatsappPhone).replace(/\D/g, '');
+    (tenants[idx] as RegistryTenant).whatsappPhone = cleaned || undefined;
+    (tenants[idx] as RegistryTenant).phone = cleaned || undefined;
+  }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({

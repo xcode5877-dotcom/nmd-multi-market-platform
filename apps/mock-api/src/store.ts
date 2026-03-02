@@ -115,6 +115,18 @@ export interface RegistryTenant {
   /** Show custom banner when busy */
   busyBannerEnabled?: boolean;
   busyBannerText?: string;
+  /** Store mode: RESTAURANT | PROFESSIONAL. PROFESSIONAL = no cart, contact-only */
+  storeType?: 'RESTAURANT' | 'PROFESSIONAL';
+  /** Professional bio (HTML). For PROFESSIONAL stores */
+  about?: string;
+  /** Phone for call button. Falls back to whatsappPhone */
+  phone?: string;
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores */
+  officeHours?: string;
+  /** Appointment duration in minutes. For PROFESSIONAL booking */
+  appointmentDuration?: number;
+  /** Enable online booking (Coming Soon). For PROFESSIONAL stores */
+  bookingEnabled?: boolean;
 }
 
 export interface TenantCatalog {
@@ -206,6 +218,29 @@ export interface AuditEvent {
   after?: unknown;
 }
 
+/** Global category (platform-level). Used on mall homepage. */
+export interface GlobalCategory {
+  id: string;
+  title: string;
+  icon: string;
+  isProfessional: boolean;
+  sortOrder: number;
+  /** Legacy code for backward compat with tenant.marketCategory (e.g. FOOD, CLOTHING) */
+  legacyCode?: string;
+}
+
+export interface Lead {
+  id: string;
+  tenantId: string;
+  type: 'whatsapp' | 'call' | 'cta' | 'PROFESSIONAL_CONTACT';
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+  /** For PROFESSIONAL_CONTACT: NEW, etc. */
+  status?: string;
+  /** For PROFESSIONAL_CONTACT: whatsapp | call */
+  contactType?: string;
+}
+
 export interface MockData {
   markets: Market[];
   tenants: RegistryTenant[];
@@ -221,7 +256,18 @@ export interface MockData {
   deliveryJobs: DeliveryJob[];
   templates: unknown[];
   staff: unknown[];
+  globalCategories: GlobalCategory[];
+  leads: Lead[];
 }
+
+const DEFAULT_GLOBAL_CATEGORIES: GlobalCategory[] = [
+  { id: 'cat-food', title: 'طعام', icon: '🍕', isProfessional: false, sortOrder: 0, legacyCode: 'FOOD' },
+  { id: 'cat-clothing', title: 'ملابس', icon: '🛍', isProfessional: false, sortOrder: 1, legacyCode: 'CLOTHING' },
+  { id: 'cat-groceries', title: 'خضار', icon: '🥬', isProfessional: false, sortOrder: 2, legacyCode: 'GROCERIES' },
+  { id: 'cat-butcher', title: 'ملحمة', icon: '🥩', isProfessional: false, sortOrder: 3, legacyCode: 'BUTCHER' },
+  { id: 'cat-offers', title: 'عروض', icon: '📦', isProfessional: false, sortOrder: 4, legacyCode: 'OFFERS' },
+  { id: 'cat-professional', title: 'خدمات مهنية', icon: '⚖️', isProfessional: true, sortOrder: 5, legacyCode: 'GENERAL' },
+];
 
 const DEFAULT: MockData = {
   markets: [],
@@ -238,6 +284,8 @@ const DEFAULT: MockData = {
   deliveryJobs: [],
   templates: [],
   staff: [],
+  globalCategories: DEFAULT_GLOBAL_CATEGORIES,
+  leads: [],
 };
 
 const DEFAULT_HERO: StorefrontHero = {
@@ -336,6 +384,9 @@ function load(): MockData {
       }
       const users = (parsed.users ?? []) as User[];
       const auditEvents = (parsed.auditEvents ?? []) as AuditEvent[];
+      const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0
+        ? (parsed.globalCategories as GlobalCategory[])
+        : [...DEFAULT_GLOBAL_CATEGORIES];
       return {
         markets,
         tenants,
@@ -351,6 +402,8 @@ function load(): MockData {
         deliveryJobs: parsed.deliveryJobs ?? [],
         templates: parsed.templates ?? [],
         staff: parsed.staff ?? [],
+        globalCategories,
+        leads: parsed.leads ?? [],
       };
     }
   } catch {
@@ -542,6 +595,16 @@ export function setTemplates(templates: unknown[]): void {
   persist();
 }
 
+export function getGlobalCategories(): GlobalCategory[] {
+  const cats = getData().globalCategories;
+  return (cats ?? []).length > 0 ? [...cats].sort((a, b) => a.sortOrder - b.sortOrder) : [...DEFAULT_GLOBAL_CATEGORIES];
+}
+
+export function setGlobalCategories(categories: GlobalCategory[]): void {
+  getData().globalCategories = categories;
+  persist();
+}
+
 export function getStaff(): unknown[] {
   return getData().staff;
 }
@@ -549,4 +612,20 @@ export function getStaff(): unknown[] {
 export function setStaff(staff: unknown[]): void {
   getData().staff = staff;
   persist();
+}
+
+export function getLeads(): Lead[] {
+  return getData().leads ?? [];
+}
+
+export function appendLead(lead: Omit<Lead, 'id' | 'timestamp'>): Lead {
+  const data = getData();
+  const full: Lead = {
+    ...lead,
+    id: `lead-${crypto.randomUUID?.() ?? Date.now()}`,
+    timestamp: new Date().toISOString(),
+  };
+  data.leads = [...(data.leads ?? []), full];
+  persist();
+  return full;
 }

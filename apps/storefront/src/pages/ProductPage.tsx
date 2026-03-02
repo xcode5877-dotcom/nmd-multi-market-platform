@@ -156,6 +156,8 @@ export default function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantType = useAppStore((s) => s.tenantType) ?? 'GENERAL';
+  const storeType = useAppStore((s) => s.storeType);
+  const isProfessional = storeType === 'PROFESSIONAL';
   const addToast = useToast().addToast;
   const addItem = useCartStore((s) => s.addItem);
 
@@ -504,7 +506,7 @@ export default function ProductPage() {
             />
           )}
 
-          {!selectionValid && (
+          {!isProfessional && !selectionValid && (
             <p className="text-sm text-amber-600">
               {requiresSizeColorValidation
                 ? 'اختاري المقاس/اللون'
@@ -514,63 +516,76 @@ export default function ProductPage() {
             </p>
           )}
 
-          {/* Quantity + Add */}
-          <div className="flex items-center gap-3 pt-2">
-            <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="w-10 h-10 flex items-center justify-center border-e border-gray-200 hover:bg-gray-50"
-              >
-                −
-              </button>
-              <span className="w-10 text-center text-sm font-medium">{quantity}</span>
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => q + 1)}
-                className="w-10 h-10 flex items-center justify-center border-s border-gray-200 hover:bg-gray-50"
-              >
-                +
-              </button>
+          {/* Quantity + Add (RESTAURANT) or Contact message (PROFESSIONAL) */}
+          {isProfessional ? (
+            <div className="pt-4 p-4 rounded-xl bg-primary/5 border border-primary/20" dir="rtl">
+              <p className="text-sm font-medium text-gray-700 mb-1">للحصول على هذه الخدمة</p>
+              <p className="text-sm text-gray-600">تواصل معنا عبر الأزرار أدناه</p>
             </div>
-            <Button
-              onClick={handleAddToCart}
-              disabled={!canAdd}
-              className={`flex-1 ${addButtonBouncing ? 'animate-bounce-subtle' : ''}`}
-            >
-              {isAdding ? 'جاري الإضافة...' : 'أضف للسلة'}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="w-10 h-10 flex items-center justify-center border-e border-gray-200 hover:bg-gray-50"
+                >
+                  −
+                </button>
+                <span className="w-10 text-center text-sm font-medium">{quantity}</span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => q + 1)}
+                  className="w-10 h-10 flex items-center justify-center border-s border-gray-200 hover:bg-gray-50"
+                >
+                  +
+                </button>
+              </div>
+              <Button
+                onClick={handleAddToCart}
+                disabled={!canAdd}
+                className={`flex-1 ${addButtonBouncing ? 'animate-bounce-subtle' : ''}`}
+              >
+                {isAdding ? 'جاري الإضافة...' : 'أضف للسلة'}
+              </Button>
+            </div>
+          )}
 
-          {/* Trust layer */}
-          <div className="mt-4 flex flex-col gap-2" dir="rtl">
-            <div className="flex items-center gap-2 text-sm text-neutral-500">
-              <Truck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-              <span>توصيل سريع خلال 2–3 أيام</span>
+          {/* Trust layer (e-commerce only) */}
+          {!isProfessional && (
+            <div className="mt-4 flex flex-col gap-2" dir="rtl">
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <Truck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
+                <span>توصيل سريع خلال 2–3 أيام</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <RefreshCw className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
+                <span>استبدال خلال 7 أيام</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
+                <span>دفع آمن 100٪</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-neutral-500">
-              <RefreshCw className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-              <span>استبدال خلال 7 أيام</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-neutral-500">
-              <ShieldCheck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-              <span>دفع آمن 100٪</span>
-            </div>
-          </div>
+          )}
 
           {/* Accordion */}
           <div className="mt-8 pt-6 border-t border-gray-200">
-            <AccordionSection title="وصف المنتج" defaultOpen>
+            <AccordionSection title={isProfessional ? "تفاصيل الخدمة" : "وصف المنتج"} defaultOpen>
               <p className={`text-gray-600 text-sm leading-relaxed ${product.description ? 'whitespace-pre-line' : 'text-neutral-400 italic'}`}>
                 {product.description || 'لا يوجد وصف متاح حالياً.'}
               </p>
             </AccordionSection>
-            <AccordionSection title="التوصيل">
-              التوصيل متاح لجميع المناطق. يتم الشحن خلال 2-5 أيام عمل.
-            </AccordionSection>
-            <AccordionSection title="الاستبدال والاسترجاع">
-              يمكنك الاستبدال أو الاسترجاع خلال 14 يوماً من الاستلام في حال عدم الاستخدام.
-            </AccordionSection>
+            {!isProfessional && (
+              <>
+                <AccordionSection title="التوصيل">
+                  التوصيل متاح لجميع المناطق. يتم الشحن خلال 2-5 أيام عمل.
+                </AccordionSection>
+                <AccordionSection title="الاستبدال والاسترجاع">
+                  يمكنك الاستبدال أو الاسترجاع خلال 14 يوماً من الاستلام في حال عدم الاستخدام.
+                </AccordionSection>
+              </>
+            )}
           </div>
         </div>
       </motion.div>

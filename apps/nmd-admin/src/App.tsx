@@ -29,6 +29,8 @@ const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const MarketDispatchPage = lazy(() => import('./pages/MarketDispatchPage'));
 const MarketFinancePage = lazy(() => import('./pages/MarketFinancePage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
+const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
+const LeadsPage = lazy(() => import('./pages/LeadsPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -74,6 +76,7 @@ export default function App() {
               <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
               <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
               <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
+              <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
               <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />
               <Route path="tenants/:id/settings/delivery" element={<RootOnlyRoute><TenantDeliverySettingsPage /></RootOnlyRoute>} />
               <Route path="markets/:id/tenants/:tenantId" element={<MarketRouteGuard><TenantDetailPage /></MarketRouteGuard>} />
@@ -86,6 +89,7 @@ export default function App() {
               <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
               <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
               <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
+              <Route path="leads" element={<LeadsPage />} />
               <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
                 {tenantRouteElements}
                 <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />

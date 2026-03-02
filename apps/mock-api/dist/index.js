@@ -4,8 +4,8 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import jwt from "jsonwebtoken";
-import { join as join2 } from "path";
-import { existsSync as existsSync2, mkdirSync as mkdirSync2 } from "fs";
+import { join as join3 } from "path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2 } from "fs";
 
 // src/store.ts
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
@@ -14,6 +14,14 @@ var DATA_FILE = join(process.cwd(), "data.json");
 var ORDERS_DIR = join(process.cwd(), "..", "..", "packages", "mock", "data");
 var ORDERS_FILE = join(ORDERS_DIR, "orders.json");
 var ORDERS_TMP = join(ORDERS_DIR, "orders.tmp.json");
+var DEFAULT_GLOBAL_CATEGORIES = [
+  { id: "cat-food", title: "\u0637\u0639\u0627\u0645", icon: "\u{1F355}", isProfessional: false, sortOrder: 0, legacyCode: "FOOD" },
+  { id: "cat-clothing", title: "\u0645\u0644\u0627\u0628\u0633", icon: "\u{1F6CD}", isProfessional: false, sortOrder: 1, legacyCode: "CLOTHING" },
+  { id: "cat-groceries", title: "\u062E\u0636\u0627\u0631", icon: "\u{1F96C}", isProfessional: false, sortOrder: 2, legacyCode: "GROCERIES" },
+  { id: "cat-butcher", title: "\u0645\u0644\u062D\u0645\u0629", icon: "\u{1F969}", isProfessional: false, sortOrder: 3, legacyCode: "BUTCHER" },
+  { id: "cat-offers", title: "\u0639\u0631\u0648\u0636", icon: "\u{1F4E6}", isProfessional: false, sortOrder: 4, legacyCode: "OFFERS" },
+  { id: "cat-professional", title: "\u062E\u062F\u0645\u0627\u062A \u0645\u0647\u0646\u064A\u0629", icon: "\u2696\uFE0F", isProfessional: true, sortOrder: 5, legacyCode: "GENERAL" }
+];
 var DEFAULT = {
   markets: [],
   tenants: [],
@@ -28,7 +36,9 @@ var DEFAULT = {
   customers: [],
   deliveryJobs: [],
   templates: [],
-  staff: []
+  staff: [],
+  globalCategories: DEFAULT_GLOBAL_CATEGORIES,
+  leads: []
 };
 var DEFAULT_HERO = {
   title: "\u0645\u0631\u062D\u0628\u0627\u064B \u0628\u0643",
@@ -121,6 +131,7 @@ function load() {
       }
       const users = parsed.users ?? [];
       const auditEvents = parsed.auditEvents ?? [];
+      const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0 ? parsed.globalCategories : [...DEFAULT_GLOBAL_CATEGORIES];
       return {
         markets,
         tenants,
@@ -135,7 +146,9 @@ function load() {
         customers: parsed.customers ?? [],
         deliveryJobs: parsed.deliveryJobs ?? [],
         templates: parsed.templates ?? [],
-        staff: parsed.staff ?? []
+        staff: parsed.staff ?? [],
+        globalCategories,
+        leads: parsed.leads ?? []
       };
     }
   } catch {
@@ -287,12 +300,110 @@ function setDeliveryJobs(jobs) {
 function getTemplates() {
   return getData().templates;
 }
+function getGlobalCategories() {
+  const cats = getData().globalCategories;
+  return (cats ?? []).length > 0 ? [...cats].sort((a, b) => a.sortOrder - b.sortOrder) : [...DEFAULT_GLOBAL_CATEGORIES];
+}
+function setGlobalCategories(categories) {
+  getData().globalCategories = categories;
+  persist();
+}
 function getStaff() {
   return getData().staff;
 }
 function setStaff(staff) {
   getData().staff = staff;
   persist();
+}
+function getLeads() {
+  return getData().leads ?? [];
+}
+function appendLead(lead) {
+  const data = getData();
+  const full = {
+    ...lead,
+    id: `lead-${crypto.randomUUID?.() ?? Date.now()}`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  data.leads = [...data.leads ?? [], full];
+  persist();
+  return full;
+}
+
+// src/market-config.ts
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, existsSync as existsSync2 } from "fs";
+import { join as join2 } from "path";
+var CONFIG_FILE = join2(process.cwd(), "market-config.json");
+var DEFAULT_BANNERS = [
+  {
+    id: "b1",
+    imageUrl: "https://placehold.co/1200x514/6366f1/ffffff?text=\u0627\u0644\u0633\u0648\u0642",
+    title: "\u0645\u0631\u062D\u0628\u0627\u064B \u0628\u0643\u0645",
+    linkTo: "",
+    active: true
+  }
+];
+var DEFAULT_LAYOUT = [
+  { id: "all", title: "\u062C\u0645\u064A\u0639 \u0627\u0644\u0645\u062D\u0644\u0627\u062A", type: "SLIDER", storeIds: [] }
+];
+var SEED_BANNERS = {
+  dabburiyya: [
+    { id: "b1", imageUrl: "https://placehold.co/1200x514/1e293b/ffffff?text=\u0639\u0631\u0636+\u062E\u0627\u0635", title: "\u0628\u064A\u062A\u0633\u0627 \u0625\u064A\u0637\u0627\u0644\u064A\u0629 \u0637\u0627\u0632\u062C\u0629", linkTo: "buffalo", active: true },
+    { id: "b2", imageUrl: "https://placehold.co/1200x514/0f766e/ffffff?text=\u062A\u0648\u0635\u064A\u0644+\u0633\u0631\u064A\u0639", title: "\u0627\u0637\u0644\u0628 \u0645\u0646 \u0645\u062D\u0644\u0627\u062A\u0643 \u0627\u0644\u0645\u0641\u0636\u0644\u0629", linkTo: "buffalo", active: true }
+  ],
+  iksal: [
+    { id: "b1", imageUrl: "https://placehold.co/1200x514/4f46e5/ffffff?text=\u0633\u0648\u0642+\u0625\u0643\u0633\u0627\u0644", title: "\u0645\u0631\u062D\u0628\u0627\u064B \u0628\u0643\u0645 \u0641\u064A \u0633\u0648\u0642 \u0625\u0643\u0633\u0627\u0644", linkTo: "buffalo", active: true }
+  ]
+};
+var SEED_LAYOUT = {
+  dabburiyya: [
+    { id: "featured", title: "\u0645\u062D\u0644\u0627\u062A \u0645\u0645\u064A\u0632\u0629", type: "SLIDER", storeIds: ["buffalo"] },
+    { id: "restaurants", title: "\u0623\u0641\u0636\u0644 \u0627\u0644\u0645\u0637\u0627\u0639\u0645", type: "SLIDER", storeIds: ["buffalo"] },
+    { id: "new", title: "\u062C\u062F\u064A\u062F \u0641\u064A \u062F\u0628\u0648\u0631\u064A\u0629", type: "SLIDER", storeIds: ["buffalo"] }
+  ],
+  iksal: [{ id: "featured", title: "\u0645\u062D\u0644\u0627\u062A \u0645\u0645\u064A\u0632\u0629", type: "SLIDER", storeIds: ["buffalo"] }]
+};
+function load2() {
+  try {
+    if (existsSync2(CONFIG_FILE)) {
+      const raw = readFileSync2(CONFIG_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      return {
+        banners: parsed.banners ?? SEED_BANNERS,
+        layout: parsed.layout ?? SEED_LAYOUT
+      };
+    }
+  } catch {
+  }
+  return { banners: { ...SEED_BANNERS }, layout: { ...SEED_LAYOUT } };
+}
+function save2(store) {
+  try {
+    writeFileSync2(CONFIG_FILE, JSON.stringify(store, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[market-config] Failed to persist:", err);
+  }
+}
+var cache2 = null;
+function getStore() {
+  if (!cache2) cache2 = load2();
+  return cache2;
+}
+function getBannersForMarket(marketSlug) {
+  return getStore().banners[marketSlug] ?? DEFAULT_BANNERS;
+}
+function getLayoutForMarket(marketSlug) {
+  return getStore().layout[marketSlug] ?? DEFAULT_LAYOUT;
+}
+function setBannersForMarket(marketSlug, banners) {
+  const store = getStore();
+  store.banners[marketSlug] = banners;
+  save2(store);
+}
+function setLayoutForMarket(marketSlug, layout) {
+  const store = getStore();
+  store.layout[marketSlug] = layout;
+  save2(store);
 }
 
 // src/delivery-engine.ts
@@ -1175,6 +1286,7 @@ async function seedUsersIfNeeded() {
     { id: "user-tenant-ms-brands", email: "ms-brands@nmd.com", role: "TENANT_ADMIN", tenantId: "5b35539f-90e1-49cc-8c32-8d26cdce20f2", password: "ms-brands@2026" },
     { id: "user-tenant-obr", email: "obr@nmd.com", role: "TENANT_ADMIN", tenantId: OBR_TENANT_ID, password: "obr@2026" },
     { id: "user-tenant-top-market", email: "top-market@nmd.com", role: "TENANT_ADMIN", tenantId: TOP_MARKET_TENANT_ID, password: "top-market@2026" },
+    { id: "user-tenant-lawyer-falan", email: "lawyer@nmd.com", role: "TENANT_ADMIN", tenantId: "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d", password: "123456" },
     { id: "user-courier-dab-1", email: "ahmed@courier.nmd.com", role: "COURIER", marketId: DABBURIYYA_MARKET_ID, courierId: "courier-50971b77-4811-49e8-825b-78bd84041782", password: "123456" },
     { id: "user-courier-iksal-1", email: "courier@iksal.nmd.com", role: "COURIER", marketId: IKSAL_MARKET_ID, courierId: "courier-iksal-001", password: "123456" }
   ];
@@ -1273,8 +1385,8 @@ async function seedDeliveryZonesIfNeeded() {
     await repos.deliveryZones.setAll(t.id, zones);
   }
 }
-var UPLOADS_DIR = join2(process.cwd(), "..", "..", "packages", "mock", "uploads");
-if (!existsSync2(UPLOADS_DIR)) mkdirSync2(UPLOADS_DIR, { recursive: true });
+var UPLOADS_DIR = join3(process.cwd(), "..", "..", "packages", "mock", "uploads");
+if (!existsSync3(UPLOADS_DIR)) mkdirSync2(UPLOADS_DIR, { recursive: true });
 var storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -1323,6 +1435,8 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/storefront\/tenants$/ },
   { method: "GET", path: /^\/markets$/ },
   { method: "GET", path: /^\/markets\/by-slug\/[^/]+$/ },
+  { method: "GET", path: /^\/markets\/by-slug\/[^/]+\/banners$/ },
+  { method: "GET", path: /^\/markets\/by-slug\/[^/]+\/layout$/ },
   { method: "GET", path: /^\/markets\/[^/]+\/tenants$/ },
   { method: "GET", path: /^\/tenants\/by-slug\/[^/]+$/ },
   { method: "GET", path: /^\/tenants\/by-id\/[^/]+$/ },
@@ -1333,7 +1447,8 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/campaigns$/ },
   { method: "GET", path: /^\/delivery\/[^/]+$/ },
   { method: "GET", path: /^\/tenants\/[^/]+\/delivery-zones$/ },
-  { method: "GET", path: /^\/public\/orders\/[^/]+$/ }
+  { method: "GET", path: /^\/public\/orders\/[^/]+$/ },
+  { method: "GET", path: /^\/global-categories$/ }
 ];
 function isPublicRoute(method, path) {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
@@ -1730,6 +1845,36 @@ function normalizeTenantResponse(t) {
     banners: t.banners ?? []
   };
 }
+app.post("/leads", (req, res) => {
+  const body = req.body;
+  const tenantId = body.tenantId;
+  const rawType = body.type;
+  const type = rawType === "PROFESSIONAL_CONTACT" ? "PROFESSIONAL_CONTACT" : rawType === "whatsapp" || rawType === "call" || rawType === "cta" ? rawType : "cta";
+  if (!tenantId || typeof tenantId !== "string") {
+    return res.status(400).json({ error: "tenantId required" });
+  }
+  const lead = appendLead({
+    tenantId: tenantId.trim(),
+    type,
+    status: body.status,
+    contactType: body.contactType,
+    metadata: body.metadata ?? {}
+  });
+  res.status(201).json(lead);
+});
+app.get("/leads", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const caller = req.user;
+  let leads = getLeads();
+  if (caller.role === "TENANT_ADMIN" && caller.tenantId) {
+    leads = leads.filter((l) => l.tenantId === caller.tenantId);
+  } else if (caller.role === "MARKET_ADMIN" && caller.marketId) {
+    const tenants = await repos.tenants.findAll();
+    const marketTenantIds = new Set(tenants.filter((t) => t.marketId === caller.marketId).map((t) => t.id));
+    leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+  }
+  res.json(leads);
+});
 app.get("/audit-events", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   const limit = Math.min(Number(req.query.limit) || 100, 500);
@@ -1816,6 +1961,141 @@ app.get("/markets/:marketId/tenant-admins", async (req, res) => {
   const result = users.filter((u) => u.tenantId && marketTenantIds.has(u.tenantId)).map((u) => ({ ...u, password: void 0 }));
   res.json(result);
 });
+app.get("/tenants/:tenantId/tenant-admin", async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+  if (caller.role === "MARKET_ADMIN" && tenant.marketId !== caller.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const users = await repos.users.findAll();
+  const admin = users.find((u) => u.role === "TENANT_ADMIN" && u.tenantId === tenantId);
+  if (!admin) return res.status(404).json({ error: "No tenant admin found" });
+  res.json({ ...admin, password: void 0 });
+});
+app.post("/tenants/:tenantId/create-admin", async (req, res) => {
+  const caller = req.user;
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  const { tenantId } = req.params;
+  const body = req.body;
+  const email = body.email?.trim();
+  const password = body.password;
+  if (!email || !password || password.length < 6) {
+    return res.status(400).json({ error: "email and password required (password min 6 chars)" });
+  }
+  const tenants = await repos.tenants.findAll();
+  const tenant = tenants.find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+  if (caller.role === "MARKET_ADMIN" && tenant.marketId !== caller.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const users = await repos.users.findAll();
+  const existingAdmin = users.find((u) => u.role === "TENANT_ADMIN" && u.tenantId === tenantId);
+  if (existingAdmin) {
+    return res.status(400).json({ error: "Tenant already has an admin account" });
+  }
+  const emailLower = email.toLowerCase();
+  if (users.some((u) => u.email?.toLowerCase() === emailLower)) {
+    return res.status(400).json({ error: "Email already in use" });
+  }
+  const userId = crypto.randomUUID?.() ?? `user-${Date.now()}`;
+  users.push({
+    id: userId,
+    email: emailLower,
+    role: "TENANT_ADMIN",
+    tenantId,
+    password
+  });
+  await repos.users.setAll(users);
+  appendAuditEvent({
+    userId: caller.id,
+    role: caller.role,
+    marketId: caller.marketId,
+    action: "create",
+    entity: "user",
+    entityId: userId,
+    reason: `Created tenant admin for ${tenant.name}`
+  });
+  res.status(201).json({ id: userId, email: emailLower, role: "TENANT_ADMIN", tenantId });
+});
+app.get("/global-categories", (_req, res) => {
+  res.json(getGlobalCategories());
+});
+app.post("/global-categories", async (req, res) => {
+  if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = req.body;
+  const id = crypto.randomUUID?.() ?? `cat-${Date.now()}`;
+  const cat = {
+    id,
+    title: body.title ?? "",
+    icon: body.icon ?? "\u{1F4E6}",
+    isProfessional: body.isProfessional ?? false,
+    sortOrder: body.sortOrder ?? 999
+  };
+  const cats = getGlobalCategories();
+  cats.push(cat);
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user.id,
+    role: req.user.role,
+    action: "create",
+    entity: "globalCategory",
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    after: cat
+  });
+  res.status(201).json(cat);
+});
+app.put("/global-categories/:id", async (req, res) => {
+  if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const body = req.body;
+  const cats = getGlobalCategories();
+  const idx = cats.findIndex((c) => c.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Category not found" });
+  const before = cats[idx];
+  cats[idx] = { ...cats[idx], ...body };
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user.id,
+    role: req.user.role,
+    action: "update",
+    entity: "globalCategory",
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before,
+    after: cats[idx]
+  });
+  res.json(cats[idx]);
+});
+app.delete("/global-categories/:id", async (req, res) => {
+  if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const cats = getGlobalCategories();
+  const idx = cats.findIndex((c) => c.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Category not found" });
+  const removed = cats[idx];
+  cats.splice(idx, 1);
+  setGlobalCategories(cats);
+  appendAuditEvent({
+    userId: req.user.id,
+    role: req.user.role,
+    action: "delete",
+    entity: "globalCategory",
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before: removed
+  });
+  res.status(204).send();
+});
 app.get("/markets", async (req, res) => {
   const user = req.user;
   let markets = await repos.markets.findAll();
@@ -1884,6 +2164,44 @@ app.get("/markets/by-slug/:slug", async (req, res) => {
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (!market.isActive) return res.status(404).json({ error: "Market not found" });
   res.json(market);
+});
+app.get("/markets/by-slug/:slug/banners", async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: "Market not found" });
+  const banners = getBannersForMarket(req.params.slug);
+  res.json(banners);
+});
+app.get("/markets/by-slug/:slug/layout", async (req, res) => {
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: "Market not found" });
+  const layout = getLayoutForMarket(req.params.slug);
+  res.json(layout);
+});
+app.put("/markets/by-slug/:slug/banners", async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "ROOT_ADMIN" && (user.role !== "MARKET_ADMIN" || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: "Market not found" });
+  const banners = req.body;
+  if (!Array.isArray(banners)) return res.status(400).json({ error: "banners must be an array" });
+  setBannersForMarket(req.params.slug, banners);
+  res.json(banners);
+});
+app.put("/markets/by-slug/:slug/layout", async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "ROOT_ADMIN" && (user.role !== "MARKET_ADMIN" || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  if (!market) return res.status(404).json({ error: "Market not found" });
+  const layout = req.body;
+  if (!Array.isArray(layout)) return res.status(400).json({ error: "layout must be an array" });
+  setLayoutForMarket(req.params.slug, layout);
+  res.json(layout);
 });
 app.get("/markets/:id", async (req, res) => {
   const market = (await repos.markets.findAll()).find((m) => m.id === req.params.id);
@@ -1984,18 +2302,51 @@ app.post("/markets/:marketId/tenants", async (req, res) => {
   }
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
-  const input = req.body;
+  const body = req.body;
+  const { adminEmail, adminPassword, ...input } = body;
+  const name = (input.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "Store name is required" });
+  const slug = (input.slug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || `store-${Date.now()}`;
+  const existingTenants = await repos.tenants.findAll();
+  if (existingTenants.some((t) => t.slug === slug)) {
+    return res.status(400).json({ error: `Slug "${slug}" already exists. Use a unique slug.` });
+  }
   const id = crypto.randomUUID?.() ?? `t-${Date.now()}`;
+  const hero = input.hero ?? { ...DEFAULT_HERO2, title: name };
   const tenant = {
     ...input,
     id,
+    slug,
+    name,
     marketId,
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-    hero: input.hero ?? DEFAULT_HERO2,
-    banners: input.banners ?? []
+    logoUrl: input.logoUrl ?? "",
+    primaryColor: input.primaryColor ?? "#0f766e",
+    secondaryColor: input.secondaryColor ?? "#d4a574",
+    fontFamily: input.fontFamily ?? '"Cairo", system-ui, sans-serif',
+    radiusScale: input.radiusScale ?? 1,
+    layoutStyle: input.layoutStyle ?? "default",
+    enabled: input.enabled ?? true,
+    hero: normalizeHero(hero),
+    banners: input.banners ?? [],
+    isListedInMarket: input.isListedInMarket ?? true,
+    type: input.type === "CLOTHING" || input.type === "FOOD" ? input.type : "GENERAL",
+    marketCategory: input.marketCategory ?? "GENERAL",
+    tenantType: input.tenantType ?? (input.type === "FOOD" ? "RESTAURANT" : "SHOP"),
+    deliveryProviderMode: input.deliveryProviderMode ?? "TENANT",
+    allowMarketCourierFallback: input.allowMarketCourierFallback ?? true,
+    financialConfig: input.financialConfig ?? { commissionType: "PERCENTAGE", commissionValue: 10, deliveryFeeModel: "TENANT" },
+    paymentCapabilities: input.paymentCapabilities ?? { cash: true, card: false },
+    collections: input.collections ?? []
   };
-  const tenants = await repos.tenants.findAll();
-  tenants.push(tenant);
+  if (adminEmail && adminPassword && adminPassword.length >= 6) {
+    const users = await repos.users.findAll();
+    const emailLower = adminEmail.trim().toLowerCase();
+    if (users.some((u) => u.email?.toLowerCase() === emailLower)) {
+      return res.status(400).json({ error: "Email already in use for another user" });
+    }
+  }
+  const tenants = [...existingTenants, tenant];
   await repos.tenants.setAll(tenants);
   const cat = await repos.catalog.getCatalog(tenant.id);
   await repos.catalog.setCatalog(tenant.id, cat);
@@ -2008,6 +2359,19 @@ app.post("/markets/:marketId/tenants", async (req, res) => {
       zones: []
     });
   }
+  if (adminEmail && adminPassword && adminPassword.length >= 6) {
+    const users = await repos.users.findAll();
+    const emailLower = adminEmail.trim().toLowerCase();
+    const userId = crypto.randomUUID?.() ?? `user-${Date.now()}`;
+    users.push({
+      id: userId,
+      email: emailLower,
+      role: "TENANT_ADMIN",
+      tenantId: tenant.id,
+      password: adminPassword
+    });
+    await repos.users.setAll(users);
+  }
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -2019,7 +2383,7 @@ app.post("/markets/:marketId/tenants", async (req, res) => {
     emergencyMode: user.role === "ROOT_ADMIN",
     after: tenant
   });
-  res.status(201).json(tenant);
+  res.status(201).json(normalizeTenantResponse(tenant));
 });
 app.get("/tenants", async (req, res) => {
   let tenants = await repos.tenants.findAll();
@@ -2214,11 +2578,18 @@ app.put("/tenants/:id/branding", async (req, res) => {
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
   if (body.logoUrl !== void 0) tenants[idx].logoUrl = body.logoUrl;
-  if (body.hero !== void 0) tenants[idx].hero = normalizeHero(body.hero);
+  if (body.hero !== void 0) {
+    tenants[idx].hero = normalizeHero(body.hero);
+    if (body.hero.title != null && String(body.hero.title).trim()) {
+      const title = String(body.hero.title).trim();
+      if (title.length <= 50) tenants[idx].name = title;
+    }
+  }
   if (body.banners !== void 0) tenants[idx].banners = body.banners;
   if (body.whatsappPhone !== void 0) {
     const cleaned = typeof body.whatsappPhone === "string" ? body.whatsappPhone.replace(/\D/g, "") : "";
     tenants[idx].whatsappPhone = cleaned || void 0;
+    tenants[idx].phone = cleaned || void 0;
   }
   if (body.primaryColor !== void 0) tenants[idx].primaryColor = body.primaryColor;
   if (body.secondaryColor !== void 0) tenants[idx].secondaryColor = body.secondaryColor;
@@ -2286,11 +2657,32 @@ app.put("/tenants/:id/operational-settings", async (req, res) => {
   const body = req.body;
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: "Tenant not found" });
+  if (body.name !== void 0) {
+    const trimmed = String(body.name).trim();
+    if (trimmed.length === 0) return res.status(400).json({ error: "Store name cannot be empty" });
+    if (trimmed.length > 50) return res.status(400).json({ error: "Store name must be 50 characters or less" });
+    tenants[idx].name = trimmed;
+    const existingHero = tenants[idx].hero ?? DEFAULT_HERO2;
+    tenants[idx].hero = normalizeHero({ ...existingHero, title: trimmed });
+  }
   if (body.operationalStatus !== void 0) tenants[idx].operationalStatus = body.operationalStatus;
   if (body.orderPolicy !== void 0) tenants[idx].orderPolicy = body.orderPolicy;
   if (body.businessHours !== void 0) tenants[idx].businessHours = body.businessHours;
   if (body.busyBannerEnabled !== void 0) tenants[idx].busyBannerEnabled = body.busyBannerEnabled;
   if (body.busyBannerText !== void 0) tenants[idx].busyBannerText = body.busyBannerText;
+  if (body.bookingEnabled !== void 0) tenants[idx].bookingEnabled = body.bookingEnabled;
+  if (body.about !== void 0) tenants[idx].about = body.about;
+  if (body.officeHours !== void 0) tenants[idx].officeHours = body.officeHours;
+  if (body.phone !== void 0) {
+    const cleaned = String(body.phone).replace(/\D/g, "");
+    tenants[idx].phone = cleaned || void 0;
+    if (!tenants[idx].whatsappPhone) tenants[idx].whatsappPhone = cleaned || void 0;
+  }
+  if (body.whatsappPhone !== void 0) {
+    const cleaned = String(body.whatsappPhone).replace(/\D/g, "");
+    tenants[idx].whatsappPhone = cleaned || void 0;
+    tenants[idx].phone = cleaned || void 0;
+  }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Trash2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,10 @@ const api = new MockApiClient();
 export default function CartPage() {
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
+  const storeType = useAppStore((s) => s.storeType);
+  if (storeType === 'PROFESSIONAL') {
+    return <Navigate to={tenantSlug ? `/${tenantSlug}` : '/'} replace />;
+  }
   const items = useCartStore((s) => s.getItems(tenantId));
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);

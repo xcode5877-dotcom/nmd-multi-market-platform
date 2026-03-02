@@ -8,6 +8,7 @@
   --radius: 8px;
   --font: "Cairo", system-ui, sans-serif;
   --cart-bar-height: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  --professional-bar-height: calc(5.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 body {

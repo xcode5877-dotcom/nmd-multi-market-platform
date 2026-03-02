@@ -30,6 +30,31 @@ export default function TenantOrdersPage() {
     enabled: !!MOCK_API_URL && !!tenantId,
   });
 
+  const { data: leads = [] } = useQuery({
+    queryKey: ['leads'],
+    queryFn: () => api.listLeads(),
+    enabled: !!MOCK_API_URL && !!tenantId,
+  });
+
+  const myTenantId = tenantId ? String(tenantId).trim() : '';
+  const professionalLeads = (leads as { id: string; tenantId?: string; type: string; contactType?: string; timestamp: string; metadata?: Record<string, unknown> }[]).filter(
+    (l) => myTenantId !== '' && l.tenantId != null && String(l.tenantId).trim() === myTenantId && l.type === 'PROFESSIONAL_CONTACT'
+  );
+
+  const ordersAndLeads = [
+    ...(orders as OrderExt[]).map((o) => ({ ...o, isLead: false })),
+    ...professionalLeads.map((l) => ({
+      id: l.id,
+      tenantId: l.tenantId!,
+      status: 'PROFESSIONAL_CONTACT',
+      createdAt: l.timestamp,
+      total: undefined,
+      isLead: true,
+      contactType: l.contactType,
+      metadata: l.metadata,
+    })),
+  ].sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+
   const markReadyMutation = useMutation({
     mutationFn: (orderId: string) => api.markOrderReady(tenantId!, orderId),
     onSuccess: () => {
@@ -43,9 +68,6 @@ export default function TenantOrdersPage() {
   const isRestaurant = tenantType === 'RESTAURANT';
   const allowFallback = (tenant as { allowMarketCourierFallback?: boolean })?.allowMarketCourierFallback ?? false;
 
-  const sortedOrders = ([...orders] as OrderExt[]).sort(
-    (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-  );
 
   if (!MOCK_API_URL || !tenantId) {
     return (
@@ -67,8 +89,8 @@ export default function TenantOrdersPage() {
       <Card className="p-4">
         {isLoading ? (
           <p className="text-gray-500 py-8 text-center">جاري التحميل...</p>
-        ) : sortedOrders.length === 0 ? (
-          <p className="text-gray-500 py-8 text-center">لا توجد طلبات</p>
+        ) : ordersAndLeads.length === 0 ? (
+          <p className="text-gray-500 py-8 text-center">لا توجد طلبات أو اتصالات</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -83,25 +105,32 @@ export default function TenantOrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedOrders.map((o) => {
-                  const readyAt = o.readyAt ? new Date(o.readyAt) : null;
+                {ordersAndLeads.map((o) => {
+                  const isLead = (o as { isLead?: boolean }).isLead;
+                  const contactType = (o as { contactType?: string }).contactType;
+                  const statusLabel = isLead
+                    ? (contactType === 'call' ? 'اتصال مهني (هاتف)' : 'اتصال مهني (واتساب)')
+                    : (o.status ?? '-');
+                  const readyAt = (o as OrderExt).readyAt ? new Date((o as OrderExt).readyAt ?? 0) : null;
                   const now = new Date();
                   const minsLeft = readyAt ? Math.max(0, Math.round((readyAt.getTime() - now.getTime()) / 60000)) : null;
-                  const canMarkReady = isRestaurant && o.status !== 'READY' && o.status !== 'OUT_FOR_DELIVERY' && o.status !== 'DELIVERED' && o.status !== 'CANCELED';
+                  const canMarkReady = !isLead && isRestaurant && o.status !== 'READY' && o.status !== 'OUT_FOR_DELIVERY' && o.status !== 'DELIVERED' && o.status !== 'CANCELED';
                   return (
-                    <tr key={o.id} className="border-t border-gray-100">
+                    <tr key={o.id} className={`border-t border-gray-100 ${isLead ? 'bg-emerald-50/50' : ''}`}>
                       <td className="px-4 py-2 font-mono text-xs">{o.id.slice(0, 8)}</td>
                       <td className="px-4 py-2 text-gray-600">{o.createdAt ? new Date(o.createdAt).toLocaleString('ar-SA') : '-'}</td>
-                      <td className="px-4 py-2">{formatPrice(o.total ?? 0)}</td>
+                      <td className="px-4 py-2">{isLead ? '—' : formatPrice(o.total ?? 0)}</td>
                       <td className="px-4 py-2">
-                        <span className={o.status === 'READY' ? 'text-green-600 font-medium' : ''}>{o.status ?? '-'}</span>
-                        {o.fallbackTriggeredAt && (
+                        <span className={isLead ? 'text-emerald-700 font-medium' : o.status === 'READY' ? 'text-green-600 font-medium' : ''}>
+                          {statusLabel}
+                        </span>
+                        {(o as OrderExt).fallbackTriggeredAt && (
                           <span className="ms-1 text-xs text-amber-600" title="انتقل لتوصيل السوق">↗</span>
                         )}
                       </td>
                       {isRestaurant && (
                         <td className="px-4 py-2">
-                          {o.status === 'READY' ? (
+                          {isLead ? '-' : o.status === 'READY' ? (
                             <span className="text-green-600">جاهز</span>
                           ) : minsLeft !== null ? (
                             <span className={minsLeft <= 0 ? 'text-amber-600' : 'text-gray-600'}>{minsLeft} د</span>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { formatPrice, formatAddonNameWithPlacement, buildWhatsAppMessage, buildWhatsAppUrl, isValidWhatsAppPhone, getOperationalStatus } from '@nmd/core';
@@ -17,6 +17,10 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
+  const storeType = useAppStore((s) => s.storeType);
+  if (storeType === 'PROFESSIONAL') {
+    return <Navigate to={tenantSlug ? `/${tenantSlug}` : '/'} replace />;
+  }
   const items = useCartStore((s) => s.getItems(tenantId));
   const clearCart = useCartStore((s) => s.clearCart);
   const addToast = useToast().addToast;

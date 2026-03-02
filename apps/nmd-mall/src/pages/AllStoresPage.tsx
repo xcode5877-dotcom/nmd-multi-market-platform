@@ -8,7 +8,7 @@ import { StoreCard } from '../components/StoreCard';
 import {
   FEATURED_TENANT_SLUGS,
   SPONSORED_TENANT_SLUGS,
-  TYPE_LABELS,
+  getCategoryLabel,
 } from './MarketHomePage';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -195,7 +195,7 @@ export default function AllStoresPage() {
                 operationalStatus={t.operationalStatus}
                 businessHours={t.businessHours}
                 storeUrl={`${STOREFRONT_URL}/${t.slug}`}
-                categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                categoryLabel={getCategoryLabel([], t.marketCategory ?? 'GENERAL')}
                 badge={getStoreBadge(t.slug)}
               />
             </motion.div>

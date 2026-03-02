@@ -41,6 +41,18 @@ export interface RegistryTenant {
   businessHours?: BusinessHours;
   busyBannerEnabled?: boolean;
   busyBannerText?: string;
+  /** Store mode: RESTAURANT | PROFESSIONAL. PROFESSIONAL = no cart, contact-only */
+  storeType?: 'RESTAURANT' | 'PROFESSIONAL';
+  /** Professional bio (HTML). For PROFESSIONAL stores */
+  about?: string;
+  /** Phone for call button (e.g. 972501234567). Falls back to whatsappPhone */
+  phone?: string;
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores */
+  officeHours?: string;
+  /** Appointment duration in minutes. For PROFESSIONAL booking */
+  appointmentDuration?: number;
+  /** Enable online booking (Coming Soon). For PROFESSIONAL stores */
+  bookingEnabled?: boolean;
 }
 
 /** Market-scoped courier (from GET/POST/PATCH/DELETE /markets/:marketId/couriers) */

@@ -4,6 +4,7 @@ import { Card, Button, Input, Select, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { createAdminData } from '../store/admin-data';
 import { getTenantById, uploadFiles } from '@nmd/mock';
+import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
 import { MockApiClient } from '@nmd/mock';
 import type { TenantBranding, StorefrontHero, StorefrontBanner } from '@nmd/core';
 import { tenantBrandingToCssVars, generateId, formatMoney } from '@nmd/core';
@@ -267,7 +268,11 @@ export default function BrandingPage() {
         }
       }
       addToast('تم حفظ التغييرات', 'success');
-      if (USE_API) queryClient.invalidateQueries({ queryKey: ['tenant-registry', tenantId] });
+      if (USE_API) {
+        queryClient.invalidateQueries({ queryKey: ['tenant-registry', tenantId] });
+        queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+        broadcastTenantUpdate(tenantId);
+      }
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'حدث خطأ أثناء الحفظ', 'error');
     } finally {

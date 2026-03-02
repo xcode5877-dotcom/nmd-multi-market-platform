@@ -92,12 +92,16 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
   const template = r.templateId ? getTemplate(r.templateId) : null;
   const layoutStyle = template?.layoutStyle ?? r.layoutStyle;
   const type = (r.type === 'CLOTHING' || r.type === 'FOOD') ? r.type : 'GENERAL';
-  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string };
+  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; about?: string; phone?: string; officeHours?: string; appointmentDuration?: number };
   return {
     id: r.id,
     name: r.name,
     slug: r.slug,
     type,
+    storeType: t.storeType ?? 'RESTAURANT',
+    about: t.about,
+    officeHours: t.officeHours,
+    appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? 'GENERAL',
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
     branding: {
@@ -110,6 +114,7 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
       hero: normalizeHero(r.hero),
       banners: r.banners ?? [],
       whatsappPhone: r.whatsappPhone,
+      phone: t.phone ?? r.whatsappPhone,
       collections: (r as { collections?: import('@nmd/core').HomeCollection[] }).collections ?? [],
     },
     operationalStatus: t.operationalStatus,
@@ -497,6 +502,27 @@ export class MockApiClient implements ApiClient {
     }
   }
 
+  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). */
+  async listLeads(): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]> {
+    if (!this.useApi) return [];
+    return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]>('/leads');
+  }
+
+  /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
+  async createTenantAdminForTenant(
+    tenantId: string,
+    input: { email: string; password: string }
+  ): Promise<{ id: string; email: string; role: string; tenantId: string }> {
+    if (!this.useApi) throw new Error('Create tenant admin requires API');
+    return apiFetch<{ id: string; email: string; role: string; tenantId: string }>(
+      `/tenants/${tenantId}/create-admin`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }
+    );
+  }
+
   async listTenants(): Promise<RegistryTenant[]> {
     if (this.useApi) {
       return apiFetch<RegistryTenant[]>('/tenants');
@@ -517,7 +543,10 @@ export class MockApiClient implements ApiClient {
   }
 
   /** Create tenant scoped to a market. Uses POST /markets/:marketId/tenants. */
-  async createTenantForMarket(marketId: string, input: Omit<RegistryTenant, 'id' | 'createdAt' | 'marketId'>): Promise<RegistryTenant> {
+  async createTenantForMarket(
+    marketId: string,
+    input: Omit<RegistryTenant, 'id' | 'createdAt' | 'marketId'> & { adminEmail?: string; adminPassword?: string }
+  ): Promise<RegistryTenant> {
     if (this.useApi) {
       return apiFetch<RegistryTenant>(`/markets/${marketId}/tenants`, {
         method: 'POST',
@@ -928,6 +957,12 @@ export class MockApiClient implements ApiClient {
       businessHours?: import('@nmd/core').BusinessHours;
       busyBannerEnabled?: boolean;
       busyBannerText?: string;
+      bookingEnabled?: boolean;
+      about?: string;
+      officeHours?: string;
+      name?: string;
+      phone?: string;
+      whatsappPhone?: string;
     }
   ): Promise<void> {
     if (this.useApi) {

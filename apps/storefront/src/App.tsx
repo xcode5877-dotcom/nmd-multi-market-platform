@@ -6,6 +6,7 @@ import { MockApiClient } from '@nmd/mock';
 import { getTenantSlugOrId, persistTenant } from './lib/tenant';
 import { useAppStore } from './store/app';
 import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
+import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 
 const Layout = lazy(() => import('./layouts/Layout'));
 const RootRedirect = lazy(() => import('./pages/RootRedirect'));
@@ -31,11 +32,12 @@ function TenantGate() {
     queryKey: ['tenant', tenantSlugOrId],
     queryFn: () => api.getTenant(tenantSlugOrId!),
     enabled: !!tenantSlugOrId,
+    staleTime: 0,
   });
 
   useEffect(() => {
     if (tenant) {
-      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL');
+      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL', (tenant as { storeType?: 'RESTAURANT' | 'PROFESSIONAL' }).storeType ?? 'RESTAURANT');
       persistTenant(tenant.slug);
     }
   }, [tenant, setTenant]);
@@ -82,6 +84,7 @@ function TenantGate() {
 function AppContent() {
   return (
     <Suspense fallback={<PageSkeleton />}>
+      <TenantBroadcastListener />
       <Routes>
         <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
         <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />

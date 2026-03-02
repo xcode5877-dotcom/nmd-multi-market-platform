@@ -5,6 +5,7 @@ import { useAdminContext } from '../context/AdminContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { Clock, CheckCircle, AlertCircle, XCircle, Shield } from 'lucide-react';
+import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -39,11 +40,15 @@ export default function StoreSettingsPage() {
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant-by-id', tenantId],
-    queryFn: () => api.getTenant(tenantId) as Promise<{ operationalStatus?: string; orderPolicy?: string; businessHours?: BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string } | null>,
+    queryFn: () => api.getTenant(tenantId) as Promise<{ name?: string; operationalStatus?: string; orderPolicy?: string; businessHours?: BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; bookingEnabled?: boolean; about?: string; officeHours?: string; phone?: string; whatsappPhone?: string } | null>,
     enabled: !!tenantId,
   });
 
+  const [storeName, setStoreName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [busyBannerText, setBusyBannerText] = useState('المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول');
+  const [about, setAbout] = useState('');
+  const [officeHours, setOfficeHours] = useState('');
   const [hours, setHours] = useState<BusinessHours>(() => defaultBusinessHours());
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -52,7 +57,12 @@ export default function StoreSettingsPage() {
 
   useEffect(() => {
     if (tenant) {
+      setStoreName(tenant.name ?? '');
+      const phone = (tenant as { phone?: string }).phone ?? (tenant as { whatsappPhone?: string }).whatsappPhone ?? '';
+      setContactPhone(phone);
       setBusyBannerText(tenant.busyBannerText ?? 'المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول');
+      setAbout((tenant as { about?: string }).about ?? '');
+      setOfficeHours((tenant as { officeHours?: string }).officeHours ?? '');
       const bh = tenant.businessHours;
       setHours(bh && Object.keys(bh).length > 0 ? { ...defaultBusinessHours(), ...bh } : defaultBusinessHours());
     }
@@ -61,11 +71,14 @@ export default function StoreSettingsPage() {
   const operationalStatus = (tenant?.operationalStatus as 'open' | 'closed' | 'busy') ?? 'open';
   const orderPolicy = (tenant?.orderPolicy as 'accept_always' | 'accept_only_when_open') ?? 'accept_only_when_open';
   const busyBannerEnabled = tenant?.busyBannerEnabled ?? false;
+  const bookingEnabled = tenant?.bookingEnabled ?? false;
+  const isProfessional = tenant?.storeType === 'PROFESSIONAL';
 
   const handleStatusOverride = async (status: 'open' | 'closed' | 'busy') => {
     try {
       await api.updateOperationalSettingsApi(tenantId, { operationalStatus: status });
       queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
       addToast(`تم تعيين الحالة: ${status === 'open' ? 'مفتوح' : status === 'busy' ? 'مشغول' : 'مغلق'}`, 'success');
     } catch {
       addToast('حدث خطأ', 'error');
@@ -76,6 +89,7 @@ export default function StoreSettingsPage() {
     try {
       await api.updateOperationalSettingsApi(tenantId, { orderPolicy: policy });
       queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
       addToast('تم تحديث سياسة الطلبات', 'success');
     } catch {
       addToast('حدث خطأ', 'error');
@@ -86,6 +100,7 @@ export default function StoreSettingsPage() {
     try {
       await api.updateOperationalSettingsApi(tenantId, { busyBannerEnabled: enabled });
       queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
       addToast(enabled ? 'تم تفعيل بانر المشغولية' : 'تم إيقاف بانر المشغولية', 'success');
     } catch {
       addToast('حدث خطأ', 'error');
@@ -96,6 +111,7 @@ export default function StoreSettingsPage() {
     try {
       await api.updateOperationalSettingsApi(tenantId, { busyBannerText });
       queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
       addToast('تم حفظ نص البانر', 'success');
     } catch {
       addToast('حدث خطأ', 'error');
@@ -113,6 +129,7 @@ export default function StoreSettingsPage() {
     try {
       await api.updateOperationalSettingsApi(tenantId, { businessHours: hours });
       queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
       addToast('تم حفظ أوقات العمل', 'success');
     } catch {
       addToast('حدث خطأ', 'error');
@@ -152,9 +169,45 @@ export default function StoreSettingsPage() {
     );
   }
 
+  const handleSaveStoreName = async () => {
+    const trimmed = storeName.trim();
+    if (trimmed.length === 0) {
+      addToast('اسم المتجر لا يمكن أن يكون فارغاً', 'error');
+      return;
+    }
+    if (trimmed.length > 50) {
+      addToast('اسم المتجر يجب أن يكون 50 حرفاً أو أقل', 'error');
+      return;
+    }
+    try {
+      await api.updateOperationalSettingsApi(tenantId, { name: trimmed });
+      queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
+      addToast('تم حفظ اسم المتجر', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'حدث خطأ', 'error');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">إعدادات المحل</h1>
+
+      {/* Store Name - All store types */}
+      <Card className="p-6">
+        <h2 className="font-semibold text-gray-900 mb-4">اسم المتجر / المكتب</h2>
+        <div className="flex gap-2 max-w-md">
+          <Input
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            placeholder="مثال: مكتب المحامي فلان"
+            maxLength={51}
+            className="flex-1"
+          />
+          <Button onClick={handleSaveStoreName}>حفظ</Button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">الحد الأقصى 50 حرفاً. سيظهر في الهيدر وصفحة السوق.</p>
+      </Card>
 
       {/* Manual Override - 3 Big Buttons */}
       <Card className="p-6">
@@ -307,6 +360,99 @@ export default function StoreSettingsPage() {
             <Button onClick={handleChangePassword}>حفظ كلمة المرور الجديدة</Button>
           </div>
         </Card>
+      )}
+
+      {/* Professional Settings: Bio, Office Hours, Phone, Online Booking */}
+      {isProfessional && (
+        <>
+          <Card className="p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">رقم الهاتف / واتساب</h2>
+            <p className="text-sm text-gray-500 mb-2">يُستخدم للزرين: اتصال هاتفي وتواصل واتساب</p>
+            <div className="flex gap-2 max-w-md">
+              <Input
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, ''))}
+                placeholder="972501234567"
+                dir="ltr"
+              />
+              <Button
+                onClick={async () => {
+                  try {
+                    await api.updateOperationalSettingsApi(tenantId, { whatsappPhone: contactPhone.replace(/\D/g, ''), phone: contactPhone.replace(/\D/g, '') });
+                    queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                    broadcastTenantUpdate(tenantId);
+                    addToast('تم حفظ رقم الهاتف', 'success');
+                  } catch { addToast('حدث خطأ', 'error'); }
+                }}
+              >
+                حفظ
+              </Button>
+            </div>
+          </Card>
+          <Card className="p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">نبذة عن المكتب (Bio)</h2>
+            <textarea
+              value={about}
+              onChange={(e) => setAbout(e.target.value)}
+              placeholder="اكتب وصفاً لمكتبك وخدماتك..."
+              rows={5}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              dir="rtl"
+            />
+            <p className="text-xs text-gray-500 mt-1">يدعم HTML (مثال: &lt;p&gt;نص&lt;/p&gt;)</p>
+            <Button className="mt-3" onClick={async () => {
+              try {
+                await api.updateOperationalSettingsApi(tenantId, { about });
+                queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                broadcastTenantUpdate(tenantId);
+                addToast('تم حفظ النبذة', 'success');
+              } catch { addToast('حدث خطأ', 'error'); }
+            }}>
+              حفظ النبذة
+            </Button>
+          </Card>
+          <Card className="p-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              ساعات العمل (Office Hours)
+            </h2>
+            <Input
+              value={officeHours}
+              onChange={(e) => setOfficeHours(e.target.value)}
+              placeholder="مثال: الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق"
+              className="w-full"
+            />
+            <Button className="mt-3" onClick={async () => {
+              try {
+                await api.updateOperationalSettingsApi(tenantId, { officeHours });
+                queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                broadcastTenantUpdate(tenantId);
+                addToast('تم حفظ ساعات العمل', 'success');
+              } catch { addToast('حدث خطأ', 'error'); }
+            }}>
+              حفظ ساعات العمل
+            </Button>
+          </Card>
+          <Card className="p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">الحجز أونلاين (قريباً)</h2>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={bookingEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  api.updateOperationalSettingsApi(tenantId, { bookingEnabled: checked }).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                    broadcastTenantUpdate(tenantId);
+                    addToast(checked ? 'تم تفعيل الحجز أونلاين (قريباً)' : 'تم إيقاف الحجز أونلاين', 'success');
+                  }).catch(() => addToast('حدث خطأ', 'error'));
+                }}
+              />
+              <span>تفعيل الحجز أونلاين (قريباً)</span>
+            </label>
+            <p className="text-sm text-gray-500 mt-2">هذه الميزة قيد التطوير وسيتم تفعيلها قريباً.</p>
+          </Card>
+        </>
       )}
 
       {/* Busy Banner Toggle */}

@@ -7,6 +7,7 @@ import { Skeleton, EmptyState, Button } from '@nmd/ui';
 import { formatMoney } from '@nmd/core';
 import { useAppStore } from '../store/app';
 import { ProductCard } from '../components/ProductCard';
+import { ServiceCard } from '../components/ServiceCard';
 import { ProductGridSkeleton } from '../components/skeletons';
 
 const api = new MockApiClient();
@@ -35,6 +36,8 @@ export default function CategoryPage() {
   const navigate = useNavigate();
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantSlug = useAppStore((s) => s.tenantSlug);
+  const storeType = useAppStore((s) => s.storeType);
+  const isProfessional = storeType === 'PROFESSIONAL';
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
   const { data: menu } = useQuery({
@@ -157,19 +160,38 @@ export default function CategoryPage() {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-        {allProducts.map((prod, i) => (
-          <motion.div
-            key={prod.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="w-full"
-          >
-            <ProductCard product={prod} campaigns={campaigns ?? []} />
-          </motion.div>
-        ))}
-      </div>
+      {isProfessional ? (
+        <div className="space-y-4">
+          {allProducts.map((prod, i) => (
+            <motion.div
+              key={prod.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+            >
+              <ServiceCard
+                product={prod}
+                tenantSlug={tenantSlug || tenantId}
+                actionType="inquire"
+              />
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+          {allProducts.map((prod, i) => (
+            <motion.div
+              key={prod.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="w-full"
+            >
+              <ProductCard product={prod} campaigns={campaigns ?? []} />
+            </motion.div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }

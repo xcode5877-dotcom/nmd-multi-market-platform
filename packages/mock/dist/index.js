@@ -102,6 +102,8 @@ var DEMO_TENANTS = [
   }
 ];
 function seedTenants() {
+  const apiUrl = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK_API_URL;
+  if (apiUrl) return;
   const existing = loadTenants();
   if (existing.length > 0) return;
   const created = (/* @__PURE__ */ new Date()).toISOString();
@@ -533,6 +535,10 @@ function registryToTenant(r) {
     name: r.name,
     slug: r.slug,
     type,
+    storeType: t.storeType ?? "RESTAURANT",
+    about: t.about,
+    officeHours: t.officeHours,
+    appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? "GENERAL",
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
     branding: {
@@ -545,6 +551,7 @@ function registryToTenant(r) {
       hero: normalizeHero(r.hero),
       banners: r.banners ?? [],
       whatsappPhone: r.whatsappPhone,
+      phone: t.phone ?? r.whatsappPhone,
       collections: r.collections ?? []
     },
     operationalStatus: t.operationalStatus,
@@ -887,6 +894,33 @@ var MockApiClient = class {
     if (!this.useApi) return [];
     return apiFetch(
       `/markets/${marketId}/tenant-admins`
+    );
+  }
+  /** Get tenant admin for a specific tenant. ROOT_ADMIN: any. MARKET_ADMIN: only tenants in their market. */
+  async getTenantAdmin(tenantId) {
+    if (!this.useApi) return null;
+    try {
+      return await apiFetch(
+        `/tenants/${tenantId}/tenant-admin`
+      );
+    } catch {
+      return null;
+    }
+  }
+  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). */
+  async listLeads() {
+    if (!this.useApi) return [];
+    return apiFetch("/leads");
+  }
+  /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
+  async createTenantAdminForTenant(tenantId, input) {
+    if (!this.useApi) throw new Error("Create tenant admin requires API");
+    return apiFetch(
+      `/tenants/${tenantId}/create-admin`,
+      {
+        method: "POST",
+        body: JSON.stringify(input)
+      }
     );
   }
   async listTenants() {

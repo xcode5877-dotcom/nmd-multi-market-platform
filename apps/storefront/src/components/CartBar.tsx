@@ -12,6 +12,7 @@ function isHiddenPath(pathname: string): boolean {
 
 export function CartBar() {
   const { pathname } = useLocation();
+  const storeType = useAppStore((s) => s.storeType);
   const tenantId = useAppStore((s) => s.tenantId) ?? '';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
   const count = useCartStore((s) =>
@@ -33,7 +34,7 @@ export function CartBar() {
     }
   }, [lastAddTimestamp]);
 
-  if (count === 0 || isHiddenPath(pathname)) return null;
+  if (storeType === 'PROFESSIONAL' || count === 0 || isHiddenPath(pathname)) return null;
 
   return (
     <>

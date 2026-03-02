@@ -1,0 +1,20 @@
+services:
+  mock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock-api
+    ports:
+      - "5190:5190"
+    restart: unless-stopped
+
+  storefront:
+    build:
+      context: .
+      dockerfile: Dockerfile.storefront
+      args:
+        VITE_MOCK_API_URL: "http://147.93.120.244:5190"
+    ports:
+      - "80:80"
+    depends_on:
+      - mock-api
+    restart: unless-stopped

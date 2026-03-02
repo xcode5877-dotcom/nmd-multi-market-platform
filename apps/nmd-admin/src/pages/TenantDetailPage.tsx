@@ -17,6 +17,7 @@ export default function TenantDetailPage() {
   const params = useParams<{ id?: string; tenantId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const id = params.tenantId ?? params.id;
   const openResetFromState = (location.state as { openResetPassword?: boolean })?.openResetPassword ?? false;
   const queryClient = useQueryClient();

@@ -28,6 +28,15 @@ interface OrderRow {
   createdAt?: string;
 }
 
+interface LeadRow {
+  id: string;
+  tenantId: string;
+  type: string;
+  status?: string;
+  contactType?: string;
+  timestamp: string;
+}
+
 const MARKET_CATEGORIES: { value: MarketCategory; label: string }[] = [
   { value: 'FOOD', label: 'طعام' },
   { value: 'CLOTHING', label: 'ملابس' },
@@ -60,12 +69,16 @@ export default function MarketDetailPage() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedTenantIds, setSelectedTenantIds] = useState<Set<string>>(new Set());
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<{ tenantId: string; tenantName: string; admin: { id: string; email: string } } | null>(null);
+  const [createAccountTarget, setCreateAccountTarget] = useState<{ tenantId: string; tenantName: string } | null>(null);
   const [createForm, setCreateForm] = useState({
     name: '',
     slug: '',
     type: 'GENERAL' as 'CLOTHING' | 'FOOD' | 'GENERAL',
     primaryColor: '#0f766e',
     enabled: true,
+    adminEmail: '',
+    adminPassword: '',
   });
 
   const { data: market, isLoading: marketLoading, isError: marketError } = useQuery({
@@ -102,11 +115,56 @@ export default function MarketDetailPage() {
     enabled: !!MOCK_API_URL && !!id,
   });
 
+  const { data: allLeads = [] } = useQuery({
+    queryKey: ['leads'],
+    queryFn: () => api.listLeads(),
+    enabled: !!MOCK_API_URL && !!id && canManageTenants,
+  });
+
+  const marketLeads = useMemo(() => {
+    const tenantIds = new Set(marketTenants.map((t) => t.id));
+    return (allLeads as LeadRow[]).filter(
+      (l) => l.type === 'PROFESSIONAL_CONTACT' && tenantIds.has(l.tenantId)
+    );
+  }, [allLeads, marketTenants]);
+
+  const ordersAndLeads = useMemo(() => {
+    const orderRows: { id?: string; tenantId?: string; total?: number; status?: string; createdAt?: string; isLead?: boolean; contactType?: string }[] = marketOrders.map((o) => ({
+      ...o,
+      isLead: false,
+    }));
+    const leadRows = marketLeads.map((l) => ({
+      id: l.id,
+      tenantId: l.tenantId,
+      total: undefined,
+      status: 'PROFESSIONAL_CONTACT',
+      createdAt: l.timestamp,
+      isLead: true,
+      contactType: l.contactType,
+    }));
+    return [...orderRows, ...leadRows].sort(
+      (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
+    );
+  }, [marketOrders, marketLeads]);
+
+  const { data: tenantAdmins = [] } = useQuery({
+    queryKey: ['tenant-admins', id],
+    queryFn: () => api.listTenantAdminsForMarket(id!),
+    enabled: !!MOCK_API_URL && !!id && canManageTenants,
+  });
+  const tenantAdminMap = useMemo(() => {
+    const m = new Map<string, { id: string; email: string; role: string; tenantId?: string }>();
+    tenantAdmins.forEach((a) => {
+      if (a.tenantId) m.set(a.tenantId, a);
+    });
+    return m;
+  }, [tenantAdmins]);
+
   const createMutation = useMutation({
-    mutationFn: async (input: { name: string; slug: string; type: string; primaryColor: string; enabled: boolean }) => {
-      const slug = input.slug.toLowerCase().replace(/\s/g, '-') || input.name.toLowerCase().replace(/\s/g, '-');
+    mutationFn: async (input: { name: string; slug: string; type: string; primaryColor: string; enabled: boolean; adminEmail?: string; adminPassword?: string }) => {
+      const slug = (input.slug || input.name).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || `store-${Date.now()}`;
       return api.createTenantForMarket(id!, {
-        name: input.name,
+        name: input.name.trim(),
         slug,
         logoUrl: '',
         primaryColor: input.primaryColor,
@@ -116,13 +174,16 @@ export default function MarketDetailPage() {
         layoutStyle: 'default',
         enabled: input.enabled,
         type: input.type as 'CLOTHING' | 'FOOD' | 'GENERAL',
+        adminEmail: input.adminEmail?.trim() || undefined,
+        adminPassword: input.adminPassword || undefined,
       });
     },
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       addToast('تم إنشاء المستأجر', 'success');
       setCreateModalOpen(false);
-      setCreateForm({ name: '', slug: '', type: 'GENERAL', primaryColor: '#0f766e', enabled: true });
+      setCreateForm({ name: '', slug: '', type: 'GENERAL', primaryColor: '#0f766e', enabled: true, adminEmail: '', adminPassword: '' });
       navigate(`/markets/${id}/tenants/${created.id}`);
     },
     onError: (err: Error) => {
@@ -164,6 +225,29 @@ export default function MarketDetailPage() {
     onError: (err: Error) => {
       addToast(err?.message ?? 'فشل الحفظ', 'error');
     },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      api.resetUserPassword(userId, newPassword),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-admins', id] });
+      addToast('تم تعيين كلمة المرور بنجاح', 'success');
+      setResetPasswordTarget(null);
+    },
+    onError: (err: Error) => addToast(err?.message ?? 'فشل تعيين كلمة المرور', 'error'),
+  });
+
+  const createAccountMutation = useMutation({
+    mutationFn: async ({ tenantId, email, password }: { tenantId: string; email: string; password: string }) =>
+      api.createTenantAdminForTenant(tenantId, { email, password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-admins', id] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      addToast('تم إنشاء الحساب بنجاح', 'success');
+      setCreateAccountTarget(null);
+    },
+    onError: (err: Error) => addToast(err?.message ?? 'فشل إنشاء الحساب', 'error'),
   });
 
   if (!id) return null;
@@ -324,6 +408,7 @@ export default function MarketDetailPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">المستأجر</th>
+                      <th className="px-4 py-3 text-start font-medium text-gray-700">الحساب</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">التصنيف</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">ظاهر في السوق</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">ترتيب</th>
@@ -336,10 +421,16 @@ export default function MarketDetailPage() {
                         key={t.id}
                         tenant={t}
                         marketId={id!}
+                        tenantAdmin={tenantAdminMap.get(t.id)}
                         marketCategories={MARKET_CATEGORIES}
                         onSave={(updates) => updateMutation.mutate({ tenantId: t.id, updates })}
                         isSaving={updateMutation.isPending && updateMutation.variables?.tenantId === t.id}
-                        canResetPassword={canManageTenants}
+                        canManageAccounts={canManageTenants}
+                        onResetPassword={() => {
+                          const admin = tenantAdminMap.get(t.id);
+                          if (admin) setResetPasswordTarget({ tenantId: t.id, tenantName: t.name, admin });
+                        }}
+                        onCreateAccount={() => setCreateAccountTarget({ tenantId: t.id, tenantName: t.name })}
                       />
                     ))}
                   </tbody>
@@ -356,8 +447,8 @@ export default function MarketDetailPage() {
             </div>
             {ordersLoading ? (
               <div className="p-12 text-center text-gray-500">جاري التحميل...</div>
-            ) : marketOrders.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">لا توجد طلبات</div>
+            ) : ordersAndLeads.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">لا توجد طلبات أو اتصالات</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -371,19 +462,34 @@ export default function MarketDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {marketOrders
-                      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-                      .map((o) => (
-                        <tr key={o.id ?? o.tenantId} className="border-t border-gray-100">
+                    {ordersAndLeads.map((o) => {
+                      const isLead = (o as { isLead?: boolean }).isLead;
+                      const contactType = (o as { contactType?: string }).contactType;
+                      const statusLabel = isLead
+                        ? (contactType === 'call' ? 'اتصال مهني (هاتف)' : 'اتصال مهني (واتساب)')
+                        : (o.status ?? '-');
+                      const storeName = marketTenants.find((t) => t.id === o.tenantId)?.name ?? o.tenantId;
+                      return (
+                        <tr key={o.id ?? o.tenantId} className={`border-t border-gray-100 ${isLead ? 'bg-emerald-50/50' : ''}`}>
                           <td className="px-4 py-3 font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</td>
                           <td className="px-4 py-3">
-                            {marketTenants.find((t) => t.id === o.tenantId)?.name ?? o.tenantId}
+                            {storeName}
+                            {isLead && (
+                              <span className="mr-1 text-xs text-emerald-600" title="من صفحة مهنية">
+                                (مهني)
+                              </span>
+                            )}
                           </td>
-                          <td className="px-4 py-3">{o.total ?? 0} ر.س</td>
-                          <td className="px-4 py-3">{o.status ?? '-'}</td>
+                          <td className="px-4 py-3">{isLead ? '—' : `${o.total ?? 0} ر.س`}</td>
+                          <td className="px-4 py-3">
+                            <span className={isLead ? 'text-emerald-700 font-medium' : ''}>
+                              {statusLabel}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('ar-SA') : '-'}</td>
                         </tr>
-                      ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -475,7 +581,7 @@ export default function MarketDetailPage() {
         open={createModalOpen}
         onClose={() => {
           setCreateModalOpen(false);
-          setCreateForm({ name: '', slug: '', type: 'GENERAL', primaryColor: '#0f766e', enabled: true });
+          setCreateForm({ name: '', slug: '', type: 'GENERAL', primaryColor: '#0f766e', enabled: true, adminEmail: '', adminPassword: '' });
         }}
         title="إنشاء مستأجر جديد"
         size="md"
@@ -509,6 +615,20 @@ export default function MarketDetailPage() {
             value={createForm.primaryColor}
             onChange={(e) => setCreateForm((f) => ({ ...f, primaryColor: e.target.value }))}
           />
+          <Input
+            label="البريد الإلكتروني (مدير المتجر)"
+            type="email"
+            value={createForm.adminEmail}
+            onChange={(e) => setCreateForm((f) => ({ ...f, adminEmail: e.target.value }))}
+            placeholder="admin@store.com"
+          />
+          <Input
+            label="كلمة المرور"
+            type="password"
+            value={createForm.adminPassword}
+            onChange={(e) => setCreateForm((f) => ({ ...f, adminPassword: e.target.value }))}
+            placeholder="6+ أحرف"
+          />
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -534,7 +654,164 @@ export default function MarketDetailPage() {
           </div>
         </div>
       </Modal>
+
+      <ResetPasswordModal
+        target={resetPasswordTarget}
+        onClose={() => setResetPasswordTarget(null)}
+        onSubmit={(newPassword) => {
+          if (resetPasswordTarget) {
+            resetPasswordMutation.mutate({ userId: resetPasswordTarget.admin.id, newPassword });
+          }
+        }}
+        isPending={resetPasswordMutation.isPending}
+      />
+
+      <CreateAccountModal
+        target={createAccountTarget}
+        onClose={() => setCreateAccountTarget(null)}
+        onSubmit={(email, password) => {
+          if (createAccountTarget) {
+            createAccountMutation.mutate({ tenantId: createAccountTarget.tenantId, email, password });
+          }
+        }}
+        isPending={createAccountMutation.isPending}
+      />
     </div>
+  );
+}
+
+function ResetPasswordModal({
+  target,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  target: { tenantId: string; tenantName: string; admin: { id: string; email: string } } | null;
+  onClose: () => void;
+  onSubmit: (newPassword: string) => void;
+  isPending: boolean;
+}) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (target) {
+      setNewPassword('');
+      setConfirmPassword('');
+      setError('');
+    }
+  }, [target]);
+  const handleSubmit = () => {
+    setError('');
+    if (!newPassword || newPassword.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('كلمة المرور وتأكيدها غير متطابقتين');
+      return;
+    }
+    onSubmit(newPassword);
+  };
+  if (!target) return null;
+  return (
+    <Modal open={!!target} onClose={onClose} title="إعادة تعيين كلمة المرور" size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">
+          الحساب: <span className="font-medium text-gray-900">{target.admin.email}</span>
+        </p>
+        <p className="text-sm text-gray-500">المتجر: {target.tenantName}</p>
+        <Input
+          label="كلمة المرور الجديدة"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="6+ أحرف"
+        />
+        <Input
+          label="تأكيد كلمة المرور"
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="أعد إدخال كلمة المرور"
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>
+            إلغاء
+          </Button>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            {isPending ? 'جاري...' : 'تعيين'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CreateAccountModal({
+  target,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  target: { tenantId: string; tenantName: string } | null;
+  onClose: () => void;
+  onSubmit: (email: string, password: string) => void;
+  isPending: boolean;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (target) {
+      setEmail('');
+      setPassword('');
+      setError('');
+    }
+  }, [target]);
+  const handleSubmit = () => {
+    setError('');
+    if (!email.trim()) {
+      setError('البريد الإلكتروني مطلوب');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+    onSubmit(email.trim(), password);
+  };
+  if (!target) return null;
+  return (
+    <Modal open={!!target} onClose={onClose} title="إنشاء حساب للمتجر" size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">المتجر: {target.tenantName}</p>
+        <Input
+          label="البريد الإلكتروني"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="admin@store.com"
+        />
+        <Input
+          label="كلمة المرور"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="6+ أحرف"
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>
+            إلغاء
+          </Button>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            {isPending ? 'جاري...' : 'إنشاء'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -626,13 +903,16 @@ function MarketDetailsTab({ market }: { market: Market }) {
 interface MarketTenantRowProps {
   tenant: RegistryTenant;
   marketId: string;
+  tenantAdmin?: { id: string; email: string; role: string; tenantId?: string } | null;
   marketCategories: { value: MarketCategory; label: string }[];
   onSave: (updates: Partial<RegistryTenant>) => void;
   isSaving: boolean;
-  canResetPassword?: boolean;
+  canManageAccounts?: boolean;
+  onResetPassword?: () => void;
+  onCreateAccount?: () => void;
 }
 
-function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving, canResetPassword }: MarketTenantRowProps) {
+function MarketTenantRow({ tenant, marketId, tenantAdmin, marketCategories, onSave, isSaving, canManageAccounts, onResetPassword, onCreateAccount }: MarketTenantRowProps) {
   const [marketCategory, setMarketCategory] = useState<MarketCategory>(tenant.marketCategory ?? 'GENERAL');
   const [isListedInMarket, setIsListedInMarket] = useState(tenant.isListedInMarket !== false);
   const [marketSortOrder, setMarketSortOrder] = useState(String(tenant.marketSortOrder ?? 0));
@@ -669,6 +949,13 @@ function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving,
           </div>
           <span className="font-medium">{tenant.name}</span>
         </div>
+      </td>
+      <td className="px-4 py-3">
+        {tenantAdmin ? (
+          <span className="text-gray-700">{tenantAdmin.email}</span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
       </td>
       <td className="px-4 py-3">
         <select
@@ -712,22 +999,37 @@ function MarketTenantRow({ tenant, marketId, marketCategories, onSave, isSaving,
         />
       </td>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link
             to={`/markets/${marketId}/tenants/${tenant.id}`}
             className="text-sm text-primary hover:underline"
           >
             فتح
           </Link>
-          {canResetPassword && (
-            <Link
-              to={`/markets/${marketId}/tenants/${tenant.id}`}
-              state={{ openResetPassword: true }}
+          {canManageAccounts && tenantAdmin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                onResetPassword?.();
+              }}
               className="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700 hover:underline"
               title="إعادة تعيين كلمة المرور"
             >
               <KeyRound className="w-4 h-4" />
-            </Link>
+            </button>
+          )}
+          {canManageAccounts && !tenantAdmin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                onCreateAccount?.();
+              }}
+              className="text-sm text-primary hover:underline"
+            >
+              إنشاء حساب
+            </button>
           )}
           <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSaving}>
             {isSaving ? '...' : 'حفظ'}

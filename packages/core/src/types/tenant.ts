@@ -53,6 +53,8 @@ export interface TenantBranding {
   banners?: StorefrontBanner[];
   /** WhatsApp number for order notifications (e.g. 966501234567) */
   whatsappPhone?: string;
+  /** Phone for call button. Falls back to whatsappPhone if not set */
+  phone?: string;
   /** Admin-controlled homepage sections */
   collections?: HomeCollection[];
 }
@@ -85,6 +87,9 @@ export type MarketCategory =
   | 'HOME'
   | 'GENERAL';
 
+/** Store mode: RESTAURANT = cart/orders; PROFESSIONAL = contact-only, no cart */
+export type StoreMode = 'RESTAURANT' | 'PROFESSIONAL';
+
 export interface Tenant {
   id: string;
   name: string;
@@ -92,6 +97,10 @@ export interface Tenant {
   branding: TenantBranding;
   /** Store type: FOOD = CUSTOM option groups only; CLOTHING = SIZE/COLOR/CUSTOM; GENERAL = all. */
   type?: TenantStoreType;
+  /** Store mode: RESTAURANT = cart/checkout; PROFESSIONAL = contact buttons, no cart */
+  storeType?: StoreMode;
+  /** Professional bio (rich text / HTML). For PROFESSIONAL stores. */
+  about?: string;
   /** Multi-sector: RETAIL | RESTAURANT | SERVICE (default RETAIL) */
   businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE';
   /** Market category for filtering in mall/market UI */
@@ -108,4 +117,10 @@ export interface Tenant {
   busyBannerEnabled?: boolean;
   /** Custom text for busy banner */
   busyBannerText?: string;
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores. */
+  officeHours?: string;
+  /** Appointment duration in minutes. For PROFESSIONAL booking. */
+  appointmentDuration?: number;
+  /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */
+  bookingEnabled?: boolean;
 }

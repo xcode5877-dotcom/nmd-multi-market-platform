@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
@@ -8,6 +8,9 @@ import { useAppStore } from '../store/app';
 import { useTheme } from '@nmd/ui';
 import { TopHeroCarousel } from '../components/TopHeroCarousel';
 import { ProductCard } from '../components/ProductCard';
+import { ServiceCard } from '../components/ServiceCard';
+import { ProfessionalHero } from '../components/ProfessionalHero';
+import { AvailableSlotsPlaceholder } from '../components/AvailableSlotsPlaceholder';
 import { CollectionSlider } from '../components/CollectionSlider';
 import { StatusBadge } from '../components/StatusBadge';
 import { ProductGridSkeleton, CategoryTabsSkeleton } from '../components/skeletons';
@@ -74,9 +77,14 @@ function CampaignBanner({ tenantId }: { tenantId: string }) {
 }
 
 export default function HomePage() {
+  const { tenantSlug: urlSlug } = useParams<{ tenantSlug?: string }>();
   const { branding } = useTheme();
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
-  const tenantSlug = useAppStore((s) => s.tenantSlug);
+  const tenantSlug = useAppStore((s) => s.tenantSlug) ?? urlSlug;
+  const tenantName = useAppStore((s) => s.tenantName) ?? '';
+  const storeType = useAppStore((s) => s.storeType);
+  const isProfessional = storeType === 'PROFESSIONAL';
+
   const hero = branding.hero;
   const banners = branding.banners ?? [];
   const collections = (branding.collections ?? []).filter((c) => c.isActive);
@@ -100,11 +108,19 @@ export default function HomePage() {
     enabled: !!tenantId,
   });
 
+  /** Use slug from URL when on tenant route to share cache with TenantGate; fallback to tenantId */
+  const tenantKey = urlSlug ?? tenantId;
   const { data: tenant } = useQuery({
-    queryKey: ['tenant', tenantId],
-    queryFn: () => api.getTenant(tenantId),
-    enabled: !!tenantId,
+    queryKey: ['tenant', tenantKey],
+    queryFn: () => api.getTenant(tenantKey!),
+    enabled: !!tenantKey,
   });
+
+  /** Keep document title in sync with tenant name (prefer tenant from query) */
+  const displayName = tenant?.name ?? tenantName;
+  useEffect(() => {
+    if (displayName) document.title = `${displayName} | متجر`;
+  }, [displayName]);
 
   const operationalStatus = tenant ? getOperationalStatus(tenant) : 'open';
   const orderPolicy = (tenant?.orderPolicy as 'accept_always' | 'accept_only_when_open') ?? 'accept_only_when_open';
@@ -162,14 +178,35 @@ export default function HomePage() {
     return [];
   }
 
-  const tenantName = useAppStore((s) => s.tenantName) ?? '';
   const mainCats = mainCategories(categories ?? []);
+  const services = (allProducts as Product[]).filter((p) => p.isAvailable !== false);
   const isEmpty = !isLoading && mainCats.length === 0 && (!categories || categories.length === 0);
+  const isEmptyProfessional = isProfessional && !isLoading && services.length === 0;
 
   /** Use dynamic collections when configured; otherwise fallback to featured + recent */
   const useDynamicCollections = collections.length > 0;
 
-  if (isEmpty) {
+  if (isEmptyProfessional) {
+    return (
+      <div className="max-w-6xl mx-auto p-4">
+        {isProfessional && tenant && (tenant as { about?: string })?.about && (
+          <ProfessionalHero tenant={tenant} />
+        )}
+        <EmptyState
+          title="لا توجد خدمات متاحة"
+          description="لا توجد خدمات معروضة حالياً."
+          icon={<span className="text-5xl">📋</span>}
+          action={
+            <Button variant="outline" onClick={() => refetch()}>
+              إعادة المحاولة
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (isEmpty && !isProfessional) {
     return (
       <div className="max-w-6xl mx-auto p-4">
         <EmptyState
@@ -200,6 +237,51 @@ export default function HomePage() {
         <Skeleton className="h-8 w-40 mb-4" />
         <ProductGridSkeleton count={6} columns="2-3-4" />
       </div>
+    );
+  }
+
+  /** PROFESSIONAL layout: About hero + Service List + Available Slots */
+  if (isProfessional) {
+    return (
+      <motion.div
+        className="max-w-6xl mx-auto p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+      >
+        {tenant && (
+          <div className="mb-4">
+            <StatusBadge tenant={tenant} />
+          </div>
+        )}
+        {tenant && (tenant as { about?: string })?.about && (
+          <ProfessionalHero tenant={tenant} />
+        )}
+
+        {/* Service List */}
+        <section className="mb-10" dir="rtl">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">خدماتنا</h2>
+          <div className="space-y-4">
+            {services.map((prod, i) => (
+              <motion.div
+                key={prod.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <ServiceCard
+                  product={prod}
+                  tenantSlug={tenantSlug || tenantId}
+                  actionType="inquire"
+                />
+              </motion.div>
+            ))}
+          </div>
+        </section>
+
+        {/* Available Slots placeholder */}
+        <AvailableSlotsPlaceholder />
+      </motion.div>
     );
   }
 
@@ -315,7 +397,7 @@ export default function HomePage() {
       ) : (
         <>
           <section className="mb-10">
-            <h2 className="text-xl font-bold text-gray-900 mb-1">مختارات {tenantName} ⭐</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-1">مختارات {tenant?.name ?? tenantName} ⭐</h2>
             <p className="text-sm text-gray-500 mb-4">أفضل اختياراتنا لك</p>
             {featuredProducts.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
@@ -379,26 +461,28 @@ export default function HomePage() {
         </>
       )}
 
-      <section className="mt-12 py-8 rounded-2xl bg-gradient-to-b from-gray-50 to-transparent">
-        <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">لماذا تختارنا</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">✓</div>
-            <h3 className="font-semibold text-gray-900 mb-1">جودة مضمونة</h3>
-            <p className="text-sm text-gray-600">منتجات طازجة واختيار دقيق</p>
+      {!isProfessional && (
+        <section className="mt-12 py-8 rounded-2xl bg-gradient-to-b from-gray-50 to-transparent">
+          <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">لماذا تختارنا</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">✓</div>
+              <h3 className="font-semibold text-gray-900 mb-1">جودة مضمونة</h3>
+              <p className="text-sm text-gray-600">منتجات طازجة واختيار دقيق</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">⚡</div>
+              <h3 className="font-semibold text-gray-900 mb-1">توصيل سريع</h3>
+              <p className="text-sm text-gray-600">وصول طلبك بأسرع وقت</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">💬</div>
+              <h3 className="font-semibold text-gray-900 mb-1">دعم واتساب</h3>
+              <p className="text-sm text-gray-600">نحن هنا لمساعدتك</p>
+            </div>
           </div>
-          <div className="text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">⚡</div>
-            <h3 className="font-semibold text-gray-900 mb-1">توصيل سريع</h3>
-            <p className="text-sm text-gray-600">وصول طلبك بأسرع وقت</p>
-          </div>
-          <div className="text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 text-xl">💬</div>
-            <h3 className="font-semibold text-gray-900 mb-1">دعم واتساب</h3>
-            <p className="text-sm text-gray-600">نحن هنا لمساعدتك</p>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
     </motion.div>
   );
 }

@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { StorefrontHero, StorefrontBanner } from '@nmd/core';
+import { useAppStore } from '../store/app';
+import { trackLead } from '../lib/trackLead';
 
 type HeroSlide = { type: 'hero'; hero: StorefrontHero };
 type BannerSlide = { type: 'banner'; banner: StorefrontBanner };
@@ -49,6 +51,7 @@ function formatCountdown(expiresAt: string, now: number): string | null {
 
 export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
   const navigate = useNavigate();
+  const tenantId = useAppStore((s) => s.tenantId);
   const slides = useMemo(() => buildSlides(hero ?? null, banners ?? []), [hero, banners]);
   const [idx, setIdx] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -84,6 +87,10 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
                 <button
                   type="button"
                   onClick={() => {
+                    if (tenantId && !ctaLink.startsWith('/')) {
+                      const type = ctaLink.includes('wa.me') ? 'whatsapp' : ctaLink.startsWith('tel:') ? 'call' : 'cta';
+                      trackLead(tenantId, type);
+                    }
                     if (ctaLink.startsWith('/')) navigate(ctaLink);
                     else window.location.href = ctaLink;
                   }}
@@ -104,6 +111,10 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
             <button
               type="button"
               onClick={() => {
+                if (tenantId && !ctaLink.startsWith('/')) {
+                  const type = ctaLink.includes('wa.me') ? 'whatsapp' : ctaLink.startsWith('tel:') ? 'call' : 'cta';
+                  trackLead(tenantId, type);
+                }
                 if (ctaLink.startsWith('/')) navigate(ctaLink);
                 else window.location.href = ctaLink;
               }}
@@ -137,6 +148,10 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
               <button
                 type="button"
                 onClick={() => {
+                  if (tenantId && !href.startsWith('/')) {
+                    const type = href.includes('wa.me') ? 'whatsapp' : href.startsWith('tel:') ? 'call' : 'cta';
+                    trackLead(tenantId, type);
+                  }
                   if (href.startsWith('/')) navigate(href);
                   else window.location.href = href;
                 }}

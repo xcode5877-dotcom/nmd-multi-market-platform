@@ -1,10 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { MarketCategory } from '@nmd/core';
 import { Skeleton } from '@nmd/ui';
 import { useState, useEffect, useRef } from 'react';
 import { Store, Search } from 'lucide-react';
 import { StoreCard } from '../components/StoreCard';
+import { onTenantUpdate } from '../lib/tenant-broadcast';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
@@ -32,14 +32,15 @@ export interface Section {
   storeIds: string[];
 }
 
-export const TYPE_LABELS: Record<string, string> = {
-  FOOD: 'طعام',
-  CLOTHING: 'ملابس',
-  GROCERIES: 'خضار',
-  BUTCHER: 'ملحمة',
-  OFFERS: 'عروض',
-  GENERAL: 'عام',
-};
+/** Global category from API */
+export interface GlobalCategory {
+  id: string;
+  title: string;
+  icon: string;
+  isProfessional: boolean;
+  sortOrder: number;
+  legacyCode?: string;
+}
 
 interface Market {
   id: string;
@@ -61,20 +62,38 @@ interface MarketTenant {
   isFeatured?: boolean;
 }
 
-const CATEGORY_TILES: { marketCategory: MarketCategory; label: string; icon: string }[] = [
-  { marketCategory: 'FOOD', label: 'طعام', icon: '🍕' },
-  { marketCategory: 'CLOTHING', label: 'ملابس', icon: '🛍' },
-  { marketCategory: 'GROCERIES', label: 'خضار', icon: '🥬' },
-  { marketCategory: 'BUTCHER', label: 'ملحمة', icon: '🥩' },
-  { marketCategory: 'OFFERS', label: 'عروض', icon: '📦' },
+/** Map marketCategory (legacy code) to display label when category not in API list. Exported for AllStoresPage. */
+export const CATEGORY_LABEL_MAP: Record<string, string> = {
+  FOOD: 'طعام',
+  CLOTHING: 'ملابس',
+  GROCERIES: 'خضار',
+  BUTCHER: 'ملحمة',
+  OFFERS: 'عروض',
+  GENERAL: 'عام',
+};
+
+export function getCategoryLabel(cats: GlobalCategory[], marketCategory: string): string {
+  const cat = cats.find((c) => c.legacyCode === marketCategory || c.id === marketCategory);
+  return cat?.title ?? CATEGORY_LABEL_MAP[marketCategory ?? 'GENERAL'] ?? marketCategory ?? 'عام';
+}
+
+/** Fallback when API has no categories */
+const FALLBACK_CATEGORIES: GlobalCategory[] = [
+  { id: 'ALL', title: 'الكل', icon: '📋', isProfessional: false, sortOrder: -1 },
+  { id: 'cat-food', title: 'طعام', icon: '🍕', isProfessional: false, sortOrder: 0, legacyCode: 'FOOD' },
+  { id: 'cat-clothing', title: 'ملابس', icon: '🛍', isProfessional: false, sortOrder: 1, legacyCode: 'CLOTHING' },
+  { id: 'cat-groceries', title: 'خضار', icon: '🥬', isProfessional: false, sortOrder: 2, legacyCode: 'GROCERIES' },
+  { id: 'cat-butcher', title: 'ملحمة', icon: '🥩', isProfessional: false, sortOrder: 3, legacyCode: 'BUTCHER' },
+  { id: 'cat-offers', title: 'عروض', icon: '📦', isProfessional: false, sortOrder: 4, legacyCode: 'OFFERS' },
 ];
 
 export default function MarketHomePage() {
   const { marketSlug } = useParams<{ marketSlug: string }>();
   const [market, setMarket] = useState<Market | null>(null);
   const [tenants, setTenants] = useState<MarketTenant[]>([]);
+  const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<'ALL' | MarketCategory>('ALL');
+  const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [bannerIdx, setBannerIdx] = useState(0);
   const [bannerImageLoaded, setBannerImageLoaded] = useState<Record<string, boolean>>({});
@@ -82,7 +101,34 @@ export default function MarketHomePage() {
 
   const [promos, setPromos] = useState<PromoBanner[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
   const activeBanners = promos.filter((b) => b.active);
+
+  /** Refetch tenants when window regains focus or when admin broadcasts tenant update */
+  useEffect(() => {
+    const onFocus = () => setRefreshKey((k) => k + 1);
+    window.addEventListener('focus', onFocus);
+    const unsub = onTenantUpdate(() => setRefreshKey((k) => k + 1));
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      unsub();
+    };
+  }, []);
+
+  /** Fetch global categories from API */
+  useEffect(() => {
+    if (!MOCK_API_URL) {
+      setCategories(FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL'));
+      return;
+    }
+    fetch(`${MOCK_API_URL}/global-categories?_t=${Date.now()}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        const arr = Array.isArray(list) ? list : [];
+        setCategories(arr.length > 0 ? arr : FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL'));
+      })
+      .catch(() => setCategories(FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL')));
+  }, []);
 
   useEffect(() => {
     if (!marketSlug || !MOCK_API_URL) {
@@ -128,7 +174,7 @@ export default function MarketHomePage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [marketSlug]);
+  }, [marketSlug, refreshKey]);
 
   useEffect(() => {
     if (activeBanners.length <= 1) return;
@@ -136,9 +182,15 @@ export default function MarketHomePage() {
     return () => clearInterval(t);
   }, []);
 
-  const handleCategoryClick = (cat: MarketCategory) => {
-    setActiveCategory((prev) => (prev === cat ? 'ALL' : cat));
+  const handleCategoryClick = (catId: string) => {
+    setActiveCategory((prev) => (prev === catId ? 'ALL' : catId));
     shopsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  /** Match tenant to category: marketCategory === legacyCode or marketCategory === categoryId */
+  const tenantMatchesCategory = (t: MarketTenant, cat: GlobalCategory): boolean => {
+    const mc = t.marketCategory ?? 'GENERAL';
+    return mc === cat.id || mc === cat.legacyCode;
   };
 
   const getStoreBadge = (slug: string): 'featured' | 'sponsored' | undefined => {
@@ -157,7 +209,11 @@ export default function MarketHomePage() {
   };
 
   const visibleTenants = tenants
-    .filter((t) => (activeCategory === 'ALL' ? true : (t.marketCategory ?? 'GENERAL') === activeCategory))
+    .filter((t) => {
+      if (activeCategory === 'ALL') return true;
+      const cat = categories.find((c) => c.id === activeCategory);
+      return cat ? tenantMatchesCategory(t, cat) : (t.marketCategory ?? 'GENERAL') === activeCategory;
+    })
     .filter((t) => !search.trim() || t.name.toLowerCase().includes(search.toLowerCase().trim()));
 
   if (!loading && !market) {
@@ -267,7 +323,7 @@ export default function MarketHomePage() {
           <div className="flex gap-2 min-w-max">
             <motion.button
               type="button"
-              onClick={() => handleCategoryClick('ALL' as MarketCategory)}
+              onClick={() => handleCategoryClick('ALL')}
               whileTap={{ scale: 0.97 }}
               className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
                 activeCategory === 'ALL'
@@ -277,20 +333,20 @@ export default function MarketHomePage() {
             >
               الكل
             </motion.button>
-            {CATEGORY_TILES.map((c) => {
-              const isActive = activeCategory === c.marketCategory;
+            {categories.map((c) => {
+              const isActive = activeCategory === c.id;
               return (
                 <motion.button
-                  key={c.marketCategory}
+                  key={c.id}
                   type="button"
-                  onClick={() => handleCategoryClick(c.marketCategory)}
+                  onClick={() => handleCategoryClick(c.id)}
                   whileTap={{ scale: 0.97 }}
                   className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
                     isActive ? 'bg-[#B45309] text-white border-[#B45309]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#D97706]/50'
                   }`}
                 >
                   <span>{c.icon}</span>
-                  {c.label}
+                  {c.title}
                 </motion.button>
               );
             })}
@@ -346,7 +402,7 @@ export default function MarketHomePage() {
                         operationalStatus={t.operationalStatus}
                         businessHours={t.businessHours}
                         storeUrl={`${STOREFRONT_URL}/${t.slug}`}
-                        categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                        categoryLabel={getCategoryLabel(categories, t.marketCategory ?? 'GENERAL')}
                         badge={getStoreBadge(t.slug)}
                         compact
                       />
@@ -415,7 +471,7 @@ export default function MarketHomePage() {
                     operationalStatus={t.operationalStatus}
                     businessHours={t.businessHours}
                     storeUrl={`${STOREFRONT_URL}/${t.slug}`}
-                    categoryLabel={TYPE_LABELS[t.marketCategory ?? 'GENERAL'] ?? TYPE_LABELS.GENERAL}
+                    categoryLabel={getCategoryLabel(categories, t.marketCategory ?? 'GENERAL')}
                     badge={getStoreBadge(t.slug)}
                     compact
                   />

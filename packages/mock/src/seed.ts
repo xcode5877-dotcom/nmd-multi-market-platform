@@ -61,6 +61,10 @@ const DEMO_TENANTS: Omit<RegistryTenant, 'id' | 'createdAt'>[] = [
 ];
 
 export function seedTenants(): void {
+  // When API is available, never seed localStorage - API (data.json) is the single source of truth
+  const apiUrl = typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL;
+  if (apiUrl) return;
+
   const existing = loadTenants();
   if (existing.length > 0) return;
 

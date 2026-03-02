@@ -51,6 +51,8 @@ interface TenantBranding {
     banners?: StorefrontBanner[];
     /** WhatsApp number for order notifications (e.g. 966501234567) */
     whatsappPhone?: string;
+    /** Phone for call button. Falls back to whatsappPhone if not set */
+    phone?: string;
     /** Admin-controlled homepage sections */
     collections?: HomeCollection[];
 }
@@ -67,6 +69,8 @@ interface DayHours {
 }
 type BusinessHours = Partial<Record<DayKey, DayHours>>;
 type MarketCategory = 'FOOD' | 'CLOTHING' | 'GROCERIES' | 'BUTCHER' | 'OFFERS' | 'ELECTRONICS' | 'HOME' | 'GENERAL';
+/** Store mode: RESTAURANT = cart/orders; PROFESSIONAL = contact-only, no cart */
+type StoreMode = 'RESTAURANT' | 'PROFESSIONAL';
 interface Tenant {
     id: string;
     name: string;
@@ -74,6 +78,10 @@ interface Tenant {
     branding: TenantBranding;
     /** Store type: FOOD = CUSTOM option groups only; CLOTHING = SIZE/COLOR/CUSTOM; GENERAL = all. */
     type?: TenantStoreType;
+    /** Store mode: RESTAURANT = cart/checkout; PROFESSIONAL = contact buttons, no cart */
+    storeType?: StoreMode;
+    /** Professional bio (rich text / HTML). For PROFESSIONAL stores. */
+    about?: string;
     /** Multi-sector: RETAIL | RESTAURANT | SERVICE (default RETAIL) */
     businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE';
     /** Market category for filtering in mall/market UI */
@@ -93,6 +101,12 @@ interface Tenant {
     busyBannerEnabled?: boolean;
     /** Custom text for busy banner */
     busyBannerText?: string;
+    /** Office hours (ساعات العمل). For PROFESSIONAL stores. */
+    officeHours?: string;
+    /** Appointment duration in minutes. For PROFESSIONAL booking. */
+    appointmentDuration?: number;
+    /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */
+    bookingEnabled?: boolean;
 }
 
 interface Template {
@@ -585,4 +599,4 @@ declare const mockTenants: Record<string, Tenant>;
 declare const mockCategories: Record<string, Category[]>;
 declare const mockProducts: Record<string, Product[]>;
 
-export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatMoney, formatPlacementAr, formatPrice, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };
+export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatMoney, formatPlacementAr, formatPrice, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };

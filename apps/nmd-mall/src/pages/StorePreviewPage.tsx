@@ -1,20 +1,29 @@
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { getTenantBySlug, getCatalog } from '@nmd/mock';
+import { MockApiClient, getTenantBySlug, getCatalog } from '@nmd/mock';
 import { formatMoney } from '@nmd/core';
 import { Card, Button } from '@nmd/ui';
 import { ExternalLink, MessageCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? (import.meta.env.DEV ? 'http://localhost:5173' : '/storefront');
+const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+const api = new MockApiClient();
 
 export default function StorePreviewPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [tenant, setTenant] = useState(getTenantBySlug(slug ?? ''));
-
-  useEffect(() => {
-    setTenant(getTenantBySlug(slug ?? ''));
-  }, [slug]);
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant-by-slug', slug],
+    queryFn: async () => {
+      if (MOCK_API_URL) {
+        const t = await api.getTenant(slug ?? '');
+        return t ? { id: t.id, slug: t.slug, name: t.name, logoUrl: t.branding?.logoUrl, primaryColor: t.branding?.primaryColor ?? '#7C3AED' } : null;
+      }
+      const r = getTenantBySlug(slug ?? '');
+      return r ? { id: r.id, slug: r.slug, name: r.name, logoUrl: r.logoUrl, primaryColor: r.primaryColor } : null;
+    },
+    enabled: !!slug,
+  });
 
   const catalog = tenant ? getCatalog(tenant.id) : null;
   const products = catalog?.products?.slice(0, 3) ?? [];

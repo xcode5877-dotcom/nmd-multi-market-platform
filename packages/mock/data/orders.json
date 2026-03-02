@@ -1941,5 +1941,88 @@
     },
     "id": "b69bd926-95cd-4c87-a5e7-e28e9f7ea0da",
     "orderType": "PRODUCT"
+  },
+  {
+    "id": "id-1772412067749-jxw2lca3qud",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "PENDING",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "2a939e4c-d6cc-47ff-8d3c-a7b844121774",
+        "productName": "jeans jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 2,
+        "basePrice": 220,
+        "selectedOptions": [
+          {
+            "optionGroupId": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "optionItemIds": [
+              "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14"
+            ]
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b",
+                "name": "xl",
+                "sortOrder": 0
+              },
+              {
+                "id": "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14",
+                "name": "m",
+                "sortOrder": 1
+              },
+              {
+                "id": "bf9ca34e-bbbd-4a2d-8664-993be425124a",
+                "name": "s",
+                "sortOrder": 2
+              }
+            ]
+          }
+        ],
+        "totalPrice": 440,
+        "imageUrl": "http://147.93.120.244:5190/uploads/1772371919604-o37wyu09.jpg",
+        "id": "id-1772412057313-1d2d1kbaacc"
+      }
+    ],
+    "subtotal": 440,
+    "total": 440,
+    "currency": "ILS",
+    "createdAt": "2026-03-02T00:41:07.749Z",
+    "customerName": "يصس",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "marketId": "market-dabburiyya",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 440,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 440,
+        "commission": 44,
+        "gatewayFee": 0,
+        "netToMerchant": 396,
+        "netToMarket": 44
+      }
+    },
+    "orderType": "PRODUCT"
   }
 ]

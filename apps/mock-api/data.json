@@ -169,6 +169,60 @@
       "busyBannerText": "المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول"
     },
     {
+      "slug": "lawyer-falan",
+      "name": "مكتب المحامي نمر مصالحة",
+      "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+      "primaryColor": "#000000",
+      "secondaryColor": "#ffffff",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "createdAt": "2026-03-01T12:00:00.000Z",
+      "hero": {
+        "title": "مكتب المحامي نمر مصالحة ",
+        "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+        "ctaText": "تواصل معنا",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [],
+      "whatsappPhone": "0543345123",
+      "phone": "0543345123",
+      "storeType": "PROFESSIONAL",
+      "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+      "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+      "appointmentDuration": 60,
+      "type": "GENERAL",
+      "marketCategory": "GENERAL",
+      "collections": [
+        {
+          "id": "id-lawyer-services",
+          "title": "خدماتنا",
+          "type": "category",
+          "targetId": "cat-lawyer-001",
+          "isActive": true,
+          "sortOrder": 0
+        }
+      ],
+      "isListedInMarket": true,
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "businessType": "RETAIL",
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      },
+      "marketId": "market-dabburiyya"
+    },
+    {
       "slug": "buffalo",
       "name": "BUFFALO28",
       "logoUrl": "http://147.93.120.244:5190/uploads/1772378623959-7clk2zsh.jpg",
@@ -536,6 +590,48 @@
       },
       "businessType": "RETAIL",
       "collections": []
+    },
+    {
+      "name": "مكتب المحامي يوسف حسام دراوشة",
+      "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+      "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+      "primaryColor": "#d7b96f",
+      "secondaryColor": "#222426",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "_meta": {
+        "emergencyReason": "اضافة مستئجر"
+      },
+      "id": "1c6f3866-a475-445e-8806-42065adea654",
+      "marketId": "market-dabburiyya",
+      "createdAt": "2026-03-01T19:56:09.949Z",
+      "hero": {
+        "title": "مكتب المحامي يوسف حسام دراوشة",
+        "subtitle": "اكتشف أفضل المنتجات لدينا",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [],
+      "marketCategory": "GENERAL",
+      "isListedInMarket": true,
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "businessType": "RETAIL",
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      },
+      "collections": []
     }
   ],
   "users": [
@@ -589,6 +685,13 @@
       "password": "top-market@2026"
     },
     {
+      "id": "user-tenant-lawyer-falan",
+      "email": "lawyer@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "password": "123456"
+    },
+    {
       "id": "user-courier-dab-1",
       "email": "ahmed@courier.nmd.com",
       "role": "COURIER",
@@ -603,6 +706,27 @@
       "marketId": "market-iksal",
       "courierId": "courier-iksal-001",
       "password": "123456"
+    },
+    {
+      "id": "8c6511cd-7217-4a98-b533-e120e2184871",
+      "email": "drawshe@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "1c6f3866-a475-445e-8806-42065adea654",
+      "password": "123456789"
+    },
+    {
+      "id": "bb20b202-8060-48e6-bb9f-dab5f7de84a1",
+      "email": "pizzaashrf@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+      "password": "123456789"
+    },
+    {
+      "id": "2ede51a0-749d-45bd-8451-3166096d57f2",
+      "email": "talaat@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
+      "password": "123456789"
     }
   ],
   "auditEvents": [
@@ -5501,9 +5625,1432 @@
       "reason": "Password reset by root@nmd.com",
       "id": "audit-dd34b255-e455-476e-b8c5-eee962e8b460",
       "at": "2026-03-01T16:20:56.990Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي فلان",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي فلان",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-de015152-fd7d-486e-81fb-cd3810f3bb11",
+      "at": "2026-03-01T19:37:52.226Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-ecd0cf82-d054-4742-9ad1-19a89b49fd37",
+      "at": "2026-03-01T19:49:04.664Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "972501234567",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-8ea84abf-beff-4a30-83c6-1527f923787c",
+      "at": "2026-03-01T19:50:24.968Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "tenant",
+      "entityId": "1c6f3866-a475-445e-8806-42065adea654",
+      "reason": "اضافة مستئجر",
+      "emergencyMode": true,
+      "after": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "",
+        "primaryColor": "#ffd500",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#"
+        },
+        "banners": []
+      },
+      "id": "audit-71e1b3e9-1936-40b5-a9e8-b0fc016b9ae8",
+      "at": "2026-03-01T19:56:09.955Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-c1859bbc-b2d9-41c0-9c3f-ab615814bac3",
+      "at": "2026-03-01T22:32:56.806Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-e925def8-2594-4833-959e-39fabcadb2a8",
+      "at": "2026-03-01T22:33:44.111Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة 1",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة 1",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-1cc37c0e-918b-420d-a1f6-2248161eb951",
+      "at": "2026-03-01T23:01:56.901Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي فلان",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-353d0685-2bb1-4266-8d12-efbe43366de8",
+      "at": "2026-03-01T23:15:13.408Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "user",
+      "entityId": "8c6511cd-7217-4a98-b533-e120e2184871",
+      "reason": "Created tenant admin for مكتب المحامي يوسف حسام دراوشة",
+      "id": "audit-7c9f15d3-9665-47a3-ae5a-6416258bb047",
+      "at": "2026-03-01T23:47:19.400Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "user",
+      "entityId": "bb20b202-8060-48e6-bb9f-dab5f7de84a1",
+      "reason": "Created tenant admin for بيتسا اشرف",
+      "id": "audit-9eb9f602-49e8-461b-b872-74c000a55a8d",
+      "at": "2026-03-01T23:47:49.051Z"
+    },
+    {
+      "userId": "user-dab-admin",
+      "role": "MARKET_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "user",
+      "entityId": "2ede51a0-749d-45bd-8451-3166096d57f2",
+      "reason": "Created tenant admin for سوق طلعت للخضار والفوكه",
+      "id": "audit-ef4ee027-4972-45ee-a5da-c4501e8a0c38",
+      "at": "2026-03-01T23:48:04.086Z"
+    },
+    {
+      "userId": "8c6511cd-7217-4a98-b533-e120e2184871",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "1c6f3866-a475-445e-8806-42065adea654",
+      "emergencyMode": false,
+      "before": {
+        "name": "مرحباً بك",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مرحباً بك",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": []
+      },
+      "after": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مكتب المحامي يوسف حسام دراوشة",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": []
+      },
+      "id": "audit-461c3509-deb9-4078-9110-7fe03922d15b",
+      "at": "2026-03-02T00:09:40.344Z"
+    },
+    {
+      "userId": "8c6511cd-7217-4a98-b533-e120e2184871",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "1c6f3866-a475-445e-8806-42065adea654",
+      "emergencyMode": false,
+      "before": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مكتب المحامي يوسف حسام دراوشة",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": []
+      },
+      "after": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مكتب المحامي يوسف حسام دراوشة",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": []
+      },
+      "id": "audit-10911b90-2b11-4928-808a-ffb57ad4fad7",
+      "at": "2026-03-02T00:10:45.384Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي نمر مصالحة ض",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة ض",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي نمر مصالحة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة ",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-ea59ad61-6097-4444-a6b1-ca71603abf1d",
+      "at": "2026-03-02T00:12:11.219Z"
+    },
+    {
+      "userId": "user-tenant-lawyer-falan",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "emergencyMode": false,
+      "before": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي نمر مصالحة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة ",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "after": {
+        "slug": "lawyer-falan",
+        "name": "مكتب المحامي نمر مصالحة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772393839699-8yjleru5.png",
+        "primaryColor": "#000000",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "id": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "createdAt": "2026-03-01T12:00:00.000Z",
+        "hero": {
+          "title": "مكتب المحامي نمر مصالحة ",
+          "subtitle": "استشارات قانونية وتمثيل في المحاكم ",
+          "ctaText": "تواصل معنا",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "whatsappPhone": "0543345123",
+        "phone": "0543345123",
+        "storeType": "PROFESSIONAL",
+        "about": "<p>مكتب المحامي فلان يقدم خدمات قانونية متكاملة تشمل الاستشارات، صياغة العقود، والتمثيل في المحاكم. خبرة تمتد لأكثر من 15 عاماً في مختلف المجالات القانونية.</p><p>نلتزم بتقديم خدمة متميزة ومرافقة قانونية احترافية لجميع عملائنا.</p>",
+        "officeHours": "الأحد–الخميس: 09:00–17:00 | الجمعة–السبت: مغلق",
+        "appointmentDuration": 60,
+        "type": "GENERAL",
+        "marketCategory": "GENERAL",
+        "collections": [
+          {
+            "id": "id-lawyer-services",
+            "title": "خدماتنا",
+            "type": "category",
+            "targetId": "cat-lawyer-001",
+            "isActive": true,
+            "sortOrder": 0
+          }
+        ],
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "marketId": "market-dabburiyya"
+      },
+      "id": "audit-0285430d-8964-47a6-8523-baec74886e12",
+      "at": "2026-03-02T00:12:26.649Z"
     }
   ],
   "catalog": {
+    "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d": {
+      "categories": [
+        {
+          "id": "cat-lawyer-001",
+          "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+          "name": "الخدمات القانونية",
+          "slug": "legal-services",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [
+        {
+          "id": "svc-lawyer-001",
+          "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+          "categoryId": "cat-lawyer-001",
+          "name": "استشارة قانونية م",
+          "slug": "legal-consultation",
+          "description": "استشارة قانونية شاملة في مختلف المجالات",
+          "type": "GENERAL",
+          "basePrice": 0,
+          "currency": "ILS",
+          "imageUrl": "https://placehold.co/400x400/1e3a5f/ffffff?text=استشارة",
+          "images": [
+            {
+              "id": "img-1",
+              "url": "https://placehold.co/400x400/1e3a5f/ffffff?text=استشارة",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [],
+          "createdAt": "2026-03-01T12:00:00.000Z",
+          "isFeatured": true,
+          "isAvailable": true,
+          "inStock": true,
+          "variants": [],
+          "isLastItems": false,
+          "lastItemsCount": 0
+        },
+        {
+          "id": "svc-lawyer-002",
+          "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+          "categoryId": "cat-lawyer-001",
+          "name": "صياغة العقود",
+          "slug": "contract-drafting",
+          "description": "صياغة ومراجعة العقود بكافة أنواعها",
+          "type": "GENERAL",
+          "basePrice": 0,
+          "currency": "ILS",
+          "imageUrl": "https://placehold.co/400x400/1e3a5f/ffffff?text=عقود",
+          "images": [
+            {
+              "id": "img-2",
+              "url": "https://placehold.co/400x400/1e3a5f/ffffff?text=عقود",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [],
+          "createdAt": "2026-03-01T12:00:00.000Z",
+          "isFeatured": true,
+          "isAvailable": true,
+          "inStock": true
+        },
+        {
+          "id": "svc-lawyer-003",
+          "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+          "categoryId": "cat-lawyer-001",
+          "name": "التمثيل في المحاكم",
+          "slug": "court-representation",
+          "description": "تمثيل قانوني في المحاكم بجميع درجاتها",
+          "type": "GENERAL",
+          "basePrice": 0,
+          "currency": "ILS",
+          "imageUrl": "https://placehold.co/400x400/1e3a5f/ffffff?text=محاكم",
+          "images": [
+            {
+              "id": "img-3",
+              "url": "https://placehold.co/400x400/1e3a5f/ffffff?text=محاكم",
+              "sortOrder": 0
+            }
+          ],
+          "optionGroups": [],
+          "createdAt": "2026-03-01T12:00:00.000Z",
+          "isFeatured": true,
+          "isAvailable": true,
+          "inStock": true
+        }
+      ],
+      "optionGroups": [],
+      "optionItems": []
+    },
     "5b35539f-90e1-49cc-8c32-8d26cdce20f2": {
       "categories": [
         {
@@ -6423,6 +7970,12 @@
         }
       ],
       "optionItems": []
+    },
+    "1c6f3866-a475-445e-8806-42065adea654": {
+      "categories": [],
+      "products": [],
+      "optionGroups": [],
+      "optionItems": []
     }
   },
   "orders": [],
@@ -6564,6 +8117,28 @@
         "isActive": true,
         "sortOrder": 0
       }
+    ],
+    "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d": [
+      {
+        "id": "dz-a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d-1",
+        "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
+    ],
+    "1c6f3866-a475-445e-8806-42065adea654": [
+      {
+        "id": "dz-1c6f3866-a475-445e-8806-42065adea654-1",
+        "tenantId": "1c6f3866-a475-445e-8806-42065adea654",
+        "name": "المنطقة الافتراضية",
+        "fee": 10,
+        "etaMinutes": 45,
+        "isActive": true,
+        "sortOrder": 0
+      }
     ]
   },
   "couriers": [
@@ -6642,5 +8217,101 @@
   ],
   "deliveryJobs": [],
   "templates": [],
-  "staff": []
+  "staff": [],
+  "globalCategories": [
+    {
+      "id": "cat-food",
+      "title": "طعام",
+      "icon": "🍕",
+      "isProfessional": false,
+      "sortOrder": 0,
+      "legacyCode": "FOOD"
+    },
+    {
+      "id": "cat-clothing",
+      "title": "ملابس",
+      "icon": "🛍",
+      "isProfessional": false,
+      "sortOrder": 1,
+      "legacyCode": "CLOTHING"
+    },
+    {
+      "id": "cat-groceries",
+      "title": "خضار",
+      "icon": "🥬",
+      "isProfessional": false,
+      "sortOrder": 2,
+      "legacyCode": "GROCERIES"
+    },
+    {
+      "id": "cat-butcher",
+      "title": "ملحمة",
+      "icon": "🥩",
+      "isProfessional": false,
+      "sortOrder": 3,
+      "legacyCode": "BUTCHER"
+    },
+    {
+      "id": "cat-offers",
+      "title": "عروض",
+      "icon": "📦",
+      "isProfessional": false,
+      "sortOrder": 4,
+      "legacyCode": "OFFERS"
+    },
+    {
+      "id": "cat-professional",
+      "title": "خدمات مهنية",
+      "icon": "⚖️",
+      "isProfessional": true,
+      "sortOrder": 5,
+      "legacyCode": "GENERAL"
+    }
+  ],
+  "leads": [
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {},
+      "id": "lead-4a26fbc6-a213-4e98-b212-9d6f15cb91c6",
+      "timestamp": "2026-03-02T00:52:52.491Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "phone": "0546111668"
+      },
+      "id": "lead-2069b34e-78bb-412b-944f-fbaef005338a",
+      "timestamp": "2026-03-02T01:00:25.219Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+      },
+      "id": "lead-97d0d6e2-5007-4028-a674-f2db3a745b4a",
+      "timestamp": "2026-03-02T01:00:37.427Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "phone": "0546111668"
+      },
+      "id": "lead-ee60cf7a-1c06-48c6-b575-563b2233017d",
+      "timestamp": "2026-03-02T01:00:57.941Z"
+    }
+  ]
 }

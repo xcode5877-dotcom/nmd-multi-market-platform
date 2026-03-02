@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, Info } from 'lucide-react';
 import type { Product, Campaign } from '@nmd/core';
 import { applyCampaign, formatMoney } from '@nmd/core';
 import { Skeleton, useToast } from '@nmd/ui';
@@ -50,9 +50,11 @@ function ProductCardInner({
 }) {
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
+  const storeType = useAppStore((s) => s.storeType);
   const addItem = useCartStore((s) => s.addItem);
   const addToast = useToast().addToast;
   const navigate = useNavigate();
+  const isProfessional = storeType === 'PROFESSIONAL';
   const bounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isBouncing, setIsBouncing] = useState(false);
@@ -136,16 +138,23 @@ function ProductCardInner({
           </div>
 
           <div className="flex items-end justify-between mt-2">
-            <ProductPrice product={product} campaigns={campaigns} />
-            <button
-              onClick={handleAddClick}
-              disabled={!inStock}
-              className={`w-8 h-8 md:w-9 md:h-9 rounded-lg flex items-center justify-center transition-all ${
-                isBouncing ? 'bg-primary text-white' : 'bg-gray-900 text-white hover:bg-primary shadow-sm'
-              } disabled:opacity-30`}
-            >
-              <ShoppingCart size={16} />
-            </button>
+            {!isProfessional && <ProductPrice product={product} campaigns={campaigns} />}
+            {isProfessional ? (
+              <span className="text-sm font-medium text-primary flex items-center gap-1">
+                <Info size={14} />
+                تفاصيل الخدمة
+              </span>
+            ) : (
+              <button
+                onClick={handleAddClick}
+                disabled={!inStock}
+                className={`w-8 h-8 md:w-9 md:h-9 rounded-lg flex items-center justify-center transition-all ${
+                  isBouncing ? 'bg-primary text-white' : 'bg-gray-900 text-white hover:bg-primary shadow-sm'
+                } disabled:opacity-30`}
+              >
+                <ShoppingCart size={16} />
+              </button>
+            )}
           </div>
         </div>
       </article>

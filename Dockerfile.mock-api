@@ -1,0 +1,26 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN corepack enable pnpm
+
+# Copy workspace config and required packages
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/core ./packages/core
+COPY packages/mock ./packages/mock
+COPY apps/mock-api ./apps/mock-api
+
+# Install (full workspace so @nmd/core gets zod etc.) and build
+RUN pnpm install --frozen-lockfile && \
+    pnpm --filter @nmd/core build && \
+    pnpm --filter mock-api build
+
+WORKDIR /app/apps/mock-api
+
+# Use JSON storage (default), port 5190
+ENV PORT=5190
+ENV STORAGE_DRIVER=json
+
+EXPOSE 5190
+
+CMD ["node", "dist/index.js"]
