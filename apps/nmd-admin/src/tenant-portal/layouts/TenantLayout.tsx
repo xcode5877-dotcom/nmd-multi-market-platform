@@ -42,6 +42,9 @@ export default function TenantLayout() {
         <NavLink to={`/tenant/orders${search}`} className={({ isActive }) => `px-3 py-1.5 text-sm rounded ${isActive ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
           الطلبات
         </NavLink>
+        <NavLink to={`/tenant/customers${search}`} className={({ isActive }) => `px-3 py-1.5 text-sm rounded ${isActive ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
+          العملاء
+        </NavLink>
         <NavLink to={`/tenant/settings/delivery${search}`} className={({ isActive }) => `px-3 py-1.5 text-sm rounded ${isActive ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
           إعدادات التوصيل
         </NavLink>

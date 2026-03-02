@@ -243,6 +243,7 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/tenants\/by-id\/[^/]+$/ },
   { method: 'GET', path: /^\/catalog\/[^/]+$/ },
   { method: 'POST', path: /^\/orders$/ },
+  { method: 'GET', path: /^\/customer\/auth\/check-phone$/ },
   { method: 'POST', path: /^\/customer\/auth\/start$/ },
   { method: 'POST', path: /^\/customer\/auth\/verify$/ },
   { method: 'GET', path: /^\/campaigns$/ },
@@ -365,12 +366,22 @@ app.get('/auth/me', async (req, res) => {
 });
 
 // --- Customer OTP auth (dev-mode) ---
+app.get('/customer/auth/check-phone', async (req, res) => {
+  const phone = req.query.phone as string | undefined;
+  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+  const key = normalizePhoneForMatch(phone);
+  if (!key || key.length < 9) return res.status(400).json({ error: 'Invalid phone' });
+  const customers = await repos.customers.findAll();
+  const exists = customers.some((c) => normalizePhoneForMatch(c.phone) === key);
+  res.json({ exists });
+});
+
 app.post('/customer/auth/start', async (req, res) => {
   const { phone } = req.body as { phone?: string };
   if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
   const result = createOtp(phone);
   if (!result.ok) return res.status(429).json({ error: result.error, code: result.code });
-  res.json({ ok: true });
+  res.json({ ok: true, ...(result.devCode && { devCode: result.devCode }) });
 });
 
 function normalizePhoneForMatch(phone: string): string {
@@ -378,7 +389,7 @@ function normalizePhoneForMatch(phone: string): string {
 }
 
 app.post('/customer/auth/verify', async (req, res) => {
-  const { phone, code } = req.body as { phone?: string; code?: string };
+  const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
   if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
   const result = verifyOtp(phone, code);
   if (!result.ok) {
@@ -388,21 +399,48 @@ app.post('/customer/auth/verify', async (req, res) => {
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
   let customer = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
-    customer = { id, phone: String(phone).trim(), createdAt: new Date().toISOString() };
+    customer = { id, phone: String(phone).trim(), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
     const next = [...customers, customer];
+    await repos.customers.setAll(next);
+  } else if (nameTrimmed && !customer.name) {
+    customer = { ...customer, name: nameTrimmed };
+    const next = customers.map((c) => (c.id === customer!.id ? customer! : c));
     await repos.customers.setAll(next);
   }
   const token = jwt.sign({ sub: customer.id, role: 'CUSTOMER' }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, customer: { id: customer.id, phone: customer.phone } });
+  res.json({ token, customer: { id: customer.id, phone: customer.phone, name: customer.name } });
 });
 
 app.get('/customer/me', async (req, res) => {
-  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ id: customer.id, phone: customer.phone });
+  const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
+  res.json({ id: customer.id, phone: customer.phone, name: full?.name ?? customer.name });
 });
+
+app.get('/customer/activity', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; status?: string; total?: number; currency?: string; createdAt?: string; items?: unknown[]; customerId?: string }[];
+  const customerOrders = orders.filter((o) => o.customerId === customer.id);
+  const leads = getLeads();
+  const customerLeads = leads.filter(
+    (l) => l.type === 'PROFESSIONAL_CONTACT' && (l.metadata as { customerId?: string })?.customerId === customer.id
+  );
+  const tenants = await repos.tenants.findAll();
+  const ordersWithTenant = customerOrders.map((o) => {
+    const t = tenants.find((x) => x.id === o.tenantId);
+    return { ...o, tenantName: t?.name, tenantSlug: (t as { slug?: string })?.slug };
+  });
+  const leadsWithTenant = customerLeads.map((l) => {
+    const t = tenants.find((x) => x.id === l.tenantId);
+    return { ...l, tenantName: t?.name, tenantSlug: (t as { slug?: string })?.slug };
+  });
+  res.json({ orders: ordersWithTenant, leads: leadsWithTenant });
+}));
 
 // --- Courier portal (COURIER role only) ---
 function requireCourier(req: express.Request, res: express.Response): { courierId: string; marketId: string } | null {
@@ -754,6 +792,55 @@ app.get('/leads', async (req, res) => {
   }
   res.json(leads);
 });
+
+// --- Customers (role-based visibility) ---
+// ROOT_ADMIN: all customers. TENANT_ADMIN: only customers who interacted with their tenant (orders or leads). MARKET_ADMIN: customers in their market.
+app.get('/customers', wrapAsync(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = req.user as { role?: string; marketId?: string; tenantId?: string };
+  const allCustomers = await repos.customers.findAll();
+  const allOrders = (await repos.orders.findAll()) as { customerId?: string; tenantId?: string }[];
+  const allLeads = getLeads();
+
+  if (caller.role === 'ROOT_ADMIN') {
+    return res.json(allCustomers);
+  }
+
+  if (caller.role === 'TENANT_ADMIN' && caller.tenantId) {
+    const myTenantId = String(caller.tenantId).trim();
+    const customerIds = new Set<string>();
+    allOrders.forEach((o) => {
+      if (o.tenantId === myTenantId && o.customerId) customerIds.add(o.customerId);
+    });
+    allLeads.forEach((l) => {
+      if (l.tenantId === myTenantId) {
+        const cid = (l.metadata as { customerId?: string })?.customerId;
+        if (cid) customerIds.add(cid);
+      }
+    });
+    const filtered = allCustomers.filter((c) => customerIds.has(c.id));
+    return res.json(filtered);
+  }
+
+  if (caller.role === 'MARKET_ADMIN' && caller.marketId) {
+    const tenants = await repos.tenants.findAll();
+    const marketTenantIds = new Set(tenants.filter((t) => (t as { marketId?: string }).marketId === caller.marketId).map((t) => t.id));
+    const customerIds = new Set<string>();
+    allOrders.forEach((o) => {
+      if (o.tenantId && marketTenantIds.has(o.tenantId) && o.customerId) customerIds.add(o.customerId);
+    });
+    allLeads.forEach((l) => {
+      if (l.tenantId && marketTenantIds.has(l.tenantId)) {
+        const cid = (l.metadata as { customerId?: string })?.customerId;
+        if (cid) customerIds.add(cid);
+      }
+    });
+    const filtered = allCustomers.filter((c) => customerIds.has(c.id));
+    return res.json(filtered);
+  }
+
+  return res.status(403).json({ error: 'Forbidden' });
+}));
 
 // --- Audit (ROOT only) ---
 app.get('/audit-events', async (req, res) => {

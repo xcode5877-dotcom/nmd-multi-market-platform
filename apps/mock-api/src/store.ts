@@ -182,6 +182,7 @@ export interface Courier {
 export interface Customer {
   id: string;
   phone: string;
+  name?: string;
   createdAt?: string;
 }
 

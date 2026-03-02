@@ -31,6 +31,7 @@ const MarketFinancePage = lazy(() => import('./pages/MarketFinancePage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
 const LeadsPage = lazy(() => import('./pages/LeadsPage'));
+const CustomersPage = lazy(() => import('./pages/CustomersPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -90,6 +91,7 @@ export default function App() {
               <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
               <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
               <Route path="leads" element={<LeadsPage />} />
+              <Route path="customers" element={<CustomersPage />} />
               <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
                 {tenantRouteElements}
                 <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />

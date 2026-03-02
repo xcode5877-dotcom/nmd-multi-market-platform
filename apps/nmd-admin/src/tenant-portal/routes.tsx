@@ -3,6 +3,7 @@ import TenantHomePage from './pages/TenantHomePage';
 import TenantProductsPage from './pages/TenantProductsPage';
 import TenantDeliveryZonesPage from './pages/TenantDeliveryZonesPage';
 import TenantOrdersPage from './pages/TenantOrdersPage';
+import TenantCustomersPage from './pages/TenantCustomersPage';
 import TenantSecurityPage from './pages/TenantSecurityPage';
 
 /**
@@ -16,6 +17,7 @@ export const tenantRouteElements = (
     <Route path="products" element={<TenantProductsPage />} />
     <Route path="delivery-zones" element={<TenantDeliveryZonesPage />} />
     <Route path="orders" element={<TenantOrdersPage />} />
+    <Route path="customers" element={<TenantCustomersPage />} />
     <Route path="account/security" element={<TenantSecurityPage />} />
   </>
 );

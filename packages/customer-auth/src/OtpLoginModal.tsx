@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Modal, Button, Input, useToast } from '@nmd/ui';
-import { useCustomerAuth, type Customer } from '../contexts/CustomerAuthContext';
+import { useCustomerAuth, type Customer } from './CustomerAuthContext';
 
 interface OtpLoginModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: (customer: Customer) => void;
-  /** When true, show OTP in toast for dev/testing */
   showOtpInToast?: boolean;
 }
 
@@ -15,22 +14,24 @@ function isValidIsraelPhone(v: string): boolean {
   return digits.length === 10 && digits.startsWith('05');
 }
 
-type Step = 'phone' | 'code' | 'register';
-
 export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true }: OtpLoginModalProps) {
-  const { checkPhone, start, verify } = useCustomerAuth();
+  const { start, verify } = useCustomerAuth();
   const { addToast } = useToast();
-  const [step, setStep] = useState<Step>('phone');
-  const [phone, setPhone] = useState('');
+  const [step, setStep] = useState<'name-phone' | 'code'>('name-phone');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
-  const [isExistingUser, setIsExistingUser] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handlePhoneSubmit = async () => {
+  const handleNamePhoneSubmit = async () => {
     setError('');
+    const nameTrimmed = name.trim();
     const phoneTrimmed = phone.trim();
+    if (!nameTrimmed) {
+      setError('أدخل الاسم الكامل');
+      return;
+    }
     if (!phoneTrimmed) {
       setError('أدخل رقم الجوال');
       return;
@@ -40,19 +41,17 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       return;
     }
     setLoading(true);
-    const { exists } = await checkPhone(phoneTrimmed);
-    const startResult = await start(phoneTrimmed);
+    const result = await start(phoneTrimmed);
     setLoading(false);
-    if (!startResult.ok) {
-      setError(startResult.error ?? 'حدث خطأ');
-      return;
+    if (result.ok) {
+      if (result.devCode && showOtpInToast && (import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+        addToast(`رمز التحقق (تجريبي): ${result.devCode}`, 'info');
+      }
+      setStep('code');
+      setCode('');
+    } else {
+      setError(result.error ?? 'حدث خطأ');
     }
-    if (startResult.devCode && showOtpInToast && import.meta.env?.DEV) {
-      addToast(`رمز التحقق (تجريبي): ${startResult.devCode}`, 'info');
-    }
-    setIsExistingUser(exists);
-    setStep(exists ? 'code' : 'register');
-    setCode('');
   };
 
   const handleCodeSubmit = async () => {
@@ -66,8 +65,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       return;
     }
     setLoading(true);
-    const nameToSend = isExistingUser ? undefined : name.trim() || undefined;
-    const result = await verify(phone.trim(), code.trim(), nameToSend);
+    const result = await verify(phone.trim(), code.trim(), name.trim());
     setLoading(false);
     if (result.ok && result.customer) {
       onSuccess?.(result.customer);
@@ -82,11 +80,10 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
   };
 
   const reset = () => {
-    setStep('phone');
-    setPhone('');
+    setStep('name-phone');
     setName('');
+    setPhone('');
     setCode('');
-    setIsExistingUser(false);
     setError('');
   };
 
@@ -95,17 +92,12 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
     onClose();
   };
 
-  const goBackToPhone = () => {
-    setStep('phone');
-    setCode('');
-    setError('');
-  };
-
   return (
     <Modal open={open} onClose={handleClose} title="NMD ID — تسجيل الدخول" size="sm">
       <div className="space-y-4" dir="rtl">
-        {step === 'phone' ? (
+        {step === 'name-phone' ? (
           <>
+            <Input label="الاسم الكامل" value={name} onChange={(e) => setName(e.target.value)} placeholder="الاسم الكامل" />
             <Input
               label="رقم الجوال"
               value={phone}
@@ -115,30 +107,16 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
               className="text-left"
             />
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button className="w-full" onClick={handlePhoneSubmit} loading={loading} disabled={loading}>
-              التالي
+            <Button className="w-full" onClick={handleNamePhoneSubmit} loading={loading} disabled={loading}>
+              إرسال رمز التحقق
             </Button>
           </>
         ) : (
           <>
             <p className="text-sm text-gray-600">
-              {isExistingUser ? (
-                <>مرحباً بعودتك! أدخل الرمز المرسل إلى {phone}</>
-              ) : (
-                <>أنشئ هويتك NMD للمتابعة</>
-              )}
-              {import.meta.env?.DEV && (
-                <span className="block mt-1 text-xs text-amber-600">(تحقق من الكونسول أو التوست)</span>
-              )}
+              تم إرسال رمز التحقق إلى {phone}
+              {(import.meta as { env?: { DEV?: boolean } }).env?.DEV && <span className="block mt-1 text-xs text-amber-600">(تحقق من الكونسول أو التوست)</span>}
             </p>
-            {step === 'register' && (
-              <Input
-                label="الاسم الكامل"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="الاسم الكامل"
-              />
-            )}
             <Input
               label="رمز التحقق (4 أرقام)"
               value={code}
@@ -151,7 +129,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
             />
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex gap-2">
-              <Button variant="ghost" className="flex-1" onClick={goBackToPhone} disabled={loading}>
+              <Button variant="ghost" className="flex-1" onClick={() => setStep('name-phone')} disabled={loading}>
                 تغيير الرقم
               </Button>
               <Button className="flex-1" onClick={handleCodeSubmit} loading={loading} disabled={loading}>

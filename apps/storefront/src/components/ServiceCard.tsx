@@ -5,6 +5,8 @@ import type { Product } from '@nmd/core';
 import { formatMoney } from '@nmd/core';
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
+import { useCustomerAuth } from '../contexts/CustomerAuthContext';
+import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 import { trackProfessionalContact } from '../lib/trackLead';
 
 interface ServiceCardProps {
@@ -17,6 +19,8 @@ interface ServiceCardProps {
 function ServiceCardInner({ product, tenantSlug, actionType = 'inquire' }: ServiceCardProps) {
   const { branding } = useTheme();
   const tenantId = useAppStore((s) => s.tenantId);
+  const { customer } = useCustomerAuth();
+  const { openAuthModal } = useGlobalAuthModal();
   const whatsapp = branding?.whatsappPhone;
   const hasPrice = (product.basePrice ?? 0) > 0;
   const waUrl = whatsapp
@@ -65,11 +69,15 @@ function ServiceCardInner({ product, tenantSlug, actionType = 'inquire' }: Servi
             {waUrl && (
               <button
                 type="button"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.preventDefault();
                   if (!tenantId) return;
-                  await trackProfessionalContact(tenantId, 'whatsapp');
-                  window.open(waUrl, '_blank', 'noopener,noreferrer');
+                  const doRedirect = async (c?: { id: string }) => {
+                    await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                    window.open(waUrl, '_blank', 'noopener,noreferrer');
+                  };
+                  if (customer) doRedirect(customer);
+                  else openAuthModal({ onSuccess: doRedirect });
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#25D366] text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
               >

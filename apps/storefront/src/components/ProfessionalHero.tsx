@@ -1,5 +1,7 @@
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
+import { useCustomerAuth } from '../contexts/CustomerAuthContext';
+import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 import { trackProfessionalContact } from '../lib/trackLead';
 
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -32,6 +34,8 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
   const { branding } = useTheme();
   const storeTenantId = useAppStore((s) => s.tenantId);
   const tenantId = (tenant as { id?: string })?.id ?? storeTenantId;
+  const { customer } = useCustomerAuth();
+  const { openAuthModal } = useGlobalAuthModal();
   const whatsapp = branding?.whatsappPhone;
   const phone = branding?.phone ?? whatsapp;
   const waUrl = whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, '')}` : null;
@@ -70,11 +74,18 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
           {waUrl && (
             <button
               type="button"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                await trackProfessionalContact(tenantId, 'whatsapp');
-                window.open(waUrl, '_blank', 'noopener,noreferrer');
+                const doRedirect = async (c?: { id: string }) => {
+                  await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                  window.open(waUrl, '_blank', 'noopener,noreferrer');
+                };
+                if (customer) {
+                  doRedirect(customer);
+                } else {
+                  openAuthModal({ onSuccess: doRedirect });
+                }
               }}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-base hover:opacity-90 active:opacity-95 transition-opacity shadow-md cursor-pointer"
             >
@@ -85,11 +96,18 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
           {telUrl && (
             <button
               type="button"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                await trackProfessionalContact(tenantId, 'call');
-                window.location.href = telUrl;
+                const doRedirect = async (c?: { id: string }) => {
+                  await trackProfessionalContact(tenantId, 'call', c?.id);
+                  window.location.href = telUrl;
+                };
+                if (customer) {
+                  doRedirect(customer);
+                } else {
+                  openAuthModal({ onSuccess: doRedirect });
+                }
               }}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563eb] text-white font-semibold text-base hover:opacity-90 active:opacity-95 transition-opacity shadow-md cursor-pointer"
             >

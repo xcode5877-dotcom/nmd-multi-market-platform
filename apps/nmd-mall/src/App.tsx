@@ -1,6 +1,8 @@
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, ToastProvider } from '@nmd/ui';
+import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
+import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
 
 const LandingLayout = lazy(() => import('./layouts/LandingLayout'));
 const MarketLayout = lazy(() => import('./layouts/MarketLayout'));
@@ -30,6 +32,8 @@ export default function App() {
   return (
     <ThemeProvider branding={DEFAULT_BRANDING} dir="rtl">
       <ToastProvider>
+        <CustomerAuthProvider>
+          <GlobalAuthModalProvider>
         <Suspense fallback={<PageSkeleton />}>
           <Routes>
             <Route path="/" element={<Navigate to="/markets" replace />} />
@@ -53,6 +57,8 @@ export default function App() {
             </Route>
           </Routes>
         </Suspense>
+          </GlobalAuthModalProvider>
+        </CustomerAuthProvider>
       </ToastProvider>
     </ThemeProvider>
   );

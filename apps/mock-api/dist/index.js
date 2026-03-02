@@ -1204,7 +1204,7 @@ function hashCode(code) {
   return createHash("sha256").update(String(code).trim()).digest("hex");
 }
 function generateOtp() {
-  return String(randomInt(1e5, 999999));
+  return String(randomInt(1e3, 9999));
 }
 function createOtp(phone) {
   const key = normalizePhone(phone);
@@ -1231,6 +1231,7 @@ function createOtp(phone) {
   });
   if (process.env.NODE_ENV !== "production") {
     console.log(`[dev] OTP for ${phone}: ${code} (expires in 5 min)`);
+    return { ok: true, devCode: code };
   }
   return { ok: true };
 }
@@ -1448,7 +1449,8 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/delivery\/[^/]+$/ },
   { method: "GET", path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: "GET", path: /^\/public\/orders\/[^/]+$/ },
-  { method: "GET", path: /^\/global-categories$/ }
+  { method: "GET", path: /^\/global-categories$/ },
+  { method: "POST", path: /^\/leads$/ }
 ];
 function isPublicRoute(method, path) {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
@@ -1553,13 +1555,13 @@ app.post("/customer/auth/start", async (req, res) => {
   if (!phone || typeof phone !== "string") return res.status(400).json({ error: "phone required" });
   const result = createOtp(phone);
   if (!result.ok) return res.status(429).json({ error: result.error, code: result.code });
-  res.json({ ok: true });
+  res.json({ ok: true, ...result.devCode && { devCode: result.devCode } });
 });
 function normalizePhoneForMatch(phone) {
   return String(phone ?? "").replace(/\D/g, "").slice(-10);
 }
 app.post("/customer/auth/verify", async (req, res) => {
-  const { phone, code } = req.body;
+  const { phone, code, name } = req.body;
   if (!phone || !code) return res.status(400).json({ error: "phone and code required" });
   const result = verifyOtp(phone, code);
   if (!result.ok) {
@@ -1569,20 +1571,46 @@ app.post("/customer/auth/verify", async (req, res) => {
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
   let customer = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const nameTrimmed = typeof name === "string" ? name.trim() : void 0;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
-    customer = { id, phone: String(phone).trim(), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    customer = { id, phone: String(phone).trim(), name: nameTrimmed || void 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     const next = [...customers, customer];
+    await repos.customers.setAll(next);
+  } else if (nameTrimmed && !customer.name) {
+    customer = { ...customer, name: nameTrimmed };
+    const next = customers.map((c) => c.id === customer.id ? customer : c);
     await repos.customers.setAll(next);
   }
   const token = jwt.sign({ sub: customer.id, role: "CUSTOMER" }, JWT_SECRET, { expiresIn: "30d" });
-  res.json({ token, customer: { id: customer.id, phone: customer.phone } });
+  res.json({ token, customer: { id: customer.id, phone: customer.phone, name: customer.name } });
 });
 app.get("/customer/me", async (req, res) => {
   const customer = req.customer;
   if (!customer) return res.status(401).json({ error: "Unauthorized" });
-  res.json({ id: customer.id, phone: customer.phone });
+  const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
+  res.json({ id: customer.id, phone: customer.phone, name: full?.name ?? customer.name });
 });
+app.get("/customer/activity", wrapAsync(async (req, res) => {
+  const customer = req.customer;
+  if (!customer) return res.status(401).json({ error: "Unauthorized" });
+  const orders = await repos.orders.findAll();
+  const customerOrders = orders.filter((o) => o.customerId === customer.id);
+  const leads = getLeads();
+  const customerLeads = leads.filter(
+    (l) => l.type === "PROFESSIONAL_CONTACT" && l.metadata?.customerId === customer.id
+  );
+  const tenants = await repos.tenants.findAll();
+  const ordersWithTenant = customerOrders.map((o) => {
+    const t = tenants.find((x) => x.id === o.tenantId);
+    return { ...o, tenantName: t?.name, tenantSlug: t?.slug };
+  });
+  const leadsWithTenant = customerLeads.map((l) => {
+    const t = tenants.find((x) => x.id === l.tenantId);
+    return { ...l, tenantName: t?.name, tenantSlug: t?.slug };
+  });
+  res.json({ orders: ordersWithTenant, leads: leadsWithTenant });
+}));
 function requireCourier(req, res) {
   const user = req.user;
   if (!user || user.role !== "COURIER" || !user.courierId || !user.marketId) {
@@ -1847,18 +1875,21 @@ function normalizeTenantResponse(t) {
 }
 app.post("/leads", (req, res) => {
   const body = req.body;
+  console.log("LEAD RECEIVED!", body);
   const tenantId = body.tenantId;
   const rawType = body.type;
   const type = rawType === "PROFESSIONAL_CONTACT" ? "PROFESSIONAL_CONTACT" : rawType === "whatsapp" || rawType === "call" || rawType === "cta" ? rawType : "cta";
   if (!tenantId || typeof tenantId !== "string") {
     return res.status(400).json({ error: "tenantId required" });
   }
+  const userAgent = req.headers["user-agent"] ?? "";
+  const metadata = { ...body.metadata ?? {}, userAgent: userAgent || body.metadata?.userAgent };
   const lead = appendLead({
     tenantId: tenantId.trim(),
     type,
     status: body.status,
     contactType: body.contactType,
-    metadata: body.metadata ?? {}
+    metadata
   });
   res.status(201).json(lead);
 });
@@ -1867,7 +1898,8 @@ app.get("/leads", async (req, res) => {
   const caller = req.user;
   let leads = getLeads();
   if (caller.role === "TENANT_ADMIN" && caller.tenantId) {
-    leads = leads.filter((l) => l.tenantId === caller.tenantId);
+    const myTenantId = String(caller.tenantId).trim();
+    leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === myTenantId);
   } else if (caller.role === "MARKET_ADMIN" && caller.marketId) {
     const tenants = await repos.tenants.findAll();
     const marketTenantIds = new Set(tenants.filter((t) => t.marketId === caller.marketId).map((t) => t.id));
@@ -1875,6 +1907,48 @@ app.get("/leads", async (req, res) => {
   }
   res.json(leads);
 });
+app.get("/customers", wrapAsync(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const caller = req.user;
+  const allCustomers = await repos.customers.findAll();
+  const allOrders = await repos.orders.findAll();
+  const allLeads = getLeads();
+  if (caller.role === "ROOT_ADMIN") {
+    return res.json(allCustomers);
+  }
+  if (caller.role === "TENANT_ADMIN" && caller.tenantId) {
+    const myTenantId = String(caller.tenantId).trim();
+    const customerIds = /* @__PURE__ */ new Set();
+    allOrders.forEach((o) => {
+      if (o.tenantId === myTenantId && o.customerId) customerIds.add(o.customerId);
+    });
+    allLeads.forEach((l) => {
+      if (l.tenantId === myTenantId) {
+        const cid = l.metadata?.customerId;
+        if (cid) customerIds.add(cid);
+      }
+    });
+    const filtered = allCustomers.filter((c) => customerIds.has(c.id));
+    return res.json(filtered);
+  }
+  if (caller.role === "MARKET_ADMIN" && caller.marketId) {
+    const tenants = await repos.tenants.findAll();
+    const marketTenantIds = new Set(tenants.filter((t) => t.marketId === caller.marketId).map((t) => t.id));
+    const customerIds = /* @__PURE__ */ new Set();
+    allOrders.forEach((o) => {
+      if (o.tenantId && marketTenantIds.has(o.tenantId) && o.customerId) customerIds.add(o.customerId);
+    });
+    allLeads.forEach((l) => {
+      if (l.tenantId && marketTenantIds.has(l.tenantId)) {
+        const cid = l.metadata?.customerId;
+        if (cid) customerIds.add(cid);
+      }
+    });
+    const filtered = allCustomers.filter((c) => customerIds.has(c.id));
+    return res.json(filtered);
+  }
+  return res.status(403).json({ error: "Forbidden" });
+}));
 app.get("/audit-events", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   const limit = Math.min(Number(req.query.limit) || 100, 500);

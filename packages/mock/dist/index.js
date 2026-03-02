@@ -788,6 +788,14 @@ var MockApiClient = class {
     await delay(80);
     return getOrder(orderId);
   }
+  /** Customer activity: orders and professional contacts. Requires customer auth. */
+  async getCustomerActivity() {
+    if (this.useApi) {
+      return apiFetch("/customer/activity");
+    }
+    await delay(80);
+    return { orders: [], leads: [] };
+  }
   async getCampaigns(tenantId) {
     if (this.useApi) {
       try {
@@ -911,6 +919,11 @@ var MockApiClient = class {
   async listLeads() {
     if (!this.useApi) return [];
     return apiFetch("/leads");
+  }
+  /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
+  async listCustomers() {
+    if (!this.useApi) return [];
+    return apiFetch("/customers");
   }
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
   async createTenantAdminForTenant(tenantId, input) {

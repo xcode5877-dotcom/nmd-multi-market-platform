@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users } from 'lucide-react';
 import { setEmergencyHeaders } from '../api';
 import { MockApiClient } from '@nmd/mock';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
@@ -47,6 +47,7 @@ export default function AdminLayout() {
         { to: `/markets/${marketId}`, icon: LayoutDashboard, label: 'Overview', end: true },
         { to: `/markets/${marketId}/tenants`, icon: Building2, label: 'Tenants', end: false },
         { to: `/markets/${marketId}/orders`, icon: Store, label: 'Orders', end: false },
+        { to: '/customers', icon: Users, label: 'المشتركون', end: true },
         { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
       ]
     : [];
@@ -55,6 +56,7 @@ export default function AdminLayout() {
     { to: '/markets', icon: Store, label: 'Markets', end: true },
     { to: '/tenants', icon: Building2, label: 'Global Tenants', end: true },
     { to: '/categories', icon: FolderTree, label: 'إدارة التصنيفات', end: true },
+    { to: '/customers', icon: Users, label: 'المشتركون', end: true },
     { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
     { to: '/settings', icon: Settings, label: 'Settings', end: false },
     { to: '/audit', icon: FileText, label: 'Audit', end: true },
@@ -65,6 +67,7 @@ export default function AdminLayout() {
     { to: '/tenant/products', icon: Package, label: 'المنتجات', end: false },
     { to: '/tenant/delivery-zones', icon: MapPin, label: 'مناطق التوصيل', end: false },
     { to: '/tenant/orders', icon: ShoppingCart, label: 'الطلبات', end: false },
+    { to: '/tenant/customers', icon: Users, label: 'العملاء', end: false },
     { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
     { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false },
   ];

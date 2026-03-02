@@ -44,10 +44,10 @@ function hashCode(code: string): string {
 }
 
 function generateOtp(): string {
-  return String(randomInt(100000, 999999));
+  return String(randomInt(1000, 9999));
 }
 
-export function createOtp(phone: string): { ok: true } | { ok: false; error: string; code: string } {
+export function createOtp(phone: string): { ok: true; devCode?: string } | { ok: false; error: string; code: string } {
   const key = normalizePhone(phone);
   if (!key || key.length < 9) return { ok: false, error: 'Invalid phone', code: 'INVALID_PHONE' };
 
@@ -77,6 +77,7 @@ export function createOtp(phone: string): { ok: true } | { ok: false; error: str
 
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[dev] OTP for ${phone}: ${code} (expires in 5 min)`);
+    return { ok: true, devCode: code };
   }
 
   return { ok: true };

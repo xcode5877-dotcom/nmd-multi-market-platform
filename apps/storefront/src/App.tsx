@@ -6,10 +6,14 @@ import { MockApiClient } from '@nmd/mock';
 import { getTenantSlugOrId, persistTenant } from './lib/tenant';
 import { useAppStore } from './store/app';
 import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
+import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 
 const Layout = lazy(() => import('./layouts/Layout'));
-const RootRedirect = lazy(() => import('./pages/RootRedirect'));
+const LandingLayout = lazy(() => import('./layouts/LandingLayout'));
+const MarketLayout = lazy(() => import('./layouts/MarketLayout'));
+const MarketsPickerPage = lazy(() => import('./pages/MarketsPickerPage'));
+const MarketHomePage = lazy(() => import('./pages/MarketHomePage'));
 const LegacyProductRedirect = lazy(() => import('./pages/LegacyProductRedirect'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
@@ -20,6 +24,7 @@ const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const OrderSuccessPage = lazy(() => import('./pages/OrderSuccessPage'));
 const OrderPrintPage = lazy(() => import('./pages/OrderPrintPage'));
 const LegacyOrderSuccessRedirect = lazy(() => import('./pages/LegacyOrderSuccessRedirect'));
+const MyActivityPage = lazy(() => import('./pages/MyActivityPage'));
 
 const api = new MockApiClient();
 
@@ -61,9 +66,7 @@ function TenantGate() {
   return (
     <ThemeProvider branding={tenant.branding} dir="rtl">
       <LayoutShell layoutStyle={tenant.branding.layoutStyle}>
-        <ToastProvider>
-          <CustomerAuthProvider>
-            <Routes>
+        <Routes>
               <Route element={<Layout />}>
                 <Route index element={<HomePage />} />
                 <Route path="p/:productId" element={<ProductPage />} />
@@ -71,11 +74,10 @@ function TenantGate() {
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="cart" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
+                <Route path="my-activity" element={<MyActivityPage />} />
                 <Route path="order/:orderId/success" element={<OrderSuccessPage />} />
               </Route>
             </Routes>
-          </CustomerAuthProvider>
-        </ToastProvider>
       </LayoutShell>
     </ThemeProvider>
   );
@@ -83,16 +85,34 @@ function TenantGate() {
 
 function AppContent() {
   return (
-    <Suspense fallback={<PageSkeleton />}>
-      <TenantBroadcastListener />
-      <Routes>
-        <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
-        <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
-        <Route path="/" element={<RootRedirect />} />
-        <Route path="/p/:productId" element={<LegacyProductRedirect />} />
-        <Route path="/:tenantSlug/*" element={<TenantGate />} />
-      </Routes>
-    </Suspense>
+    <ToastProvider>
+      <CustomerAuthProvider>
+        <GlobalAuthModalProvider>
+          <Suspense fallback={<PageSkeleton />}>
+            <TenantBroadcastListener />
+            <Routes>
+              <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
+              <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
+              <Route path="/" element={<LandingLayout />}>
+                <Route index element={<MarketsPickerPage />} />
+                <Route path="my-activity" element={<MyActivityPage />} />
+              </Route>
+              <Route path="/daburiyya" element={<MarketLayout />}>
+                <Route index element={<MarketHomePage />} />
+              </Route>
+              <Route path="/dabburiyya" element={<MarketLayout />}>
+                <Route index element={<MarketHomePage />} />
+              </Route>
+              <Route path="/iksal" element={<MarketLayout />}>
+                <Route index element={<MarketHomePage />} />
+              </Route>
+              <Route path="/p/:productId" element={<LegacyProductRedirect />} />
+              <Route path="/:tenantSlug/*" element={<TenantGate />} />
+            </Routes>
+          </Suspense>
+        </GlobalAuthModalProvider>
+      </CustomerAuthProvider>
+    </ToastProvider>
   );
 }
 

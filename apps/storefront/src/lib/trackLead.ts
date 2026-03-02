@@ -25,14 +25,14 @@ export function trackLead(
 /** Track professional page contact (WhatsApp/Call). Awaits API call before redirect. */
 export async function trackProfessionalContact(
   tenantId: string,
-  contactType: 'whatsapp' | 'call'
+  contactType: 'whatsapp' | 'call',
+  customerId?: string
 ): Promise<void> {
   const base = (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) || '';
   const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const phone = typeof window !== 'undefined' ? window.prompt('أدخل رقم هاتفك (اختياري)') : null;
   const metadata: Record<string, unknown> = {
     userAgent: userAgent || undefined,
-    phone: phone && String(phone).trim() ? String(phone).trim() : undefined,
+    customerId: customerId || undefined,
   };
   const payload = {
     tenantId,

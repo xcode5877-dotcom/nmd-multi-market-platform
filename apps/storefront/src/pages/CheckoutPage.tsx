@@ -9,7 +9,7 @@ import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 import { priceCart } from '../lib/pricing';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
-import { OtpLoginModal } from '../components/OtpLoginModal';
+import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 
 const api = new MockApiClient();
 
@@ -25,7 +25,7 @@ export default function CheckoutPage() {
   const clearCart = useCartStore((s) => s.clearCart);
   const addToast = useToast().addToast;
   const { customer, logout } = useCustomerAuth();
-  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const { openAuthModal } = useGlobalAuthModal();
 
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns', tenantId],
@@ -75,6 +75,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (customer?.phone && !customerPhone) setCustomerPhone(customer.phone);
   }, [customer?.phone, customerPhone]);
+
+  useEffect(() => {
+    if (customer?.name && !customerName) setCustomerName(customer.name);
+  }, [customer?.name, customerName]);
 
   const nameValid = customerName.trim().length > 0;
   const phoneValid = customerPhone.trim().length > 0;
@@ -224,7 +228,7 @@ export default function CheckoutPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setOtpModalOpen(true)}
+                  onClick={() => openAuthModal()}
                   className="text-xs text-primary hover:underline"
                 >
                   تسجيل الدخول
@@ -429,7 +433,6 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
-      <OtpLoginModal open={otpModalOpen} onClose={() => setOtpModalOpen(false)} />
     </div>
   );
 }

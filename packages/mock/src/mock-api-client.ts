@@ -372,6 +372,15 @@ export class MockApiClient implements ApiClient {
     return getOrder(orderId);
   }
 
+  /** Customer activity: orders and professional contacts. Requires customer auth. */
+  async getCustomerActivity(): Promise<{ orders: Array<Record<string, unknown>>; leads: Array<Record<string, unknown>> }> {
+    if (this.useApi) {
+      return apiFetch<{ orders: Array<Record<string, unknown>>; leads: Array<Record<string, unknown>> }>('/customer/activity');
+    }
+    await delay(80);
+    return { orders: [], leads: [] };
+  }
+
   async getCampaigns(tenantId: string): Promise<Campaign[]> {
     if (this.useApi) {
       try {
@@ -506,6 +515,12 @@ export class MockApiClient implements ApiClient {
   async listLeads(): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]> {
     if (!this.useApi) return [];
     return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]>('/leads');
+  }
+
+  /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
+  async listCustomers(): Promise<{ id: string; phone: string; name?: string; createdAt?: string }[]> {
+    if (!this.useApi) return [];
+    return apiFetch<{ id: string; phone: string; name?: string; createdAt?: string }[]>('/customers');
   }
 
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */

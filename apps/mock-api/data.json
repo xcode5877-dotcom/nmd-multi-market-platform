@@ -8213,6 +8213,12 @@
       "id": "customer-8012c0f1-9015-4011-9524-f581f96c4d94",
       "phone": "0501234567",
       "createdAt": "2026-02-16T12:06:18.478Z"
+    },
+    {
+      "id": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+      "phone": "0546111668",
+      "name": "فواز عزايزة",
+      "createdAt": "2026-03-02T01:28:48.296Z"
     }
   ],
   "deliveryJobs": [],
@@ -8312,6 +8318,30 @@
       },
       "id": "lead-ee60cf7a-1c06-48c6-b575-563b2233017d",
       "timestamp": "2026-03-02T01:00:57.941Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56"
+      },
+      "id": "lead-30b1ec54-7026-405e-938a-0bcab3f5e05b",
+      "timestamp": "2026-03-02T02:38:38.000Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56"
+      },
+      "id": "lead-b3a92bb0-32d7-4a53-ba49-658d2c923072",
+      "timestamp": "2026-03-02T03:44:35.456Z"
     }
   ]
 }

@@ -1,5 +1,7 @@
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
+import { useCustomerAuth } from '../contexts/CustomerAuthContext';
+import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 import { trackProfessionalContact } from '../lib/trackLead';
 
 /** WhatsApp icon (inline SVG) */
@@ -23,6 +25,8 @@ function PhoneIcon({ className }: { className?: string }) {
 export function ProfessionalBar() {
   const { branding } = useTheme();
   const tenantId = useAppStore((s) => s.tenantId);
+  const { customer } = useCustomerAuth();
+  const { openAuthModal } = useGlobalAuthModal();
   const whatsapp = branding?.whatsappPhone;
   const phone = branding?.phone ?? whatsapp;
   const hasContact = !!(whatsapp || phone);
@@ -53,11 +57,15 @@ export function ProfessionalBar() {
           {waUrl && (
             <button
               type="button"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                await trackProfessionalContact(tenantId, 'whatsapp');
-                window.open(waUrl, '_blank', 'noopener,noreferrer');
+                const doRedirect = async (c?: { id: string }) => {
+                  await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                  window.open(waUrl, '_blank', 'noopener,noreferrer');
+                };
+                if (customer) doRedirect(customer);
+                else openAuthModal({ onSuccess: doRedirect });
               }}
               className="flex-1 flex items-center justify-center gap-2 min-h-[3rem] rounded-xl bg-[#25D366] text-white font-medium text-base hover:opacity-90 active:opacity-95 transition-opacity cursor-pointer"
             >
@@ -68,11 +76,15 @@ export function ProfessionalBar() {
           {telUrl && (
             <button
               type="button"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                await trackProfessionalContact(tenantId, 'call');
-                window.location.href = telUrl;
+                const doRedirect = async (c?: { id: string }) => {
+                  await trackProfessionalContact(tenantId, 'call', c?.id);
+                  window.location.href = telUrl;
+                };
+                if (customer) doRedirect(customer);
+                else openAuthModal({ onSuccess: doRedirect });
               }}
               className="flex-1 flex items-center justify-center gap-2 min-h-[3rem] rounded-xl bg-[#2563eb] text-white font-medium text-base hover:opacity-90 active:opacity-95 transition-opacity cursor-pointer"
             >

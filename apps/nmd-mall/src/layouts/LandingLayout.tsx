@@ -1,12 +1,20 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, User } from 'lucide-react';
+import { useCustomerAuth } from '../contexts/CustomerAuthContext';
+import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
+
+const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
+const DEFAULT_TENANT_SLUG = 'daburiyya';
 
 const ANNOUNCEMENT_KEY = 'nmd-announcement-closed';
 
 export default function LandingLayout() {
   const [announcementClosed, setAnnouncementClosed] = useState(false);
   const isMarketsPicker = useLocation().pathname === '/markets';
+  const { customer } = useCustomerAuth();
+  const { openAuthModal } = useGlobalAuthModal();
+  const myActivityUrl = `${STOREFRONT_URL}/${DEFAULT_TENANT_SLUG}/my-activity`;
 
   useEffect(() => {
     if (localStorage.getItem(ANNOUNCEMENT_KEY) === '1') {
@@ -45,7 +53,25 @@ export default function LandingLayout() {
               Powered by NMD OS
             </span>
           </Link>
-          <nav className="flex gap-4">
+          <nav className="flex items-center gap-4">
+            {customer ? (
+              <a
+                href={myActivityUrl}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <User className="w-5 h-5" />
+                <span className="hidden sm:inline">حسابي</span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openAuthModal()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[#D97706] hover:bg-amber-50 transition-colors"
+              >
+                <User className="w-5 h-5" />
+                <span className="hidden sm:inline">تسجيل الدخول</span>
+              </button>
+            )}
             {!isMarketsPicker && (
               <Link to="/markets" className="text-gray-700 hover:text-[#D97706] transition-colors text-sm">
                 الأسواق
