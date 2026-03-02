@@ -147,6 +147,13 @@ export default function MarketDetailPage() {
     );
   }, [marketOrders, marketLeads]);
 
+  const { data: allMarkets = [] } = useQuery({
+    queryKey: ['markets'],
+    queryFn: () => fetch(`${MOCK_API_URL}/markets?all=true`, { headers: apiHeaders() }).then((r) => r.json()),
+    enabled: !!MOCK_API_URL && isRootAdmin,
+  });
+  const markets = Array.isArray(allMarkets) ? allMarkets : [];
+
   const { data: tenantAdmins = [] } = useQuery({
     queryKey: ['tenant-admins', id],
     queryFn: () => api.listTenantAdminsForMarket(id!),
@@ -409,6 +416,7 @@ export default function MarketDetailPage() {
                     <tr>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">المستأجر</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">الحساب</th>
+                      {isRootAdmin && <th className="px-4 py-3 text-start font-medium text-gray-700">السوق التابع له</th>}
                       <th className="px-4 py-3 text-start font-medium text-gray-700">التصنيف</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">ظاهر في السوق</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">ترتيب</th>
@@ -421,6 +429,8 @@ export default function MarketDetailPage() {
                         key={t.id}
                         tenant={t}
                         marketId={id!}
+                        markets={markets}
+                        isRootAdmin={!!isRootAdmin}
                         tenantAdmin={tenantAdminMap.get(t.id)}
                         marketCategories={MARKET_CATEGORIES}
                         onSave={(updates) => updateMutation.mutate({ tenantId: t.id, updates })}
@@ -901,41 +911,50 @@ function MarketDetailsTab({ market }: { market: Market }) {
 }
 
 interface MarketTenantRowProps {
-  tenant: RegistryTenant;
+  tenant: RegistryTenant & { marketId?: string };
   marketId: string;
+  markets?: { id: string; name: string; slug?: string }[];
+  isRootAdmin?: boolean;
   tenantAdmin?: { id: string; email: string; role: string; tenantId?: string } | null;
   marketCategories: { value: MarketCategory; label: string }[];
-  onSave: (updates: Partial<RegistryTenant>) => void;
+  onSave: (updates: Partial<RegistryTenant & { marketId?: string }>) => void;
   isSaving: boolean;
   canManageAccounts?: boolean;
   onResetPassword?: () => void;
   onCreateAccount?: () => void;
 }
 
-function MarketTenantRow({ tenant, marketId, tenantAdmin, marketCategories, onSave, isSaving, canManageAccounts, onResetPassword, onCreateAccount }: MarketTenantRowProps) {
+function MarketTenantRow({ tenant, marketId, markets = [], isRootAdmin: isRoot, tenantAdmin, marketCategories, onSave, isSaving, canManageAccounts, onResetPassword, onCreateAccount }: MarketTenantRowProps) {
   const [marketCategory, setMarketCategory] = useState<MarketCategory>(tenant.marketCategory ?? 'GENERAL');
   const [isListedInMarket, setIsListedInMarket] = useState(tenant.isListedInMarket !== false);
   const [marketSortOrder, setMarketSortOrder] = useState(String(tenant.marketSortOrder ?? 0));
+  const [parentMarketId, setParentMarketId] = useState(tenant.marketId ?? '');
 
   useEffect(() => {
     setMarketCategory(tenant.marketCategory ?? 'GENERAL');
     setIsListedInMarket(tenant.isListedInMarket !== false);
     setMarketSortOrder(String(tenant.marketSortOrder ?? 0));
-  }, [tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder]);
+    setParentMarketId(tenant.marketId ?? '');
+  }, [tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder, tenant.marketId]);
 
   const handleSave = () => {
     const order = parseInt(marketSortOrder, 10);
-    onSave({
+    const updates: Partial<RegistryTenant & { marketId?: string }> = {
       marketCategory,
       isListedInMarket,
       marketSortOrder: isNaN(order) ? 0 : order,
-    });
+    };
+    if (isRoot && parentMarketId !== (tenant.marketId ?? '')) {
+      updates.marketId = parentMarketId || undefined;
+    }
+    onSave(updates);
   };
 
   const hasChanges =
     (tenant.marketCategory ?? 'GENERAL') !== marketCategory ||
     (tenant.isListedInMarket !== false) !== isListedInMarket ||
-    String(tenant.marketSortOrder ?? 0) !== marketSortOrder;
+    String(tenant.marketSortOrder ?? 0) !== marketSortOrder ||
+    (isRoot && (tenant.marketId ?? '') !== parentMarketId);
 
   return (
     <tr className="border-t border-gray-100">
@@ -957,6 +976,23 @@ function MarketTenantRow({ tenant, marketId, tenantAdmin, marketCategories, onSa
           <span className="text-gray-400">—</span>
         )}
       </td>
+      {isRoot && (
+        <td className="px-4 py-3">
+          <select
+            value={parentMarketId}
+            onChange={(e) => setParentMarketId(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-9 px-2 rounded border border-gray-300 bg-white text-sm min-w-[140px]"
+          >
+            <option value="">—</option>
+            {markets.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
       <td className="px-4 py-3">
         <select
           value={marketCategory}

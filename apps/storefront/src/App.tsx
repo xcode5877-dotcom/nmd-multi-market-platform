@@ -7,6 +7,7 @@ import { getTenantSlugOrId, persistTenant } from './lib/tenant';
 import { useAppStore } from './store/app';
 import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
 import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
+import { MerchantAuthProvider } from './contexts/MerchantAuthContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 
 const Layout = lazy(() => import('./layouts/Layout'));
@@ -25,6 +26,7 @@ const OrderSuccessPage = lazy(() => import('./pages/OrderSuccessPage'));
 const OrderPrintPage = lazy(() => import('./pages/OrderPrintPage'));
 const LegacyOrderSuccessRedirect = lazy(() => import('./pages/LegacyOrderSuccessRedirect'));
 const MyActivityPage = lazy(() => import('./pages/MyActivityPage'));
+const MerchantDashboardPage = lazy(() => import('./pages/MerchantDashboardPage'));
 
 const api = new MockApiClient();
 
@@ -87,12 +89,14 @@ function AppContent() {
   return (
     <ToastProvider>
       <CustomerAuthProvider>
+        <MerchantAuthProvider>
         <GlobalAuthModalProvider>
           <Suspense fallback={<PageSkeleton />}>
             <TenantBroadcastListener />
             <Routes>
               <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
               <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
+              <Route path="/merchant/dashboard" element={<MerchantDashboardPage />} />
               <Route path="/" element={<LandingLayout />}>
                 <Route index element={<MarketsPickerPage />} />
                 <Route path="my-activity" element={<MyActivityPage />} />
@@ -111,6 +115,7 @@ function AppContent() {
             </Routes>
           </Suspense>
         </GlobalAuthModalProvider>
+        </MerchantAuthProvider>
       </CustomerAuthProvider>
     </ToastProvider>
   );

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users } from 'lucide-react';
 import { setEmergencyHeaders } from '../api';
@@ -75,6 +75,10 @@ export default function AdminLayout() {
   const navItems = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : isRootAdmin ? rootNav : [];
   const navLoading = (isMarketAdmin && !marketId) || (isTenantAdmin && !me?.tenantId) || (isRootAdmin === false && isMarketAdmin === false && !isTenantAdmin && !!me);
 
+  const [searchParams] = useSearchParams();
+  const tenantParam = searchParams.get('tenant')?.trim();
+  const appendTenant = (path: string) => (tenantParam ? `${path}${path.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(tenantParam)}` : path);
+
   return (
     <div className="min-h-screen flex">
       <aside className="w-56 bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col">
@@ -109,7 +113,7 @@ export default function AdminLayout() {
               {navItems.map((item) => (
                 <NavLink
                   key={item.to}
-                  to={item.to}
+                  to={appendTenant(item.to)}
                   end={item.end}
                   className={({ isActive }) =>
                     `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${

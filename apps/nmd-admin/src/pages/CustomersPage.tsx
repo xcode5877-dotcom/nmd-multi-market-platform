@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Card } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,12 +9,24 @@ const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
 export default function CustomersPage() {
   const { user: me } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlTenant = searchParams.get('tenant')?.trim() || undefined;
+  const effectiveTenantSlug = urlTenant ?? (me?.role === 'TENANT_ADMIN' ? (me as { tenantSlug?: string })?.tenantSlug : undefined);
 
   const { data: customers = [], isLoading } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => api.listCustomers(),
+    queryKey: ['customers', effectiveTenantSlug ?? ''],
+    queryFn: () => api.listCustomers(effectiveTenantSlug),
     enabled: !!MOCK_API_URL,
   });
+
+  const isTenantAdmin = (me as { role?: string })?.role === 'TENANT_ADMIN';
+  const subtitle = effectiveTenantSlug
+    ? `المشتركون لمتجر واحد فقط (${effectiveTenantSlug})`
+    : isTenantAdmin
+      ? 'العملاء الذين تواصلوا معك أو طلبوا من متجرك'
+      : (me as { role?: string })?.role === 'MARKET_ADMIN'
+        ? 'المشتركون في سوقك'
+        : 'جميع المشتركين المسجلين في المنصة';
 
   if (!MOCK_API_URL) {
     return (
@@ -26,16 +39,14 @@ export default function CustomersPage() {
     );
   }
 
-  const isTenantAdmin = (me as { role?: string })?.role === 'TENANT_ADMIN';
-  const subtitle = isTenantAdmin
-    ? 'العملاء الذين تواصلوا معك أو طلبوا من متجرك'
-    : (me as { role?: string })?.role === 'MARKET_ADMIN'
-      ? 'المشتركون في سوقك'
-      : 'جميع المشتركين المسجلين في المنصة';
-
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">المشتركون</h1>
+      {effectiveTenantSlug && (
+        <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+          عرض بيانات متجر واحد فقط: <strong>{effectiveTenantSlug}</strong>
+        </p>
+      )}
       <p className="text-sm text-gray-600 mb-4">{subtitle}</p>
       <Card className="p-4">
         {isLoading ? (

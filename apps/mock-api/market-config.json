@@ -3,9 +3,9 @@
     "dabburiyya": [
       {
         "id": "b1",
-        "imageUrl": "https://placehold.co/1200x514/1e293b/ffffff?text=عرض+خاص",
-        "title": "بيتسا إيطالية طازجة",
-        "linkTo": "buffalo",
+        "imageUrl": "http://147.93.120.244:5190/uploads/banners/1772446601283-rzu8krke.png",
+        "title": "استشارة مجانية",
+        "linkTo": "lawyer-falan",
         "active": true
       },
       {
@@ -18,10 +18,10 @@
     ],
     "iksal": [
       {
-        "id": "b1",
-        "imageUrl": "https://placehold.co/1200x514/4f46e5/ffffff?text=سوق+إكسال",
-        "title": "مرحباً بكم في سوق إكسال",
-        "linkTo": "buffalo",
+        "id": "b-1772447249385",
+        "imageUrl": "http://147.93.120.244:5190/uploads/banners/1772447632566-zzdz9n1m.png",
+        "title": "استشارة مجانية",
+        "linkTo": "",
         "active": true
       }
     ]
@@ -62,7 +62,8 @@
         "title": "محلات مميزة",
         "type": "SLIDER",
         "storeIds": [
-          "buffalo"
+          "buffalo",
+          "مكتب-المحامي-يوسف-حسام-دراوشة"
         ]
       }
     ]

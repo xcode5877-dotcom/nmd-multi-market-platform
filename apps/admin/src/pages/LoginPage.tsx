@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useToast } from '@nmd/ui';
 import { useAuth } from '../contexts/AuthContext';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, logout, token } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = getSafeReturnTo(searchParams.get('returnTo'));
@@ -106,18 +108,28 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#7C3AED] focus:outline-none"
-              placeholder="ms-brands@nmd.com"
+              placeholder="أدخل البريد الإلكتروني"
               required
               autoComplete="email"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">كلمة المرور</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm text-gray-400">كلمة المرور</label>
+              <button
+                type="button"
+                onClick={() => addToast('تواصل مع الدعم لاستعادة كلمة المرور', 'info')}
+                className="text-xs text-[#7C3AED] hover:text-[#A78BFA] transition-colors"
+              >
+                نسيت كلمة المرور؟
+              </button>
+            </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#7C3AED] focus:outline-none"
+              placeholder="••••••••"
               required
               autoComplete="current-password"
             />
@@ -143,9 +155,6 @@ export default function LoginPage() {
             {loading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
           </button>
         </form>
-        <p className="mt-4 text-xs text-gray-500 text-center">
-          البريد: &lt;tenantSlug&gt;@nmd.com — كلمة المرور: &lt;tenantSlug&gt;@2026
-        </p>
       </div>
     </div>
   );

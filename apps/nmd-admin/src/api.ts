@@ -62,3 +62,23 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return res.json();
 }
 
+/** Upload a banner image (multipart). Returns { urls: [fullUrl], relativePath }. */
+export async function apiUploadBanner(file: File): Promise<{ urls: string[]; relativePath?: string }> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (emergencyMode) headers['X-Emergency-Mode'] = 'true';
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${MOCK_API_URL}/upload/banner`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `Upload failed: ${res.status}`);
+  }
+  return res.json();
+}
+

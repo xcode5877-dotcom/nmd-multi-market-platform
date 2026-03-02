@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 
@@ -61,20 +61,26 @@ export function MarketsOrRedirect({ children }: { children: ReactNode }) {
  * Index route redirect:
  * - TENANT_ADMIN -> /tenant
  * - MARKET_ADMIN -> /markets/:marketId
+ * - ROOT_ADMIN with ?tenant= -> /leads?tenant= (merchant view)
  * - ROOT_ADMIN -> /markets
  */
 export function IndexOrRedirect() {
+  const [searchParams] = useSearchParams();
+  const tenantParam = searchParams.get('tenant')?.trim();
   const { data: me, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: () => api.getMe(),
     enabled: !!MOCK_API_URL,
   });
 
-  if (!MOCK_API_URL) return <Navigate to="/markets" replace />;
+  if (!MOCK_API_URL) return <Navigate to={tenantParam ? `/leads?tenant=${encodeURIComponent(tenantParam)}` : '/markets'} replace />;
   if (isLoading || !me) return <div className="p-8 text-gray-500">جاري التحميل...</div>;
   if (me.role === 'TENANT_ADMIN') return <Navigate to="/tenant" replace />;
   if (me.role === 'MARKET_ADMIN' && me.marketId) {
     return <Navigate to={`/markets/${me.marketId}`} replace />;
+  }
+  if (me.role === 'ROOT_ADMIN' && tenantParam) {
+    return <Navigate to={`/leads?tenant=${encodeURIComponent(tenantParam)}`} replace />;
   }
   return <Navigate to="/markets" replace />;
 }

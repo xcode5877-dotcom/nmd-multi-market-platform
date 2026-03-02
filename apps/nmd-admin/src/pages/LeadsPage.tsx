@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,9 +41,13 @@ function getDeviceLabel(metadata?: Record<string, unknown>): string {
 
 export default function LeadsPage() {
   const { user: me } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlTenant = searchParams.get('tenant')?.trim() || undefined;
+  const authTenantSlug = (me as { tenantSlug?: string })?.tenantSlug;
+  const effectiveTenantSlug = urlTenant ?? (me?.role === 'TENANT_ADMIN' ? authTenantSlug : undefined);
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['leads'],
-    queryFn: () => api.listLeads(),
+    queryKey: ['leads', effectiveTenantSlug ?? ''],
+    queryFn: () => api.listLeads(effectiveTenantSlug),
     enabled: !!MOCK_API_URL,
   });
 
@@ -58,6 +62,7 @@ export default function LeadsPage() {
 
   const todayStart = getTodayStart().getTime();
   const leadsToday = leads.filter((l) => new Date(l.timestamp).getTime() >= todayStart);
+  const sortedLeads = [...leads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   if (!MOCK_API_URL) {
     return (
@@ -66,16 +71,18 @@ export default function LeadsPage() {
       </div>
     );
   }
-
   if (isLoading) {
     return <div className="text-gray-500">جاري التحميل...</div>;
   }
 
-  const sortedLeads = [...leads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">سجل الطلبات</h1>
+      {effectiveTenantSlug && (
+        <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+          عرض بيانات متجر واحد فقط: <strong>{effectiveTenantSlug}</strong>
+        </p>
+      )}
 
       <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/20">
         <p className="text-sm text-gray-600">إجمالي الطلبات اليوم</p>

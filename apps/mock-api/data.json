@@ -603,10 +603,10 @@
       "enabled": true,
       "type": "GENERAL",
       "_meta": {
-        "emergencyReason": "اضافة مستئجر"
+        "emergencyReason": "نقل يوسف لسوق اكسال"
       },
       "id": "1c6f3866-a475-445e-8806-42065adea654",
-      "marketId": "market-dabburiyya",
+      "marketId": "market-iksal",
       "createdAt": "2026-03-01T19:56:09.949Z",
       "hero": {
         "title": "مكتب المحامي يوسف حسام دراوشة",
@@ -631,7 +631,8 @@
         "cash": true,
         "card": false
       },
-      "collections": []
+      "collections": [],
+      "marketSortOrder": 0
     }
   ],
   "users": [
@@ -651,7 +652,7 @@
     },
     {
       "id": "user-iks-admin",
-      "email": "iks@nmd.com",
+      "email": "iksal@nmd.com",
       "role": "MARKET_ADMIN",
       "marketId": "market-iksal",
       "password": "123456"
@@ -668,7 +669,8 @@
       "email": "ms-brands@nmd.com",
       "role": "TENANT_ADMIN",
       "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
-      "password": "ms-brands@2026"
+      "password": "ms123456",
+      "mustChangePassword": false
     },
     {
       "id": "user-tenant-obr",
@@ -6956,6 +6958,131 @@
       },
       "id": "audit-0285430d-8964-47a6-8523-baec74886e12",
       "at": "2026-03-02T00:12:26.649Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "1c6f3866-a475-445e-8806-42065adea654",
+      "reason": "نقل يوسف لسوق اكسال",
+      "emergencyMode": true,
+      "before": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة مستئجر"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مكتب المحامي يوسف حسام دراوشة",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": []
+      },
+      "after": {
+        "name": "مكتب المحامي يوسف حسام دراوشة",
+        "slug": "مكتب-المحامي-يوسف-حسام-دراوشة",
+        "logoUrl": "http://147.93.120.244:5190/uploads/1772410050614-jdkvn7mg.png",
+        "primaryColor": "#d7b96f",
+        "secondaryColor": "#222426",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "نقل يوسف لسوق اكسال"
+        },
+        "id": "1c6f3866-a475-445e-8806-42065adea654",
+        "marketId": "market-iksal",
+        "createdAt": "2026-03-01T19:56:09.949Z",
+        "hero": {
+          "title": "مكتب المحامي يوسف حسام دراوشة",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "marketCategory": "GENERAL",
+        "isListedInMarket": true,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "businessType": "RETAIL",
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "marketSortOrder": 0
+      },
+      "id": "audit-2d77fc09-3d1b-4d37-9232-eb0f93ad6e14",
+      "at": "2026-03-02T11:02:17.656Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-iksal",
+      "action": "update",
+      "entity": "user",
+      "entityId": "user-iks-admin",
+      "reason": "نقل يوسف لسوق اكسال",
+      "emergencyMode": true,
+      "after": {
+        "id": "user-iks-admin",
+        "email": "iksal@nmd.com",
+        "role": "MARKET_ADMIN",
+        "marketId": "market-iksal"
+      },
+      "id": "audit-fa45008f-252a-4c16-af69-531d1bf5228e",
+      "at": "2026-03-02T11:02:50.308Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "action": "update",
+      "entity": "user",
+      "entityId": "user-tenant-ms-brands",
+      "reason": "Password reset by root@nmd.com",
+      "id": "audit-b35cdc02-b183-4336-9da1-c77ccce29116",
+      "at": "2026-03-02T11:07:10.200Z"
     }
   ],
   "catalog": {
@@ -8342,6 +8469,30 @@
       },
       "id": "lead-b3a92bb0-32d7-4a53-ba49-658d2c923072",
       "timestamp": "2026-03-02T03:44:35.456Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56"
+      },
+      "id": "lead-2ba6994c-bc70-4501-8491-6850c6c3e0a4",
+      "timestamp": "2026-03-02T10:10:11.860Z"
+    },
+    {
+      "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
+      "type": "PROFESSIONAL_CONTACT",
+      "status": "NEW",
+      "contactType": "whatsapp",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56"
+      },
+      "id": "lead-409da23c-3a79-4752-83a2-3784844db392",
+      "timestamp": "2026-03-02T11:05:19.858Z"
     }
   ]
 }

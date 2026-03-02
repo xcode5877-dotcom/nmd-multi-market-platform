@@ -2024,5 +2024,161 @@
       }
     },
     "orderType": "PRODUCT"
+  },
+  {
+    "id": "id-1772446272783-e6rick9rp8k",
+    "tenantId": "78463821-ccb7-48af-841b-84a18c42abb6",
+    "status": "PENDING",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "8aa3e339-4266-4899-9ec4-9346cd74ccb7",
+        "productName": "بيتسا",
+        "categoryId": "072b42ec-9cac-4ee5-af56-88e87abf1bf6",
+        "quantity": 1,
+        "basePrice": 60,
+        "selectedOptions": [
+          {
+            "optionGroupId": "2353392e-e3af-43e8-8760-74af87acd7eb",
+            "optionItemIds": [
+              "3be8fa85-d4c8-48be-8361-b0e193e5303a"
+            ],
+            "optionPlacements": {
+              "3be8fa85-d4c8-48be-8361-b0e193e5303a": "RIGHT"
+            },
+            "sliceSelection": "WHOLE"
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "2353392e-e3af-43e8-8760-74af87acd7eb",
+            "name": "اضافات بيتسا",
+            "type": "CUSTOM",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "3be8fa85-d4c8-48be-8361-b0e193e5303a",
+                "name": "زيتون",
+                "sortOrder": 0,
+                "placement": "HALF",
+                "priceDelta": 0
+              },
+              {
+                "id": "da5b2498-1991-4c03-bbd8-b4da44d9caeb",
+                "name": "بصل",
+                "sortOrder": 1,
+                "placement": "HALF",
+                "priceDelta": 0
+              },
+              {
+                "id": "f2129fcc-a57f-4885-88d2-b4116fd73537",
+                "name": "جبنة",
+                "sortOrder": 2,
+                "placement": "HALF",
+                "priceDelta": 5
+              }
+            ],
+            "allowHalfPlacement": true
+          }
+        ],
+        "totalPrice": 60,
+        "imageUrl": "http://147.93.120.244:5190/uploads/1772378550870-z3qig7fp.jpg",
+        "id": "id-1772446259443-2wsez6odtuo"
+      }
+    ],
+    "subtotal": 60,
+    "total": 60,
+    "currency": "ILS",
+    "createdAt": "2026-03-02T10:11:12.783Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 60,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 60,
+        "commission": 6,
+        "gatewayFee": 0,
+        "netToMerchant": 54,
+        "netToMarket": 6
+      }
+    },
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "id-1772449588949-c6oylf9dprs",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "PENDING",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+        "productName": "white jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 1,
+        "basePrice": 270,
+        "selectedOptions": [],
+        "optionGroups": [
+          {
+            "id": "e345456e-2425-49b9-959d-c67b8bfe8efc",
+            "name": "",
+            "type": "SIZE",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": []
+          }
+        ],
+        "totalPrice": 270,
+        "imageUrl": "http://147.93.120.244:5190/uploads/1772371178941-wvak1nz5.jpg",
+        "id": "id-1772449583365-02363e8xt8w8"
+      }
+    ],
+    "subtotal": 270,
+    "total": 270,
+    "currency": "ILS",
+    "createdAt": "2026-03-02T11:06:28.949Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 270,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 270,
+        "commission": 27,
+        "gatewayFee": 0,
+        "netToMerchant": 243,
+        "netToMarket": 27
+      }
+    },
+    "orderType": "PRODUCT"
   }
 ]

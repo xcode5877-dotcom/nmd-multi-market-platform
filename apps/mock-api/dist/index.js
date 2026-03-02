@@ -1387,7 +1387,9 @@ async function seedDeliveryZonesIfNeeded() {
   }
 }
 var UPLOADS_DIR = join3(process.cwd(), "..", "..", "packages", "mock", "uploads");
+var UPLOADS_BANNERS_DIR = join3(UPLOADS_DIR, "banners");
 if (!existsSync3(UPLOADS_DIR)) mkdirSync2(UPLOADS_DIR, { recursive: true });
+if (!existsSync3(UPLOADS_BANNERS_DIR)) mkdirSync2(UPLOADS_BANNERS_DIR, { recursive: true });
 var storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -1402,6 +1404,24 @@ var upload = multer({
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Only image files allowed"));
+  }
+});
+var BANNER_MAX_BYTES = 2 * 1024 * 1024;
+var ALLOWED_BANNER_MIMES = ["image/webp", "image/jpeg", "image/jpg", "image/png"];
+var bannerStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_BANNERS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = (file.originalname.match(/\.([^.]+)$/)?.[1] ?? "jpg").toLowerCase().replace("jpeg", "jpg");
+    const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    cb(null, name);
+  }
+});
+var bannerUpload = multer({
+  storage: bannerStorage,
+  limits: { fileSize: BANNER_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_BANNER_MIMES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Banner: only WebP, JPG, PNG allowed"));
   }
 });
 var corsOptions = {
@@ -1421,6 +1441,12 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/upload/banner") {
+    return bannerUpload.single("file")(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      next();
+    });
+  }
   if (req.method === "POST" && req.path === "/upload") {
     return upload.array("files", 20)(req, res, (err) => {
       if (err) return res.status(400).json({ error: err.message });
@@ -1443,6 +1469,7 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/tenants\/by-id\/[^/]+$/ },
   { method: "GET", path: /^\/catalog\/[^/]+$/ },
   { method: "POST", path: /^\/orders$/ },
+  { method: "GET", path: /^\/customer\/auth\/check-phone$/ },
   { method: "POST", path: /^\/customer\/auth\/start$/ },
   { method: "POST", path: /^\/customer\/auth\/verify$/ },
   { method: "GET", path: /^\/campaigns$/ },
@@ -1450,7 +1477,9 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: "GET", path: /^\/public\/orders\/[^/]+$/ },
   { method: "GET", path: /^\/global-categories$/ },
-  { method: "POST", path: /^\/leads$/ }
+  { method: "POST", path: /^\/leads$/ },
+  { method: "GET", path: /^\/merchant\/dashboard$/ },
+  { method: "GET", path: /^\/merchant\/leads$/ }
 ];
 function isPublicRoute(method, path) {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
@@ -1516,9 +1545,9 @@ app.use((req, res, next) => {
     return next();
   }
   if (req.user) return next();
-  if (req.method === "POST" && req.path === "/upload") {
+  if (req.method === "POST" && (req.path === "/upload" || req.path === "/upload/banner")) {
     const hasAuth = !!req.get("Authorization");
-    console.log("[Auth] 401 on POST /upload - token", hasAuth ? "present but invalid or user not found" : "MISSING");
+    console.log("[Auth] 401 on POST", req.path, "- token", hasAuth ? "present but invalid or user not found" : "MISSING");
   }
   return res.status(401).json({ error: "Unauthorized" });
 });
@@ -1537,18 +1566,34 @@ app.post("/auth/login", async (req, res) => {
   );
   res.json({ accessToken: token });
 });
-app.get("/auth/me", async (req, res) => {
+app.get("/auth/me", wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const u = req.user;
+  let tenantSlug;
+  if (u.tenantId) {
+    const tenants = await repos.tenants.findAll();
+    const t = tenants.find((x) => x.id === u.tenantId);
+    tenantSlug = t?.slug;
+  }
   res.json({
     id: u.id,
     email: u.email,
     role: u.role,
     marketId: u.marketId,
     tenantId: u.tenantId,
+    tenantSlug: tenantSlug ?? void 0,
     courierId: u.courierId,
     mustChangePassword: u.mustChangePassword ?? false
   });
+}));
+app.get("/customer/auth/check-phone", async (req, res) => {
+  const phone = req.query.phone;
+  if (!phone || typeof phone !== "string") return res.status(400).json({ error: "phone required" });
+  const key = normalizePhoneForMatch(phone);
+  if (!key || key.length < 9) return res.status(400).json({ error: "Invalid phone" });
+  const customers = await repos.customers.findAll();
+  const exists = customers.some((c) => normalizePhoneForMatch(c.phone) === key);
+  res.json({ exists });
 });
 app.post("/customer/auth/start", async (req, res) => {
   const { phone } = req.body;
@@ -1873,40 +1918,88 @@ function normalizeTenantResponse(t) {
     banners: t.banners ?? []
   };
 }
-app.post("/leads", (req, res) => {
+async function resolveTenantId(tenantIdOrSlug) {
+  const v = String(tenantIdOrSlug).trim();
+  if (!v) return null;
+  const tenants = await repos.tenants.findAll();
+  const byId = tenants.find((t) => t.id === v);
+  if (byId) return byId.id;
+  const bySlug = tenants.find((t) => t.slug === v);
+  return bySlug ? bySlug.id : null;
+}
+app.post("/leads", wrapAsync(async (req, res) => {
   const body = req.body;
-  console.log("LEAD RECEIVED!", body);
-  const tenantId = body.tenantId;
+  const tenantIdOrSlug = body.tenantId ?? body.tenantSlug;
+  if (!tenantIdOrSlug || typeof tenantIdOrSlug !== "string") {
+    return res.status(400).json({ error: "tenantId or tenantSlug required" });
+  }
+  const resolvedTenantId = await resolveTenantId(tenantIdOrSlug);
+  if (!resolvedTenantId) {
+    return res.status(400).json({ error: "Tenant not found" });
+  }
   const rawType = body.type;
   const type = rawType === "PROFESSIONAL_CONTACT" ? "PROFESSIONAL_CONTACT" : rawType === "whatsapp" || rawType === "call" || rawType === "cta" ? rawType : "cta";
-  if (!tenantId || typeof tenantId !== "string") {
-    return res.status(400).json({ error: "tenantId required" });
-  }
   const userAgent = req.headers["user-agent"] ?? "";
   const metadata = { ...body.metadata ?? {}, userAgent: userAgent || body.metadata?.userAgent };
   const lead = appendLead({
-    tenantId: tenantId.trim(),
+    tenantId: resolvedTenantId,
     type,
     status: body.status,
     contactType: body.contactType,
     metadata
   });
   res.status(201).json(lead);
-});
-app.get("/leads", async (req, res) => {
+}));
+app.get("/leads", wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const caller = req.user;
+  const querySlug = req.query.tenantSlug?.trim();
+  const tenants = await repos.tenants.findAll();
+  let filterTenantId = null;
+  if (querySlug) {
+    const resolved = await resolveTenantId(querySlug);
+    if (!resolved) {
+      return res.status(400).json({ error: "Tenant not found for tenantSlug" });
+    }
+    if (caller.role === "TENANT_ADMIN") {
+      const myTenantId = String(caller.tenantId ?? "").trim();
+      if (myTenantId && resolved !== myTenantId) return res.status(403).json({ error: "Forbidden: can only view own tenant leads" });
+      filterTenantId = resolved;
+    } else if (caller.role === "MARKET_ADMIN" && caller.marketId) {
+      const t = tenants.find((x) => x.id === resolved);
+      if (!t || t.marketId !== caller.marketId) return res.status(403).json({ error: "Forbidden: tenant not in your market" });
+      filterTenantId = resolved;
+    } else {
+      filterTenantId = resolved;
+    }
+  }
   let leads = getLeads();
-  if (caller.role === "TENANT_ADMIN" && caller.tenantId) {
-    const myTenantId = String(caller.tenantId).trim();
-    leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === myTenantId);
+  if (caller.role === "ROOT_ADMIN") {
+    if (filterTenantId) leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+  } else if (caller.role === "TENANT_ADMIN") {
+    const myTenantId = filterTenantId ?? String(caller.tenantId ?? "").trim();
+    if (myTenantId) {
+      const myTenant = tenants.find((t) => t.id === myTenantId);
+      const mySlug = myTenant?.slug;
+      leads = leads.filter((l) => {
+        if (l.tenantId == null) return false;
+        const tid = String(l.tenantId).trim();
+        return tid === myTenantId || !!mySlug && tid === mySlug;
+      });
+    } else {
+      leads = [];
+    }
   } else if (caller.role === "MARKET_ADMIN" && caller.marketId) {
-    const tenants = await repos.tenants.findAll();
     const marketTenantIds = new Set(tenants.filter((t) => t.marketId === caller.marketId).map((t) => t.id));
-    leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+    if (filterTenantId) {
+      if (!marketTenantIds.has(filterTenantId)) leads = [];
+      else leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+    } else {
+      leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+    }
   }
   res.json(leads);
-});
+}));
 app.get("/customers", wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const caller = req.user;
@@ -1948,6 +2041,80 @@ app.get("/customers", wrapAsync(async (req, res) => {
     return res.json(filtered);
   }
   return res.status(403).json({ error: "Forbidden" });
+}));
+function leadBelongsToTenant(l, tenantId, tenantSlug) {
+  if (!l.tenantId) return false;
+  const tid = String(l.tenantId).trim();
+  return tid === tenantId || !!tenantSlug && tid === tenantSlug;
+}
+app.get("/merchant/dashboard", wrapAsync(async (req, res) => {
+  let tenantId;
+  let tenantSlug;
+  const caller = req.user;
+  if (caller?.role === "TENANT_ADMIN" && caller.tenantId) {
+    tenantId = caller.tenantId;
+    const tenants = await repos.tenants.findAll();
+    const t = tenants.find((x) => x.id === tenantId);
+    tenantSlug = t?.slug;
+  } else {
+    const slug = req.query.tenantSlug?.trim();
+    if (slug) {
+      tenantSlug = slug;
+      const tenants = await repos.tenants.findAll();
+      const t = tenants.find((x) => x.slug === slug);
+      tenantId = t?.id;
+    }
+  }
+  if (!tenantId) {
+    return res.status(400).json({ error: "tenantSlug required (or auth as TENANT_ADMIN)" });
+  }
+  const allCustomers = await repos.customers.findAll();
+  const allOrders = await repos.orders.findAll();
+  const allLeads = getLeads();
+  const customerIds = /* @__PURE__ */ new Set();
+  const recentByCustomer = /* @__PURE__ */ new Map();
+  allOrders.forEach((o) => {
+    if (o.tenantId === tenantId && o.customerId) {
+      customerIds.add(o.customerId);
+      const c = allCustomers.find((x) => x.id === o.customerId);
+      const name = c?.name ?? o.customerName ?? "";
+      const phone = c?.phone ?? o.customerPhone ?? "";
+      const lastAt = o.createdAt ?? "";
+      const existing = recentByCustomer.get(o.customerId);
+      if (!existing || lastAt && (!existing.lastAt || lastAt > existing.lastAt)) {
+        recentByCustomer.set(o.customerId, { name, phone, lastAt });
+      }
+    }
+  });
+  allLeads.forEach((l) => {
+    if (leadBelongsToTenant(l, tenantId, tenantSlug)) {
+      const cid = l.metadata?.customerId;
+      if (cid) {
+        customerIds.add(cid);
+        const c = allCustomers.find((x) => x.id === cid);
+        const ts = l.timestamp ?? "";
+        const existing = recentByCustomer.get(cid);
+        if (!existing || ts && (!existing.lastAt || ts > existing.lastAt)) {
+          recentByCustomer.set(cid, { name: c?.name ?? "", phone: c?.phone ?? "", lastAt: ts });
+        }
+      }
+    }
+  });
+  const recentLogins = Array.from(recentByCustomer.entries()).sort((a, b) => (b[1].lastAt || "").localeCompare(a[1].lastAt || "")).slice(0, 10).map(([, v]) => ({ name: v.name || "\u2014", phone: v.phone || "\u2014", lastVisit: v.lastAt }));
+  res.json({ totalVisitors: customerIds.size, recentLogins });
+}));
+app.get("/merchant/leads", wrapAsync(async (req, res) => {
+  const slug = req.query.tenantSlug?.trim();
+  if (!slug) return res.status(400).json({ error: "tenantSlug required" });
+  const tenantId = await resolveTenantId(slug);
+  if (!tenantId) return res.status(404).json({ error: "Tenant not found" });
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === tenantId);
+  const tenantSlug = t?.slug;
+  const allLeads = getLeads();
+  const list = allLeads.filter((l) => leadBelongsToTenant(l, tenantId, tenantSlug));
+  list.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+  res.json(list.slice(0, 50));
 }));
 app.get("/audit-events", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
@@ -2207,6 +2374,34 @@ app.post("/markets", async (req, res) => {
     emergencyMode: true,
     after: market
   });
+  const adminEmail = typeof body.adminEmail === "string" ? body.adminEmail.trim().toLowerCase() : "";
+  const adminPassword = typeof body.adminPassword === "string" ? body.adminPassword : "";
+  if (adminEmail && adminPassword.length >= 6) {
+    const users = await repos.users.findAll();
+    if (!users.some((u) => u.email?.toLowerCase() === adminEmail)) {
+      const userId = `user-${crypto.randomUUID?.() ?? Date.now()}`;
+      const newUser = {
+        id: userId,
+        email: adminEmail,
+        role: "MARKET_ADMIN",
+        marketId: market.id,
+        password: adminPassword
+      };
+      users.push(newUser);
+      await repos.users.setAll(users);
+      appendAuditEvent({
+        userId: req.user.id,
+        role: req.user.role,
+        marketId: market.id,
+        action: "create",
+        entity: "user",
+        entityId: newUser.id,
+        reason: getEmergencyReason(req),
+        emergencyMode: true,
+        after: newUser
+      });
+    }
+  }
   res.status(201).json(market);
 });
 app.put("/markets/:id", async (req, res) => {
@@ -2297,7 +2492,7 @@ app.post("/markets/:marketId/admins", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (!requireWriteWithReason(req, res)) return;
   const { marketId } = req.params;
-  const { email } = req.body;
+  const { email, password } = req.body;
   if (!email || typeof email !== "string" || !email.trim()) {
     return res.status(400).json({ error: "email is required" });
   }
@@ -2311,7 +2506,8 @@ app.post("/markets/:marketId/admins", async (req, res) => {
     id,
     email: email.trim().toLowerCase(),
     role: "MARKET_ADMIN",
-    marketId
+    marketId,
+    ...typeof password === "string" && password.length >= 6 ? { password } : {}
   };
   users.push(newUser);
   await repos.users.setAll(users);
@@ -2327,6 +2523,66 @@ app.post("/markets/:marketId/admins", async (req, res) => {
     after: newUser
   });
   res.status(201).json(newUser);
+});
+app.put("/markets/:marketId/admin-credentials", async (req, res) => {
+  if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
+  if (!requireWriteWithReason(req, res)) return;
+  const { marketId } = req.params;
+  const { email, password } = req.body;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: "Market not found" });
+  const users = await repos.users.findAll();
+  const marketAdmins = users.filter((u) => u.role === "MARKET_ADMIN" && u.marketId === marketId);
+  const target = marketAdmins[0];
+  if (target) {
+    const newEmail = typeof email === "string" ? email.trim().toLowerCase() : void 0;
+    const newPassword = typeof password === "string" && password.length >= 6 ? password : void 0;
+    if (!newEmail && !newPassword) return res.status(400).json({ error: "email or password required" });
+    const idx = users.findIndex((u) => u.id === target.id);
+    if (idx === -1) return res.status(404).json({ error: "Admin not found" });
+    if (newEmail) {
+      const existing = users.find((u) => u.id !== target.id && u.email?.toLowerCase() === newEmail);
+      if (existing) return res.status(409).json({ error: "User with this email already exists" });
+      users[idx] = { ...users[idx], email: newEmail };
+    }
+    if (newPassword) users[idx] = { ...users[idx], password: newPassword };
+    await repos.users.setAll(users);
+    appendAuditEvent({
+      userId: req.user.id,
+      role: req.user.role,
+      marketId,
+      action: "update",
+      entity: "user",
+      entityId: target.id,
+      reason: getEmergencyReason(req),
+      emergencyMode: true,
+      after: { ...users[idx], password: void 0 }
+    });
+    return res.json({ ...users[idx], password: void 0 });
+  }
+  if (typeof email !== "string" || !email.trim() || typeof password !== "string" || password.length < 6) {
+    return res.status(400).json({ error: "email and password required (password min 6 chars) when creating first admin" });
+  }
+  const adminEmail = email.trim().toLowerCase();
+  if (users.some((u) => u.email?.toLowerCase() === adminEmail)) {
+    return res.status(409).json({ error: "User with this email already exists" });
+  }
+  const id = `user-${crypto.randomUUID?.() ?? Date.now()}`;
+  const newUser = { id, email: adminEmail, role: "MARKET_ADMIN", marketId, password };
+  users.push(newUser);
+  await repos.users.setAll(users);
+  appendAuditEvent({
+    userId: req.user.id,
+    role: req.user.role,
+    marketId,
+    action: "create",
+    entity: "user",
+    entityId: newUser.id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    after: newUser
+  });
+  res.status(201).json({ ...newUser, password: void 0 });
 });
 app.get("/markets/:marketId/tenants", async (req, res) => {
   const { marketId } = req.params;
@@ -2782,6 +3038,15 @@ app.post("/upload", async (req, res) => {
   const urls = files.map((f) => `${base}/uploads/${f.filename}`);
   console.log("[Upload] Success:", files.length, "files, base:", base);
   res.json({ urls });
+});
+app.post("/upload/banner", async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+  const base = UPLOAD_BASE;
+  const relativePath = `/uploads/banners/${file.filename}`;
+  const fullUrl = `${base}${relativePath}`;
+  console.log("[Upload/banner] Saved:", file.filename);
+  res.json({ urls: [fullUrl], relativePath });
 });
 app.get("/catalog/:tenantId", wrapAsync(async (req, res) => {
   const catalog = await repos.catalog.getCatalog(req.params.tenantId);

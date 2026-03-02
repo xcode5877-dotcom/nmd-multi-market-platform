@@ -68,9 +68,15 @@ export default function TenantDeliverySettingsPage() {
     onError: (e) => addToast(e instanceof Error ? e.message : 'فشل الحفظ', 'error'),
   });
 
-  if (!tenantId || !MOCK_API_URL) return <div className="p-8 text-gray-500">جاري التحميل...</div>;
-  if (isLoading) return <div className="p-8 text-gray-500">جاري التحميل...</div>;
-  if (!tenant) return <div className="p-8 text-red-600">المستأجر غير موجود</div>;
+  if (!tenantId || !MOCK_API_URL) {
+    return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  }
+  if (isLoading) {
+    return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  }
+  if (!tenant) {
+    return <div className="p-8 text-red-600">المستأجر غير موجود</div>;
+  }
 
   return (
     <div>

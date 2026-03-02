@@ -47,7 +47,14 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const SPINNER = (
+  <div className="min-h-screen flex items-center justify-center">
+    <div className="animate-spin w-10 h-10 border-2 border-primary border-t-transparent rounded-full" />
+  </div>
+);
+
 function AdminApp() {
+  // All hooks first — no early returns before any of these
   const { token } = useAuth();
   const location = useLocation();
 
@@ -56,14 +63,6 @@ function AdminApp() {
     queryFn: () => api.getMe(),
     enabled: !!MOCK_API_URL && !!token,
   });
-
-  if (me?.mustChangePassword) {
-    return (
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-        <ChangePasswordPage />
-      </Suspense>
-    );
-  }
 
   const tenantId = me?.tenantId ?? null;
 
@@ -88,6 +87,15 @@ function AdminApp() {
     }
   }, [tenant, location.search, MOCK_API_URL]);
 
+  // Logic after all hooks
+  if (me?.mustChangePassword) {
+    return (
+      <Suspense fallback={SPINNER}>
+        <ChangePasswordPage />
+      </Suspense>
+    );
+  }
+
   if (!MOCK_API_URL) {
     return <AdminAppLegacy />;
   }
@@ -95,11 +103,7 @@ function AdminApp() {
   if (!token) return null;
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-10 h-10 border-2 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return SPINNER;
   }
 
   if (!tenant) {
@@ -201,10 +205,12 @@ function AdminAppLegacy() {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/*" element={<AuthGuard><AdminApp /></AuthGuard>} />
-      </Routes>
+      <ToastProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/*" element={<AuthGuard><AdminApp /></AuthGuard>} />
+        </Routes>
+      </ToastProvider>
     </AuthProvider>
   );
 }

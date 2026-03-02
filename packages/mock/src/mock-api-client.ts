@@ -511,16 +511,18 @@ export class MockApiClient implements ApiClient {
     }
   }
 
-  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). */
-  async listLeads(): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]> {
+  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). Pass tenantSlug for store admin to filter by tenant. */
+  async listLeads(tenantSlug?: string): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]> {
     if (!this.useApi) return [];
-    return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]>('/leads');
+    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : '';
+    return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]>(`/leads${q}`);
   }
 
   /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
-  async listCustomers(): Promise<{ id: string; phone: string; name?: string; createdAt?: string }[]> {
+  async listCustomers(tenantSlug?: string): Promise<{ id: string; phone: string; name?: string; createdAt?: string }[]> {
     if (!this.useApi) return [];
-    return apiFetch<{ id: string; phone: string; name?: string; createdAt?: string }[]>('/customers');
+    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : '';
+    return apiFetch<{ id: string; phone: string; name?: string; createdAt?: string }[]>(`/customers${q}`);
   }
 
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */

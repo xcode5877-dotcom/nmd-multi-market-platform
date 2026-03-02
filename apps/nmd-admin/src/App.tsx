@@ -34,18 +34,7 @@ const LeadsPage = lazy(() => import('./pages/LeadsPage'));
 const CustomersPage = lazy(() => import('./pages/CustomersPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
-
-function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { token, isLoading } = useAuth();
-  const location = useLocation();
-  if (!MOCK_API_URL) return <>{children}</>;
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-  if (!token) {
-    const returnTo = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
-  }
-  return <>{children}</>;
-}
+const LOADING = <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
 const NMD_THEME = {
   logoUrl: '/favicon.svg',
@@ -56,51 +45,79 @@ const NMD_THEME = {
   layoutStyle: 'default' as const,
 };
 
+function Content() {
+  const auth = useAuth();
+  const location = useLocation();
+
+  const returnTo = encodeURIComponent(location.pathname + location.search);
+  const loginRedirect = <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+
+  const dashboardRoutes = (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<AdminLayout />}>
+        <Route index element={<IndexOrRedirect />} />
+        <Route path="markets" element={<MarketsOrRedirect><MarketsPage /></MarketsOrRedirect>} />
+        <Route path="markets/:id" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/tenants" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/orders" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/dispatch" element={<MarketRouteGuard><MarketDispatchPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/finance" element={<MarketRouteGuard><MarketFinancePage /></MarketRouteGuard>} />
+        <Route path="markets/:id/banners" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
+        <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
+        <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
+        <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />
+        <Route path="tenants/:id/settings/delivery" element={<RootOnlyRoute><TenantDeliverySettingsPage /></RootOnlyRoute>} />
+        <Route path="markets/:id/tenants/:tenantId" element={<MarketRouteGuard><TenantDetailPage /></MarketRouteGuard>} />
+        <Route path="markets/:id/tenants/:tenantId/settings/delivery" element={<MarketRouteGuard><TenantDeliverySettingsPage /></MarketRouteGuard>} />
+        <Route path="plans" element={<RootOnlyRoute><PlansPage /></RootOnlyRoute>} />
+        <Route path="modules" element={<RootOnlyRoute><ModulesPage /></RootOnlyRoute>} />
+        <Route path="api" element={<RootOnlyRoute><ApiIntegrationsPage /></RootOnlyRoute>} />
+        <Route path="settings" element={<RootOnlyRoute><SystemSettingsPage /></RootOnlyRoute>} />
+        <Route path="settings/payments" element={<RootOnlyRoute><PaymentsSettingsPage /></RootOnlyRoute>} />
+        <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
+        <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
+        <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
+        <Route path="leads" element={<LeadsPage />} />
+        <Route path="customers" element={<CustomersPage />} />
+        <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
+          {tenantRouteElements}
+          <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />
+        </Route>
+      </Route>
+    </Routes>
+  );
+
+  const content =
+    !MOCK_API_URL ? (
+      dashboardRoutes
+    ) : auth.isLoading ? (
+      LOADING
+    ) : !auth.token ? (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={loginRedirect} />
+      </Routes>
+    ) : (
+      dashboardRoutes
+    );
+
+  return content;
+}
+
 export default function App() {
   return (
     <ThemeProvider branding={NMD_THEME} dir="rtl">
       <AuthProvider>
-      <EmergencyModeProvider>
-      <ToastProvider>
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<AuthGuard><AdminLayout /></AuthGuard>}>
-              <Route index element={<IndexOrRedirect />} />
-              <Route path="markets" element={<MarketsOrRedirect><MarketsPage /></MarketsOrRedirect>} />
-              <Route path="markets/:id" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/tenants" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/orders" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/dispatch" element={<MarketRouteGuard><MarketDispatchPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/finance" element={<MarketRouteGuard><MarketFinancePage /></MarketRouteGuard>} />
-              <Route path="markets/:id/banners" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
-              <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
-              <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
-              <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />
-              <Route path="tenants/:id/settings/delivery" element={<RootOnlyRoute><TenantDeliverySettingsPage /></RootOnlyRoute>} />
-              <Route path="markets/:id/tenants/:tenantId" element={<MarketRouteGuard><TenantDetailPage /></MarketRouteGuard>} />
-              <Route path="markets/:id/tenants/:tenantId/settings/delivery" element={<MarketRouteGuard><TenantDeliverySettingsPage /></MarketRouteGuard>} />
-              <Route path="plans" element={<RootOnlyRoute><PlansPage /></RootOnlyRoute>} />
-              <Route path="modules" element={<RootOnlyRoute><ModulesPage /></RootOnlyRoute>} />
-              <Route path="api" element={<RootOnlyRoute><ApiIntegrationsPage /></RootOnlyRoute>} />
-              <Route path="settings" element={<RootOnlyRoute><SystemSettingsPage /></RootOnlyRoute>} />
-              <Route path="settings/payments" element={<RootOnlyRoute><PaymentsSettingsPage /></RootOnlyRoute>} />
-              <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
-              <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
-              <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
-              <Route path="leads" element={<LeadsPage />} />
-              <Route path="customers" element={<CustomersPage />} />
-              <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
-                {tenantRouteElements}
-                <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />
-              </Route>
-            </Route>
-          </Routes>
-        </Suspense>
-      </ToastProvider>
-      </EmergencyModeProvider>
+        <EmergencyModeProvider>
+          <ToastProvider>
+            <Suspense fallback={LOADING}>
+              <Content />
+            </Suspense>
+          </ToastProvider>
+        </EmergencyModeProvider>
       </AuthProvider>
     </ThemeProvider>
   );

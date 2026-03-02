@@ -96,7 +96,9 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
     saveMutation.mutate(newLayout);
   };
 
-  if (isLoading) return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  if (isLoading) {
+    return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  }
 
   return (
     <Card>

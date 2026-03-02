@@ -31,8 +31,8 @@ export default function TenantOrdersPage() {
   });
 
   const { data: leads = [] } = useQuery({
-    queryKey: ['leads'],
-    queryFn: () => api.listLeads(),
+    queryKey: ['leads', tenant?.slug ?? tenantId],
+    queryFn: () => api.listLeads(tenant?.slug),
     enabled: !!MOCK_API_URL && !!tenantId,
   });
 

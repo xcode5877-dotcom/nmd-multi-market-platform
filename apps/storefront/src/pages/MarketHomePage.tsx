@@ -56,6 +56,9 @@ interface MarketTenant {
 const FEATURED_TENANT_SLUGS: string[] = ['buffalo'];
 const SPONSORED_TENANT_SLUGS: string[] = [];
 
+/** Fallback when banner has no image or image fails to load. Keeps hero layout intact. */
+const BANNER_PLACEHOLDER = 'https://placehold.co/1200x514/1e293b/ffffff?text=السوق';
+
 const CATEGORY_LABEL_MAP: Record<string, string> = {
   FOOD: 'طعام',
   CLOTHING: 'ملابس',
@@ -209,13 +212,18 @@ export default function MarketHomePage() {
       .filter((t): t is MarketTenant => t != null);
   };
 
-  const visibleTenants = tenants
-    .filter((t) => {
-      if (activeCategory === 'ALL') return true;
-      const cat = categories.find((c) => c.id === activeCategory);
-      return cat ? tenantMatchesCategory(t, cat) : (t.marketCategory ?? 'GENERAL') === activeCategory;
-    })
-    .filter((t) => !search.trim() || t.name.toLowerCase().includes(search.toLowerCase().trim()));
+  const matchesSearchAndCategory = (t: MarketTenant): boolean => {
+    const matchesSearch = !search.trim() || t.name.toLowerCase().includes(search.toLowerCase().trim());
+    const matchesCat =
+      activeCategory === 'ALL' ||
+      (() => {
+        const cat = categories.find((c) => c.id === activeCategory);
+        return cat ? tenantMatchesCategory(t, cat) : (t.marketCategory ?? 'GENERAL') === activeCategory;
+      })();
+    return matchesSearch && matchesCat;
+  };
+
+  const visibleTenants = tenants.filter(matchesSearchAndCategory);
 
   if (!loading && !market) {
     return (
@@ -277,10 +285,17 @@ export default function MarketHomePage() {
                         <Skeleton variant="rectangular" className="absolute inset-0 w-full h-full" />
                       )}
                       <img
-                        src={b.imageUrl}
+                        src={b.imageUrl || BANNER_PLACEHOLDER}
                         alt={b.title}
                         className={`w-full h-full object-cover transition-opacity duration-300 ${bannerImageLoaded[b.id] ? 'opacity-100' : 'opacity-0'}`}
                         onLoad={() => setBannerImageLoaded((prev) => ({ ...prev, [b.id]: true }))}
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          if (el.src !== BANNER_PLACEHOLDER) {
+                            el.src = BANNER_PLACEHOLDER;
+                            setBannerImageLoaded((prev) => ({ ...prev, [b.id]: true }));
+                          }
+                        }}
                       />
                     </motion.div>
                   </Link>
@@ -344,7 +359,8 @@ export default function MarketHomePage() {
       </motion.section>
 
       {sections.map((section, idx) => {
-        const sectionTenants = getTenantsForSection(section.storeIds);
+        const sectionTenants = getTenantsForSection(section.storeIds).filter(matchesSearchAndCategory);
+        if (sectionTenants.length === 0) return null;
         return (
           <motion.section
             key={section.id}
@@ -464,6 +480,24 @@ export default function MarketHomePage() {
               ))}
             </div>
           )}
+        </div>
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-20px' }}
+        transition={{ duration: 0.35 }}
+        className="py-8 border-b border-gray-100 bg-white"
+      >
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/80 p-12 text-center">
+            <span className="text-4xl mb-3 block">🗺️</span>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">
+              خريطة {market?.name ?? (marketSlug === 'iksal' ? 'إكسال' : 'دبورية')}
+            </h3>
+            <p className="text-sm text-gray-500">مواقع المحلات قريباً</p>
+          </div>
         </div>
       </motion.section>
     </div>

@@ -106,7 +106,7 @@ export default function MarketTenantsPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">المستأجر</th>
-                  <th className="px-4 py-3 text-start font-medium text-gray-700">السوق</th>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">السوق التابع له</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">التصنيف</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">ظاهر في السوق</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">ترتيب</th>
