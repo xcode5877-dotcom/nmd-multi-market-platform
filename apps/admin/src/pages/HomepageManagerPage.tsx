@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Input, Select, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
@@ -38,7 +38,10 @@ export default function HomepageManagerPage() {
   });
 
   const tenant = USE_API ? tenantFromApi : (tenantId ? getTenantById(tenantId) : null);
-  const collections = (tenant as { collections?: HomeCollection[] })?.collections ?? [];
+  const collections = useMemo(() => {
+    const raw = (tenant as { collections?: HomeCollection[] })?.collections ?? [];
+    return raw;
+  }, [tenant?.id, JSON.stringify((tenant as { collections?: HomeCollection[] })?.collections ?? [])]);
   const categories = (USE_API ? (catalog?.categories ?? []) : adminData.getCategories()) as Category[];
   const products = (USE_API ? (catalog?.products ?? []) : adminData.getProducts()) as Product[];
 
@@ -51,9 +54,17 @@ export default function HomepageManagerPage() {
   }));
   const [saving, setSaving] = useState(false);
 
+  const lastCollectionsKeyRef = useRef<string>('');
   useEffect(() => {
     const sorted = [...collections].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    setItems(sorted);
+    const key = sorted.map((s) => `${s.id}:${s.sortOrder ?? 0}`).join(',');
+    if (key !== lastCollectionsKeyRef.current) {
+      lastCollectionsKeyRef.current = key;
+      setItems(sorted);
+    }
+    return () => {
+      setItems([]);
+    };
   }, [collections]);
 
   const mainCategories = categories.filter((c) => !c.parentId || c.parentId === '');
@@ -176,6 +187,10 @@ export default function HomepageManagerPage() {
 
   const isEditing = editingId !== null;
   const editingItem = items.find((i) => i.id === editingId);
+
+  if (!tenantId) {
+    return <div className="p-6 text-gray-600">Loading...</div>;
+  }
 
   return (
     <div className="pb-24">

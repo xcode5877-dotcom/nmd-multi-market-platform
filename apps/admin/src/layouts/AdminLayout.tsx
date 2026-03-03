@@ -18,14 +18,17 @@ import {
   User,
   LayoutList,
   Store,
+  ClipboardList,
 } from 'lucide-react';
 import { getStorage, setStorage } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 
 const SIDEBAR_KEY = 'sidebar-collapsed';
 
+// All paths must be absolute (leading /) so they resolve correctly under basename /merchant. Use NavLink only (no <a>).
 const nav = [
   { to: '/', icon: LayoutDashboard, label: 'لوحة التحكم' },
+  { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات' },
   { to: '/orders', icon: ShoppingCart, label: 'الطلبات' },
   { to: '/orders/board', icon: LayoutGrid, label: 'لوحة الطلبات' },
   { to: '/catalog/categories', icon: FolderTree, label: 'التصنيفات' },
@@ -38,6 +41,10 @@ const nav = [
   { to: '/branding', icon: Palette, label: 'واجهة المحل' },
   { to: '/homepage', icon: LayoutList, label: 'الصفحة الرئيسية' },
 ];
+
+function toAbsolutePath(path: string): string {
+  return path.startsWith('/') ? path : `/${path}`;
+}
 
 function clearNmdSession(): void {
   if (typeof localStorage === 'undefined') return;
@@ -98,11 +105,13 @@ export default function AdminLayout() {
           </button>
         </div>
         <nav className="flex-1 p-2 space-y-1 overflow-auto">
-          {nav.map((item) => (
+          {nav.map((item) => {
+            const pathname = toAbsolutePath(item.to);
+            return (
             <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
+              key={pathname}
+              to={{ pathname, search: location.search || '' }}
+              end={pathname === '/'}
               title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
@@ -113,7 +122,8 @@ export default function AdminLayout() {
               <item.icon className="w-5 h-5 shrink-0" />
               {!collapsed && <span>{item.label}</span>}
             </NavLink>
-          ))}
+          );
+          })}
         </nav>
       </aside>
       <main className="flex-1 overflow-auto bg-gray-50">

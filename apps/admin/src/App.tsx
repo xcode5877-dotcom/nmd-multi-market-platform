@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider, ToastProvider, LayoutShell } from '@nmd/ui';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
@@ -25,9 +25,20 @@ const HomepageManagerPage = lazy(() => import('./pages/HomepageManagerPage'));
 const StoreSettingsPage = lazy(() => import('./pages/StoreSettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
+const LeadsPage = lazy(() => import('./pages/LeadsPage'));
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+
+/** Must match main.tsx BrowserRouter basename. Used to read path from window so we don't overwrite path with stale location.pathname. */
+const MERCHANT_BASENAME = '/merchant';
+
+function getPathnameFromWindow(): string {
+  const full = window.location.pathname;
+  if (full === MERCHANT_BASENAME || full === `${MERCHANT_BASENAME}/`) return '/';
+  if (full.startsWith(`${MERCHANT_BASENAME}/`)) return full.slice(MERCHANT_BASENAME.length) || '/';
+  return full || '/';
+}
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, isLoading } = useAuth();
@@ -57,6 +68,7 @@ function AdminApp() {
   // All hooks first — no early returns before any of these
   const { token } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const { data: me } = useQuery({
     queryKey: ['me', token],
@@ -73,19 +85,22 @@ function AdminApp() {
   });
 
   useEffect(() => {
-    if (!MOCK_API_URL || !tenant) return;
+    if (!MOCK_API_URL || !tenant || !navigate) return;
     const authSlug = tenant.slug;
     if (!authSlug) return;
     const params = new URLSearchParams(location.search);
     const urlTenant = params.get('tenant');
-    if (urlTenant && urlTenant !== authSlug) {
-      params.set('tenant', authSlug);
-      window.history.replaceState(null, '', `/?${params.toString()}`);
-    } else if (!urlTenant) {
-      params.set('tenant', authSlug);
-      window.history.replaceState(null, '', `/?${params.toString()}`);
-    }
-  }, [tenant, location.search, MOCK_API_URL]);
+    const needSync = (urlTenant && urlTenant !== authSlug) || !urlTenant;
+    if (!needSync) return;
+    params.set('tenant', authSlug);
+    const search = `?${params.toString()}`;
+    // Defer so we run after any NavLink navigation (e.g. to /homepage); then use path from window so we don't overwrite with stale location.pathname
+    const id = setTimeout(() => {
+      const pathname = getPathnameFromWindow();
+      navigate({ pathname, search }, { replace: true });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [tenant, location.pathname, location.search, MOCK_API_URL, navigate]);
 
   // Logic after all hooks
   if (me?.mustChangePassword) {
@@ -123,6 +138,7 @@ function AdminApp() {
               <Routes>
                 <Route path="/" element={<AdminLayout />}>
                   <Route index element={<DashboardPage />} />
+                  <Route path="leads" element={<LeadsPage />} />
                   <Route path="orders" element={<OrdersPage />} />
                   <Route path="orders/board" element={<OrdersBoardPage />} />
                   <Route path="catalog/categories" element={<CategoriesPage />} />
@@ -135,7 +151,7 @@ function AdminApp() {
                   <Route path="settings/store" element={<StoreSettingsPage />} />
                   <Route path="settings/staff" element={<StaffPage />} />
                   <Route path="branding" element={<BrandingPage />} />
-                  <Route path="homepage" element={<HomepageManagerPage />} />
+                  <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
                 </Route>
               </Routes>
             </Suspense>
@@ -147,6 +163,7 @@ function AdminApp() {
 }
 
 function AdminAppLegacy() {
+  const location = useLocation();
   const tenantSlugOrId = getInitialTenant();
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant', tenantSlugOrId],
@@ -179,6 +196,7 @@ function AdminAppLegacy() {
               <Routes>
                 <Route path="/" element={<AdminLayout />}>
                   <Route index element={<DashboardPage />} />
+                  <Route path="leads" element={<LeadsPage />} />
                   <Route path="orders" element={<OrdersPage />} />
                   <Route path="orders/board" element={<OrdersBoardPage />} />
                   <Route path="catalog/categories" element={<CategoriesPage />} />
@@ -191,7 +209,7 @@ function AdminAppLegacy() {
                   <Route path="settings/store" element={<StoreSettingsPage />} />
                   <Route path="settings/staff" element={<StaffPage />} />
                   <Route path="branding" element={<BrandingPage />} />
-                  <Route path="homepage" element={<HomepageManagerPage />} />
+                  <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
                 </Route>
               </Routes>
             </Suspense>
