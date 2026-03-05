@@ -7,7 +7,7 @@ import { Plus, Pencil, Trash2, Upload } from 'lucide-react';
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
 const BANNER_PLACEHOLDER = 'https://placehold.co/1200x400/1e293b/ffffff?text=إعلان';
-const BANNER_MAX_BYTES = 2 * 1024 * 1024;
+const BANNER_MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/webp', 'image/jpeg', 'image/jpg', 'image/png'];
 const ALLOWED_EXT = ['.webp', '.jpg', '.jpeg', '.png'];
 
@@ -17,7 +17,7 @@ function validateBannerFile(file: File): string | null {
   }
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
   if (!ALLOWED_EXT.includes(ext)) return 'امتداد الملف غير مدعوم';
-  if (file.size > BANNER_MAX_BYTES) return 'الحد الأقصى 2 ميجابايت';
+  if (file.size > BANNER_MAX_BYTES) return 'الحد الأقصى 10 ميجابايت';
   return null;
 }
 
@@ -236,9 +236,9 @@ export default function MarketBannersTab({ marketSlug, tenants }: MarketBannersT
               className="flex items-center gap-2"
             >
               <Upload className="w-4 h-4" />
-              {pendingFile ? pendingFile.name : 'اختر صورة (WebP, JPG, PNG - حد 2 ميجا)'}
+              {pendingFile ? pendingFile.name : 'اختر صورة (WebP, JPG, PNG - حد 10 ميجا)'}
             </Button>
-            <p className="text-xs text-gray-500 mt-1">WebP، JPG أو PNG فقط. الحد الأقصى 2 ميجابايت.</p>
+            <p className="text-xs text-gray-500 mt-1">WebP، JPG أو PNG فقط. الحد الأقصى 10 ميجابايت.</p>
           </div>
 
           <Input

@@ -11,6 +11,11 @@ export default function LandingLayout() {
   const { customer } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
 
+  const handleLogout = () => {
+    localStorage.removeItem('nmd-customer-token');
+    window.location.reload();
+  };
+
   useEffect(() => {
     if (localStorage.getItem(ANNOUNCEMENT_KEY) === '1') setAnnouncementClosed(true);
   }, []);
@@ -23,9 +28,9 @@ export default function LandingLayout() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAF9] overflow-x-hidden">
       {!announcementClosed && (
-        <div className="bg-[#FEF3C7]/80 border-b border-[#FEF3C7] py-2 px-4 flex items-center justify-center gap-2">
+        <div className="bg-primary/10 border-b border-primary/20 py-2 px-4 flex items-center justify-center gap-2">
           <span className="text-sm text-gray-700">السوق في مرحلته التجريبية</span>
-          <button type="button" onClick={closeAnnouncement} className="p-1 rounded hover:bg-[#FEF3C7]" aria-label="إغلاق">
+          <button type="button" onClick={closeAnnouncement} className="p-1 rounded hover:bg-primary/20" aria-label="إغلاق">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -38,12 +43,22 @@ export default function LandingLayout() {
           </Link>
           <nav className="flex items-center gap-4">
             {customer ? (
-              <Link to="/my-activity" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">
-                <User className="w-5 h-5" />
-                <span className="hidden sm:inline">حسابي</span>
-              </Link>
+              <>
+                <Link to="/my-activity" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">
+                  <User className="w-5 h-5" />
+                  <span className="hidden sm:inline">حسابي</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  aria-label="تسجيل الخروج"
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:underline transition-colors"
+                >
+                  تسجيل الخروج
+                </button>
+              </>
             ) : (
-              <button type="button" onClick={() => openAuthModal()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[#D97706] hover:bg-amber-50">
+              <button type="button" onClick={() => openAuthModal()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-primary hover:bg-primary/10">
                 <User className="w-5 h-5" />
                 <span className="hidden sm:inline">تسجيل الدخول</span>
               </button>
@@ -54,7 +69,7 @@ export default function LandingLayout() {
       <main className="flex-1 pb-20 md:pb-0">
         <Outlet />
       </main>
-      <Link to="/" className="fixed bottom-6 end-6 z-50 md:hidden px-5 py-3 rounded-full bg-[#B45309] text-white font-semibold shadow-lg">
+      <Link to="/" className="fixed bottom-6 end-6 z-50 md:hidden px-5 py-3 rounded-full bg-primary text-white font-semibold shadow-lg">
         اختر السوق
       </Link>
       <footer className="bg-[#1E293B] text-gray-400 py-10 mt-auto">

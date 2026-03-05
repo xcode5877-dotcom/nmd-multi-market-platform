@@ -5,12 +5,13 @@ import { useAdminContext } from '../context/AdminContext';
 import { createAdminData } from '../store/admin-data';
 import { getDeliverySettings, getTenantById, listOrdersByTenant, listCampaigns } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
-import { isValidWhatsAppPhone } from '@nmd/core';
+import { isValidWhatsAppPhone, formatPrice } from '@nmd/core';
 import { Check, Circle, Copy, ExternalLink, AlertCircle } from 'lucide-react';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
-const STOREFRONT_URL = import.meta.env.DEV ? 'http://localhost:5173' : '/storefront';
+/** Set VITE_STOREFRONT_URL for "عرض المتجر" link. Production: e.g. https://nmd.marketing. No hardcoded localhost. */
+const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL ?? '').replace(/\/$/, '');
 
 export default function DashboardPage() {
   const { tenantId } = useAdminContext();
@@ -31,6 +32,11 @@ export default function DashboardPage() {
     queryFn: () => api.listOrdersByTenant(tenantId),
     enabled: !!tenantId && USE_API,
   });
+  const dashboardStatsQuery = useQuery({
+    queryKey: ['dashboard-stats', tenantId],
+    queryFn: () => api.getTenantDashboardStats(tenantId),
+    enabled: !!tenantId,
+  });
   const campaignsQuery = useQuery({
     queryKey: ['campaigns', tenantId],
     queryFn: () => api.listCampaignsApi(tenantId),
@@ -49,9 +55,10 @@ export default function DashboardPage() {
   const campaigns = USE_API ? (campaignsQuery.data ?? []) : listCampaigns(tenantId);
   const delivery = USE_API ? deliveryQuery.data : getDeliverySettings(tenantId);
 
-  const ordersToday = orders.filter(
+  const stats = dashboardStatsQuery.data;
+  const ordersTodayCount = stats?.orderCountToday ?? orders.filter(
     (o: { createdAt?: string }) => new Date(o.createdAt!).toDateString() === new Date().toDateString()
-  );
+  ).length;
   const storeUrl = tenant ? `${STOREFRONT_URL}?tenant=${tenant.slug}` : '';
 
   const hasCategories = categories.length > 0;
@@ -118,14 +125,20 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <div className="p-4">
-            <p className="text-sm text-gray-500">الإيرادات</p>
-            <p className="text-2xl font-bold text-primary">—</p>
+            <p className="text-sm text-gray-500">إيرادات اليوم</p>
+            <p className="text-2xl font-bold text-primary">{stats ? formatPrice(stats.dailyRevenue) : '—'}</p>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4">
+            <p className="text-sm text-gray-500">إيرادات الشهر</p>
+            <p className="text-2xl font-bold text-primary">{stats ? formatPrice(stats.monthlyRevenue) : '—'}</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
             <p className="text-sm text-gray-500">الطلبات اليوم</p>
-            <p className="text-2xl font-bold text-primary">{ordersToday.length}</p>
+            <p className="text-2xl font-bold text-primary">{ordersTodayCount}</p>
           </div>
         </Card>
         <Card>
@@ -135,6 +148,19 @@ export default function DashboardPage() {
           </div>
         </Card>
       </div>
+      <Card className="mb-6">
+        <div className="p-4">
+          <h2 className="font-semibold text-gray-900 mb-3">الملخص المالي (من الطلبات المكتملة)</h2>
+          <p className="text-sm text-gray-500 mb-2">عمولة المنصة: {stats?.platformCommissionPercent ?? 0}%</p>
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            <span>[ إجمالي المبيعات: <strong>{formatPrice(stats?.totalSales ?? 0)}</strong> ]</span>
+            <span className="text-gray-500">−</span>
+            <span>[ عمولة المنصة: <strong>{formatPrice(stats?.platformFee ?? 0)}</strong> ]</span>
+            <span className="text-gray-500">=</span>
+            <span className="text-primary font-bold">[ رصيد التاجر: {formatPrice(stats?.merchantBalance ?? 0)} ]</span>
+          </div>
+        </div>
+      </Card>
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <Card>
           <div className="p-4">

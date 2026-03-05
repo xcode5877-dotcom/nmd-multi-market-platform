@@ -1,0 +1,33 @@
+FROM node:20-slim
+
+# Prisma/OpenSSL: Debian base has compatible libssl for @prisma/client native bindings
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    openssl libssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN corepack enable pnpm
+
+# Copy workspace config and required packages
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/core ./packages/core
+COPY packages/mock ./packages/mock
+COPY apps/mock-api ./apps/mock-api
+
+# Install deps, generate Prisma client for container arch, then build
+RUN pnpm install --frozen-lockfile && \
+    pnpm --filter @nmd/core build && \
+    pnpm --filter mock-api exec -- prisma generate && \
+    pnpm --filter mock-api build
+
+WORKDIR /app/apps/mock-api
+
+# JSON storage (default); data.json path overridable via volume + DATA_FILE
+ENV PORT=5190
+ENV STORAGE_DRIVER=json
+ENV DATA_FILE=/data/data.json
+
+EXPOSE 5190
+
+CMD ["node", "dist/index.js"]

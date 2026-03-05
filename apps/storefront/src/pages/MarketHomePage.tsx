@@ -2,7 +2,24 @@ import { useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '@nmd/ui';
 import { useState, useEffect, useRef } from 'react';
-import { Store, Search } from 'lucide-react';
+
+const HERO_TITLE_STYLE_MOBILE = { fontSize: '1.25rem', lineHeight: 1.2 } as const;
+const HERO_TITLE_STYLE_DESKTOP = { fontSize: '2rem', lineHeight: 1.2 } as const;
+function useHeroTitleStyle() {
+  const [style, setStyle] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+      ? HERO_TITLE_STYLE_DESKTOP
+      : HERO_TITLE_STYLE_MOBILE
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const fn = () => setStyle(mq.matches ? HERO_TITLE_STYLE_DESKTOP : HERO_TITLE_STYLE_MOBILE);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+  return style;
+}
+import { Store, Search, UtensilsCrossed, Shirt, Leaf, Flame, Tag, ShoppingBag, LayoutGrid } from 'lucide-react';
 import { getTenantListForMallAsync } from '@nmd/mock';
 import { StoreCard } from '../components/StoreCard';
 import { onTenantUpdate } from '../lib/tenant-broadcast';
@@ -82,6 +99,29 @@ function getCategoryLabel(cats: GlobalCategory[], marketCategory: string): strin
   return cat?.title ?? CATEGORY_LABEL_MAP[marketCategory ?? 'GENERAL'] ?? marketCategory ?? 'عام';
 }
 
+const CATEGORY_LUCIDE: Record<string, any> = {
+  'FOOD': UtensilsCrossed,
+  'cat-food': UtensilsCrossed,
+  'CLOTHING': Shirt,
+  'cat-clothing': Shirt,
+  'GROCERIES': Leaf,
+  'cat-groceries': Leaf,
+  'BUTCHER': Flame,
+  'cat-butcher': Flame,
+  'OFFERS': Tag,
+  'cat-offers': Tag,
+  'GENERAL': ShoppingBag,
+  'ALL': LayoutGrid
+};
+
+function CategoryIcon({ category }: { category: GlobalCategory }) {
+  const icon = category?.icon?.trim();
+  const useLucide = !icon || icon === '?' || icon.length > 2;
+  const IconComponent = CATEGORY_LUCIDE[category.legacyCode ?? ''] ?? CATEGORY_LUCIDE[category.id] ?? ShoppingBag;
+  if (useLucide) return <IconComponent className="w-4 h-4 shrink-0" />;
+  return <span className="text-base leading-none">{icon}</span>;
+}
+
 export default function MarketHomePage() {
   const { pathname } = useLocation();
   const marketSlug = pathname.split('/').filter(Boolean)[0] ?? '';
@@ -97,6 +137,7 @@ export default function MarketHomePage() {
   const [promos, setPromos] = useState<PromoBanner[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const heroTitleStyle = useHeroTitleStyle();
   const activeBanners = promos.filter((b) => b.active);
 
   useEffect(() => {
@@ -188,9 +229,12 @@ export default function MarketHomePage() {
     return () => clearInterval(t);
   }, [activeBanners.length]);
 
+  const storesPagePath = marketSlug ? `/${marketSlug}/stores` : '/';
+
   const handleCategoryClick = (catId: string) => {
     setActiveCategory((prev) => (prev === catId ? 'ALL' : catId));
-    shopsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const el = shopsRef.current ?? document.getElementById('shops');
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' }));
   };
 
   const tenantMatchesCategory = (t: MarketTenant, cat: GlobalCategory): boolean => {
@@ -231,7 +275,7 @@ export default function MarketHomePage() {
         <Store className="w-16 h-16 text-gray-300 mx-auto mb-4" />
         <h2 className="text-xl font-semibold text-gray-900 mb-2">السوق غير موجود</h2>
         <p className="text-gray-600 mb-6">لم نتمكن من العثور على هذا السوق</p>
-        <Link to="/" className="text-[#D97706] font-medium hover:underline">
+        <Link to="/" className="text-primary font-medium hover:underline">
           ← العودة لاختيار السوق
         </Link>
       </div>
@@ -249,7 +293,7 @@ export default function MarketHomePage() {
               placeholder="ابحث باسم المحل..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full ps-4 pe-12 py-2.5 rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-[#D97706]/30 focus:border-[#D97706] focus:bg-white/90 text-sm shadow-sm"
+              className="w-full ps-4 pe-12 py-2.5 rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary focus:bg-white/90 text-sm shadow-sm"
             />
           </div>
         </div>
@@ -262,7 +306,7 @@ export default function MarketHomePage() {
         className="relative overflow-hidden"
       >
         {activeBanners.length > 0 ? (
-          <div className="relative aspect-[21/9] w-full rounded-b-2xl overflow-hidden shadow-lg">
+          <div className="relative w-full h-[250px] md:aspect-video md:max-h-[320px] rounded-b-2xl overflow-hidden shadow-lg">
             <AnimatePresence mode="wait">
               {activeBanners.map((b, i) => {
                 if (i !== bannerIdx) return null;
@@ -275,9 +319,11 @@ export default function MarketHomePage() {
                       transition={{ duration: 0.4 }}
                       className="absolute inset-0"
                     >
-                      <div className="absolute inset-0 bg-gray-900/30 z-10 flex flex-col justify-end p-4 md:p-6">
-                        <h2 className="text-xl md:text-2xl font-bold text-white drop-shadow-lg">{b.title}</h2>
-                        <span className="inline-flex mt-2 w-fit px-4 py-2 rounded-xl bg-[#B45309] text-white font-semibold text-sm hover:bg-[#92400E] transition-colors shadow-lg">
+                      {/* Gradient overlay only at bottom behind text for readability */}
+                      <div className="absolute inset-x-0 bottom-0 h-1/2 z-10 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                      <div className="absolute inset-0 z-10 flex flex-col justify-end items-end text-end p-4 md:p-6 pb-6">
+                        <h2 className="font-bold text-white max-w-[85%] [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{b.title}</h2>
+                        <span className="inline-flex mt-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 transition-colors shadow-md">
                           اطلب الآن
                         </span>
                       </div>
@@ -318,7 +364,7 @@ export default function MarketHomePage() {
             )}
           </div>
         ) : (
-          <div className="relative aspect-[21/9] w-full rounded-b-2xl overflow-hidden bg-gradient-to-b from-[#FEF3C7]/40 to-white" />
+          <div className="relative w-full h-[250px] md:aspect-video md:max-h-[320px] rounded-b-2xl overflow-hidden bg-gradient-to-b from-primary/10 to-white" />
         )}
       </motion.section>
 
@@ -329,17 +375,27 @@ export default function MarketHomePage() {
         className="sticky top-32 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm"
       >
         <div className="px-4 py-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex gap-2 min-w-max">
+          <div className="flex gap-2 min-w-max items-center">
             <motion.button
               type="button"
               onClick={() => handleCategoryClick('ALL')}
               whileTap={{ scale: 0.97 }}
               className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
-                activeCategory === 'ALL' ? 'bg-[#B45309] text-white border-[#B45309]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#D97706]/50'
+                activeCategory === 'ALL' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-700 border-gray-200 hover:border-primary/50'
               }`}
             >
               الكل
             </motion.button>
+            {activeCategory !== 'ALL' && (
+              <motion.button
+                type="button"
+                onClick={() => handleCategoryClick('ALL')}
+                whileTap={{ scale: 0.97 }}
+                className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium text-primary bg-primary/10 border border-primary/30 hover:bg-primary/20 transition-colors"
+              >
+                مسح الفلتر
+              </motion.button>
+            )}
             {categories.map((c) => (
               <motion.button
                 key={c.id}
@@ -347,10 +403,10 @@ export default function MarketHomePage() {
                 onClick={() => handleCategoryClick(c.id)}
                 whileTap={{ scale: 0.97 }}
                 className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
-                  activeCategory === c.id ? 'bg-[#B45309] text-white border-[#B45309]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#D97706]/50'
+                  activeCategory === c.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-700 border-gray-200 hover:border-primary/50'
                 }`}
               >
-                <span>{c.icon}</span>
+                <CategoryIcon category={c} />
                 {c.title}
               </motion.button>
             ))}
@@ -373,19 +429,17 @@ export default function MarketHomePage() {
             <div className="max-w-6xl mx-auto px-4">
               <div className="flex flex-row items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-gray-900">{section.title}</h2>
-                <motion.button
-                  type="button"
-                  onClick={() => shopsRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                  whileTap={{ scale: 0.97 }}
-                  className="text-sm font-medium text-[#D97706] hover:underline"
+                <Link
+                  to={storesPagePath}
+                  className="text-sm font-medium text-primary hover:underline"
                 >
                   عرض الكل
-                </motion.button>
+                </Link>
               </div>
               {loading ? (
                 <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4">
                   {[1, 2, 3, 4, 5].map((i) => (
-                    <Skeleton key={i} className="h-[260px] min-w-[210px] shrink-0 snap-start rounded-xl" />
+                    <Skeleton key={i} className="min-w-[140px] w-[140px] aspect-[3/4] shrink-0 snap-start rounded-xl" />
                   ))}
                 </div>
               ) : sectionTenants.length === 0 ? (
@@ -395,11 +449,12 @@ export default function MarketHomePage() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory snap-start [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 scroll-smooth">
                   {sectionTenants.map((t) => (
-                    <motion.div key={t.id} className="shrink-0 snap-start min-w-[210px]" whileTap={{ scale: 0.97 }}>
+                    <div key={t.id} className="shrink-0 snap-start w-[140px] min-w-[140px]">
                       <StoreCard
                         id={t.id}
                         slug={t.slug}
                         name={t.name}
+                        marketSlug={marketSlug}
                         marketCategory={t.marketCategory}
                         type={t.type}
                         branding={t.branding ?? {}}
@@ -407,9 +462,8 @@ export default function MarketHomePage() {
                         businessHours={t.businessHours}
                         categoryLabel={getCategoryLabel(categories, t.marketCategory ?? 'GENERAL')}
                         badge={getStoreBadge(t.slug)}
-                        compact
                       />
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -430,19 +484,17 @@ export default function MarketHomePage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-row items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-900">كل المحلات</h2>
-            <motion.button
-              type="button"
-              onClick={() => shopsRef.current?.scrollIntoView({ behavior: 'smooth' })}
-              whileTap={{ scale: 0.97 }}
-              className="text-sm font-medium text-[#D97706] hover:underline"
+            <Link
+              to={storesPagePath}
+              className="text-sm font-medium text-primary hover:underline"
             >
               عرض الكل
-            </motion.button>
+            </Link>
           </div>
           {loading ? (
             <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-[260px] min-w-[210px] shrink-0 snap-start rounded-xl" />
+                <Skeleton key={i} className="min-w-[140px] w-[140px] aspect-[3/4] shrink-0 snap-start rounded-xl" />
               ))}
             </div>
           ) : visibleTenants.length === 0 ? (
@@ -454,7 +506,7 @@ export default function MarketHomePage() {
                   : 'لا توجد محلات تطابق البحث أو الفئة'}
               </p>
               {tenants.length === 0 && (
-                <Link to="/" className="inline-block mt-3 text-[#D97706] font-medium hover:underline">
+                <Link to="/" className="inline-block mt-3 text-primary font-medium hover:underline">
                   ← العودة لاختيار السوق
                 </Link>
               )}
@@ -462,11 +514,12 @@ export default function MarketHomePage() {
           ) : (
             <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory snap-start [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 scroll-smooth">
               {visibleTenants.map((t) => (
-                <motion.div key={t.id} className="shrink-0 snap-start min-w-[210px]" whileTap={{ scale: 0.97 }}>
+                <div key={t.id} className="shrink-0 snap-start w-[140px] min-w-[140px]">
                   <StoreCard
                     id={t.id}
                     slug={t.slug}
                     name={t.name}
+                    marketSlug={marketSlug}
                     marketCategory={t.marketCategory}
                     type={t.type}
                     branding={t.branding ?? {}}
@@ -474,9 +527,8 @@ export default function MarketHomePage() {
                     businessHours={t.businessHours}
                     categoryLabel={getCategoryLabel(categories, t.marketCategory ?? 'GENERAL')}
                     badge={getStoreBadge(t.slug)}
-                    compact
                   />
-                </motion.div>
+                </div>
               ))}
             </div>
           )}

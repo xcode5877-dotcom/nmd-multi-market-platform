@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "reset-root-password": "tsx scripts/reset-root-password.ts",
     "verify:storage": "tsx scripts/verify-storage-drivers.ts"
   },
   "prisma": {
@@ -22,7 +23,10 @@
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.0.2"
+    "minimist": "^1.2.8",
+    "multer": "^2.0.2",
+    "sharp": "^0.34.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

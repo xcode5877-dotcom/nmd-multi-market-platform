@@ -1,8 +1,9 @@
+import { useMutation } from '@tanstack/react-query';
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
-import { trackProfessionalContact } from '../lib/trackLead';
+import { postProfessionalLead } from '../lib/trackLead';
 
 /** WhatsApp icon (inline SVG) */
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -27,6 +28,10 @@ export function ProfessionalBar() {
   const tenantId = useAppStore((s) => s.tenantId);
   const { customer } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
+  const trackLeadMutation = useMutation({
+    mutationFn: ({ tenantId, contactType, customerId, customerName, customerPhone }: { tenantId: string; contactType: 'whatsapp' | 'call'; customerId?: string; customerName?: string; customerPhone?: string }) =>
+      postProfessionalLead(tenantId, contactType, customerId, customerName, customerPhone),
+  });
   const whatsapp = branding?.whatsappPhone;
   const phone = branding?.phone ?? whatsapp;
   const hasContact = !!(whatsapp || phone);
@@ -60,8 +65,8 @@ export function ProfessionalBar() {
               onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                const doRedirect = async (c?: { id: string }) => {
-                  await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                const doRedirect = async (c?: { id: string; name?: string }) => {
+                  await trackLeadMutation.mutateAsync({ tenantId, contactType: 'whatsapp', customerId: c?.id, customerName: c?.name, customerPhone: (c as { phone?: string })?.phone });
                   window.open(waUrl, '_blank', 'noopener,noreferrer');
                 };
                 if (customer) doRedirect(customer);
@@ -79,8 +84,8 @@ export function ProfessionalBar() {
               onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                const doRedirect = async (c?: { id: string }) => {
-                  await trackProfessionalContact(tenantId, 'call', c?.id);
+                const doRedirect = async (c?: { id: string; name?: string }) => {
+                  await trackLeadMutation.mutateAsync({ tenantId, contactType: 'call', customerId: c?.id, customerName: c?.name, customerPhone: (c as { phone?: string })?.phone });
                   window.location.href = telUrl;
                 };
                 if (customer) doRedirect(customer);

@@ -20,10 +20,9 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/courier" element={<CourierGuard><CourierDashboard /></CourierGuard>} />
-        <Route path="/courier/orders" element={<CourierGuard><CourierOrdersPage /></CourierGuard>} />
-        <Route path="/courier/route" element={<CourierGuard><CourierRoutePage /></CourierGuard>} />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<CourierGuard><CourierDashboard /></CourierGuard>} />
+        <Route path="/orders" element={<CourierGuard><CourierOrdersPage /></CourierGuard>} />
+        <Route path="/route" element={<CourierGuard><CourierRoutePage /></CourierGuard>} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </AuthProvider>

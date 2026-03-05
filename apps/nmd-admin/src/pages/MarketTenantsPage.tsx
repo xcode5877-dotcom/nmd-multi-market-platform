@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, useToast } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
-import type { MarketCategory } from '@nmd/core';
+import { listCategories } from '../api';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -14,16 +14,29 @@ interface Market {
   isActive: boolean;
 }
 
-const MARKET_CATEGORIES: { value: MarketCategory; label: string }[] = [
-  { value: 'FOOD', label: 'طعام' },
-  { value: 'CLOTHING', label: 'ملابس' },
-  { value: 'GROCERIES', label: 'بقالة' },
-  { value: 'BUTCHER', label: 'لحوم' },
-  { value: 'OFFERS', label: 'عروض' },
-  { value: 'ELECTRONICS', label: 'إلكترونيات' },
-  { value: 'HOME', label: 'منزل' },
-  { value: 'GENERAL', label: 'عام' },
-];
+/** Normalized category for dropdown (supports id, title, nameAr from /categories). */
+interface CategoryOption {
+  id: string;
+  title: string;
+  icon?: string;
+  sortOrder: number;
+  legacyCode?: string;
+}
+
+function normalizeCategories(raw: unknown[]): CategoryOption[] {
+  return raw.map((c) => {
+    const o = c as Record<string, unknown>;
+    const id = String(o?.id ?? '').trim();
+    const title = String(o?.nameAr ?? o?.title ?? '').trim() || id;
+    return {
+      id,
+      title,
+      icon: typeof o?.icon === 'string' ? o.icon : undefined,
+      sortOrder: typeof o?.sortOrder === 'number' ? o.sortOrder : 999,
+      legacyCode: typeof o?.legacyCode === 'string' ? o.legacyCode : undefined,
+    };
+  }).filter((c) => c.id);
+}
 
 export default function MarketTenantsPage() {
   const queryClient = useQueryClient();
@@ -35,6 +48,19 @@ export default function MarketTenantsPage() {
     queryKey: ['tenants'],
     queryFn: () => api.listTenants(),
   });
+
+  /** Categories from /categories only — no static list. Renders only API data. */
+  const { data: categoriesRaw = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => listCategories(),
+    enabled: !!MOCK_API_URL,
+  });
+  const categories: CategoryOption[] = Array.isArray(categoriesRaw) ? normalizeCategories(categoriesRaw) : [];
+  useEffect(() => {
+    if (import.meta.env?.DEV && categoriesRaw?.length !== undefined) {
+      console.log('Categories from /categories:', categoriesRaw);
+    }
+  }, [categoriesRaw]);
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<RegistryTenant> }) => {
@@ -119,7 +145,7 @@ export default function MarketTenantsPage() {
                     key={t.id}
                     tenant={t}
                     markets={markets}
-                    marketCategories={MARKET_CATEGORIES}
+                    categories={categories}
                     onSave={(updates) => updateMutation.mutate({ id: t.id, updates })}
                     isSaving={updateMutation.isPending && updateMutation.variables?.id === t.id}
                   />
@@ -133,32 +159,56 @@ export default function MarketTenantsPage() {
   );
 }
 
+const norm = (s: string) => (s ?? '').trim().toLowerCase();
+
+/** Resolve tenant's marketCategory to the exact category id from /categories (case-insensitive). */
+function resolveCategoryId(tenantMc: string | undefined, categories: CategoryOption[]): string {
+  const raw = tenantMc?.trim() ?? 'GENERAL';
+  if (!raw) return categories[0]?.id ?? raw;
+  const byId = categories.find((c) => norm(c.id) === norm(raw));
+  if (byId) return byId.id;
+  const byLegacy = categories.find((c) => c.legacyCode && norm(c.legacyCode) === norm(raw));
+  if (byLegacy) return byLegacy.id;
+  return raw;
+}
+
+/** Ensure saved value is the exact id from the categories list (case-insensitive match). */
+function toSavedCategoryId(value: string, categories: CategoryOption[]): string {
+  const byId = categories.find((c) => norm(c.id) === norm(value));
+  if (byId) return byId.id;
+  const byLegacy = categories.find((c) => c.legacyCode && norm(c.legacyCode) === norm(value));
+  if (byLegacy) return byLegacy.id;
+  return value;
+}
+
 interface MarketTenantRowProps {
   tenant: RegistryTenant;
   markets: Market[];
-  marketCategories: { value: MarketCategory; label: string }[];
+  categories: CategoryOption[];
   onSave: (updates: Partial<RegistryTenant>) => void;
   isSaving: boolean;
 }
 
-function MarketTenantRow({ tenant, markets, marketCategories, onSave, isSaving }: MarketTenantRowProps) {
+function MarketTenantRow({ tenant, markets, categories, onSave, isSaving }: MarketTenantRowProps) {
+  const resolvedCategoryId = resolveCategoryId(tenant.marketCategory, categories);
   const [marketId, setMarketId] = useState(tenant.marketId ?? '');
-  const [marketCategory, setMarketCategory] = useState<MarketCategory>(tenant.marketCategory ?? 'GENERAL');
+  const [marketCategoryId, setMarketCategoryId] = useState(resolvedCategoryId);
   const [isListedInMarket, setIsListedInMarket] = useState(tenant.isListedInMarket !== false);
   const [marketSortOrder, setMarketSortOrder] = useState(String(tenant.marketSortOrder ?? 0));
 
   useEffect(() => {
     setMarketId(tenant.marketId ?? '');
-    setMarketCategory(tenant.marketCategory ?? 'GENERAL');
+    setMarketCategoryId(resolveCategoryId(tenant.marketCategory, categories));
     setIsListedInMarket(tenant.isListedInMarket !== false);
     setMarketSortOrder(String(tenant.marketSortOrder ?? 0));
-  }, [tenant.marketId, tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder]);
+  }, [tenant.marketId, tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder, categories]);
 
   const handleSave = () => {
     const order = parseInt(marketSortOrder, 10);
+    const savedCategoryId = toSavedCategoryId(marketCategoryId, categories);
     onSave({
       marketId: marketId || undefined,
-      marketCategory,
+      marketCategory: savedCategoryId as RegistryTenant['marketCategory'],
       isListedInMarket,
       marketSortOrder: isNaN(order) ? 0 : order,
     });
@@ -166,7 +216,7 @@ function MarketTenantRow({ tenant, markets, marketCategories, onSave, isSaving }
 
   const hasChanges =
     (tenant.marketId ?? '') !== marketId ||
-    (tenant.marketCategory ?? 'GENERAL') !== marketCategory ||
+    resolvedCategoryId !== marketCategoryId ||
     (tenant.isListedInMarket !== false) !== isListedInMarket ||
     String(tenant.marketSortOrder ?? 0) !== marketSortOrder;
 
@@ -200,16 +250,23 @@ function MarketTenantRow({ tenant, markets, marketCategories, onSave, isSaving }
       </td>
       <td className="px-4 py-3">
         <select
-          value={marketCategory}
-          onChange={(e) => setMarketCategory(e.target.value as MarketCategory)}
+          value={marketCategoryId}
+          onChange={(e) => setMarketCategoryId(e.target.value)}
           onClick={(e) => e.stopPropagation()}
           className="h-9 px-2 rounded border border-gray-300 bg-white text-sm min-w-[120px]"
         >
-          {marketCategories.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
+          {categories.length === 0 ? (
+            <option value={marketCategoryId}>— جاري التحميل أو لا توجد تصنيفات</option>
+          ) : (
+            categories
+              .slice()
+              .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+              .map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.icon ? `${cat.icon} ` : ''}{cat.title}
+                </option>
+              ))
+          )}
         </select>
       </td>
       <td className="px-4 py-3">

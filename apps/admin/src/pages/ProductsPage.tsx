@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, Button, Input, Select, DataTable, Drawer, ConfirmDialog, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { useAdminData } from '../hooks/useAdminData';
@@ -108,11 +108,41 @@ export default function ProductsPage() {
     lowStockThreshold: undefined as number | undefined,
     isLastItems: false,
     lastItemsCount: 0,
+    isArchived: false,
+    sortOrder: 0,
   });
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [reorderExpanded, setReorderExpanded] = useState(false);
+  const [draggedProductId, setDraggedProductId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const productsByCategory = useMemo(() => {
+    const map = new Map<string, Product[]>();
+    const sorted = [...products].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+    for (const p of sorted) {
+      const catId = p.categoryId || '_';
+      if (!map.has(catId)) map.set(catId, []);
+      map.get(catId)!.push(p);
+    }
+    return map;
+  }, [products]);
+
+  const handleReorder = useCallback((categoryId: string, fromIndex: number, toIndex: number) => {
+    const list = productsByCategory.get(categoryId) ?? [];
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= list.length) return;
+    const reordered = [...list];
+    const [removed] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, removed);
+    const orderMap = new Map(reordered.map((p, i) => [p.id, i]));
+    const next = products.map((p) =>
+      p.categoryId === categoryId ? { ...p, sortOrder: orderMap.get(p.id) ?? p.sortOrder ?? 0 } : p
+    );
+    setProducts(next);
+    adminData.setProducts(next);
+    addToast('تم تحديث الترتيب', 'success');
+  }, [productsByCategory, products, adminData, addToast]);
 
   const toProductImage = (url: string, sortOrder: number): ProductImage => ({
     id: generateId(),
@@ -147,12 +177,15 @@ export default function ProductsPage() {
               lowStockThreshold: form.lowStockThreshold,
               isLastItems: form.isLastItems,
               lastItemsCount: form.lastItemsCount,
+              isArchived: form.isArchived,
+              sortOrder: form.sortOrder,
             }
           : p
       );
       setProducts(next);
       adminData.setProducts(next);
     } else {
+      const maxOrder = products.length > 0 ? Math.max(...products.map((p) => p.sortOrder ?? 0), 0) : 0;
       const next: Product[] = [
         ...products,
         {
@@ -178,6 +211,8 @@ export default function ProductsPage() {
           lowStockThreshold: form.lowStockThreshold,
           isLastItems: form.isLastItems,
           lastItemsCount: form.isLastItems ? form.lastItemsCount : undefined,
+          isArchived: form.isArchived,
+          sortOrder: form.sortOrder ?? maxOrder + 1,
         },
       ];
       setProducts(next);
@@ -202,6 +237,8 @@ export default function ProductsPage() {
       lowStockThreshold: undefined,
       isLastItems: false,
       lastItemsCount: 0,
+      isArchived: false,
+      sortOrder: 0,
     });
     setSaving(false);
     addToast('تم الحفظ بنجاح', 'success');
@@ -241,12 +278,15 @@ export default function ProductsPage() {
       lowStockThreshold: p.lowStockThreshold,
       isLastItems: p.isLastItems ?? false,
       lastItemsCount: p.lastItemsCount ?? 0,
+      isArchived: p.isArchived ?? false,
+      sortOrder: p.sortOrder ?? 0,
     });
     setDrawerOpen(true);
   };
 
   const openAdd = () => {
     setEditing(null);
+    const maxOrder = products.length > 0 ? Math.max(...products.map((p) => p.sortOrder ?? 0), 0) : 0;
     setForm({
       name: '',
       slug: '',
@@ -264,6 +304,8 @@ export default function ProductsPage() {
       lowStockThreshold: undefined,
       isLastItems: false,
       lastItemsCount: 0,
+      isArchived: false,
+      sortOrder: maxOrder + 1,
     });
     setDrawerOpen(true);
   };
@@ -495,7 +537,14 @@ export default function ProductsPage() {
   };
 
   const rows: Record<string, React.ReactNode>[] = products.map((p) => ({
-    name: p.name,
+    name: (
+      <div className="flex items-center gap-2">
+        {p.name}
+        {(p as Product & { isArchived?: boolean }).isArchived && (
+          <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600">أرشيف</span>
+        )}
+      </div>
+    ),
     type: p.type,
     price: formatMoney(p.basePrice),
     stock: (
@@ -521,6 +570,59 @@ export default function ProductsPage() {
         <h1 className="text-2xl font-bold text-gray-900">المنتجات</h1>
         <Button onClick={openAdd}>إضافة منتج</Button>
       </div>
+
+      {products.length > 0 && (
+        <Card className="mb-6">
+          <button
+            type="button"
+            onClick={() => setReorderExpanded((e) => !e)}
+            className="w-full flex items-center justify-between p-4 text-start hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            <span className="font-semibold text-gray-900">ترتيب المنتجات حسب التصنيف</span>
+            <span className="text-gray-500">{reorderExpanded ? '▼' : '◀'}</span>
+          </button>
+          {reorderExpanded && (
+            <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-4">
+              {Array.from(productsByCategory.entries()).map(([catId, list]) => {
+                const catName = categories.find((c) => c.id === catId)?.name ?? catId;
+                return (
+                  <div key={catId} className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">{catName}</div>
+                    <ul className="divide-y divide-gray-100">
+                      {list.map((p, idx) => (
+                        <li
+                          key={p.id}
+                          draggable
+                          onDragStart={() => setDraggedProductId(p.id)}
+                          onDragEnd={() => setDraggedProductId(null)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const targetId = (e.currentTarget as HTMLElement).dataset.productId;
+                            const targetIdx = list.findIndex((x) => x.id === targetId);
+                            if (targetIdx !== -1 && draggedProductId) {
+                              const fromIdx = list.findIndex((x) => x.id === draggedProductId);
+                              handleReorder(catId, fromIdx, targetIdx);
+                            }
+                            setDraggedProductId(null);
+                          }}
+                          data-product-id={p.id}
+                          className={`flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 cursor-grab active:cursor-grabbing ${draggedProductId === p.id ? 'opacity-50' : ''}`}
+                        >
+                          <span className="text-gray-400 select-none" aria-hidden>⋮⋮</span>
+                          <span className="flex-1 font-medium text-gray-900">{p.name}</span>
+                          <span className="text-xs text-gray-500">ترتيب: {(p as Product & { sortOrder?: number }).sortOrder ?? idx}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
       <Card>
         {products.length === 0 ? (
           <div className="p-12 text-center text-gray-500">لا توجد منتجات</div>
@@ -883,6 +985,15 @@ export default function ProductsPage() {
               onChange={(e) => setForm((f) => ({ ...f, inStock: e.target.checked }))}
             />
             متوفر
+          </label>
+          <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-colors cursor-pointer ${form.isArchived ? 'border-amber-300 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}>
+            <input
+              type="checkbox"
+              checked={form.isArchived}
+              onChange={(e) => setForm((f) => ({ ...f, isArchived: e.target.checked }))}
+              className="w-4 h-4 rounded border-gray-300"
+            />
+            <span className="font-medium text-gray-800">أرشفة المنتج (إخفاء من المتجر)</span>
           </label>
           <Input
             label="الكمية (اختياري)"

@@ -4,6 +4,24 @@ import type { StorefrontHero, StorefrontBanner } from '@nmd/core';
 import { useAppStore } from '../store/app';
 import { trackLead } from '../lib/trackLead';
 
+const HERO_TITLE_STYLE_MOBILE = { fontSize: '1.25rem', lineHeight: 1.2 } as const;
+const HERO_TITLE_STYLE_DESKTOP = { fontSize: '2rem', lineHeight: 1.2 } as const;
+
+function useHeroTitleStyle() {
+  const [style, setStyle] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+      ? HERO_TITLE_STYLE_DESKTOP
+      : HERO_TITLE_STYLE_MOBILE
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const fn = () => setStyle(mq.matches ? HERO_TITLE_STYLE_DESKTOP : HERO_TITLE_STYLE_MOBILE);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+  return style;
+}
+
 type HeroSlide = { type: 'hero'; hero: StorefrontHero };
 type BannerSlide = { type: 'banner'; banner: StorefrontBanner };
 type Slide = HeroSlide | BannerSlide;
@@ -13,8 +31,11 @@ interface TopHeroCarouselProps {
   banners?: StorefrontBanner[] | null;
 }
 
-const SLIDE_HEIGHT = 'h-[250px] md:h-[450px]';
-const CTA_CLASS = 'mt-4 px-6 py-2 rounded-full bg-white text-gray-900 font-medium hover:bg-gray-100 transition-colors';
+// Responsive adaptive: mobile fixed height, desktop cinematic aspect. Full width, overflow hidden.
+const SLIDE_CONTAINER =
+  'w-full overflow-hidden rounded-2xl bg-gray-100 h-[250px] md:h-auto md:aspect-[21/9] md:min-h-[320px]';
+const CTA_CLASS =
+  'mt-2 md:mt-3 px-3 py-2 md:px-4 rounded-lg text-sm font-medium bg-white text-gray-900 hover:bg-gray-100 transition-colors';
 
 const DEFAULT_HERO: StorefrontHero = {
   title: 'مرحباً بك',
@@ -52,6 +73,7 @@ function formatCountdown(expiresAt: string, now: number): string | null {
 export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
   const navigate = useNavigate();
   const tenantId = useAppStore((s) => s.tenantId);
+  const heroTitleStyle = useHeroTitleStyle();
   const slides = useMemo(() => buildSlides(hero ?? null, banners ?? []), [hero, banners]);
   const [idx, setIdx] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -78,11 +100,17 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
       const ctaLink = heroCtaLink(h);
       if (h.imageUrl) {
         return (
-          <div className={`relative rounded-2xl overflow-hidden bg-gray-100 ${SLIDE_HEIGHT}`}>
-            <img src={h.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/40 p-6 text-white text-center">
-              <h1 className="text-2xl md:text-4xl font-bold">{h.title}</h1>
-              {h.subtitle && <p className="text-lg mt-2 opacity-90">{h.subtitle}</p>}
+          <div className={`relative ${SLIDE_CONTAINER}`}>
+            <img
+              src={h.imageUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover object-center"
+              style={{ objectFit: 'cover', objectPosition: 'center' }}
+            />
+            <div className="absolute inset-x-0 bottom-0 h-2/3 z-10 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 z-10 flex flex-col justify-end items-end text-end p-4 md:p-6 pb-4 md:pb-6">
+              <h1 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{h.title}</h1>
+              {h.subtitle && <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{h.subtitle}</p>}
               {h.ctaText && ctaLink && (
                 <button
                   type="button"
@@ -104,9 +132,9 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
         );
       }
       return (
-        <div className={`rounded-2xl bg-gradient-to-b from-primary/5 to-transparent p-6 md:p-8 flex flex-col justify-center ${SLIDE_HEIGHT}`}>
-          <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2">{h.title}</h1>
-          <p className="text-lg text-gray-600 mb-4">{h.subtitle}</p>
+        <div className={`${SLIDE_CONTAINER} flex flex-col justify-center p-4 md:p-8 bg-gradient-to-b from-primary/5 to-transparent`}>
+          <h1 className="font-bold text-gray-900 mb-2 text-base md:text-2xl" style={heroTitleStyle}>{h.title}</h1>
+          <p className="text-sm md:text-base text-gray-600 mb-4">{h.subtitle}</p>
           {h.ctaText && ctaLink && (
             <button
               type="button"
@@ -118,7 +146,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
                 if (ctaLink.startsWith('/')) navigate(ctaLink);
                 else window.location.href = ctaLink;
               }}
-              className="inline-block w-fit px-6 py-2 rounded-full bg-primary text-white font-medium hover:opacity-90 transition-opacity"
+              className="inline-block w-fit px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:opacity-90 transition-opacity"
             >
               {h.ctaText}
             </button>
@@ -131,36 +159,44 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
     const showCountdown = b.showCountdown !== false && b.expiresAt;
     const countdownStr = showCountdown && b.expiresAt ? formatCountdown(b.expiresAt, now) : null;
     const content = (
-      <div className={`relative rounded-2xl overflow-hidden bg-gray-100 ${SLIDE_HEIGHT}`}>
-        <img src={b.imageUrl} alt={b.title ?? ''} className="absolute inset-0 w-full h-full object-cover" />
+      <div className={`relative ${SLIDE_CONTAINER}`}>
+        <img
+          src={b.imageUrl}
+          alt={b.title ?? ''}
+          className="absolute inset-0 w-full h-full object-cover object-center"
+          style={{ objectFit: 'cover', objectPosition: 'center' }}
+        />
         {countdownStr && (
-          <div className="absolute top-3 start-3 z-10">
+          <div className="absolute top-3 start-3 z-20">
             <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm">
               ينتهي خلال {countdownStr}
             </span>
           </div>
         )}
         {(b.title || b.subtitle || b.ctaText) && (
-          <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/30 p-6 text-white text-center">
-            {b.title && <h2 className="text-xl md:text-2xl font-bold">{b.title}</h2>}
-            {b.subtitle && <p className="text-sm md:text-base mt-1">{b.subtitle}</p>}
-            {b.ctaText && href && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (tenantId && !href.startsWith('/')) {
-                    const type = href.includes('wa.me') ? 'whatsapp' : href.startsWith('tel:') ? 'call' : 'cta';
-                    trackLead(tenantId, type);
-                  }
-                  if (href.startsWith('/')) navigate(href);
-                  else window.location.href = href;
-                }}
-                className={`mt-3 ${CTA_CLASS}`}
-              >
-                {b.ctaText}
-              </button>
-            )}
-          </div>
+          <>
+            <div className="absolute inset-x-0 bottom-0 h-2/3 z-10 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 z-10 flex flex-col justify-end items-end text-end p-4 md:p-6 pb-4 md:pb-6">
+              {b.title && <h2 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{b.title}</h2>}
+              {b.subtitle && <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{b.subtitle}</p>}
+              {b.ctaText && href && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tenantId && !href.startsWith('/')) {
+                      const type = href.includes('wa.me') ? 'whatsapp' : href.startsWith('tel:') ? 'call' : 'cta';
+                      trackLead(tenantId, type);
+                    }
+                    if (href.startsWith('/')) navigate(href);
+                    else window.location.href = href;
+                  }}
+                  className={`mt-2 md:mt-3 ${CTA_CLASS}`}
+                >
+                  {b.ctaText}
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
     );
@@ -168,7 +204,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative w-full max-w-full">
       {renderSlide()}
       {slides.length > 1 && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">

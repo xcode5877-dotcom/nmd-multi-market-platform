@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
@@ -31,6 +32,8 @@ function CampaignBanner({ tenantId }: { tenantId: string }) {
   );
 }
 
+const isOtherCategory = (id: string) => id === 'other';
+
 export default function CategoryPage() {
   const { categoryId } = useParams<{ categoryId: string }>();
   const navigate = useNavigate();
@@ -43,16 +46,16 @@ export default function CategoryPage() {
   const { data: menu } = useQuery({
     queryKey: ['menu', tenantId],
     queryFn: () => api.getMenu(tenantId),
-    enabled: !!tenantId,
+    enabled: !!tenantId && !isOtherCategory(categoryId ?? ''),
   });
 
-  const category = menu?.find((c) => c.id === categoryId);
+  const category = isOtherCategory(categoryId ?? '') ? { id: 'other', name: 'أخرى', parentId: null } : menu?.find((c) => c.id === categoryId);
   const subcategories = (menu ?? []).filter((c) => c.parentId === categoryId);
   const isMainCategory = !category?.parentId || category.parentId === '';
   const effectiveCategoryId = selectedSubId || categoryId;
 
   const needsAllProducts = isMainCategory && subcategories.length > 0 && !selectedSubId;
-  const products = useQuery({
+  const productsForCategory = useQuery({
     queryKey: ['products', tenantId, needsAllProducts ? 'all' : effectiveCategoryId],
     queryFn: () =>
       needsAllProducts
@@ -61,31 +64,52 @@ export default function CategoryPage() {
             return all.filter((p) => p.categoryId === categoryId || subIds.has(p.categoryId));
           })
         : api.getProducts(tenantId, effectiveCategoryId!),
-    enabled: !!tenantId && (needsAllProducts || !!effectiveCategoryId),
+    enabled: !!tenantId && (needsAllProducts || !!effectiveCategoryId) && !isOtherCategory(categoryId ?? ''),
   });
 
-  const allProducts = products.data ?? [];
-  const isLoading = products.isLoading;
+  const productsOther = useQuery({
+    queryKey: ['products', tenantId, 'other'],
+    queryFn: async () => {
+      const [all, menuData] = await Promise.all([api.getProducts(tenantId), api.getMenu(tenantId)]);
+      const mainCatIds = new Set((menuData ?? []).filter((c) => !c.parentId || c.parentId === '').map((c) => c.id));
+      return all.filter((p) => !p.categoryId || !mainCatIds.has(p.categoryId));
+    },
+    enabled: !!tenantId && isOtherCategory(categoryId ?? ''),
+  });
+
+  const allProducts = isOtherCategory(categoryId ?? '') ? (productsOther.data ?? []) : (productsForCategory.data ?? []);
+  const isLoading = isOtherCategory(categoryId ?? '') ? productsOther.isLoading : productsForCategory.isLoading;
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns', tenantId],
     queryFn: () => api.getCampaigns(tenantId),
     enabled: !!tenantId,
   });
 
+  const backHref = `/${tenantSlug || tenantId}`;
   if (isLoading) {
     return (
-      <div className="max-w-6xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-4" style={{ ['--color-primary' as string]: '#00A0A0' }}>
+        <Link to={backHref} className="inline-flex items-center gap-1 text-sm font-medium text-[#00A0A0] hover:text-[#008080] mb-4">
+          <ChevronRight className="w-4 h-4" aria-hidden />
+          العودة للمتجر
+        </Link>
         <Skeleton className="h-8 w-48 mb-6" />
         <ProductGridSkeleton count={6} columns="2-3-4" />
       </div>
     );
   }
 
+  const showSubcategories = isMainCategory && subcategories.length > 0 && !isOtherCategory(categoryId ?? '');
+
   if (allProducts.length === 0) {
     return (
-      <div className="max-w-6xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-4" style={{ ['--color-primary' as string]: '#00A0A0' }}>
+        <Link to={backHref} className="inline-flex items-center gap-1 text-sm font-medium text-[#00A0A0] hover:text-[#008080] mb-4">
+          <ChevronRight className="w-4 h-4" aria-hidden />
+          العودة للمتجر
+        </Link>
         <h1 className="text-2xl font-bold text-gray-900 mb-4">{category?.name ?? 'المنتجات'}</h1>
-        {isMainCategory && subcategories.length > 0 && (
+        {showSubcategories && (
           <div className="flex flex-wrap gap-2 mb-6">
             <button
               type="button"
@@ -126,8 +150,13 @@ export default function CategoryPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
+      style={{ ['--color-primary' as string]: '#00A0A0' }}
     >
       <CampaignBanner tenantId={tenantId} />
+      <Link to={backHref} className="inline-flex items-center gap-1 text-sm font-medium text-[#00A0A0] hover:text-[#008080] mb-4">
+        <ChevronRight className="w-4 h-4" aria-hidden />
+        العودة للمتجر
+      </Link>
       <motion.h1
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -135,7 +164,7 @@ export default function CategoryPage() {
       >
         {category?.name ?? 'المنتجات'}
       </motion.h1>
-      {isMainCategory && subcategories.length > 0 && (
+      {showSubcategories && (
         <div className="flex flex-wrap gap-2 mb-6">
           <button
             type="button"
@@ -178,7 +207,7 @@ export default function CategoryPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {allProducts.map((prod, i) => (
             <motion.div
               key={prod.id}

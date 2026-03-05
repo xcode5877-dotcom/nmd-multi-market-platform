@@ -1,20 +1,114 @@
+# nmd.marketing — Production: web-gateway (Nginx + 4 frontends) + mock-api
+#
+# DATABASE PERSISTENCE (no data loss on restart/rebuild):
+# - PostgreSQL data is stored in named volume "postgres_data" on the host. Orders, Customers,
+#   and all DB-backed data persist across "docker compose down/up" and "docker compose build".
+# - When STORAGE_DRIVER=json, data.json and orders.json are stored under ./data (host) via
+#   DATA_FILE and ORDERS_FILE so they also persist.
+# Stopping or restarting containers does NOT wipe Order or Customer tables.
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nmd
+      POSTGRES_PASSWORD: nmd
+      POSTGRES_DB: nmd
+    volumes:
+      # Persistent volume: DB data lives on host, not inside container
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nmd -d nmd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_PUBLIC_ORIGIN: "https://nmd.marketing"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # SSL certificates from host (Certbot)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Webroot for Certbot HTTP-01 renewal
+      - /var/www/certbot:/var/www/certbot
+    depends_on:
+      - mock-api
+    restart: unless-stopped
+
+  whatsapp-service:
+    build:
+      context: apps/whatsapp-service
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    shm_size: '2gb'
+    privileged: true
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      PORT: "3000"
+      WA_SESSION_PATH: "/app/session"
+      PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
+      WA_API_KEY: "your_secret_key_here"
+      DEBUG: "whatsapp-web.js:*" # لتفعيل سجلات إضافية من المكتبة نفسها
+      DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
+    volumes:
+      - whatsapp_session:/app/session
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    restart: unless-stopped
+
   mock-api:
     build:
       context: .
       dockerfile: Dockerfile.mock-api
+      args:
+        PRISMA_REBUILD: "postgresql"
     ports:
-      - "5190:5190"
+      # External port 3001 (host) → container port 5190 (API runs on 5190 inside container)
+      - "3001:5190"
+    # Bypass entrypoint (no prisma migrate deploy on startup); run app only
+    entrypoint: ["node", "dist/index.js"]
+    environment:
+      PORT: "5190"
+      # Use database by default in Docker so Orders/Customers persist in postgres_data volume
+      STORAGE_DRIVER: "${STORAGE_DRIVER:-db}"
+      DATA_FILE: "/data/data.json"
+      # When STORAGE_DRIVER=json, orders persist on host in ./data/orders.json
+      ORDERS_FILE: "/data/orders.json"
+      # Use service name "postgres" and internal port 5432; schema=public for Prisma
+      DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
+      PUBLIC_URL: "https://nmd.marketing/api"
+      # WhatsApp gateway: mock-api sends OTP via this URL (x-api-key required)
+      WHATSAPP_GATEWAY_URL: "http://whatsapp-service:3000"
+      WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
+    volumes:
+      # Persistent: JSON state (data.json, orders.json when using json driver) on host ./data
+      - ./data:/data
+      # Persistent: uploaded images
+      - uploads_data:/app/apps/mock-api/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  storefront:
-    build:
-      context: .
-      dockerfile: Dockerfile.storefront
-      args:
-        VITE_MOCK_API_URL: "http://147.93.120.244:5190"
-    ports:
-      - "80:80"
-    depends_on:
-      - mock-api
-    restart: unless-stopped
+volumes:
+  # PostgreSQL data; survives down/up and rebuild. Do not remove unless intentionally resetting DB.
+  postgres_data:
+  uploads_data:
+  # WhatsApp session; survives restarts so QR code is not required again
+  whatsapp_session:

@@ -44,10 +44,10 @@ function hashCode(code: string): string {
 }
 
 function generateOtp(): string {
-  return String(randomInt(1000, 9999));
+  return String(randomInt(100000, 999999));
 }
 
-export function createOtp(phone: string): { ok: true; devCode?: string } | { ok: false; error: string; code: string } {
+export function createOtp(phone: string): { ok: true; codeForSending: string; devCode?: string } | { ok: false; error: string; code: string } {
   const key = normalizePhone(phone);
   if (!key || key.length < 9) return { ok: false, error: 'Invalid phone', code: 'INVALID_PHONE' };
 
@@ -75,12 +75,15 @@ export function createOtp(phone: string): { ok: true; devCode?: string } | { ok:
     lockedUntil: 0,
   });
 
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[dev] OTP for ${phone}: ${code} (expires in 5 min)`);
-    return { ok: true, devCode: code };
+  // In dev or when MOCK_OTP=1 (no real SMS), show OTP in console and return for toast
+  const isDevOrMock =
+    process.env.NODE_ENV !== 'production' || process.env.MOCK_OTP === '1' || process.env.MOCK_OTP === 'true';
+  if (isDevOrMock) {
+    console.log(`[OTP] ${phone} (normalized: ${key}) → code: ${code} (expires in 5 min)`);
+    return { ok: true, codeForSending: code, devCode: code };
   }
 
-  return { ok: true };
+  return { ok: true, codeForSending: code };
 }
 
 export type VerifyResult =

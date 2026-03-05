@@ -72,7 +72,9 @@ export default function OrderSuccessPage() {
   }
 
   const handleWhatsApp = () => {
-    if (waUrl) window.open(waUrl, '_blank');
+    if (!waUrl || !waUrl.startsWith('https://wa.me/')) return;
+    const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) window.location.href = waUrl;
   };
 
   return (

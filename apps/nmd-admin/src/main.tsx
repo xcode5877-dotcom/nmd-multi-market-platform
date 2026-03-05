@@ -10,12 +10,19 @@ if (!import.meta.env.VITE_MOCK_API_URL) {
   initMock();
 }
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    const base = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '') || '';
+    navigator.serviceWorker.register(`${base}/sw.js`).catch(() => {});
+  });
+}
+
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename="/market-admin">
         <App />
       </BrowserRouter>
     </QueryClientProvider>

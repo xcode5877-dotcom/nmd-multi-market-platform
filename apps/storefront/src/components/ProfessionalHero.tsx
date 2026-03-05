@@ -1,8 +1,11 @@
+import { useState, useEffect, useMemo } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
-import { trackProfessionalContact } from '../lib/trackLead';
+import { postProfessionalLead } from '../lib/trackLead';
+import { isStoreOpen, type StorefrontHero, type StorefrontBanner } from '@nmd/core';
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -20,33 +23,185 @@ function PhoneIcon({ className }: { className?: string }) {
   );
 }
 
-interface ProfessionalHeroProps {
-  /** Tenant from API - name, about, branding (hero.title) come from here (never hardcoded) */
-  tenant: { id?: string; name?: string; branding?: { logoUrl?: string; hero?: { title?: string } }; about?: string; officeHours?: string };
+const SLIDE_CONTAINER =
+  'w-full overflow-hidden rounded-t-2xl bg-gray-100 h-[220px] md:h-[320px] md:min-h-[320px]';
+
+type HeroSlide = { type: 'hero'; hero: StorefrontHero };
+type BannerSlide = { type: 'banner'; banner: StorefrontBanner };
+type Slide = HeroSlide | BannerSlide;
+
+function buildSlides(hero: StorefrontHero | null | undefined, banners: StorefrontBanner[] | null | undefined): Slide[] {
+  const slides: Slide[] = [];
+  if (hero && (hero.title || hero.subtitle || hero.imageUrl)) {
+    slides.push({ type: 'hero', hero });
+  }
+  const activeBanners = (banners ?? [])
+    .filter((b) => (b.isActive ?? b.enabled ?? true) && b.imageUrl)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  activeBanners.forEach((banner) => slides.push({ type: 'banner', banner }));
+  return slides;
 }
 
-export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
-  /** hero.title and name are synced in API; prefer hero.title for display when set */
+interface ProfessionalHeroProps {
+  tenant: {
+    id?: string;
+    name?: string;
+    branding?: { logoUrl?: string; hero?: { title?: string } };
+    about?: string;
+    officeHours?: string;
+    openTime?: string;
+    closeTime?: string;
+    forceClosed?: boolean;
+  };
+  /** Same data as TopHeroCarousel: hero + banners from branding */
+  hero?: StorefrontHero | null;
+  banners?: StorefrontBanner[] | null;
+}
+
+const FALLBACK_OPEN = '08:00';
+const FALLBACK_CLOSE = '17:00';
+
+export function ProfessionalHero({ tenant, hero: heroProp, banners }: ProfessionalHeroProps) {
   const name = tenant?.branding?.hero?.title || tenant?.name || '';
   const about = tenant?.about ?? '';
   const logoUrl = tenant?.branding?.logoUrl;
-  const officeHours = tenant?.officeHours;
+  const openTime = tenant?.openTime ?? FALLBACK_OPEN;
+  const closeTime = tenant?.closeTime ?? FALLBACK_CLOSE;
+  const tenantForStatus = {
+    openTime: tenant?.openTime,
+    closeTime: tenant?.closeTime,
+    forceClosed: tenant?.forceClosed,
+    operationalStatus: (tenant as { operationalStatus?: 'open' | 'closed' | 'busy' })?.operationalStatus,
+    businessHours: (tenant as { businessHours?: import('@nmd/core').BusinessHours })?.businessHours,
+  };
+  const open = isStoreOpen(tenantForStatus as Parameters<typeof isStoreOpen>[0]);
   const { branding } = useTheme();
   const storeTenantId = useAppStore((s) => s.tenantId);
   const tenantId = (tenant as { id?: string })?.id ?? storeTenantId;
   const { customer } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
+  const trackLeadMutation = useMutation({
+    mutationFn: ({ tenantId, contactType, customerId, customerName, customerPhone }: { tenantId: string; contactType: 'whatsapp' | 'call'; customerId?: string; customerName?: string; customerPhone?: string }) =>
+      postProfessionalLead(tenantId, contactType, customerId, customerName, customerPhone),
+  });
   const whatsapp = branding?.whatsappPhone;
   const phone = branding?.phone ?? whatsapp;
   const waUrl = whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, '')}` : null;
   const telUrl = phone ? `tel:${phone}` : null;
+
+  const slides = useMemo(() => buildSlides(heroProp ?? null, banners ?? []), [heroProp, banners]);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % slides.length), 5000);
+    return () => clearInterval(t);
+  }, [slides.length]);
+
+  const hasSlides = slides.length > 0;
+  const currentSlide = hasSlides ? slides[idx] : null;
+
+  const renderSlide = () => {
+    if (!currentSlide) return null;
+    if (currentSlide.type === 'hero') {
+      const h = currentSlide.hero;
+      const imgUrl = h.imageUrl;
+      const showContent = h.title || h.subtitle;
+      return (
+        <div className={`relative ${SLIDE_CONTAINER}`}>
+          {imgUrl ? (
+            <img
+              src={imgUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover object-center"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5" />
+          )}
+          <div className="absolute inset-0 bg-black/40 z-[1]" />
+          {showContent && (
+            <div className="absolute inset-0 z-[2] flex flex-col justify-center items-center text-center p-6">
+              {h.title && (
+                <h1 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
+                  {h.title}
+                </h1>
+              )}
+              {h.subtitle && (
+                <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
+                  {h.subtitle}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+    const b = currentSlide.banner;
+    const showContent = b.title || b.subtitle;
+    return (
+      <div className={`relative ${SLIDE_CONTAINER}`}>
+        <img
+          src={b.imageUrl}
+          alt={b.title ?? ''}
+          className="absolute inset-0 w-full h-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-black/40 z-[1]" />
+        {showContent && (
+          <div className="absolute inset-0 z-[2] flex flex-col justify-center items-center text-center p-6">
+            {b.title && (
+              <h2 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
+                {b.title}
+              </h2>
+            )}
+            {b.subtitle && (
+              <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
+                {b.subtitle}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section
       className="mb-10 rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm"
       dir="rtl"
     >
-      {/* Profile header */}
+      {/* Hero / Banner area: same data as TopHeroCarousel, with overlay + centered title & description */}
+      {hasSlides ? (
+        <div className="relative w-full">
+          {renderSlide()}
+          {slides.length > 1 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+              {slides.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setIdx(i)}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors shadow-sm ${i === idx ? 'bg-primary ring-2 ring-white/50' : 'bg-white/70 hover:bg-white'}`}
+                  aria-label={`Slide ${i + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Fallback: no banners – high-quality placeholder with store name */
+        <div className={`${SLIDE_CONTAINER} relative flex flex-col justify-center items-center text-center p-8 bg-gradient-to-br from-gray-800 to-gray-900`}>
+          <div className="absolute inset-0 bg-black/30 z-[1]" />
+          <div className="relative z-[2] text-white">
+            <h1 className="text-2xl md:text-4xl font-bold [text-shadow:0_2px_8px_rgba(0,0,0,0.4)]">
+              {name || 'متجرك'}
+            </h1>
+            <p className="mt-2 text-sm md:text-base text-white/90">
+              مرحباً بك
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Profile + CTA block */}
       <div className="p-6 md:p-8 bg-gradient-to-b from-gray-50 to-white">
         <div className="flex flex-col md:flex-row gap-6 items-start">
           {logoUrl && (
@@ -55,21 +210,32 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{name}</h1>
-            <div
-              className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: about }}
-            />
-            {officeHours && (
-              <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10">
-                <p className="text-sm font-medium text-gray-700">ساعات العمل</p>
-                <p className="text-sm text-gray-600 mt-0.5">{officeHours}</p>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">{name}</h2>
+            {about && about.trim() !== '' && (
+              <div className="mt-3 pt-4 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">نبذة عن المكتب</h3>
+                <div
+                  className="text-gray-600 leading-relaxed text-[15px] font-normal max-w-none prose prose-sm prose-p:my-1.5 prose-p:first:mt-0 prose-p:last:mb-0"
+                  dangerouslySetInnerHTML={{ __html: about }}
+                />
               </div>
             )}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
+                  open ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${open ? 'bg-green-500' : 'bg-red-500'}`} />
+                {open ? 'مفتوح' : 'مغلق'}
+              </span>
+              <span className="text-sm text-gray-600">
+                ساعات العمل: {openTime} – {closeTime}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Primary CTA: WhatsApp + Call - must await tracking before redirect */}
         <div className="mt-6 flex flex-wrap gap-3">
           {waUrl && (
             <button
@@ -77,8 +243,8 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
               onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                const doRedirect = async (c?: { id: string }) => {
-                  await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                const doRedirect = async (c?: { id: string; name?: string }) => {
+                  await trackLeadMutation.mutateAsync({ tenantId, contactType: 'whatsapp', customerId: c?.id, customerName: c?.name, customerPhone: (c as { phone?: string })?.phone });
                   window.open(waUrl, '_blank', 'noopener,noreferrer');
                 };
                 if (customer) {
@@ -99,8 +265,8 @@ export function ProfessionalHero({ tenant }: ProfessionalHeroProps) {
               onClick={(e) => {
                 e.preventDefault();
                 if (!tenantId) return;
-                const doRedirect = async (c?: { id: string }) => {
-                  await trackProfessionalContact(tenantId, 'call', c?.id);
+                const doRedirect = async (c?: { id: string; name?: string }) => {
+                  await trackLeadMutation.mutateAsync({ tenantId, contactType: 'call', customerId: c?.id, customerName: c?.name, customerPhone: (c as { phone?: string })?.phone });
                   window.location.href = telUrl;
                 };
                 if (customer) {

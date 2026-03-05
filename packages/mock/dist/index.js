@@ -1,12 +1,13 @@
 import {
   createTenant,
+  deleteTenant,
   getTenantById,
   getTenantBySlug,
   listEnabledTenants,
   listTenants,
   toggleTenant,
   updateTenant
-} from "./chunk-PJZ2GRLW.js";
+} from "./chunk-RILA36A3.js";
 import {
   deleteOptionGroup,
   deleteOptionItem,
@@ -536,8 +537,12 @@ function registryToTenant(r) {
     slug: r.slug,
     type,
     storeType: t.storeType ?? "RESTAURANT",
+    businessType: t.businessType,
     about: t.about,
     officeHours: t.officeHours,
+    openTime: t.openTime ?? "08:00",
+    closeTime: t.closeTime ?? "17:00",
+    forceClosed: t.forceClosed ?? false,
     appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? "GENERAL",
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
@@ -710,13 +715,31 @@ var MockApiClient = class {
       return null;
     }
   }
-  async getProducts(tenantId, categoryId) {
+  async getProducts(tenantId, categoryId, options) {
+    const includeArchived = options?.includeArchived === true;
+    const getSortOrder = (p) => {
+      const v = p.sortOrder;
+      return typeof v === "number" ? v : 999;
+    };
+    const isProductArchived = (p) => p.isArchived === true;
+    const filterAndSort = (list) => {
+      const safeList = Array.isArray(list) ? list.filter((p) => p != null && typeof p === "object") : [];
+      let out = includeArchived ? safeList : safeList.filter((p) => !isProductArchived(p));
+      out = categoryId ? out.filter((p) => p.categoryId === categoryId) : out;
+      out = [...out].sort((a, b) => {
+        const soA = getSortOrder(a);
+        const soB = getSortOrder(b);
+        if (soA !== soB) return soA - soB;
+        const ca = String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
+        return ca !== 0 ? ca : String(a.name ?? "").localeCompare(String(b.name ?? ""));
+      });
+      return out;
+    };
     if (this.useApi) {
       try {
         const catalog = await apiFetch(`/catalog/${tenantId}`);
-        let products = catalog?.products ?? [];
-        if (categoryId) products = products.filter((p) => p.categoryId === categoryId);
-        return products;
+        const products = catalog?.products ?? [];
+        return filterAndSort(products);
       } catch {
         return [];
       }
@@ -725,10 +748,7 @@ var MockApiClient = class {
     try {
       const catalog = getCatalog(tenantId);
       const products = catalog?.products ?? [];
-      if (categoryId) {
-        return products.filter((p) => p.categoryId === categoryId);
-      }
-      return products;
+      return filterAndSort(products);
     } catch {
       return [];
     }
@@ -915,15 +935,17 @@ var MockApiClient = class {
       return null;
     }
   }
-  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). */
-  async listLeads() {
+  /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). Pass tenantSlug for store admin to filter by tenant. */
+  async listLeads(tenantSlug) {
     if (!this.useApi) return [];
-    return apiFetch("/leads");
+    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : "";
+    return apiFetch(`/leads${q}`);
   }
   /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
-  async listCustomers() {
+  async listCustomers(tenantSlug) {
     if (!this.useApi) return [];
-    return apiFetch("/customers");
+    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : "";
+    return apiFetch(`/customers${q}`);
   }
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
   async createTenantAdminForTenant(tenantId, input) {
@@ -940,7 +962,7 @@ var MockApiClient = class {
     if (this.useApi) {
       return apiFetch("/tenants");
     }
-    const { listTenants: lt } = await import("./tenant-registry-DQY26ZFB.js");
+    const { listTenants: lt } = await import("./tenant-registry-O6KNRXNI.js");
     return lt();
   }
   async createTenant(input) {
@@ -950,7 +972,7 @@ var MockApiClient = class {
         body: JSON.stringify(input)
       });
     }
-    const { createTenant: ct } = await import("./tenant-registry-DQY26ZFB.js");
+    const { createTenant: ct } = await import("./tenant-registry-O6KNRXNI.js");
     return ct(input);
   }
   /** Create tenant scoped to a market. Uses POST /markets/:marketId/tenants. */
@@ -961,7 +983,7 @@ var MockApiClient = class {
         body: JSON.stringify(input)
       });
     }
-    const { createTenant: ct } = await import("./tenant-registry-DQY26ZFB.js");
+    const { createTenant: ct } = await import("./tenant-registry-O6KNRXNI.js");
     return ct({ ...input, marketId });
   }
   async updateTenant(id, updates) {
@@ -972,7 +994,7 @@ var MockApiClient = class {
       });
       return res;
     }
-    const { updateTenant: ut } = await import("./tenant-registry-DQY26ZFB.js");
+    const { updateTenant: ut } = await import("./tenant-registry-O6KNRXNI.js");
     return ut(id, updates);
   }
   async toggleTenant(id) {
@@ -983,8 +1005,16 @@ var MockApiClient = class {
         return null;
       }
     }
-    const { toggleTenant: tt } = await import("./tenant-registry-DQY26ZFB.js");
+    const { toggleTenant: tt } = await import("./tenant-registry-O6KNRXNI.js");
     return tt(id);
+  }
+  async deleteTenant(id) {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${id}`, { method: "DELETE" });
+      return;
+    }
+    const { deleteTenant: dt } = await import("./tenant-registry-O6KNRXNI.js");
+    return dt(id);
   }
   async getTenantById(id) {
     if (this.useApi) {
@@ -1078,7 +1108,7 @@ var MockApiClient = class {
       return apiFetch(`/markets/${marketId}/orders`);
     }
     const { listOrdersByTenant: listOrdersByTenant2 } = await import("./orders-store-QOY4SZWQ.js");
-    const { listTenants: listTenants2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const { listTenants: listTenants2 } = await import("./tenant-registry-O6KNRXNI.js");
     const tenantIds = listTenants2().filter((t) => t.marketId === marketId).map((t) => t.id);
     const all = [];
     for (const tid of tenantIds) {
@@ -1155,12 +1185,64 @@ var MockApiClient = class {
       optionItems: catalog.optionItems ?? []
     });
   }
-  async listOrdersByTenant(tenantId) {
+  async listOrdersByTenant(tenantId, options) {
     if (this.useApi) {
-      return apiFetch(`/tenants/${encodeURIComponent(tenantId)}/orders`);
+      const params = new URLSearchParams();
+      if (options?.from) params.set("from", options.from);
+      if (options?.to) params.set("to", options.to);
+      if (options?.search?.trim()) params.set("search", options.search.trim());
+      const qs = params.toString();
+      const url = `/tenants/${encodeURIComponent(tenantId)}/orders` + (qs ? `?${qs}` : "");
+      return apiFetch(url);
     }
     const { listOrdersByTenant: lot } = await import("./orders-store-QOY4SZWQ.js");
     return lot(tenantId);
+  }
+  async getTenantDashboardStats(tenantId, options) {
+    if (this.useApi) {
+      const params = new URLSearchParams();
+      if (options?.from) params.set("from", options.from);
+      if (options?.to) params.set("to", options.to);
+      const qs = params.toString();
+      const url = `/tenants/${encodeURIComponent(tenantId)}/dashboard-stats` + (qs ? `?${qs}` : "");
+      return apiFetch(url);
+    }
+    const { listOrdersByTenant: lot } = await import("./orders-store-QOY4SZWQ.js");
+    const orders = lot(tenantId);
+    const completed = orders.filter((o) => o.status === "DELIVERED" || o.status === "COMPLETED");
+    const nonCancelled = orders.filter((o) => o.status !== "CANCELLED");
+    const now = /* @__PURE__ */ new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const toMs = (d) => new Date(d).setHours(23, 59, 59, 999);
+    const fromMs = (d) => new Date(d).setHours(0, 0, 0, 0);
+    const ordersToday = completed.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs(todayStart) && t <= toMs(todayStart);
+    });
+    const ordersMonth = completed.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs(monthStart) && t <= toMs(monthEnd);
+    });
+    const sum = (arr) => arr.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const dailyRevenue = sum(ordersToday);
+    const monthlyRevenue = sum(ordersMonth);
+    const totalSales = sum(nonCancelled);
+    const tenant = getTenantById(tenantId);
+    const commissionPercent = tenant?.financialConfig?.commissionValue ?? 0;
+    const platformFee = Math.round(totalSales * (commissionPercent / 100) * 100) / 100;
+    const merchantBalance = Math.round((totalSales - platformFee) * 100) / 100;
+    return {
+      dailyRevenue,
+      monthlyRevenue,
+      orderCountToday: ordersToday.length,
+      orderCountMonth: ordersMonth.length,
+      totalSales,
+      platformFee,
+      merchantBalance,
+      platformCommissionPercent: commissionPercent
+    };
   }
   async updateOrderStatus(orderId, status) {
     if (this.useApi) {
@@ -1276,7 +1358,7 @@ var MockApiClient = class {
       });
       return;
     }
-    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-O6KNRXNI.js");
     const t = getTenantById(tenantId);
     if (t) updateTenant2(tenantId, { collections });
   }
@@ -1289,7 +1371,7 @@ var MockApiClient = class {
       });
       return;
     }
-    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-O6KNRXNI.js");
     const t = getTenantById(tenantId);
     if (t) updateTenant2(tenantId, { ...updates });
   }
@@ -1301,7 +1383,7 @@ var MockApiClient = class {
       });
       return;
     }
-    const { updateTenant: updateTenant2 } = await import("./tenant-registry-DQY26ZFB.js");
+    const { updateTenant: updateTenant2 } = await import("./tenant-registry-O6KNRXNI.js");
     const t = getTenantById(tenantId);
     if (t) updateTenant2(tenantId, { ...updates });
   }
@@ -1389,6 +1471,7 @@ export {
   deleteCampaign,
   deleteOptionGroup,
   deleteOptionItem,
+  deleteTenant,
   ensureTenantCatalog,
   getCampaign,
   getCatalog,

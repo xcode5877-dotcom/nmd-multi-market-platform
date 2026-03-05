@@ -1,12 +1,10 @@
 /**
  * Single source of truth for API base URL.
- * Set VITE_API_BASE_URL in .env.local (e.g. http://localhost:5190 for mock-api).
- * In dev, falls back to http://localhost:5190 if env is missing.
+ * Set VITE_API_BASE_URL in .env.development (dev) or build env (production). No hardcoded localhost.
  */
 export function getApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
   if (fromEnv && typeof fromEnv === 'string') return fromEnv.replace(/\/$/, '');
-  if (import.meta.env.DEV) return 'http://localhost:5190';
   return '';
 }
 

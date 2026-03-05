@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
@@ -24,8 +24,9 @@ export default function CheckoutPage() {
   const items = useCartStore((s) => s.getItems(tenantId));
   const clearCart = useCartStore((s) => s.clearCart);
   const addToast = useToast().addToast;
-  const { customer, logout } = useCustomerAuth();
+  const { customer, isLoading: authLoading, logout } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
+  const authModalOpenedOnMountRef = useRef(false);
 
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns', tenantId],
@@ -73,12 +74,16 @@ export default function CheckoutPage() {
   const addressText = needsAddress ? address.trim() : undefined;
 
   useEffect(() => {
-    if (customer?.phone && !customerPhone) setCustomerPhone(customer.phone);
-  }, [customer?.phone, customerPhone]);
+    if (!authLoading && !customer && !authModalOpenedOnMountRef.current) {
+      authModalOpenedOnMountRef.current = true;
+      openAuthModal();
+    }
+  }, [authLoading, customer, openAuthModal]);
 
   useEffect(() => {
-    if (customer?.name && !customerName) setCustomerName(customer.name);
-  }, [customer?.name, customerName]);
+    if (customer?.phone) setCustomerPhone(customer.phone);
+    if (customer?.name) setCustomerName(customer.name ?? '');
+  }, [customer?.phone, customer?.name]);
 
   const nameValid = customerName.trim().length > 0;
   const phoneValid = customerPhone.trim().length > 0;
@@ -103,8 +108,8 @@ export default function CheckoutPage() {
         fulfillmentType,
         paymentMethod: 'CASH',
         notes: notes.trim() || undefined,
-        customerName: customerName.trim() || undefined,
-        customerPhone: customerPhone.trim() || undefined,
+        customerName: (customer?.name ?? customerName.trim()) || undefined,
+        customerPhone: (customer?.phone ?? customerPhone.trim()) || undefined,
         deliveryAddress: addressText || undefined,
         delivery: {
           method: fulfillmentType,
@@ -119,9 +124,36 @@ export default function CheckoutPage() {
       const storePhone = tenant?.branding?.whatsappPhone ?? '';
       if (isValidWhatsAppPhone(storePhone) && tenant) {
         addToast('تم إنشاء الطلب بنجاح', 'success');
-        const message = buildWhatsAppMessage(order, tenant);
+        const itemsWithNames = priced.map((p) => ({
+          ...p.item,
+          totalPrice: p.finalPrice * p.item.quantity,
+          productName: p.item.productName ?? 'منتج',
+        }));
+        const orderForWa = {
+          ...order,
+          items: (order.items?.length ?? 0) > 0
+            ? order.items.map((oi, idx) => {
+                const fromPriced = priced[idx];
+                return {
+                  ...oi,
+                  productName: (oi as { productName?: string }).productName ?? fromPriced?.item.productName ?? 'منتج',
+                  quantity: oi.quantity ?? fromPriced?.item.quantity ?? 1,
+                  totalPrice: oi.totalPrice ?? (fromPriced ? fromPriced.finalPrice * fromPriced.item.quantity : 0),
+                };
+              })
+            : itemsWithNames,
+          total: order.total ?? totalWithDelivery,
+          deliveryAddress: order.deliveryAddress ?? addressText,
+          customerName: order.customerName ?? customerName.trim(),
+          customerPhone: order.customerPhone ?? customerPhone.trim(),
+          delivery: order.delivery ?? (fulfillmentType === 'DELIVERY' ? { method: 'DELIVERY', zoneName: selectedZone?.name, fee: deliveryFee, addressText } : undefined),
+        };
+        const message = buildWhatsAppMessage(orderForWa, tenant);
         const waUrl = buildWhatsAppUrl(storePhone, message);
-        window.open(waUrl, '_blank', 'noopener,noreferrer');
+        if (waUrl && waUrl.startsWith('https://wa.me/')) {
+          const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
+          if (!opened) window.location.href = waUrl;
+        }
       } else {
         addToast('تم حفظ الطلب، واتساب غير مُهيأ', 'info');
       }
@@ -132,9 +164,21 @@ export default function CheckoutPage() {
     },
   });
 
+  const isAuthenticated = !!customer;
+
   const handleSubmit = () => {
     setTouched({ name: true, phone: true, address: true, zone: true });
     if (!formValid) return;
+    if (!isAuthenticated) {
+      addToast('يرجى تسجيل الدخول لتأكيد الطلب', 'info');
+      openAuthModal({
+        onSuccess: (loggedInCustomer) => {
+          if (loggedInCustomer?.phone && !customerPhone.trim()) setCustomerPhone(loggedInCustomer.phone);
+          if (loggedInCustomer?.name && !customerName.trim()) setCustomerName(loggedInCustomer.name);
+        },
+      });
+      return;
+    }
     createOrder.mutate();
   };
 
@@ -171,44 +215,58 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[1fr,320px] gap-8">
-        {/* Form */}
-        <div className="space-y-6">
-          {/* Delivery method */}
-          <section>
-            <h2 className="text-sm font-medium text-gray-900 mb-3">طريقة الاستلام</h2>
-            <div className="flex gap-6">
-              {pickupMode && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fulfillment"
-                    value="PICKUP"
-                    checked={fulfillmentType === 'PICKUP'}
-                    onChange={() => setFulfillmentType('PICKUP')}
-                    className="w-4 h-4 text-primary border-neutral-300"
-                  />
-                  <span className="text-sm text-gray-700">استلام من المحل</span>
-                </label>
-              )}
-              {deliveryMode && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fulfillment"
-                    value="DELIVERY"
-                    checked={fulfillmentType === 'DELIVERY'}
-                    onChange={() => {
-                      setFulfillmentType('DELIVERY');
-                      setSelectedZoneId(zones[0]?.id ?? '');
-                    }}
-                    className="w-4 h-4 text-primary border-neutral-300"
-                  />
-                  <span className="text-sm text-gray-700">توصيل للمنزل</span>
-                </label>
-              )}
-            </div>
-          </section>
+      <div className="relative">
+        {!authLoading && !isAuthenticated && (
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-sm"
+            aria-hidden="false"
+          >
+            <p className="text-gray-700 font-medium mb-4">يرجى تسجيل الدخول للمتابعة وإتمام الطلب</p>
+            <Button onClick={() => openAuthModal()} className="shrink-0">
+              تسجيل الدخول
+            </Button>
+          </div>
+        )}
+        <div className="grid lg:grid-cols-[1fr,320px] gap-8">
+          {/* Form */}
+          <div className="space-y-6">
+            {/* Delivery method */}
+            <section>
+              <h2 className="text-sm font-medium text-gray-900 mb-3">طريقة الاستلام</h2>
+              <div className="flex gap-6">
+                {pickupMode && (
+                  <label className={`flex items-center gap-2 ${isAuthenticated ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="PICKUP"
+                      checked={fulfillmentType === 'PICKUP'}
+                      onChange={() => setFulfillmentType('PICKUP')}
+                      disabled={!isAuthenticated}
+                      className="w-4 h-4 text-primary border-neutral-300"
+                    />
+                    <span className="text-sm text-gray-700">استلام من المحل</span>
+                  </label>
+                )}
+                {deliveryMode && (
+                  <label className={`flex items-center gap-2 ${isAuthenticated ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="DELIVERY"
+                      checked={fulfillmentType === 'DELIVERY'}
+                      onChange={() => {
+                        setFulfillmentType('DELIVERY');
+                        setSelectedZoneId(zones[0]?.id ?? '');
+                      }}
+                      disabled={!isAuthenticated}
+                      className="w-4 h-4 text-primary border-neutral-300"
+                    />
+                    <span className="text-sm text-gray-700">توصيل للمنزل</span>
+                  </label>
+                )}
+              </div>
+            </section>
 
           {/* Customer info */}
           <section className="space-y-4">
@@ -242,6 +300,7 @@ export default function CheckoutPage() {
               onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               placeholder="الاسم الكامل"
               error={touched.name && !nameValid ? 'مطلوب' : undefined}
+              disabled={!isAuthenticated}
             />
             <Input
               label="رقم الجوال"
@@ -250,6 +309,7 @@ export default function CheckoutPage() {
               onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
               placeholder="05xxxxxxxx"
               error={touched.phone && !phoneValid ? 'مطلوب' : undefined}
+              disabled={!isAuthenticated}
             />
 
             {fulfillmentType === 'DELIVERY' && (
@@ -263,7 +323,8 @@ export default function CheckoutPage() {
                   onBlur={() => setTouched((t) => ({ ...t, address: true }))}
                   placeholder="الشارع، الحي، المدينة"
                   rows={3}
-                  className={`w-full ps-3 pe-3 py-2 rounded-[var(--radius)] border bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none ${
+                  disabled={!isAuthenticated}
+                  className={`w-full ps-3 pe-3 py-2 rounded-[var(--radius)] border bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none disabled:opacity-60 disabled:cursor-not-allowed ${
                     touched.address && !addressValid ? 'border-red-500' : 'border-gray-300'
                   }`}
                 />
@@ -281,7 +342,8 @@ export default function CheckoutPage() {
                 <select
                   value={selectedZoneId}
                   onChange={(e) => setSelectedZoneId(e.target.value)}
-                  className="w-full h-10 ps-3 pe-3 rounded-[var(--radius)] border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                  disabled={!isAuthenticated}
+                  className="w-full h-10 ps-3 pe-3 rounded-[var(--radius)] border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">اختر المنطقة</option>
                   {zones.map((z) => (
@@ -306,7 +368,8 @@ export default function CheckoutPage() {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="ملاحظات إضافية للطلب"
                 rows={3}
-                className="w-full ps-3 pe-3 py-2 rounded-[var(--radius)] border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                disabled={!isAuthenticated}
+                className="w-full ps-3 pe-3 py-2 rounded-[var(--radius)] border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
           </section>
@@ -428,9 +491,14 @@ export default function CheckoutPage() {
               loading={createOrder.isPending}
               disabled={!formValid || !canPlaceOrder}
             >
-              {canPlaceOrder ? 'إتمام الطلب' : 'لا نقبل الطلبات حالياً'}
+              {!canPlaceOrder
+                ? 'لا نقبل الطلبات حالياً'
+                : !isAuthenticated
+                  ? 'تسجيل الدخول وإتمام الطلب'
+                  : 'إتمام الطلب'}
             </Button>
           </div>
+        </div>
         </div>
       </div>
     </div>

@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 
-const DATA_FILE = join(process.cwd(), 'data.json');
-// packages/mock/data relative to apps/mock-api (cwd when running mock-api)
-const ORDERS_DIR = join(process.cwd(), '..', '..', 'packages', 'mock', 'data');
-const ORDERS_FILE = join(ORDERS_DIR, 'orders.json');
+const DATA_FILE = process.env.DATA_FILE || join(process.cwd(), 'data.json');
+// Orders: use ORDERS_FILE when set (e.g. /data/orders.json in Docker) so data persists on host volume
+const ORDERS_FILE = process.env.ORDERS_FILE || join(process.cwd(), '..', '..', 'packages', 'mock', 'data', 'orders.json');
+const ORDERS_DIR = dirname(ORDERS_FILE);
 const ORDERS_TMP = join(ORDERS_DIR, 'orders.tmp.json');
 
 export interface StorefrontHero {
@@ -58,6 +58,10 @@ export interface Market {
   isActive: boolean;
   sortOrder?: number;
   paymentCapabilities?: { cash: boolean; card: boolean };
+  /** Market-level categories (for storefront/market page). */
+  categories?: Array<{ id: string; name: string; slug: string; icon?: string; sortOrder?: number }>;
+  /** Stores/tenants in this market (for rich API response). */
+  stores?: RegistryTenant[];
 }
 
 /** Delivery provider mode: TENANT = own couriers; MARKET = market couriers; PICKUP_ONLY = no delivery */
@@ -121,8 +125,14 @@ export interface RegistryTenant {
   about?: string;
   /** Phone for call button. Falls back to whatsappPhone */
   phone?: string;
-  /** Office hours (ساعات العمل). For PROFESSIONAL stores */
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores. Legacy free-text. */
   officeHours?: string;
+  /** Daily open time HH:mm (e.g. 08:00). Fallback 08:00 when missing. */
+  openTime?: string;
+  /** Daily close time HH:mm (e.g. 17:00). Fallback 17:00 when missing. */
+  closeTime?: string;
+  /** Manual override: when true, store shows as CLOSED regardless of openTime/closeTime. */
+  forceClosed?: boolean;
   /** Appointment duration in minutes. For PROFESSIONAL booking */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores */
@@ -219,10 +229,12 @@ export interface AuditEvent {
   after?: unknown;
 }
 
-/** Global category (platform-level). Used on mall homepage. */
+/** Global category (platform-level). Used on mall homepage and GET /categories. Big Admin may use nameAr. */
 export interface GlobalCategory {
   id: string;
   title: string;
+  /** Arabic display name (Big Admin style); fallback to title when absent */
+  nameAr?: string;
   icon: string;
   isProfessional: boolean;
   sortOrder: number;
@@ -261,13 +273,10 @@ export interface MockData {
   leads: Lead[];
 }
 
+/** Initial categories: synced with Big Admin; no old FOOD/CLOTHING enum. GET /categories returns this. */
 const DEFAULT_GLOBAL_CATEGORIES: GlobalCategory[] = [
-  { id: 'cat-food', title: 'طعام', icon: '🍕', isProfessional: false, sortOrder: 0, legacyCode: 'FOOD' },
-  { id: 'cat-clothing', title: 'ملابس', icon: '🛍', isProfessional: false, sortOrder: 1, legacyCode: 'CLOTHING' },
-  { id: 'cat-groceries', title: 'خضار', icon: '🥬', isProfessional: false, sortOrder: 2, legacyCode: 'GROCERIES' },
-  { id: 'cat-butcher', title: 'ملحمة', icon: '🥩', isProfessional: false, sortOrder: 3, legacyCode: 'BUTCHER' },
-  { id: 'cat-offers', title: 'عروض', icon: '📦', isProfessional: false, sortOrder: 4, legacyCode: 'OFFERS' },
-  { id: 'cat-professional', title: 'خدمات مهنية', icon: '⚖️', isProfessional: true, sortOrder: 5, legacyCode: 'GENERAL' },
+  { id: 'cat-test', nameAr: 'اختبار الربط الجديد', title: 'اختبار', icon: '🔗', isProfessional: false, sortOrder: 0 },
+  { id: 'cat-test-2', nameAr: 'تصنيف ثانٍ للاختبار', title: 'اختبار ٢', icon: '📋', isProfessional: false, sortOrder: 1 },
 ];
 
 const DEFAULT: MockData = {
@@ -366,46 +375,61 @@ export function migrateCourier(c: Record<string, unknown>): Courier {
   return courier;
 }
 
+/** Parse JSON snapshot into MockData with migrations. Used by load() and by seed-from-JSON. */
+export function parseToMockData(parsed: Partial<MockData>): MockData {
+  const rawMarkets = (parsed.markets ?? []) as Array<Record<string, unknown>>;
+  const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t as unknown as Record<string, unknown>));
+  const markets = rawMarkets.map((m) => {
+    const market = migrateMarket(m as unknown as Record<string, unknown>) as Market & { categories?: Market['categories']; stores?: RegistryTenant[] };
+    market.categories = (m.categories as Market['categories']) ?? [];
+    market.stores = (m.stores ?? []).map((s: Record<string, unknown>) =>
+      migrateTenant({ ...s, marketId: m.id } as unknown as Record<string, unknown>)
+    );
+    return market;
+  });
+  const catalog: Record<string, TenantCatalog> = {};
+  for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
+    const c = cat as TenantCatalog;
+    catalog[tid] = {
+      categories: (c.categories ?? []).map((x) => migrateCategory(x as Record<string, unknown>)),
+      products: c.products ?? [],
+      optionGroups: c.optionGroups ?? [],
+      optionItems: c.optionItems ?? [],
+    };
+  }
+  const users = (parsed.users ?? []) as User[];
+  const auditEvents = (parsed.auditEvents ?? []) as AuditEvent[];
+  const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0
+    ? (parsed.globalCategories as GlobalCategory[])
+    : [...DEFAULT_GLOBAL_CATEGORIES];
+  return {
+    markets,
+    tenants,
+    users,
+    auditEvents,
+    catalog,
+    orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+    campaigns: parsed.campaigns ?? [],
+    delivery: (parsed.delivery && typeof parsed.delivery === 'object') ? parsed.delivery : {},
+    deliveryZones: (parsed.deliveryZones && typeof parsed.deliveryZones === 'object') ? parsed.deliveryZones : {},
+    couriers: (parsed.couriers ?? []).map((c) => migrateCourier(c as unknown as Record<string, unknown>)),
+    customers: (parsed.customers ?? []) as Customer[],
+    deliveryJobs: parsed.deliveryJobs ?? [],
+    templates: parsed.templates ?? [],
+    staff: parsed.staff ?? [],
+    globalCategories,
+    leads: parsed.leads ?? [],
+  };
+}
+
 function load(): MockData {
   try {
     if (existsSync(DATA_FILE)) {
       const raw = readFileSync(DATA_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<MockData>;
-      const markets = (parsed.markets ?? []).map((m) => migrateMarket(m as unknown as Record<string, unknown>));
-      const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t as unknown as Record<string, unknown>));
-      const catalog: Record<string, TenantCatalog> = {};
-      for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
-        const c = cat as TenantCatalog;
-        catalog[tid] = {
-          categories: (c.categories ?? []).map((x) => migrateCategory(x as Record<string, unknown>)),
-          products: c.products ?? [],
-          optionGroups: c.optionGroups ?? [],
-          optionItems: c.optionItems ?? [],
-        };
-      }
-      const users = (parsed.users ?? []) as User[];
-      const auditEvents = (parsed.auditEvents ?? []) as AuditEvent[];
-      const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0
-        ? (parsed.globalCategories as GlobalCategory[])
-        : [...DEFAULT_GLOBAL_CATEGORIES];
-      return {
-        markets,
-        tenants,
-        users,
-        auditEvents,
-        catalog,
-        orders: [],
-        campaigns: parsed.campaigns ?? [],
-        delivery: parsed.delivery ?? {},
-        deliveryZones: parsed.deliveryZones ?? {},
-        couriers: (parsed.couriers ?? []).map((c) => migrateCourier(c as unknown as Record<string, unknown>)),
-        customers: (parsed.customers ?? []) as Customer[],
-        deliveryJobs: parsed.deliveryJobs ?? [],
-        templates: parsed.templates ?? [],
-        staff: parsed.staff ?? [],
-        globalCategories,
-        leads: parsed.leads ?? [],
-      };
+      const data = parseToMockData(parsed);
+      data.orders = []; // orders live in ORDERS_FILE, not in main data.json
+      return data;
     }
   } catch {
     /* ignore */
@@ -413,8 +437,28 @@ function load(): MockData {
   return { ...DEFAULT, users: [], auditEvents: [] };
 }
 
+/** Load MockData from a JSON file path (e.g. for seeding DB from data.json). Preserves all IDs. */
+export function loadFromPath(filePath: string): MockData | null {
+  try {
+    if (!existsSync(filePath)) return null;
+    const raw = readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<MockData>;
+    return parseToMockData(parsed);
+  } catch (err) {
+    console.error('[store] loadFromPath failed:', filePath, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 function save(data: MockData): void {
-  writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  try {
+    const dir = dirname(DATA_FILE);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[store] Failed to persist data (check permissions, e.g. DATA_FILE path):', err instanceof Error ? err.message : err);
+    throw err;
+  }
 }
 
 // --- Orders: separate persistence in packages/mock/data/orders.json ---
@@ -619,12 +663,12 @@ export function getLeads(): Lead[] {
   return getData().leads ?? [];
 }
 
-export function appendLead(lead: Omit<Lead, 'id' | 'timestamp'>): Lead {
+export function appendLead(lead: Omit<Lead, 'id'> & { timestamp?: string }): Lead {
   const data = getData();
   const full: Lead = {
     ...lead,
     id: `lead-${crypto.randomUUID?.() ?? Date.now()}`,
-    timestamp: new Date().toISOString(),
+    timestamp: (lead.timestamp && lead.timestamp.trim()) ? lead.timestamp : new Date().toISOString(),
   };
   data.leads = [...(data.leads ?? []), full];
   persist();

@@ -1,0 +1,20 @@
+{
+  "name": "NOW Market",
+  "short_name": "NOW",
+  "description": "NOW Market — تسوق ومتاجر دبورية",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait-primary",
+  "background_color": "#00A0A0",
+  "theme_color": "#00A0A0",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

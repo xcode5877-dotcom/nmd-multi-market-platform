@@ -22,17 +22,7 @@ interface LeadRow {
 
 function formatDate(s?: string): string {
   if (!s) return '—';
-  try {
-    return new Date(s).toLocaleDateString('he-IL', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return s;
-  }
+  return new Date(s).toLocaleString();
 }
 
 export default function MerchantDashboardPage() {
@@ -81,7 +71,7 @@ export default function MerchantDashboardPage() {
         <div className="flex flex-col gap-3 items-center">
           <Button onClick={() => loginAsMerchant('buffalo')}>عرض تجريبي: تسجيل كتاجر (Buffalo)</Button>
           <Button variant="outline" onClick={() => loginAsMerchant('lawyer-falan')}>عرض تجريبي: محامي نمر (Lawyer)</Button>
-          <Link to="/" className="text-[#D97706] font-medium hover:underline flex items-center gap-1">
+          <Link to="/" className="text-primary font-medium hover:underline flex items-center gap-1">
             <ArrowLeft className="w-4 h-4" />
             العودة للأسواق
           </Link>
@@ -118,7 +108,7 @@ export default function MerchantDashboardPage() {
         <div className="space-y-6">
           <section className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="flex items-center gap-3 mb-2">
-              <Users className="w-8 h-8 text-[#D97706]" />
+              <Users className="w-8 h-8 text-primary" />
               <h2 className="text-lg font-semibold text-gray-900">إجمالي الزوار</h2>
             </div>
             <p className="text-3xl font-bold text-gray-900">{totalVisitors}</p>
@@ -127,7 +117,7 @@ export default function MerchantDashboardPage() {
 
           <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-              <Store className="w-5 h-5 text-[#D97706]" />
+              <Store className="w-5 h-5 text-primary" />
               <h2 className="font-semibold text-gray-900">آخر تسجيلات الدخول</h2>
             </div>
             <div className="divide-y divide-gray-100">
@@ -149,7 +139,7 @@ export default function MerchantDashboardPage() {
 
           <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-              <MessageCircle className="w-5 h-5 text-[#D97706]" />
+              <MessageCircle className="w-5 h-5 text-primary" />
               <h2 className="font-semibold text-gray-900">آخر الاستفسارات / الطلبات المهنية</h2>
             </div>
             <div className="divide-y divide-gray-100">

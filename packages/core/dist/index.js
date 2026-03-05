@@ -100,7 +100,30 @@ function getNowInStoreTz() {
   const [hour, minute] = timeStr.split(":").map(Number);
   return { dayIdx, hour: hour ?? 0, minute: minute ?? 0 };
 }
+var DEFAULT_OPEN = "08:00";
+var DEFAULT_CLOSE = "17:00";
+function parseTimeHHmm(s) {
+  if (!s || typeof s !== "string") return { h: 8, m: 0 };
+  const parts = s.trim().split(":").map(Number);
+  const h = Math.min(23, Math.max(0, parts[0] ?? 8));
+  const m = Math.min(59, Math.max(0, parts[1] ?? 0));
+  return { h, m };
+}
 function getOperationalStatus(tenant) {
+  if (tenant.forceClosed === true) return "closed";
+  const hasSimpleHours = tenant.openTime !== void 0 || tenant.closeTime !== void 0;
+  if (hasSimpleHours) {
+    const openTime = tenant.openTime ?? DEFAULT_OPEN;
+    const closeTime = tenant.closeTime ?? DEFAULT_CLOSE;
+    const { hour: hour2, minute: minute2 } = getNowInStoreTz();
+    const open = parseTimeHHmm(openTime);
+    const close = parseTimeHHmm(closeTime);
+    const nowMin2 = hour2 * 60 + minute2;
+    const openMin2 = open.h * 60 + open.m;
+    const closeMin2 = close.h * 60 + close.m;
+    if (nowMin2 >= openMin2 && nowMin2 < closeMin2) return "open";
+    return "closed";
+  }
   if (tenant.operationalStatus) return tenant.operationalStatus;
   const hours = tenant.businessHours;
   if (!hours || Object.keys(hours).length === 0) return "open";
@@ -158,18 +181,53 @@ function tenantBrandingToCssVars(branding) {
 function formatMoney(amount, opts = {}) {
   const {
     currency = "ILS",
-    locale = "he-IL",
-    minimumFractionDigits = 0,
+    minimumFractionDigits = 2,
     maximumFractionDigits = 2
   } = opts;
   const n = Number(amount);
-  if (Number.isNaN(n) || !Number.isFinite(n)) return "\u20AA 0";
-  return new Intl.NumberFormat(locale, {
+  if (Number.isNaN(n) || !Number.isFinite(n)) return "\u20AA0.00";
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     minimumFractionDigits,
     maximumFractionDigits
   }).format(n);
+}
+
+// src/utils/dates.ts
+function formatDateGregorian(date) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+}
+function formatDateTimeGregorian(date) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+}
+function formatTimeGregorian(date) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+function formatDateISO(date) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 // src/utils.ts
@@ -203,10 +261,12 @@ function formatAddonNameWithPlacement(name, p) {
 // src/utils/whatsapp.ts
 function buildWhatsAppMessage(order, tenant) {
   const lines = [];
-  lines.push(`*\u0637\u0644\u0628 \u062C\u062F\u064A\u062F - ${tenant.name}*`);
+  const orderId = typeof order?.id === "string" ? order.id : String(order?.id ?? "");
+  const createdAt = order?.createdAt ? new Date(order.createdAt) : /* @__PURE__ */ new Date();
+  lines.push(`*\u0637\u0644\u0628 \u062C\u062F\u064A\u062F - ${tenant?.name ?? ""}*`);
   lines.push("");
-  lines.push(`#${order.id.slice(0, 8)}`);
-  lines.push(`\u0627\u0644\u062A\u0627\u0631\u064A\u062E: ${new Date(order.createdAt).toLocaleDateString("ar-SA")}`);
+  lines.push(`#${orderId.slice(0, 8)}`);
+  lines.push(`\u0627\u0644\u062A\u0627\u0631\u064A\u062E: ${formatDateGregorian(createdAt)}`);
   lines.push("");
   const delivery = order.delivery;
   if (order.fulfillmentType === "DELIVERY" || delivery?.method === "DELIVERY") {
@@ -222,21 +282,28 @@ function buildWhatsAppMessage(order, tenant) {
   if (order.customerPhone) lines.push(`\u0627\u0644\u062C\u0648\u0627\u0644: ${order.customerPhone}`);
   lines.push("");
   lines.push("*\u0627\u0644\u0639\u0646\u0627\u0635\u0631:*");
-  for (const item of order.items) {
-    const optParts = item.selectedOptions.map((s) => {
-      const g = item.optionGroups.find((x) => x.id === s.optionGroupId);
+  const items = Array.isArray(order.items) ? order.items : [];
+  for (const item of items) {
+    const name = item.productName ?? "\u0645\u0646\u062A\u062C";
+    const qty = Number(item.quantity) || 1;
+    const price = item.totalPrice != null ? formatMoney(item.totalPrice) : "";
+    const selectedOptions = item.selectedOptions ?? [];
+    const optionGroups = item.optionGroups ?? [];
+    const optParts = selectedOptions.map((s) => {
+      const g = optionGroups.find((x) => x.id === s.optionGroupId);
       const ids = "optionItemIds" in s ? s.optionItemIds : [];
       const placements = "optionPlacements" in s ? s.optionPlacements ?? {} : {};
       return ids.map((id) => {
-        const name = g?.items.find((i) => i.id === id)?.name;
-        if (!name) return "";
-        return formatAddonNameWithPlacement(name, placements[id]);
+        const optName = g?.items?.find((i) => i.id === id)?.name;
+        if (!optName) return "";
+        return formatAddonNameWithPlacement(optName, placements[id]);
       }).filter(Boolean).join("\u060C ");
     }).filter(Boolean).join(" | ");
-    lines.push(`\u2022 ${item.productName} x${item.quantity}${optParts ? ` (${optParts})` : ""}: ${formatMoney(item.totalPrice)}`);
+    lines.push(`\u2022 ${name} x${qty}${optParts ? ` (${optParts})` : ""}${price ? `: ${price}` : ""}`);
   }
+  if (items.length === 0) lines.push("\u2014");
   lines.push("");
-  lines.push(`\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: ${formatMoney(order.total)}`);
+  lines.push(`*\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: ${formatMoney(order.total)}*`);
   if (order.notes) lines.push(`\u0645\u0644\u0627\u062D\u0638\u0627\u062A: ${order.notes}`);
   return lines.join("\n");
 }
@@ -246,8 +313,10 @@ function isValidWhatsAppPhone(phone) {
   return cleaned.length >= 9 && /^\d+$/.test(cleaned);
 }
 function buildWhatsAppUrl(phone, message) {
+  if (!phone || typeof phone !== "string") return "";
   const cleaned = phone.replace(/\D/g, "");
-  const encoded = encodeURIComponent(message);
+  if (cleaned.length < 9) return "";
+  const encoded = encodeURIComponent(typeof message === "string" ? message : "");
   return `https://wa.me/${cleaned}?text=${encoded}`;
 }
 
@@ -441,9 +510,13 @@ export {
   buildWhatsAppUrl,
   filterOptionGroupsForTenant,
   formatAddonNameWithPlacement,
+  formatDateGregorian,
+  formatDateISO,
+  formatDateTimeGregorian,
   formatMoney,
   formatPlacementAr,
   formatPrice,
+  formatTimeGregorian,
   generateId,
   getOperationalStatus,
   isStoreOpen,

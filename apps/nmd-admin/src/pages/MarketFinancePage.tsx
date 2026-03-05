@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Button } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
+import { formatPrice } from '@nmd/core';
 import { ArrowLeft, Wallet, Package, Banknote, TrendingUp, Download, CreditCard } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { apiHeaders } from '../api';
@@ -31,7 +32,7 @@ const RANGE_OPTIONS = [
 ];
 
 function formatMoney(n: number): string {
-  return new Intl.NumberFormat('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n) + ' ₪';
+  return formatPrice(n);
 }
 
 type FinanceTenantRow = {

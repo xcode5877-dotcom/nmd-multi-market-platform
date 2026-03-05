@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { Button } from '@nmd/ui';
-import { Package, MessageCircle, ArrowLeft, Store, Clock } from 'lucide-react';
+import { formatPrice } from '@nmd/core';
+import { Package, MessageCircle, ArrowLeft, Store, Clock, Bell } from 'lucide-react';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 import { useAppStore } from '../store/app';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 const api = new MockApiClient();
 
@@ -28,24 +31,6 @@ function getMockRecentActions(orders: Array<{ tenantName?: string; tenantSlug?: 
   return actions.slice(0, 8);
 }
 
-function formatPrice(n: number, currency = 'ILS'): string {
-  return new Intl.NumberFormat('he-IL', { style: 'currency', currency }).format(n);
-}
-
-function formatDate(s?: string): string {
-  if (!s) return '';
-  try {
-    return new Date(s).toLocaleDateString('he-IL', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return s;
-  }
-}
 
 export default function MyActivityPage() {
   const { tenantSlug } = useParams<{ tenantSlug?: string }>();
@@ -54,6 +39,8 @@ export default function MyActivityPage() {
   const { openAuthModal } = useGlobalAuthModal();
   const tenantSlugOrId = useAppStore((s) => s.tenantSlug) ?? tenantSlug;
   const isMarketLevel = pathname === '/my-activity';
+  const { isSupported, permission, isSubscribed, error, requestAndSubscribe } = usePushNotifications();
+  const [notifLoading, setNotifLoading] = useState(false);
 
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ['customer-activity'],
@@ -131,6 +118,38 @@ export default function MyActivityPage() {
         مرحباً، {customer.name || customer.phone}
       </p>
 
+      {isSupported && (
+        <section className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-6">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-primary" />
+            <h2 className="font-semibold text-gray-900">التنبيهات</h2>
+          </div>
+          <div className="p-4">
+            {permission === 'granted' && isSubscribed ? (
+              <p className="text-sm text-gray-600">تم تفعيل التنبيهات. ستصل إشعارات الطلبات والعروض إلى جهازك.</p>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-3">استقبل تنبيهات الطلبات والعروض على جهازك.</p>
+                <Button
+                  disabled={notifLoading || permission === 'denied'}
+                  onClick={async () => {
+                    setNotifLoading(true);
+                    await requestAndSubscribe();
+                    setNotifLoading(false);
+                  }}
+                >
+                  {notifLoading ? 'جاري التفعيل...' : 'تفعيل التنبيهات'}
+                </Button>
+                {permission === 'denied' && (
+                  <p className="text-sm text-amber-700 mt-2">تم رفض الإذن. يمكنك تفعيله من إعدادات المتصفح.</p>
+                )}
+                {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
       {activityLoading ? (
         <div className="space-y-6">
           <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
@@ -186,7 +205,7 @@ export default function MyActivityPage() {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-900">{a.label}</p>
-                      {a.createdAt && <p className="text-xs text-gray-500">{formatDate(a.createdAt)}</p>}
+                      {a.createdAt && <p className="text-xs text-gray-500">{new Date(a.createdAt).toLocaleString()}</p>}
                     </div>
                   </Link>
                 ))
@@ -216,8 +235,8 @@ export default function MyActivityPage() {
                           <div className="flex items-center gap-2 min-w-0">
                             <Package className="w-4 h-4 text-primary flex-shrink-0" />
                             <div>
-                              <p className="font-medium text-gray-900">طلب — {formatPrice((o.total ?? 0), o.currency)}</p>
-                              <p className="text-xs text-gray-500">{formatDate(o.createdAt)}</p>
+                              <p className="font-medium text-gray-900">طلب — {formatPrice(o.total ?? 0)}</p>
+                              <p className="text-xs text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleString() : '—'}</p>
                             </div>
                           </div>
                           <span
@@ -240,7 +259,7 @@ export default function MyActivityPage() {
                             <p className="font-medium text-gray-900">
                               {l.contactType === 'whatsapp' ? 'واتساب' : l.contactType === 'call' ? 'اتصال هاتفي' : l.contactType}
                             </p>
-                            <p className="text-xs text-gray-500">{formatDate(l.timestamp)}</p>
+                            <p className="text-xs text-gray-500">{l.timestamp ? new Date(l.timestamp).toLocaleString() : '—'}</p>
                           </div>
                         </div>
                       ))}

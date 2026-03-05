@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
-const ADMIN_URL = import.meta.env?.DEV ? 'http://localhost:5174' : '/admin';
+const ADMIN_URL = import.meta.env?.VITE_MERCHANT_ADMIN_URL ?? (import.meta.env?.DEV ? 'http://localhost:5176' : '/merchant');
 const STOREFRONT_URL = import.meta.env?.DEV ? 'http://localhost:5173' : '/storefront';
 
 /** Global Tenants page: READ-ONLY monitoring for ROOT_ADMIN. MARKET_ADMIN is redirected. */

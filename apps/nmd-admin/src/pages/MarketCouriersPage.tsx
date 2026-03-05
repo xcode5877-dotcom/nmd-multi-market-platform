@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Skeleton } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { ArrowLeft, MessageCircle, Phone, Copy } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Phone, Copy, Trash2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { buildWhatsAppUrl } from '@nmd/core';
 
@@ -14,6 +14,7 @@ export default function MarketCouriersPage() {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [addCourierModalOpen, setAddCourierModalOpen] = useState(false);
+  const [deleteConfirmCourier, setDeleteConfirmCourier] = useState<{ id: string; name: string } | null>(null);
   const [newCourierName, setNewCourierName] = useState('');
   const [newCourierPhone, setNewCourierPhone] = useState('');
 

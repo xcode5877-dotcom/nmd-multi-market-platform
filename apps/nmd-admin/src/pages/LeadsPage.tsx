@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Card } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
+import { formatDateTimeGregorian } from '@nmd/core';
 import { useAuth } from '../contexts/AuthContext';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -29,14 +30,12 @@ function getActionLabel(type: string, contactType?: string): string {
   return 'CTA';
 }
 
-function getDeviceLabel(metadata?: Record<string, unknown>): string {
+function getWhoDisplay(metadata?: Record<string, unknown>): string {
+  const customerName = (metadata?.customerName as string)?.trim();
+  if (customerName) return customerName;
   const ua = (metadata?.userAgent as string) ?? '';
-  if (ua.includes('iPhone')) return 'iPhone';
-  if (ua.includes('iPad')) return 'iPad';
-  if (ua.includes('Android')) return 'Android';
-  if (ua.includes('Windows')) return 'Windows';
-  if (ua.includes('Mac')) return 'Mac';
-  return ua ? ua.slice(0, 30) + (ua.length > 30 ? '…' : '') : '—';
+  const device = ua.includes('iPhone') ? 'iPhone' : ua.includes('Android') ? 'Android' : ua ? ua.slice(0, 20) + '…' : '—';
+  return (metadata?.customerId as string) ? `عميل · ${device}` : `زائر · ${device}`;
 }
 
 export default function LeadsPage() {
@@ -96,7 +95,8 @@ export default function LeadsPage() {
                 <tr>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">المتجر</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">نوع الإجراء</th>
-                  <th className="px-4 py-3 text-start font-medium text-gray-700">الهاتف / الجهاز</th>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">من</th>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">رقم الهاتف</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">التاريخ والوقت</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">رابط</th>
                 </tr>
@@ -104,7 +104,7 @@ export default function LeadsPage() {
             <tbody>
               {sortedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     لا توجد طلبات
                   </td>
                 </tr>
@@ -120,16 +120,24 @@ export default function LeadsPage() {
                       ? `/markets/${tenant.marketId}/tenants/${l.tenantId}`
                       : `/tenants/${l.tenantId}`;
                   const meta = (l as { metadata?: Record<string, unknown> }).metadata;
-                  const phone = meta?.phone as string | undefined;
-                  const deviceLabel = getDeviceLabel(meta);
-                  const phoneDevice = phone ? `${phone} · ${deviceLabel}` : deviceLabel;
+                  const whoDisplay = getWhoDisplay(meta);
+                  const phone = (meta?.customerPhone as string)?.trim() || '—';
                   return (
                     <tr key={l.id} className="border-t border-gray-100">
                       <td className="px-4 py-3 font-medium">{storeName}</td>
                       <td className="px-4 py-3">{getActionLabel(l.type, (l as { contactType?: string }).contactType)}</td>
-                      <td className="px-4 py-3 text-gray-600" title={meta?.userAgent as string}>{phoneDevice}</td>
+                      <td className="px-4 py-3 text-gray-600" title={meta?.userAgent as string}>{whoDisplay}</td>
                       <td className="px-4 py-3 text-gray-600">
-                        {new Date(l.timestamp).toLocaleString('ar-SA')}
+                        {phone !== '—' ? (
+                          <a href={`tel:${phone}`} className="text-primary hover:underline" dir="ltr">
+                            {phone}
+                          </a>
+                        ) : (
+                          phone
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {formatDateTimeGregorian(l.timestamp)}
                       </td>
                       <td className="px-4 py-3">
                         <Link

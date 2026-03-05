@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
+import { formatDateGregorian } from '@nmd/core';
 import { useAuth } from '../contexts/AuthContext';
 
 const api = new MockApiClient();
@@ -73,7 +74,7 @@ export default function CustomersPage() {
                       </a>
                     </td>
                     <td className="px-4 py-3 text-gray-500">
-                      {c.createdAt ? new Date(c.createdAt).toLocaleDateString('ar-SA') : '—'}
+                      {c.createdAt ? formatDateGregorian(c.createdAt) : '—'}
                     </td>
                   </tr>
                 ))}

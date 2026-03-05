@@ -19,7 +19,7 @@ export default function Layout() {
       <div className={isCartOrCheckout ? 'hidden md:block' : undefined}>
         <TrustBar />
       </div>
-      <main className={`flex-1 ${mainPb} md:pb-0`}>
+      <main className={`flex-1 pt-4 ${mainPb} md:pb-0`}>
         <Outlet />
       </main>
       <Footer />

@@ -9,18 +9,14 @@ import { existsSync as existsSync3, mkdirSync as mkdirSync2 } from "fs";
 
 // src/store.ts
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
-import { join } from "path";
-var DATA_FILE = join(process.cwd(), "data.json");
-var ORDERS_DIR = join(process.cwd(), "..", "..", "packages", "mock", "data");
-var ORDERS_FILE = join(ORDERS_DIR, "orders.json");
+import { join, dirname } from "path";
+var DATA_FILE = process.env.DATA_FILE || join(process.cwd(), "data.json");
+var ORDERS_FILE = process.env.ORDERS_FILE || join(process.cwd(), "..", "..", "packages", "mock", "data", "orders.json");
+var ORDERS_DIR = dirname(ORDERS_FILE);
 var ORDERS_TMP = join(ORDERS_DIR, "orders.tmp.json");
 var DEFAULT_GLOBAL_CATEGORIES = [
-  { id: "cat-food", title: "\u0637\u0639\u0627\u0645", icon: "\u{1F355}", isProfessional: false, sortOrder: 0, legacyCode: "FOOD" },
-  { id: "cat-clothing", title: "\u0645\u0644\u0627\u0628\u0633", icon: "\u{1F6CD}", isProfessional: false, sortOrder: 1, legacyCode: "CLOTHING" },
-  { id: "cat-groceries", title: "\u062E\u0636\u0627\u0631", icon: "\u{1F96C}", isProfessional: false, sortOrder: 2, legacyCode: "GROCERIES" },
-  { id: "cat-butcher", title: "\u0645\u0644\u062D\u0645\u0629", icon: "\u{1F969}", isProfessional: false, sortOrder: 3, legacyCode: "BUTCHER" },
-  { id: "cat-offers", title: "\u0639\u0631\u0648\u0636", icon: "\u{1F4E6}", isProfessional: false, sortOrder: 4, legacyCode: "OFFERS" },
-  { id: "cat-professional", title: "\u062E\u062F\u0645\u0627\u062A \u0645\u0647\u0646\u064A\u0629", icon: "\u2696\uFE0F", isProfessional: true, sortOrder: 5, legacyCode: "GENERAL" }
+  { id: "cat-test", nameAr: "\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0631\u0628\u0637 \u0627\u0644\u062C\u062F\u064A\u062F", title: "\u0627\u062E\u062A\u0628\u0627\u0631", icon: "\u{1F517}", isProfessional: false, sortOrder: 0 },
+  { id: "cat-test-2", nameAr: "\u062A\u0635\u0646\u064A\u0641 \u062B\u0627\u0646\u064D \u0644\u0644\u0627\u062E\u062A\u0628\u0627\u0631", title: "\u0627\u062E\u062A\u0628\u0627\u0631 \u0662", icon: "\u{1F4CB}", isProfessional: false, sortOrder: 1 }
 ];
 var DEFAULT = {
   markets: [],
@@ -117,8 +113,16 @@ function load() {
     if (existsSync(DATA_FILE)) {
       const raw = readFileSync(DATA_FILE, "utf-8");
       const parsed = JSON.parse(raw);
-      const markets = (parsed.markets ?? []).map((m) => migrateMarket(m));
+      const rawMarkets = parsed.markets ?? [];
       const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t));
+      const markets = rawMarkets.map((m) => {
+        const market = migrateMarket(m);
+        market.categories = m.categories ?? [];
+        market.stores = (m.stores ?? []).map(
+          (s) => migrateTenant({ ...s, marketId: m.id })
+        );
+        return market;
+      });
       const catalog = {};
       for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
         const c = cat;
@@ -323,7 +327,7 @@ function appendLead(lead) {
   const full = {
     ...lead,
     id: `lead-${crypto.randomUUID?.() ?? Date.now()}`,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    timestamp: lead.timestamp && lead.timestamp.trim() ? lead.timestamp : (/* @__PURE__ */ new Date()).toISOString()
   };
   data.leads = [...data.leads ?? [], full];
   persist();
@@ -634,6 +638,7 @@ function tenantToDomain(t) {
     templateId: t.templateId ?? void 0,
     hero: t.hero ? JSON.parse(t.hero) : void 0,
     banners: t.banners ? JSON.parse(t.banners) : void 0,
+    collections: t.collections ? JSON.parse(t.collections) : void 0,
     whatsappPhone: t.whatsappPhone ?? void 0,
     type: t.type ?? void 0,
     businessType: t.businessType ?? void 0,
@@ -646,7 +651,21 @@ function tenantToDomain(t) {
     allowMarketCourierFallback: t.allowMarketCourierFallback ?? void 0,
     defaultPrepTimeMin: t.defaultPrepTimeMin ?? void 0,
     financialConfig: t.financialConfig ? JSON.parse(t.financialConfig) : void 0,
-    paymentCapabilities: t.paymentCapabilities ? JSON.parse(t.paymentCapabilities) : void 0
+    paymentCapabilities: t.paymentCapabilities ? JSON.parse(t.paymentCapabilities) : void 0,
+    operationalStatus: t.operationalStatus ?? void 0,
+    orderPolicy: t.orderPolicy ?? void 0,
+    businessHours: t.businessHours ? JSON.parse(t.businessHours) : void 0,
+    busyBannerEnabled: t.busyBannerEnabled ?? void 0,
+    busyBannerText: t.busyBannerText ?? void 0,
+    bookingEnabled: t.bookingEnabled ?? void 0,
+    about: t.about ?? void 0,
+    officeHours: t.officeHours ?? void 0,
+    openTime: t.openTime ?? void 0,
+    closeTime: t.closeTime ?? void 0,
+    forceClosed: t.forceClosed ?? void 0,
+    phone: t.phone ?? void 0,
+    storeType: t.storeType ?? void 0,
+    appointmentDuration: t.appointmentDuration ?? void 0
   };
 }
 function orderToDomain(o) {
@@ -747,7 +766,22 @@ function createDbTenantsRepo() {
             allowMarketCourierFallback: t.allowMarketCourierFallback ?? null,
             defaultPrepTimeMin: t.defaultPrepTimeMin ?? null,
             financialConfig: t.financialConfig ? JSON.stringify(t.financialConfig) : null,
-            paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null
+            paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null,
+            operationalStatus: t.operationalStatus ?? null,
+            orderPolicy: t.orderPolicy ?? null,
+            businessHours: t.businessHours ? JSON.stringify(t.businessHours) : null,
+            busyBannerEnabled: t.busyBannerEnabled ?? null,
+            busyBannerText: t.busyBannerText ?? null,
+            bookingEnabled: t.bookingEnabled ?? null,
+            about: t.about ?? null,
+            officeHours: t.officeHours ?? null,
+            openTime: t.openTime ?? null,
+            closeTime: t.closeTime ?? null,
+            forceClosed: t.forceClosed ?? null,
+            phone: t.phone ?? null,
+            storeType: t.storeType ?? null,
+            appointmentDuration: t.appointmentDuration ?? null,
+            collections: t.collections ? JSON.stringify(t.collections) : null
           }))
         });
       }
@@ -765,7 +799,8 @@ function createDbUsersRepo() {
         marketId: u.marketId ?? void 0,
         tenantId: u.tenantId ?? void 0,
         courierId: u.courierId ?? void 0,
-        password: u.password ?? void 0
+        password: u.password ?? void 0,
+        mustChangePassword: u.mustChangePassword ?? void 0
       }));
     },
     async setAll(users) {
@@ -779,7 +814,8 @@ function createDbUsersRepo() {
             marketId: u.marketId ?? null,
             tenantId: u.tenantId ?? null,
             courierId: u.courierId ?? null,
-            password: u.password ?? null
+            password: u.password ?? null,
+            mustChangePassword: u.mustChangePassword ?? null
           }))
         });
       }
@@ -833,6 +869,7 @@ function createDbCustomersRepo() {
       return rows.map((c) => ({
         id: c.id,
         phone: c.phone,
+        name: c.name ?? void 0,
         createdAt: c.createdAt
       }));
     },
@@ -843,6 +880,7 @@ function createDbCustomersRepo() {
           data: customers.map((c) => ({
             id: c.id,
             phone: c.phone,
+            name: c.name ?? null,
             createdAt: c.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
           }))
         });
@@ -1229,8 +1267,9 @@ function createOtp(phone) {
     attempts: 0,
     lockedUntil: 0
   });
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`[dev] OTP for ${phone}: ${code} (expires in 5 min)`);
+  const isDevOrMock = process.env.NODE_ENV !== "production" || process.env.MOCK_OTP === "1" || process.env.MOCK_OTP === "true";
+  if (isDevOrMock) {
+    console.log(`[OTP] ${phone} (normalized: ${key}) \u2192 code: ${code} (expires in 5 min)`);
     return { ok: true, devCode: code };
   }
   return { ok: true };
@@ -1386,7 +1425,7 @@ async function seedDeliveryZonesIfNeeded() {
     await repos.deliveryZones.setAll(t.id, zones);
   }
 }
-var UPLOADS_DIR = join3(process.cwd(), "..", "..", "packages", "mock", "uploads");
+var UPLOADS_DIR = process.env.UPLOADS_DIR || (process.cwd() === "/app/apps/mock-api" ? "/app/apps/mock-api/uploads" : join3(process.cwd(), "..", "..", "packages", "mock", "uploads"));
 var UPLOADS_BANNERS_DIR = join3(UPLOADS_DIR, "banners");
 if (!existsSync3(UPLOADS_DIR)) mkdirSync2(UPLOADS_DIR, { recursive: true });
 if (!existsSync3(UPLOADS_BANNERS_DIR)) mkdirSync2(UPLOADS_BANNERS_DIR, { recursive: true });
@@ -1400,13 +1439,13 @@ var storage = multer.diskStorage({
 });
 var upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Only image files allowed"));
   }
 });
-var BANNER_MAX_BYTES = 2 * 1024 * 1024;
+var BANNER_MAX_BYTES = 10 * 1024 * 1024;
 var ALLOWED_BANNER_MIMES = ["image/webp", "image/jpeg", "image/jpg", "image/png"];
 var bannerStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_BANNERS_DIR),
@@ -1425,8 +1464,9 @@ var bannerUpload = multer({
   }
 });
 var corsOptions = {
-  origin: true,
-  // Reflect request origin (required when credentials: true; * not allowed)
+  origin: (origin, cb) => {
+    cb(null, true);
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "X-Emergency-Mode"],
   exposedHeaders: ["Authorization"],
@@ -1435,21 +1475,31 @@ var corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
-  if (req.headers.origin) res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
+  const origin = req.headers.origin;
+  if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
   next();
 });
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use((req, res, next) => {
+  console.log(`INCOMING REQUEST: ${req.method} ${req.url}`);
+  next();
+});
+function uploadErrorMessage(err) {
+  if (err?.code === "LIMIT_FILE_SIZE") return "File too large";
+  if (err?.code === "LIMIT_UNEXPECTED_FILE") return "Unexpected file field";
+  return err?.message ?? "Upload failed";
+}
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path === "/upload/banner") {
     return bannerUpload.single("file")(req, res, (err) => {
-      if (err) return res.status(400).json({ error: err.message });
+      if (err) return res.status(400).json({ error: uploadErrorMessage(err) });
       next();
     });
   }
   if (req.method === "POST" && req.path === "/upload") {
     return upload.array("files", 20)(req, res, (err) => {
-      if (err) return res.status(400).json({ error: err.message });
+      if (err) return res.status(400).json({ error: uploadErrorMessage(err) });
       next();
     });
   }
@@ -1457,6 +1507,7 @@ app.use((req, res, next) => {
 });
 app.use("/uploads", cors({ origin: "*", methods: ["GET", "OPTIONS"] }), express.static(UPLOADS_DIR));
 var PUBLIC_ROUTES = [
+  { method: "GET", path: /^\/$/ },
   { method: "POST", path: /^\/auth\/login$/ },
   { method: "GET", path: /^\/health$/ },
   { method: "GET", path: /^\/storefront\/tenants$/ },
@@ -1477,6 +1528,7 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: "GET", path: /^\/public\/orders\/[^/]+$/ },
   { method: "GET", path: /^\/global-categories$/ },
+  { method: "GET", path: /^\/categories$/ },
   { method: "POST", path: /^\/leads$/ },
   { method: "GET", path: /^\/merchant\/dashboard$/ },
   { method: "GET", path: /^\/merchant\/leads$/ }
@@ -1552,12 +1604,29 @@ app.use((req, res, next) => {
   return res.status(401).json({ error: "Unauthorized" });
 });
 app.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "email and password required" });
+  const body = req.body;
   const users = await repos.users.findAll();
-  const user = users.find((u) => u.email?.toLowerCase() === String(email).trim().toLowerCase());
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: "Invalid email or password" });
+  let user;
+  if (body.phone != null && body.code != null) {
+    const phone = String(body.phone).replace(/\D/g, "");
+    const code = String(body.code).trim();
+    if (phone === "999" && code === "1234") {
+      user = users.find((u) => u.role === "ROOT_ADMIN" && u.email?.toLowerCase() === "root@nmd.com");
+      if (!user) user = users.find((u) => u.role === "ROOT_ADMIN");
+    }
+  }
+  if (!user && body.email != null && body.password != null) {
+    const email = String(body.email).trim();
+    const password = body.password;
+    if (!email || !password) return res.status(400).json({ error: "email and password required" });
+    user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+  }
+  if (!user) {
+    if (body.phone != null && body.code != null) return res.status(401).json({ error: "Invalid OTP backdoor (use phone=999, code=1234 for Root)" });
+    return res.status(400).json({ error: "email and password required" });
   }
   const token = jwt.sign(
     { sub: user.id, role: user.role, tenantId: user.tenantId, marketId: user.marketId },
@@ -1565,6 +1634,10 @@ app.post("/auth/login", async (req, res) => {
     { expiresIn: "7d" }
   );
   res.json({ accessToken: token });
+});
+app.get("/auth/login", (_req, res) => {
+  res.set("Allow", "POST");
+  res.status(405).json({ error: "Method Not Allowed. Use POST with { email, password } or { phone, code } (backdoor: 999 / 1234 for Root)." });
 });
 app.get("/auth/me", wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -1597,9 +1670,21 @@ app.get("/customer/auth/check-phone", async (req, res) => {
 });
 app.post("/customer/auth/start", async (req, res) => {
   const { phone } = req.body;
-  if (!phone || typeof phone !== "string") return res.status(400).json({ error: "phone required" });
+  if (!phone || typeof phone !== "string") {
+    console.log("[customer/auth/start] 400: phone required");
+    return res.status(400).json({ error: "phone required" });
+  }
+  const normalized = normalizePhoneForMatch(phone);
+  if (!normalized || normalized.length < 9) {
+    console.log("[customer/auth/start] 400: invalid phone", phone);
+    return res.status(400).json({ error: "Invalid phone format" });
+  }
   const result = createOtp(phone);
-  if (!result.ok) return res.status(429).json({ error: result.error, code: result.code });
+  if (!result.ok) {
+    console.log("[customer/auth/start] 429:", result.error, result.code);
+    return res.status(429).json({ error: result.error, code: result.code });
+  }
+  if (result.devCode) console.log("[customer/auth/start] 200 \u2192 OTP sent (see [OTP] log above or client toast)");
   res.json({ ok: true, ...result.devCode && { devCode: result.devCode } });
 });
 function normalizePhoneForMatch(phone) {
@@ -1615,7 +1700,9 @@ app.post("/customer/auth/verify", async (req, res) => {
   }
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
-  let customer = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const existing = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const isNewUser = !existing;
+  let customer = existing;
   const nameTrimmed = typeof name === "string" ? name.trim() : void 0;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -1628,13 +1715,30 @@ app.post("/customer/auth/verify", async (req, res) => {
     await repos.customers.setAll(next);
   }
   const token = jwt.sign({ sub: customer.id, role: "CUSTOMER" }, JWT_SECRET, { expiresIn: "30d" });
-  res.json({ token, customer: { id: customer.id, phone: customer.phone, name: customer.name } });
+  res.json({
+    token,
+    customer: { id: customer.id, phone: customer.phone, name: customer.name },
+    isNewUser
+  });
 });
 app.get("/customer/me", async (req, res) => {
   const customer = req.customer;
   if (!customer) return res.status(401).json({ error: "Unauthorized" });
   const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
   res.json({ id: customer.id, phone: customer.phone, name: full?.name ?? customer.name });
+});
+app.patch("/customer/profile", async (req, res) => {
+  const customer = req.customer;
+  if (!customer) return res.status(401).json({ error: "Unauthorized" });
+  const { name } = req.body;
+  const nameTrimmed = typeof name === "string" ? name.trim() : void 0;
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: "Customer not found" });
+  const updated = { ...customers[idx], name: nameTrimmed ?? customers[idx].name };
+  customers[idx] = updated;
+  await repos.customers.setAll(customers);
+  res.json({ customer: { id: updated.id, phone: updated.phone, name: updated.name } });
 });
 app.get("/customer/activity", wrapAsync(async (req, res) => {
   const customer = req.customer;
@@ -1909,27 +2013,49 @@ function normalizeHero(h) {
   const cta = base.ctaHref ?? base.ctaLink ?? "#";
   return { ...base, ctaLink: cta, ctaHref: cta };
 }
+var DEFAULT_OPEN_TIME = "08:00";
+var DEFAULT_CLOSE_TIME = "17:00";
 function normalizeTenantResponse(t) {
   const type = t.type === "CLOTHING" || t.type === "FOOD" ? t.type : "GENERAL";
+  const banners = t.banners;
+  const openTime = t.openTime ?? DEFAULT_OPEN_TIME;
+  const closeTime = t.closeTime ?? DEFAULT_CLOSE_TIME;
+  const forceClosed = t.forceClosed ?? false;
   return {
     ...t,
     type,
     hero: normalizeHero(t.hero),
-    banners: t.banners ?? []
+    banners: Array.isArray(banners) ? banners : [],
+    openTime,
+    closeTime,
+    forceClosed
   };
+}
+function norm(s) {
+  return String(s ?? "").trim().toLowerCase();
 }
 async function resolveTenantId(tenantIdOrSlug) {
   const v = String(tenantIdOrSlug).trim();
   if (!v) return null;
   const tenants = await repos.tenants.findAll();
-  const byId = tenants.find((t) => t.id === v);
+  const byId = tenants.find((t) => norm(t.id) === norm(v));
   if (byId) return byId.id;
-  const bySlug = tenants.find((t) => t.slug === v);
+  const bySlug = tenants.find((t) => norm(t.slug ?? "") === norm(v));
   return bySlug ? bySlug.id : null;
+}
+function leadBelongsToTenantFilter(l, reqId, reqSlug, _tenants) {
+  const rid = norm(reqId);
+  const rslug = reqSlug ? norm(reqSlug) : "";
+  const lid = l.tenantId != null ? norm(l.tenantId) : "";
+  const lslug = l.tenantSlug != null ? norm(l.tenantSlug) : "";
+  const lstore = l.storeId != null ? norm(l.storeId) : "";
+  if (rid && (lid === rid || lslug === rid || lstore === rid)) return true;
+  if (rslug && (lid === rslug || lslug === rslug || lstore === rslug)) return true;
+  return false;
 }
 app.post("/leads", wrapAsync(async (req, res) => {
   const body = req.body;
-  const tenantIdOrSlug = body.tenantId ?? body.tenantSlug;
+  const tenantIdOrSlug = body.tenantId ?? body.tenantSlug ?? body.professionalId;
   if (!tenantIdOrSlug || typeof tenantIdOrSlug !== "string") {
     return res.status(400).json({ error: "tenantId or tenantSlug required" });
   }
@@ -1946,6 +2072,7 @@ app.post("/leads", wrapAsync(async (req, res) => {
     type,
     status: body.status,
     contactType: body.contactType,
+    timestamp: typeof body.timestamp === "string" ? body.timestamp : void 0,
     metadata
   });
   res.status(201).json(lead);
@@ -1975,17 +2102,27 @@ app.get("/leads", wrapAsync(async (req, res) => {
   }
   let leads = getLeads();
   if (caller.role === "ROOT_ADMIN") {
-    if (filterTenantId) leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+    if (filterTenantId) {
+      const t = tenants.find((x) => x.id === filterTenantId);
+      const slug = t?.slug;
+      leads = leads.filter((l) => leadBelongsToTenantFilter(l, filterTenantId, slug, tenants));
+    }
   } else if (caller.role === "TENANT_ADMIN") {
-    const myTenantId = filterTenantId ?? String(caller.tenantId ?? "").trim();
-    if (myTenantId) {
-      const myTenant = tenants.find((t) => t.id === myTenantId);
-      const mySlug = myTenant?.slug;
-      leads = leads.filter((l) => {
-        if (l.tenantId == null) return false;
-        const tid = String(l.tenantId).trim();
-        return tid === myTenantId || !!mySlug && tid === mySlug;
-      });
+    let myTenantId = filterTenantId ?? String(caller.tenantId ?? "").trim();
+    if (!myTenantId && caller.id) {
+      const users = await repos.users.findAll();
+      const u = users.find((x) => x.id === caller.id);
+      const tid = u?.tenantId;
+      if (tid) myTenantId = String(tid).trim();
+    }
+    const myTenant = myTenantId ? tenants.find((t) => norm(t.id) === norm(myTenantId) || norm(t.slug ?? "") === norm(myTenantId)) : null;
+    const mySlug = myTenant?.slug ?? (myTenantId && !myTenant ? myTenantId : "");
+    const effectiveId = myTenant?.id ?? myTenantId;
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG GET /leads: User Slug:", mySlug, "User TenantId:", myTenantId, "EffectiveId:", effectiveId, "First lead tenantId:", leads[0]?.tenantId, "Total before filter:", leads.length);
+    }
+    if (effectiveId || mySlug) {
+      leads = leads.filter((l) => leadBelongsToTenantFilter(l, effectiveId || mySlug, mySlug || void 0, tenants));
     } else {
       leads = [];
     }
@@ -1993,9 +2130,19 @@ app.get("/leads", wrapAsync(async (req, res) => {
     const marketTenantIds = new Set(tenants.filter((t) => t.marketId === caller.marketId).map((t) => t.id));
     if (filterTenantId) {
       if (!marketTenantIds.has(filterTenantId)) leads = [];
-      else leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+      else {
+        const t = tenants.find((x) => x.id === filterTenantId);
+        const slug = t?.slug;
+        leads = leads.filter((l) => leadBelongsToTenantFilter(l, filterTenantId, slug, tenants));
+      }
     } else {
-      leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+      leads = leads.filter((l) => {
+        if (l.tenantId == null) return false;
+        const tid = String(l.tenantId).trim();
+        if (marketTenantIds.has(tid)) return true;
+        const tenant = tenants.find((t) => norm(t.id) === norm(tid) || norm(t.slug ?? "") === norm(tid));
+        return !!tenant && marketTenantIds.has(tenant.id);
+      });
     }
   }
   res.json(leads);
@@ -2007,6 +2154,23 @@ app.get("/customers", wrapAsync(async (req, res) => {
   const allOrders = await repos.orders.findAll();
   const allLeads = getLeads();
   if (caller.role === "ROOT_ADMIN") {
+    const querySlug = req.query.tenantSlug?.trim();
+    if (querySlug) {
+      const filterTenantId = await resolveTenantId(querySlug);
+      if (!filterTenantId) return res.status(400).json({ error: "Tenant not found for tenantSlug" });
+      const customerIds = /* @__PURE__ */ new Set();
+      allOrders.forEach((o) => {
+        if (o.tenantId === filterTenantId && o.customerId) customerIds.add(o.customerId);
+      });
+      allLeads.forEach((l) => {
+        if (l.tenantId === filterTenantId) {
+          const cid = l.metadata?.customerId;
+          if (cid) customerIds.add(cid);
+        }
+      });
+      const filtered = allCustomers.filter((c) => customerIds.has(c.id));
+      return res.json(filtered);
+    }
     return res.json(allCustomers);
   }
   if (caller.role === "TENANT_ADMIN" && caller.tenantId) {
@@ -2044,8 +2208,10 @@ app.get("/customers", wrapAsync(async (req, res) => {
 }));
 function leadBelongsToTenant(l, tenantId, tenantSlug) {
   if (!l.tenantId) return false;
-  const tid = String(l.tenantId).trim();
-  return tid === tenantId || !!tenantSlug && tid === tenantSlug;
+  const tid = norm(String(l.tenantId));
+  const rid = norm(tenantId);
+  const rslug = tenantSlug ? norm(tenantSlug) : "";
+  return tid === rid || !!rslug && tid === rslug;
 }
 app.get("/merchant/dashboard", wrapAsync(async (req, res) => {
   let tenantId;
@@ -2264,6 +2430,9 @@ app.post("/tenants/:tenantId/create-admin", async (req, res) => {
 app.get("/global-categories", (_req, res) => {
   res.json(getGlobalCategories());
 });
+app.get("/categories", (_req, res) => {
+  res.json(getGlobalCategories());
+});
 app.post("/global-categories", async (req, res) => {
   if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
   if (!requireWriteWithReason(req, res)) return;
@@ -2272,6 +2441,7 @@ app.post("/global-categories", async (req, res) => {
   const cat = {
     id,
     title: body.title ?? "",
+    nameAr: body.nameAr != null ? String(body.nameAr).trim() || void 0 : void 0,
     icon: body.icon ?? "\u{1F4E6}",
     isProfessional: body.isProfessional ?? false,
     sortOrder: body.sortOrder ?? 999
@@ -2455,7 +2625,9 @@ app.put("/markets/by-slug/:slug/banners", async (req, res) => {
   const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
   if (!market) return res.status(404).json({ error: "Market not found" });
   const banners = req.body;
-  if (!Array.isArray(banners)) return res.status(400).json({ error: "banners must be an array" });
+  if (!Array.isArray(banners)) {
+    return res.json(getBannersForMarket(req.params.slug));
+  }
   setBannersForMarket(req.params.slug, banners);
   res.json(banners);
 });
@@ -2586,12 +2758,25 @@ app.put("/markets/:marketId/admin-credentials", async (req, res) => {
 });
 app.get("/markets/:marketId/tenants", async (req, res) => {
   const { marketId } = req.params;
+  const categoryId = req.query.categoryId?.trim() || req.query.marketCategory?.trim();
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: "Market not found" });
   if (req.user?.role === "MARKET_ADMIN" && req.user.marketId !== marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const tenants = (await repos.tenants.findAll()).filter((t) => t.marketId === marketId && t.enabled && t.isListedInMarket !== false).sort((a, b) => {
+  let tenants = (await repos.tenants.findAll()).filter((t) => t.marketId === marketId && t.enabled && t.isListedInMarket !== false);
+  if (categoryId) {
+    const norm2 = (s) => (s ?? "").toLowerCase();
+    const globalCats = getGlobalCategories();
+    tenants = tenants.filter((t) => {
+      const mc = (t.marketCategory ?? "").trim();
+      if (norm2(mc) === norm2(categoryId)) return true;
+      const cat = globalCats.find((c) => norm2(c.id) === norm2(categoryId));
+      if (cat?.legacyCode && norm2(mc) === norm2(cat.legacyCode)) return true;
+      return false;
+    });
+  }
+  tenants = tenants.sort((a, b) => {
     const soA = a.marketSortOrder ?? 999;
     const soB = b.marketSortOrder ?? 999;
     if (soA !== soB) return soA - soB;
@@ -2801,9 +2986,17 @@ app.post("/tenants", async (req, res) => {
   });
   res.status(201).json(tenant);
 });
+function normalizeId(s) {
+  return String(s ?? "").trim();
+}
 async function handleTenantUpdate(req, res) {
   const { id } = req.params;
   let updates = req.body;
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const tenants = await repos.tenants.findAll();
   const idx = tenants.findIndex((t) => t.id === id);
   if (idx === -1) {
@@ -2811,19 +3004,27 @@ async function handleTenantUpdate(req, res) {
     return;
   }
   const tenant = tenants[idx];
-  const user = req.user;
-  if (user?.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
-  if (user?.role === "MARKET_ADMIN") {
-    if (tenant.marketId !== user.marketId) {
-      res.status(403).json({ error: "Forbidden" });
+  if (user.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
+  if (user.role === "MARKET_ADMIN") {
+    const callerMarketId = normalizeId(user.marketId);
+    const tenantMarketId = normalizeId(tenant.marketId);
+    const assigningToCallerMarket = tenantMarketId === "" && normalizeId(updates.marketId) === callerMarketId;
+    const tenantBelongsToCallerMarket = callerMarketId && (tenantMarketId === callerMarketId || assigningToCallerMarket);
+    if (!tenantBelongsToCallerMarket) {
+      res.status(403).json({ error: "Not authorized for this tenant: tenant must belong to your market" });
       return;
     }
-    const allowed = ["marketCategory", "isListedInMarket", "marketSortOrder"];
+    const allowed = ["marketCategory", "isListedInMarket", "marketSortOrder", "marketId"];
     updates = Object.fromEntries(
       Object.entries(updates).filter(([k]) => allowed.includes(k))
     );
+    if (updates.marketId !== void 0 && normalizeId(updates.marketId) !== callerMarketId) {
+      updates = { ...updates, marketId: user.marketId };
+    }
   }
   const before = { ...tenants[idx] };
+  if (updates.banners !== void 0 && !Array.isArray(updates.banners)) delete updates.banners;
+  if (updates.hero !== void 0 && (typeof updates.hero !== "object" || updates.hero === null)) delete updates.hero;
   tenants[idx] = { ...tenants[idx], ...updates };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
@@ -2915,7 +3116,7 @@ app.put("/tenants/:id/branding", async (req, res) => {
       if (title.length <= 50) tenants[idx].name = title;
     }
   }
-  if (body.banners !== void 0) tenants[idx].banners = body.banners;
+  if (body.banners !== void 0 && Array.isArray(body.banners)) tenants[idx].banners = body.banners;
   if (body.whatsappPhone !== void 0) {
     const cleaned = typeof body.whatsappPhone === "string" ? body.whatsappPhone.replace(/\D/g, "") : "";
     tenants[idx].whatsappPhone = cleaned || void 0;
@@ -2928,7 +3129,7 @@ app.put("/tenants/:id/branding", async (req, res) => {
   if (body.layoutStyle !== void 0) tenants[idx].layoutStyle = body.layoutStyle;
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
-  console.log("[Branding] Persisted tenant", id, "to store (data.json)");
+  console.log("[Branding] Persisted tenant", id, process.env.STORAGE_DRIVER === "db" ? "to database" : "to store");
   appendAuditEvent({
     userId: user.id,
     role: user.role,
@@ -3003,6 +3204,9 @@ app.put("/tenants/:id/operational-settings", async (req, res) => {
   if (body.bookingEnabled !== void 0) tenants[idx].bookingEnabled = body.bookingEnabled;
   if (body.about !== void 0) tenants[idx].about = body.about;
   if (body.officeHours !== void 0) tenants[idx].officeHours = body.officeHours;
+  if (body.openTime !== void 0) tenants[idx].openTime = body.openTime;
+  if (body.closeTime !== void 0) tenants[idx].closeTime = body.closeTime;
+  if (body.forceClosed !== void 0) tenants[idx].forceClosed = body.forceClosed;
   if (body.phone !== void 0) {
     const cleaned = String(body.phone).replace(/\D/g, "");
     tenants[idx].phone = cleaned || void 0;
@@ -3012,6 +3216,9 @@ app.put("/tenants/:id/operational-settings", async (req, res) => {
     const cleaned = String(body.whatsappPhone).replace(/\D/g, "");
     tenants[idx].whatsappPhone = cleaned || void 0;
     tenants[idx].phone = cleaned || void 0;
+  }
+  if (body.storeType !== void 0) {
+    tenants[idx].storeType = body.storeType;
   }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
@@ -3092,6 +3299,9 @@ app.get("/orders", wrapAsync(async (req, res) => {
 }));
 app.get("/tenants/:tenantId/orders", wrapAsync(async (req, res) => {
   const { tenantId } = req.params;
+  const from = req.query.from;
+  const to = req.query.to;
+  const search = (req.query.search || "").trim().toLowerCase();
   const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
   if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId !== tenantId) {
@@ -3100,7 +3310,23 @@ app.get("/tenants/:tenantId/orders", wrapAsync(async (req, res) => {
   if (req.user?.role === "MARKET_ADMIN" && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const orders = (await repos.orders.findAll()).filter((o) => o.tenantId === tenantId);
+  let orders = (await repos.orders.findAll()).filter((o) => o.tenantId === tenantId);
+  if (from || to) {
+    const fromMs = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toMs = to ? new Date(to).setHours(23, 59, 59, 999) : Number.MAX_SAFE_INTEGER;
+    orders = orders.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs && t <= toMs;
+    });
+  }
+  if (search) {
+    const searchDigits = search.replace(/\D/g, "");
+    orders = orders.filter((o) => {
+      const name = (o.customerName ?? "").toLowerCase();
+      const phone = (o.customerPhone ?? "").replace(/\D/g, "");
+      return name.includes(search) || searchDigits.length >= 4 && phone.includes(searchDigits);
+    });
+  }
   res.json(orders);
 }));
 app.post("/orders", wrapAsync(async (req, res) => {
@@ -3788,6 +4014,76 @@ app.get("/markets/:marketId/finance/summary", wrapAsync(async (req, res) => {
     cashOrders
   });
 }));
+app.get("/tenants/:tenantId/dashboard-stats", wrapAsync(async (req, res) => {
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+  if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (req.user?.role === "MARKET_ADMIN" && tenant.marketId !== req.user.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const allOrders = await repos.orders.findAll();
+  const tenantOrders = allOrders.filter((o) => o.tenantId === tenantId);
+  const completed = tenantOrders.filter((o) => o.status === "DELIVERED" || o.status === "COMPLETED");
+  const nonCancelled = tenantOrders.filter((o) => o.status !== "CANCELLED");
+  const now = /* @__PURE__ */ new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+  const todayEnd = todayStart;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const ordersToday = ordersInDateRange(completed, todayStart, todayEnd);
+  const ordersThisMonth = ordersInDateRange(completed, monthStart, monthEnd);
+  const commissionPercent = tenant?.financialConfig?.commissionValue ?? 0;
+  function applyCommissionFallback(f, percent) {
+    if (f.commission > 0 || f.netToMerchant > 0) return { commission: f.commission, netToMerchant: f.netToMerchant };
+    if (f.gross <= 0) return { commission: 0, netToMerchant: 0 };
+    const commission = Math.round(f.gross * (percent / 100) * 100) / 100;
+    const netToMerchant = Math.round((f.gross - commission) * 100) / 100;
+    return { commission, netToMerchant };
+  }
+  let dailyRevenue = 0;
+  let monthlyRevenue = 0;
+  let dailyCommission = 0;
+  let monthlyCommission = 0;
+  let dailyNet = 0;
+  let monthlyNet = 0;
+  for (const o of ordersToday) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    dailyRevenue += f.gross;
+    dailyCommission += commission;
+    dailyNet += netToMerchant;
+  }
+  for (const o of ordersThisMonth) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    monthlyRevenue += f.gross;
+    monthlyCommission += commission;
+    monthlyNet += netToMerchant;
+  }
+  let totalSales = 0;
+  let totalPlatformFee = 0;
+  let totalMerchantBalance = 0;
+  for (const o of nonCancelled) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    totalSales += f.gross;
+    totalPlatformFee += commission;
+    totalMerchantBalance += netToMerchant;
+  }
+  res.json({
+    dailyRevenue,
+    monthlyRevenue,
+    orderCountToday: ordersToday.length,
+    orderCountMonth: ordersThisMonth.length,
+    totalSales,
+    platformFee: totalPlatformFee,
+    merchantBalance: totalMerchantBalance,
+    platformCommissionPercent: commissionPercent
+  });
+}));
 app.get("/markets/:marketId/finance/tenants", wrapAsync(async (req, res) => {
   const { marketId } = req.params;
   const from = req.query.from;
@@ -4127,6 +4423,9 @@ app.post("/staff", async (req, res) => {
   staff.push(user);
   setStaff(staff);
   res.status(201).json(user);
+});
+app.get("/", (_req, res) => {
+  res.json({ name: "nmd-mock-api", login: "POST /auth/login", rootAdmin: "root@nmd.com (email+password or phone=999 code=1234)" });
 });
 app.get("/health", async (_req, res) => {
   res.json({ ok: true });

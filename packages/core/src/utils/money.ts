@@ -1,21 +1,19 @@
 /**
- * Centralized currency formatter for Israeli Shekel (₪).
- * Uses Intl.NumberFormat with he-IL for RTL-friendly output.
+ * Global currency: ILS (Israeli Shekel). Display as ₪ or شيكل in UI.
+ * Uses Western numerals (1,2,3) and 2 decimal places for financial amounts.
  */
 export interface FormatMoneyOptions {
   /** Currency code (default ILS) */
   currency?: string;
-  /** Locale for formatting (default he-IL for RTL) */
-  locale?: string;
-  /** Minimum fraction digits */
+  /** Minimum fraction digits (default 2 for money) */
   minimumFractionDigits?: number;
-  /** Maximum fraction digits */
+  /** Maximum fraction digits (default 2) */
   maximumFractionDigits?: number;
 }
 
 /**
- * Format amount as Israeli Shekel (₪).
- * Handles NaN/invalid safely; integers and floats supported.
+ * Format amount as Israeli Shekel (₪). Gregorian/Western numerals only.
+ * Financial numbers: 2 decimal places. Handles NaN/invalid safely.
  */
 export function formatMoney(
   amount: number,
@@ -23,15 +21,14 @@ export function formatMoney(
 ): string {
   const {
     currency = 'ILS',
-    locale = 'he-IL',
-    minimumFractionDigits = 0,
+    minimumFractionDigits = 2,
     maximumFractionDigits = 2,
   } = opts;
 
   const n = Number(amount);
-  if (Number.isNaN(n) || !Number.isFinite(n)) return '₪ 0';
+  if (Number.isNaN(n) || !Number.isFinite(n)) return '₪0.00';
 
-  return new Intl.NumberFormat(locale, {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
     minimumFractionDigits,

@@ -101,8 +101,14 @@ interface Tenant {
     busyBannerEnabled?: boolean;
     /** Custom text for busy banner */
     busyBannerText?: string;
-    /** Office hours (ساعات العمل). For PROFESSIONAL stores. */
+    /** Office hours (ساعات العمل). For PROFESSIONAL stores. Legacy free-text; prefer openTime/closeTime. */
     officeHours?: string;
+    /** Daily open time (HH:mm, e.g. 08:00). Used with closeTime for automatic open/closed. Fallback 08:00. */
+    openTime?: string;
+    /** Daily close time (HH:mm, e.g. 17:00). Used with openTime for automatic open/closed. Fallback 17:00. */
+    closeTime?: string;
+    /** Manual override: when true, store displays as CLOSED regardless of openTime/closeTime. */
+    forceClosed?: boolean;
     /** Appointment duration in minutes. For PROFESSIONAL booking. */
     appointmentDuration?: number;
     /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */
@@ -483,15 +489,17 @@ declare function resolveTenantId(hostname: string, searchParams: URLSearchParams
 declare const LAST_TENANT_KEY = "nmd.lastTenant";
 /**
  * Resolve effective operational status from tenant.
- * 1. If operationalStatus is set (manual override), use it.
- * 2. Else compute from businessHours using store timezone (Asia/Jerusalem).
+ * 1. If forceClosed is true (manual override), return 'closed'.
+ * 2. If openTime/closeTime are used (simple daily window), compare current time in store TZ.
+ * 3. If operationalStatus is set (manual override), use it.
+ * 4. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
-declare function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours'>): OperationalStatus;
+declare function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): OperationalStatus;
 /**
  * Whether the store is open (accepting orders from schedule + override).
  * For order blocking, also check orderPolicy.
  */
-declare function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours'>): boolean;
+declare function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): boolean;
 /**
  * Resolve tenant from URL (dev): ?tenant=slug or fallback to last selected in localStorage
  */
@@ -506,7 +514,28 @@ declare function setLastTenant(slugOrId: string): void;
 declare function tenantBrandingToCssVars(branding: TenantBranding): Record<string, string>;
 
 /**
- * Format price for display (ILS ₪).
+ * Gregorian (ميلادي) date formatting only. Never Hijri.
+ * Uses en-GB for DD/MM/YYYY and consistent Gregorian calendar.
+ */
+/**
+ * Format date as Gregorian DD/MM/YYYY.
+ */
+declare function formatDateGregorian(date: Date | string): string;
+/**
+ * Format date and time as Gregorian (DD/MM/YYYY, HH:mm).
+ */
+declare function formatDateTimeGregorian(date: Date | string): string;
+/**
+ * Format time only as HH:mm (24h, Gregorian).
+ */
+declare function formatTimeGregorian(date: Date | string): string;
+/**
+ * Format as ISO date YYYY-MM-DD (Gregorian).
+ */
+declare function formatDateISO(date: Date | string): string;
+
+/**
+ * Format price for display (ILS ₪, 2 decimals, Western numerals).
  * @deprecated Prefer formatMoney from './utils/money'
  */
 declare function formatPrice(amount: number): string;
@@ -516,27 +545,27 @@ declare function formatPrice(amount: number): string;
 declare function generateId(): string;
 
 /**
- * Centralized currency formatter for Israeli Shekel (₪).
- * Uses Intl.NumberFormat with he-IL for RTL-friendly output.
+ * Global currency: ILS (Israeli Shekel). Display as ₪ or شيكل in UI.
+ * Uses Western numerals (1,2,3) and 2 decimal places for financial amounts.
  */
 interface FormatMoneyOptions {
     /** Currency code (default ILS) */
     currency?: string;
-    /** Locale for formatting (default he-IL for RTL) */
-    locale?: string;
-    /** Minimum fraction digits */
+    /** Minimum fraction digits (default 2 for money) */
     minimumFractionDigits?: number;
-    /** Maximum fraction digits */
+    /** Maximum fraction digits (default 2) */
     maximumFractionDigits?: number;
 }
 /**
- * Format amount as Israeli Shekel (₪).
- * Handles NaN/invalid safely; integers and floats supported.
+ * Format amount as Israeli Shekel (₪). Gregorian/Western numerals only.
+ * Financial numbers: 2 decimal places. Handles NaN/invalid safely.
  */
 declare function formatMoney(amount: number, opts?: FormatMoneyOptions): string;
 
 /**
  * Build WhatsApp message for order handoff (Arabic, short, clear).
+ * Includes: Product names, quantities, total price, customer address.
+ * Defensive: handles missing or empty items; all text is intended for encodeURIComponent by caller.
  */
 declare function buildWhatsAppMessage(order: Order, tenant: Tenant): string;
 /**
@@ -599,4 +628,4 @@ declare const mockTenants: Record<string, Tenant>;
 declare const mockCategories: Record<string, Category[]>;
 declare const mockProducts: Record<string, Product[]>;
 
-export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatMoney, formatPlacementAr, formatPrice, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };
+export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };

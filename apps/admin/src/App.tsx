@@ -26,6 +26,7 @@ const StoreSettingsPage = lazy(() => import('./pages/StoreSettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
 const LeadsPage = lazy(() => import('./pages/LeadsPage'));
+const OrderActionPage = lazy(() => import('./pages/OrderActionPage'));
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -226,6 +227,7 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/order-actions/:orderId/:action" element={<AuthGuard><Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-10 h-10 border-2 border-primary border-t-transparent rounded-full" /></div>}><OrderActionPage /></Suspense></AuthGuard>} />
           <Route path="/*" element={<AuthGuard><AdminApp /></AuthGuard>} />
         </Routes>
       </ToastProvider>

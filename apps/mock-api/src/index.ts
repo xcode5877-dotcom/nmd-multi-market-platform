@@ -30,12 +30,15 @@ import {
   type Courier,
   type DeliveryJob,
   type GlobalCategory,
+  loadFromPath,
 } from './store.js';
 import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { createOtp, verifyOtp } from './customer-auth.js';
+import { triggerStatusNotification, notifyMerchantNewOrder } from './services/NotificationService.js';
+import { getVapidPublicKey, saveSubscription } from './push-subscriptions.js';
 
 const PORT = Number(process.env.PORT ?? 5190);
 const repos = createRepos();
@@ -173,7 +176,13 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
   }
 }
 
-const UPLOADS_DIR = join(process.cwd(), '..', '..', 'packages', 'mock', 'uploads');
+const UPLOADS_DIR = (() => {
+  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
+  const dataUploads = join(process.cwd(), 'data', 'uploads');
+  if (existsSync(dataUploads)) return dataUploads;
+  if (process.cwd() === '/app/apps/mock-api') return '/app/apps/mock-api/uploads';
+  return join(process.cwd(), '..', '..', 'packages', 'mock', 'uploads');
+})();
 const UPLOADS_BANNERS_DIR = join(UPLOADS_DIR, 'banners');
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!existsSync(UPLOADS_BANNERS_DIR)) mkdirSync(UPLOADS_BANNERS_DIR, { recursive: true });
@@ -189,14 +198,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('Only image files allowed'));
   },
 });
 
-const BANNER_MAX_BYTES = 2 * 1024 * 1024;
+const BANNER_MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_BANNER_MIMES = ['image/webp', 'image/jpeg', 'image/jpg', 'image/png'];
 const bannerStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_BANNERS_DIR),
@@ -216,7 +225,9 @@ const bannerUpload = multer({
 });
 
 const corsOptions = {
-  origin: true, // Reflect request origin (required when credentials: true; * not allowed)
+  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+    cb(null, true);
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Emergency-Mode'],
   exposedHeaders: ['Authorization'],
@@ -225,22 +236,36 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
-  if (req.headers.origin) res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+  const origin = req.headers.origin;
+  if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
   next();
 });
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use((req, res, next) => {
+  console.log(`INCOMING REQUEST: ${req.method} ${req.url}`);
+  next();
+});
+
+/** Map multer errors to clear JSON messages for clients */
+function uploadErrorMessage(err: Error & { code?: string }): string {
+  if (err?.code === 'LIMIT_FILE_SIZE') return 'File too large';
+  if (err?.code === 'LIMIT_UNEXPECTED_FILE') return 'Unexpected file field';
+  return err?.message ?? 'Upload failed';
+}
+
 /** Parse multipart for POST /upload and POST /upload/banner BEFORE auth */
 app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/upload/banner') {
     return bannerUpload.single('file')(req, res, (err) => {
-      if (err) return res.status(400).json({ error: err.message });
+      if (err) return res.status(400).json({ error: uploadErrorMessage(err) });
       next();
     });
   }
   if (req.method === 'POST' && req.path === '/upload') {
     return upload.array('files', 20)(req, res, (err) => {
-      if (err) return res.status(400).json({ error: err.message });
+      if (err) return res.status(400).json({ error: uploadErrorMessage(err) });
       next();
     });
   }
@@ -258,6 +283,7 @@ declare global {
 
 /** Public routes: no auth required. Storefront guests can access these without JWT. */
 const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
+  { method: 'GET', path: /^\/$/ },
   { method: 'POST', path: /^\/auth\/login$/ },
   { method: 'GET', path: /^\/health$/ },
   { method: 'GET', path: /^\/storefront\/tenants$/ },
@@ -278,9 +304,12 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: 'GET', path: /^\/public\/orders\/[^/]+$/ },
   { method: 'GET', path: /^\/global-categories$/ },
+  { method: 'GET', path: /^\/categories$/ },
   { method: 'POST', path: /^\/leads$/ },
   { method: 'GET', path: /^\/merchant\/dashboard$/ },
   { method: 'GET', path: /^\/merchant\/leads$/ },
+  { method: 'POST', path: /^\/internal\/orders\/[^/]+\/status$/ },
+  { method: 'GET', path: /^\/customer\/push-public-key$/ },
 ];
 
 function isPublicRoute(method: string, path: string): boolean {
@@ -363,21 +392,49 @@ app.use((req, res, next) => {
   return res.status(401).json({ error: 'Unauthorized' });
 });
 
-// --- Auth ---
+// --- Auth (admin: email/password or OTP backdoor for Root) ---
+/** Traditional admin login. Required for ROOT_ADMIN / Global Categories. Also accepts OTP backdoor: phone=999, code=1234 → root@nmd.com. */
 app.post('/auth/login', async (req, res) => {
-  const { email, password } = req.body as { email?: string; password?: string };
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const body = req.body as { email?: string; password?: string; phone?: string; code?: string };
   const users = (await repos.users.findAll());
-  const user = users.find((u) => u.email?.toLowerCase() === String(email).trim().toLowerCase());
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+
+  let user: (typeof users)[0] | undefined;
+
+  if (body.phone != null && body.code != null) {
+    const phone = String(body.phone).replace(/\D/g, '');
+    const code = String(body.code).trim();
+    if (phone === '999' && code === '1234') {
+      user = users.find((u) => u.role === 'ROOT_ADMIN' && u.email?.toLowerCase() === 'root@nmd.com');
+      if (!user) user = users.find((u) => u.role === 'ROOT_ADMIN');
+    }
   }
+
+  if (!user && body.email != null && body.password != null) {
+    const email = String(body.email).trim();
+    const password = body.password;
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+  }
+
+  if (!user) {
+    if (body.phone != null && body.code != null) return res.status(401).json({ error: 'Invalid OTP backdoor (use phone=999, code=1234 for Root)' });
+    return res.status(400).json({ error: 'email and password required' });
+  }
+
   const token = jwt.sign(
     { sub: user.id, role: user.role, tenantId: user.tenantId, marketId: user.marketId },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
   res.json({ accessToken: token });
+});
+
+app.get('/auth/login', (_req, res) => {
+  res.set('Allow', 'POST');
+  res.status(405).json({ error: 'Method Not Allowed. Use POST with { email, password } or { phone, code } (backdoor: 999 / 1234 for Root).' });
 });
 
 app.get('/auth/me', wrapAsync(async (req, res) => {
@@ -401,7 +458,7 @@ app.get('/auth/me', wrapAsync(async (req, res) => {
   });
 }));
 
-// --- Customer OTP auth (dev-mode) ---
+// --- Customer OTP auth: unified signup/login (name + phone for new). No POST /auth/register — admin stays on POST /auth/login. ---
 app.get('/customer/auth/check-phone', async (req, res) => {
   const phone = req.query.phone as string | undefined;
   if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
@@ -414,9 +471,38 @@ app.get('/customer/auth/check-phone', async (req, res) => {
 
 app.post('/customer/auth/start', async (req, res) => {
   const { phone } = req.body as { phone?: string };
-  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+  if (!phone || typeof phone !== 'string') {
+    console.log('[customer/auth/start] 400: phone required');
+    return res.status(400).json({ error: 'phone required' });
+  }
+  const normalized = normalizePhoneForMatch(phone);
+  if (!normalized || normalized.length < 9) {
+    console.log('[customer/auth/start] 400: invalid phone', phone);
+    return res.status(400).json({ error: 'Invalid phone format' });
+  }
   const result = createOtp(phone);
-  if (!result.ok) return res.status(429).json({ error: result.error, code: result.code });
+  if (!result.ok) {
+    console.log('[customer/auth/start] 429:', result.error, result.code);
+    return res.status(429).json({ error: result.error, code: result.code });
+  }
+  const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || '').replace(/\/$/, '');
+  const waApiKey = process.env.WA_API_KEY;
+  if (gatewayUrl && waApiKey && result.codeForSending) {
+    try {
+      const sendRes = await fetch(`${gatewayUrl}/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': waApiKey },
+        body: JSON.stringify({ phone: normalized, code: result.codeForSending }),
+      });
+      if (!sendRes.ok) {
+        const errText = await sendRes.text();
+        console.warn('[customer/auth/start] WhatsApp send-otp failed:', sendRes.status, errText);
+      }
+    } catch (e) {
+      console.warn('[customer/auth/start] WhatsApp send-otp error:', e instanceof Error ? e.message : e);
+    }
+  }
+  if (result.devCode) console.log('[customer/auth/start] 200 → OTP sent (see [OTP] log above or client toast)');
   res.json({ ok: true, ...(result.devCode && { devCode: result.devCode }) });
 });
 
@@ -424,6 +510,7 @@ function normalizePhoneForMatch(phone: string): string {
   return String(phone ?? '').replace(/\D/g, '').slice(-10);
 }
 
+// Customer signup/login: name from storefront is saved via repos.customers (DB or JSON per STORAGE_DRIVER).
 app.post('/customer/auth/verify', async (req, res) => {
   const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
   if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
@@ -434,7 +521,9 @@ app.post('/customer/auth/verify', async (req, res) => {
   }
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
-  let customer = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const existing = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const isNewUser = !existing;
+  let customer = existing;
   const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -447,7 +536,11 @@ app.post('/customer/auth/verify', async (req, res) => {
     await repos.customers.setAll(next);
   }
   const token = jwt.sign({ sub: customer.id, role: 'CUSTOMER' }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, customer: { id: customer.id, phone: customer.phone, name: customer.name } });
+  res.json({
+    token,
+    customer: { id: customer.id, phone: customer.phone, name: customer.name },
+    isNewUser,
+  });
 });
 
 app.get('/customer/me', async (req, res) => {
@@ -455,6 +548,43 @@ app.get('/customer/me', async (req, res) => {
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
   const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
   res.json({ id: customer.id, phone: customer.phone, name: full?.name ?? customer.name });
+});
+
+app.patch('/customer/profile', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const { name } = req.body as { name?: string };
+  const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const updated = { ...customers[idx], name: nameTrimmed ?? customers[idx].name };
+  customers[idx] = updated;
+  await repos.customers.setAll(customers);
+  res.json({ customer: { id: updated.id, phone: updated.phone, name: updated.name } });
+});
+
+app.get('/customer/push-public-key', (_req, res) => {
+  res.json({ publicKey: getVapidPublicKey() });
+});
+
+app.post('/customer/push-subscription', async (req, res) => {
+  console.log('[Push] POST /customer/push-subscription received, Authorization:', req.headers.authorization ? 'present' : 'missing');
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) {
+    console.log('[Push] 401 Unauthorized: no customer on request');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const body = req.body as { subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; expirationTime?: number | null } };
+  const sub = body?.subscription;
+  if (!sub || !sub.endpoint) return res.status(400).json({ error: 'subscription with endpoint required' });
+  const subscription = {
+    endpoint: sub.endpoint,
+    keys: sub.keys ? { p256dh: sub.keys.p256dh, auth: sub.keys.auth } : undefined,
+    expirationTime: sub.expirationTime ?? null,
+  };
+  saveSubscription(customer.phone, subscription);
+  res.json({ ok: true });
 });
 
 app.get('/customer/activity', wrapAsync(async (req, res) => {
@@ -770,39 +900,73 @@ function normalizeHero(h: StorefrontHero | undefined): StorefrontHero {
   return { ...base, ctaLink: cta, ctaHref: cta } as StorefrontHero;
 }
 
-/** Returns full tenant including name, about, officeHours - used by GET /tenants/by-slug and PUT responses */
+const DEFAULT_OPEN_TIME = '08:00';
+const DEFAULT_CLOSE_TIME = '17:00';
+
+/** Returns full tenant including name, about, officeHours - used by GET /tenants/by-slug and PUT responses. Banners/arrays fallback to []. openTime/closeTime fallback to 08:00/17:00. */
 function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
   const type = (t.type === 'CLOTHING' || t.type === 'FOOD') ? t.type : 'GENERAL';
+  const banners = t.banners;
+  const openTime = (t as { openTime?: string }).openTime ?? DEFAULT_OPEN_TIME;
+  const closeTime = (t as { closeTime?: string }).closeTime ?? DEFAULT_CLOSE_TIME;
+  const forceClosed = (t as { forceClosed?: boolean }).forceClosed ?? false;
   return {
     ...t,
     type,
     hero: normalizeHero(t.hero),
-    banners: t.banners ?? [],
-  };
+    banners: Array.isArray(banners) ? banners : [],
+    openTime,
+    closeTime,
+    forceClosed,
+  } as RegistryTenant;
 }
 
 // --- Leads (public POST for storefront tracking; GET requires auth) ---
-/** Resolve tenantId from id or slug; always return UUID for consistent storage and filtering. */
+/** Normalize for case-insensitive, slug-friendly comparison. */
+function norm(s: string): string {
+  return String(s ?? '').trim().toLowerCase();
+}
+
+/** Resolve tenantId from id or slug; always return UUID for consistent storage and filtering. Slug match is case-insensitive. */
 async function resolveTenantId(tenantIdOrSlug: string): Promise<string | null> {
   const v = String(tenantIdOrSlug).trim();
   if (!v) return null;
   const tenants = await repos.tenants.findAll();
-  const byId = tenants.find((t) => t.id === v);
+  const byId = tenants.find((t) => norm(t.id) === norm(v));
   if (byId) return byId.id;
-  const bySlug = tenants.find((t) => (t as { slug?: string }).slug === v);
+  const bySlug = tenants.find((t) => norm((t as { slug?: string }).slug ?? '') === norm(v));
   return bySlug ? bySlug.id : null;
+}
+
+/** Loose filter: lead belongs to tenant if ANY of (tenantId, tenantSlug, storeId) matches requested id OR slug. Case-insensitive. */
+function leadBelongsToTenantFilter(
+  l: { tenantId?: string; tenantSlug?: string; storeId?: string },
+  reqId: string,
+  reqSlug: string | undefined,
+  _tenants: { id: string; slug?: string }[]
+): boolean {
+  const rid = norm(reqId);
+  const rslug = reqSlug ? norm(reqSlug) : '';
+  const lid = l.tenantId != null ? norm(l.tenantId) : '';
+  const lslug = (l as { tenantSlug?: string }).tenantSlug != null ? norm((l as { tenantSlug?: string }).tenantSlug!) : '';
+  const lstore = (l as { storeId?: string }).storeId != null ? norm((l as { storeId?: string }).storeId!) : '';
+  if (rid && (lid === rid || lslug === rid || lstore === rid)) return true;
+  if (rslug && (lid === rslug || lslug === rslug || lstore === rslug)) return true;
+  return false;
 }
 
 app.post('/leads', wrapAsync(async (req, res) => {
   const body = req.body as {
     tenantId?: string;
     tenantSlug?: string;
+    professionalId?: string;
     type?: string;
     status?: string;
     contactType?: string;
+    timestamp?: string;
     metadata?: Record<string, unknown>;
   };
-  const tenantIdOrSlug = body.tenantId ?? body.tenantSlug;
+  const tenantIdOrSlug = body.tenantId ?? body.tenantSlug ?? body.professionalId;
   if (!tenantIdOrSlug || typeof tenantIdOrSlug !== 'string') {
     return res.status(400).json({ error: 'tenantId or tenantSlug required' });
   }
@@ -824,6 +988,7 @@ app.post('/leads', wrapAsync(async (req, res) => {
     type,
     status: body.status,
     contactType: body.contactType,
+    timestamp: typeof body.timestamp === 'string' ? body.timestamp : undefined,
     metadata,
   });
   res.status(201).json(lead);
@@ -854,17 +1019,27 @@ app.get('/leads', wrapAsync(async (req, res) => {
   }
   let leads = getLeads();
   if (caller.role === 'ROOT_ADMIN') {
-    if (filterTenantId) leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+    if (filterTenantId) {
+      const t = tenants.find((x) => x.id === filterTenantId);
+      const slug = (t as { slug?: string })?.slug;
+      leads = leads.filter((l) => leadBelongsToTenantFilter(l, filterTenantId, slug, tenants));
+    }
   } else if (caller.role === 'TENANT_ADMIN') {
-    const myTenantId = filterTenantId ?? String(caller.tenantId ?? '').trim();
-    if (myTenantId) {
-      const myTenant = tenants.find((t) => t.id === myTenantId);
-      const mySlug = (myTenant as { slug?: string })?.slug;
-      leads = leads.filter((l) => {
-        if (l.tenantId == null) return false;
-        const tid = String(l.tenantId).trim();
-        return tid === myTenantId || (!!mySlug && tid === mySlug);
-      });
+    let myTenantId = filterTenantId ?? String(caller.tenantId ?? '').trim();
+    if (!myTenantId && (caller as { id?: string }).id) {
+      const users = await repos.users.findAll();
+      const u = users.find((x) => x.id === (caller as { id?: string }).id);
+      const tid = (u as { tenantId?: string })?.tenantId;
+      if (tid) myTenantId = String(tid).trim();
+    }
+    const myTenant = myTenantId ? tenants.find((t) => norm(t.id) === norm(myTenantId) || norm((t as { slug?: string }).slug ?? '') === norm(myTenantId)) : null;
+    const mySlug = (myTenant as { slug?: string })?.slug ?? (myTenantId && !myTenant ? myTenantId : '');
+    const effectiveId = myTenant?.id ?? myTenantId;
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('DEBUG GET /leads: User Slug:', mySlug, 'User TenantId:', myTenantId, 'EffectiveId:', effectiveId, 'First lead tenantId:', leads[0]?.tenantId, 'Total before filter:', leads.length);
+    }
+    if (effectiveId || mySlug) {
+      leads = leads.filter((l) => leadBelongsToTenantFilter(l, effectiveId || mySlug, mySlug || undefined, tenants));
     } else {
       leads = [];
     }
@@ -872,9 +1047,19 @@ app.get('/leads', wrapAsync(async (req, res) => {
     const marketTenantIds = new Set(tenants.filter((t) => (t as { marketId?: string }).marketId === caller.marketId).map((t) => t.id));
     if (filterTenantId) {
       if (!marketTenantIds.has(filterTenantId)) leads = [];
-      else leads = leads.filter((l) => l.tenantId != null && String(l.tenantId).trim() === filterTenantId);
+      else {
+        const t = tenants.find((x) => x.id === filterTenantId);
+        const slug = (t as { slug?: string })?.slug;
+        leads = leads.filter((l) => leadBelongsToTenantFilter(l, filterTenantId, slug, tenants));
+      }
     } else {
-      leads = leads.filter((l) => marketTenantIds.has(l.tenantId));
+      leads = leads.filter((l) => {
+        if (l.tenantId == null) return false;
+        const tid = String(l.tenantId).trim();
+        if (marketTenantIds.has(tid)) return true;
+        const tenant = tenants.find((t) => norm(t.id) === norm(tid) || norm((t as { slug?: string }).slug ?? '') === norm(tid));
+        return !!tenant && marketTenantIds.has(tenant.id);
+      });
     }
   }
   res.json(leads);
@@ -947,11 +1132,13 @@ app.get('/customers', wrapAsync(async (req, res) => {
 }));
 
 // --- Merchant Dashboard (TENANT_ADMIN or public with tenantSlug for demo) ---
-/** Match lead to tenant by UUID or slug (fallback for legacy leads). */
+/** Match lead to tenant by UUID or slug (fallback for legacy leads). Case-insensitive. */
 function leadBelongsToTenant(l: { tenantId?: string }, tenantId: string, tenantSlug: string | undefined): boolean {
   if (!l.tenantId) return false;
-  const tid = String(l.tenantId).trim();
-  return tid === tenantId || (!!tenantSlug && tid === tenantSlug);
+  const tid = norm(String(l.tenantId));
+  const rid = norm(tenantId);
+  const rslug = tenantSlug ? norm(tenantSlug) : '';
+  return tid === rid || (!!rslug && tid === rslug);
 }
 
 app.get('/merchant/dashboard', wrapAsync(async (req, res) => {
@@ -1200,14 +1387,20 @@ app.get('/global-categories', (_req, res) => {
   res.json(getGlobalCategories());
 });
 
+/** Alias for Big Admin / tenant select: same data as /global-categories */
+app.get('/categories', (_req, res) => {
+  res.json(getGlobalCategories());
+});
+
 app.post('/global-categories', async (req, res) => {
   if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
-  const body = req.body as { title: string; icon: string; isProfessional?: boolean; sortOrder?: number };
+  const body = req.body as { title: string; nameAr?: string; icon: string; isProfessional?: boolean; sortOrder?: number };
   const id = crypto.randomUUID?.() ?? `cat-${Date.now()}`;
   const cat: GlobalCategory = {
     id,
     title: body.title ?? '',
+    nameAr: body.nameAr != null ? String(body.nameAr).trim() || undefined : undefined,
     icon: body.icon ?? '📦',
     isProfessional: body.isProfessional ?? false,
     sortOrder: body.sortOrder ?? 999,
@@ -1350,24 +1543,32 @@ app.post('/markets', async (req, res) => {
 });
 
 app.put('/markets/:id', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
-  if (!requireWriteWithReason(req, res)) return;
+  const user = req.user;
   const { id } = req.params;
+  const isRoot = user?.role === 'ROOT_ADMIN';
+  const isMarketAdminOwn = user?.role === 'MARKET_ADMIN' && user.marketId === id;
+  if (!isRoot && !isMarketAdminOwn) return res.status(403).json({ error: 'Forbidden' });
+  if (isRoot && !requireWriteWithReason(req, res)) return;
   const body = req.body as Partial<Omit<Market, 'id'>>;
   const markets = (await repos.markets.findAll());
   const idx = markets.findIndex((m) => m.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Market not found' });
   const before = markets[idx];
   markets[idx] = { ...markets[idx], ...body };
-  await repos.markets.setAll(markets);
+  try {
+    await repos.markets.setAll(markets);
+  } catch (err) {
+    console.error('[markets] Failed to persist (check file permissions, e.g. /data):', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: 'Failed to save market', code: 'PERSIST_ERROR' });
+  }
   appendAuditEvent({
-    userId: req.user!.id,
-    role: req.user!.role,
+    userId: user!.id,
+    role: user!.role,
     action: 'update',
     entity: 'market',
     entityId: id,
-    reason: getEmergencyReason(req),
-    emergencyMode: true,
+    reason: isRoot ? getEmergencyReason(req) : undefined,
+    emergencyMode: isRoot,
     before,
     after: markets[idx],
   });
@@ -1403,8 +1604,10 @@ app.put('/markets/by-slug/:slug/banners', async (req, res) => {
   }
   const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  const banners = req.body as MarketBanner[];
-  if (!Array.isArray(banners)) return res.status(400).json({ error: 'banners must be an array' });
+  const banners = req.body as unknown;
+  if (!Array.isArray(banners)) {
+    return res.json(getBannersForMarket(req.params.slug));
+  }
   setBannersForMarket(req.params.slug, banners);
   res.json(banners);
 });
@@ -1542,13 +1745,26 @@ app.put('/markets/:marketId/admin-credentials', async (req, res) => {
 
 app.get('/markets/:marketId/tenants', async (req, res) => {
   const { marketId } = req.params;
+  const categoryId = (req.query.categoryId as string)?.trim() || (req.query.marketCategory as string)?.trim();
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
   if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const tenants = (await repos.tenants.findAll())
-    .filter((t) => t.marketId === marketId && t.enabled && (t.isListedInMarket !== false))
+  let tenants = (await repos.tenants.findAll())
+    .filter((t) => t.marketId === marketId && t.enabled && (t.isListedInMarket !== false));
+  if (categoryId) {
+    const norm = (s: string) => (s ?? '').toLowerCase();
+    const globalCats = getGlobalCategories();
+    tenants = tenants.filter((t) => {
+      const mc = (t.marketCategory ?? '').trim();
+      if (norm(mc) === norm(categoryId)) return true;
+      const cat = globalCats.find((c) => norm(c.id) === norm(categoryId));
+      if (cat?.legacyCode && norm(mc) === norm(cat.legacyCode)) return true;
+      return false;
+    });
+  }
+  tenants = tenants
     .sort((a, b) => {
       const soA = a.marketSortOrder ?? 999;
       const soB = b.marketSortOrder ?? 999;
@@ -1577,6 +1793,9 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
         operationalStatus: (n as RegistryTenant).operationalStatus,
         orderPolicy: (n as RegistryTenant).orderPolicy,
         businessHours: (n as RegistryTenant).businessHours,
+        openTime: n.openTime,
+        closeTime: n.closeTime,
+        forceClosed: n.forceClosed,
       };
     });
   res.json(tenants);
@@ -1771,9 +1990,19 @@ app.post('/tenants', async (req, res) => {
   res.status(201).json(tenant);
 });
 
+function normalizeId(s: string | undefined | null): string {
+  return String(s ?? '').trim();
+}
+
 async function handleTenantUpdate(req: express.Request, res: express.Response): Promise<void> {
   const { id } = req.params;
   let updates = req.body as Partial<Omit<RegistryTenant, 'id' | 'createdAt'>>;
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
   const tenants = (await repos.tenants.findAll());
   const idx = tenants.findIndex((t) => t.id === id);
   if (idx === -1) {
@@ -1781,23 +2010,32 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     return;
   }
   const tenant = tenants[idx];
-  const user = req.user;
 
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
 
-  if (user?.role === 'MARKET_ADMIN') {
-    if (tenant.marketId !== user.marketId) {
-      res.status(403).json({ error: 'Forbidden' });
+  if (user.role === 'MARKET_ADMIN') {
+    const callerMarketId = normalizeId(user.marketId);
+    const tenantMarketId = normalizeId(tenant.marketId);
+    const assigningToCallerMarket = tenantMarketId === '' && normalizeId(updates.marketId) === callerMarketId;
+    const tenantBelongsToCallerMarket =
+      callerMarketId && (tenantMarketId === callerMarketId || assigningToCallerMarket);
+    if (!tenantBelongsToCallerMarket) {
+      res.status(403).json({ error: 'Not authorized for this tenant: tenant must belong to your market' });
       return;
     }
-    // MARKET_ADMIN can only update: marketCategory, isListedInMarket, marketSortOrder
-    const allowed = ['marketCategory', 'isListedInMarket', 'marketSortOrder'] as const;
+    // MARKET_ADMIN can only update: marketCategory, isListedInMarket, marketSortOrder, marketId (only to assign to their market)
+    const allowed = ['marketCategory', 'isListedInMarket', 'marketSortOrder', 'marketId'] as const;
     updates = Object.fromEntries(
       Object.entries(updates).filter(([k]) => allowed.includes(k as (typeof allowed)[number]))
     ) as Partial<RegistryTenant>;
+    if (updates.marketId !== undefined && normalizeId(updates.marketId) !== callerMarketId) {
+      updates = { ...updates, marketId: user.marketId as string };
+    }
   }
 
   const before = { ...tenants[idx] };
+  if (updates.banners !== undefined && !Array.isArray(updates.banners)) delete (updates as Record<string, unknown>).banners;
+  if (updates.hero !== undefined && (typeof updates.hero !== 'object' || updates.hero === null)) delete (updates as Record<string, unknown>).hero;
   tenants[idx] = { ...tenants[idx], ...updates };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
@@ -1905,7 +2143,7 @@ app.put('/tenants/:id/branding', async (req, res) => {
       if (title.length <= 50) tenants[idx].name = title;
     }
   }
-  if (body.banners !== undefined) tenants[idx].banners = body.banners;
+  if (body.banners !== undefined && Array.isArray(body.banners)) tenants[idx].banners = body.banners;
   if (body.whatsappPhone !== undefined) {
     const cleaned = typeof body.whatsappPhone === 'string' ? body.whatsappPhone.replace(/\D/g, '') : '';
     tenants[idx].whatsappPhone = cleaned || undefined;
@@ -1918,7 +2156,7 @@ app.put('/tenants/:id/branding', async (req, res) => {
   if (body.layoutStyle !== undefined) tenants[idx].layoutStyle = body.layoutStyle as RegistryTenant['layoutStyle'];
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
-  console.log('[Branding] Persisted tenant', id, 'to store (data.json)');
+  console.log('[Branding] Persisted tenant', id, process.env.STORAGE_DRIVER === 'db' ? 'to database' : 'to store');
   appendAuditEvent({
     userId: user!.id,
     role: user!.role,
@@ -1966,6 +2204,7 @@ app.put('/tenants/:id/collections', async (req, res) => {
   res.json(normalizeTenantResponse(tenants[idx]));
 });
 
+/** Updates name, about, storeType, officeHours, etc. Banners and hero are never read or written here; updating name/about does not wipe banners. */
 app.put('/tenants/:id/operational-settings', async (req, res) => {
   const { id } = req.params;
   const user = req.user;
@@ -1985,9 +2224,13 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     bookingEnabled?: boolean;
     about?: string;
     officeHours?: string;
+    openTime?: string;
+    closeTime?: string;
+    forceClosed?: boolean;
     name?: string;
     phone?: string;
     whatsappPhone?: string;
+    storeType?: 'RESTAURANT' | 'PROFESSIONAL';
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
@@ -2008,6 +2251,9 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (body.bookingEnabled !== undefined) (tenants[idx] as RegistryTenant).bookingEnabled = body.bookingEnabled;
   if (body.about !== undefined) (tenants[idx] as RegistryTenant).about = body.about;
   if (body.officeHours !== undefined) (tenants[idx] as RegistryTenant).officeHours = body.officeHours;
+  if (body.openTime !== undefined) (tenants[idx] as RegistryTenant).openTime = body.openTime;
+  if (body.closeTime !== undefined) (tenants[idx] as RegistryTenant).closeTime = body.closeTime;
+  if (body.forceClosed !== undefined) (tenants[idx] as RegistryTenant).forceClosed = body.forceClosed;
   if (body.phone !== undefined) {
     const cleaned = String(body.phone).replace(/\D/g, '');
     (tenants[idx] as RegistryTenant).phone = cleaned || undefined;
@@ -2017,6 +2263,9 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     const cleaned = String(body.whatsappPhone).replace(/\D/g, '');
     (tenants[idx] as RegistryTenant).whatsappPhone = cleaned || undefined;
     (tenants[idx] as RegistryTenant).phone = cleaned || undefined;
+  }
+  if (body.storeType !== undefined) {
+    (tenants[idx] as RegistryTenant).storeType = body.storeType;
   }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
@@ -2035,11 +2284,55 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   res.json(normalizeTenantResponse(tenants[idx]));
 });
 
+/** Deep delete tenant and all related data. Atomic: payments → orders → catalog → delivery → zones → tenant-scoped couriers → tenant. */
+app.delete('/tenants/:id', async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: 'Tenant not found' });
+  if (user.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+
+  const orderIds = ((await repos.orders.findAll()) as { id?: string; tenantId?: string }[])
+    .filter((o) => o.tenantId === id)
+    .map((o) => o.id!)
+    .filter(Boolean);
+  await repos.payments.deleteForOrderIds(orderIds);
+  const orders = ((await repos.orders.findAll()) as { tenantId?: string }[]).filter((o) => o.tenantId !== id);
+  await repos.orders.setAll(orders);
+  await repos.catalog.setCatalog(id, { categories: [], products: [], optionGroups: [] });
+  await repos.delivery.deleteSettings(id);
+  await repos.deliveryZones.setAll(id, []);
+  const couriers = (await repos.couriers.findAll()).filter(
+    (c) => !(c.scopeType === 'TENANT' && c.scopeId === id)
+  );
+  await repos.couriers.setAll(couriers);
+  const remainingTenants = tenants.filter((x) => x.id !== id);
+  await repos.tenants.setAll(remainingTenants);
+
+  appendAuditEvent({
+    userId: user.id,
+    role: user.role,
+    marketId: t.marketId,
+    action: 'delete',
+    entity: 'tenant',
+    entityId: id,
+    reason: user.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : 'full store delete',
+    emergencyMode: user.role === 'ROOT_ADMIN',
+    before: t,
+    after: null,
+  });
+  res.status(204).send();
+});
+
 // --- Upload ---
+/** Base URL for upload/image links. Set PUBLIC_URL=https://nmd.marketing/api in production to avoid mixed content. */
 const UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 app.post('/upload', async (req, res) => {
-  console.log('Query Params:', req.query);
-  console.log('Incoming Headers:', req.headers);
   const files = (req as { files?: Express.Multer.File[] }).files ?? [];
   const base = UPLOAD_BASE;
   const urls = files.map((f) => `${base}/uploads/${f.filename}`);
@@ -2047,7 +2340,7 @@ app.post('/upload', async (req, res) => {
   res.json({ urls });
 });
 
-/** Banner image upload: saves to public/uploads/banners, returns relative path for storage. Max 2MB, WebP/JPG/PNG only. */
+/** Banner image upload: saves to public/uploads/banners, returns relative path for storage. Max 10MB, WebP/JPG/PNG only. */
 app.post('/upload/banner', async (req, res) => {
   const file = (req as { file?: Express.Multer.File }).file;
   if (!file) return res.status(400).json({ error: 'No file uploaded' });
@@ -2060,8 +2353,13 @@ app.post('/upload/banner', async (req, res) => {
 
 // --- Catalog ---
 app.get('/catalog/:tenantId', wrapAsync(async (req, res) => {
-  const catalog = await repos.catalog.getCatalog(req.params.tenantId);
-  res.json(catalog);
+  try {
+    const catalog = await repos.catalog.getCatalog(req.params.tenantId);
+    res.json(catalog);
+  } catch (err) {
+    console.error('[catalog] getCatalog failed:', err instanceof Error ? err.message : err);
+    res.status(200).json({ categories: [], products: [], optionGroups: [], optionItems: [] });
+  }
 }));
 
 function normalizeProductForCompat(p: { imageUrl?: string; images?: { url: string }[] }) {
@@ -2107,9 +2405,12 @@ app.get('/orders', wrapAsync(async (req, res) => {
   res.json(orders);
 }));
 
-/** Tenant-scoped orders: TENANT_ADMIN own only; MARKET_ADMIN tenants in market; ROOT_ADMIN any */
+/** Tenant-scoped orders: TENANT_ADMIN own only; MARKET_ADMIN tenants in market; ROOT_ADMIN any. Query: from, to (ISO date), search (customer name/phone). */
 app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
   const { tenantId } = req.params;
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+  const search = (req.query.search as string || '').trim().toLowerCase();
   const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
   if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
   if (req.user?.role === 'TENANT_ADMIN' && req.user.tenantId !== tenantId) {
@@ -2118,7 +2419,23 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const orders = ((await repos.orders.findAll()) as { tenantId?: string }[]).filter((o) => o.tenantId === tenantId);
+  let orders = ((await repos.orders.findAll()) as { tenantId?: string; createdAt?: string; customerName?: string; customerPhone?: string }[]).filter((o) => o.tenantId === tenantId);
+  if (from || to) {
+    const fromMs = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toMs = to ? new Date(to).setHours(23, 59, 59, 999) : Number.MAX_SAFE_INTEGER;
+    orders = orders.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs && t <= toMs;
+    });
+  }
+  if (search) {
+    const searchDigits = search.replace(/\D/g, '');
+    orders = orders.filter((o) => {
+      const name = (o.customerName ?? '').toLowerCase();
+      const phone = (o.customerPhone ?? '').replace(/\D/g, '');
+      return name.includes(search) || (searchDigits.length >= 4 && phone.includes(searchDigits));
+    });
+  }
   res.json(orders);
 }));
 
@@ -2181,6 +2498,10 @@ app.post('/orders', wrapAsync(async (req, res) => {
     currency: payment.currency,
   });
 
+  if (tenant) {
+    notifyMerchantNewOrder(created as { id?: string; customerName?: string; customerPhone?: string; items?: unknown[]; total?: number; notes?: string; delivery?: unknown; fulfillmentType?: string; tenantId?: string; [key: string]: unknown }, tenant as { name?: string; whatsappPhone?: string; phone?: string });
+  }
+
   res.status(201).json(created);
 }));
 
@@ -2223,6 +2544,43 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
   res.json(safe);
 }));
 
+/** Internal: used by whatsapp-service bot to update order status (reply 1/2/3). Requires X-Internal-Secret if INTERNAL_API_SECRET is set. */
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET ?? process.env.WA_INTERNAL_SECRET ?? '';
+app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
+  if (INTERNAL_API_SECRET && req.headers['x-internal-secret'] !== INTERNAL_API_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const orderId = req.params.orderId;
+  const { status } = req.body as { status: string };
+  if (!status || !['CONFIRMED', 'READY', 'COMPLETED', 'DELIVERED'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  const orders = (await repos.orders.findAll()) as { id?: string; status?: string; tenantId?: string; courierId?: string }[];
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const order = orders[idx];
+  const updated = { ...orders[idx], status } as Record<string, unknown>;
+  if (status === 'DELIVERED' && order.courierId) {
+    updated.deliveredAt = new Date().toISOString();
+    const couriers = (await repos.couriers.findAll());
+    const cIdx = couriers.findIndex((c) => c.id === order.courierId);
+    if (cIdx >= 0) {
+      couriers[cIdx] = { ...couriers[cIdx], isAvailable: true, deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1 };
+      await repos.couriers.setAll(couriers);
+    }
+  }
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
+    const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
+    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
+    (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
+    orders[idx] = updated;
+    await repos.orders.setAll(orders);
+  }
+  res.json(orders[idx]);
+}));
+
 app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
   const { status } = req.body as { status: string };
   const orders = (await repos.orders.findAll()) as { id?: string; status?: string; tenantId?: string; courierId?: string }[];
@@ -2233,6 +2591,11 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
     const tenant = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant || tenant.marketId !== req.user.marketId) {
       return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+  if (req.user?.role === 'TENANT_ADMIN' && req.user.tenantId) {
+    if (order.tenantId !== req.user.tenantId) {
+      return res.status(403).json({ error: 'Forbidden: order does not belong to your store' });
     }
   }
   const updated = { ...orders[idx], status } as Record<string, unknown>;
@@ -2251,6 +2614,15 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
   }
   orders[idx] = updated;
   await repos.orders.setAll(orders);
+
+  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
+    const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
+    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
+    (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
+    orders[idx] = updated;
+    await repos.orders.setAll(orders);
+  }
+
   res.json(orders[idx]);
 }));
 
@@ -2428,8 +2800,15 @@ app.post('/tenants/:tenantId/orders/:orderId/ready', async (req, res) => {
   if (orders[idx].tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden' });
 
   const now = new Date().toISOString();
-  orders[idx] = { ...orders[idx], status: 'READY', readyAt: now } as OrderRecord;
+  const updated = { ...orders[idx], status: 'READY', readyAt: now } as OrderRecord & Record<string, unknown>;
+  orders[idx] = updated;
   await repos.orders.setAll(orders);
+
+  triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, 'READY', (tenant as { name?: string })?.name);
+  (updated as Record<string, unknown>).lastStatusNotification = { status: 'READY', at: now };
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+
   res.json(orders[idx]);
 });
 
@@ -2726,21 +3105,30 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
     return res.status(404).json({ error: 'Courier not found' });
   }
   const before = { ...couriers[idx] };
-  couriers[idx] = { ...couriers[idx], isActive: false };
-  await repos.couriers.setAll(couriers);
+  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string }[];
+  let ordersChanged = false;
+  for (let i = 0; i < orders.length; i++) {
+    if (orders[i].courierId === courierId) {
+      orders[i] = { ...orders[i], courierId: undefined };
+      ordersChanged = true;
+    }
+  }
+  if (ordersChanged) await repos.orders.setAll(orders);
+  const remaining = couriers.filter((_, i) => i !== idx);
+  await repos.couriers.setAll(remaining);
   appendAuditEvent({
     userId: user!.id,
     role: user!.role,
     marketId,
-    action: 'update',
+    action: 'delete',
     entity: 'courier',
     entityId: courierId,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : 'soft-delete',
+    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : 'driver deleted and unassigned from orders',
     emergencyMode: user!.role === 'ROOT_ADMIN',
     before,
-    after: couriers[idx],
+    after: null,
   });
-  res.json(couriers[idx]);
+  res.json(before);
 });
 
 // --- Tenant couriers ---
@@ -2948,6 +3336,88 @@ app.get('/markets/:marketId/finance/summary', wrapAsync(async (req, res) => {
     deliveredOrders,
     activeDeliveryOrders,
     cashOrders,
+  });
+}));
+
+/** Tenant dashboard stats: revenue and breakdown from completed orders. TENANT_ADMIN own only; MARKET/ROOT read as for orders. */
+app.get('/tenants/:tenantId/dashboard-stats', wrapAsync(async (req, res) => {
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId) as { id: string; marketId?: string; financialConfig?: { commissionType?: string; commissionValue?: number } } | undefined;
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (req.user?.role === 'TENANT_ADMIN' && req.user.tenantId !== tenantId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const allOrders = (await repos.orders.findAll()) as OrderWithPayment[];
+  const tenantOrders = allOrders.filter((o) => o.tenantId === tenantId);
+  const completed = tenantOrders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED');
+  const nonCancelled = tenantOrders.filter((o) => o.status !== 'CANCELLED');
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+  const todayEnd = todayStart;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  const ordersToday = ordersInDateRange(completed, todayStart, todayEnd);
+  const ordersThisMonth = ordersInDateRange(completed, monthStart, monthEnd);
+
+  const commissionPercent = tenant?.financialConfig?.commissionValue ?? 0;
+
+  function applyCommissionFallback(
+    f: { gross: number; commission: number; netToMerchant: number },
+    percent: number
+  ): { commission: number; netToMerchant: number } {
+    if (f.commission > 0 || f.netToMerchant > 0) return { commission: f.commission, netToMerchant: f.netToMerchant };
+    if (f.gross <= 0) return { commission: 0, netToMerchant: 0 };
+    const commission = Math.round(f.gross * (percent / 100) * 100) / 100;
+    const netToMerchant = Math.round((f.gross - commission) * 100) / 100;
+    return { commission, netToMerchant };
+  }
+
+  let dailyRevenue = 0;
+  let monthlyRevenue = 0;
+  let dailyCommission = 0;
+  let monthlyCommission = 0;
+  let dailyNet = 0;
+  let monthlyNet = 0;
+  for (const o of ordersToday) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    dailyRevenue += f.gross;
+    dailyCommission += commission;
+    dailyNet += netToMerchant;
+  }
+  for (const o of ordersThisMonth) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    monthlyRevenue += f.gross;
+    monthlyCommission += commission;
+    monthlyNet += netToMerchant;
+  }
+
+  let totalSales = 0;
+  let totalPlatformFee = 0;
+  let totalMerchantBalance = 0;
+  for (const o of nonCancelled) {
+    const f = computeOrderFinancials(o);
+    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
+    totalSales += f.gross;
+    totalPlatformFee += commission;
+    totalMerchantBalance += netToMerchant;
+  }
+
+  res.json({
+    dailyRevenue,
+    monthlyRevenue,
+    orderCountToday: ordersToday.length,
+    orderCountMonth: ordersThisMonth.length,
+    totalSales: totalSales,
+    platformFee: totalPlatformFee,
+    merchantBalance: totalMerchantBalance,
+    platformCommissionPercent: commissionPercent,
   });
 }));
 
@@ -3339,7 +3809,10 @@ app.post('/staff', async (req, res) => {
   res.status(201).json(user);
 });
 
-// Health
+app.get('/', (_req, res) => {
+  res.json({ name: 'nmd-mock-api', login: 'POST /auth/login', rootAdmin: 'root@nmd.com (email+password or phone=999 code=1234)' });
+});
+
 app.get('/health', async (_req, res) => {
   res.json({ ok: true });
 });
@@ -3356,7 +3829,51 @@ app.use((err: Error & { status?: number; code?: string }, _req: express.Request,
   res.status(status).json(body);
 });
 
+/** When using PostgreSQL, if DB is empty, seed from JSON file so site is not empty. Preserves all IDs. */
+async function seedDbFromJsonIfEmpty(): Promise<void> {
+  if ((process.env.STORAGE_DRIVER ?? '').toLowerCase() !== 'db') return;
+  const markets = await repos.markets.findAll();
+  if (markets.length > 0) return;
+  const candidates = [
+    process.env.SEED_JSON_PATH,
+    process.env.DATA_FILE,
+    '/data/data.json',
+    join(process.cwd(), 'data', 'data.json'),
+    join(process.cwd(), 'data.json'),
+  ].filter(Boolean) as string[];
+  const seedPath = candidates.find((p) => existsSync(p)) ?? candidates[0] ?? join(process.cwd(), 'data', 'data.json');
+  const data = loadFromPath(seedPath);
+  if (!data) {
+    console.log('[seed] No JSON file at', seedPath, '- starting with empty DB');
+    return;
+  }
+  console.log('[seed] Seeding DB from', seedPath);
+  if (data.markets.length > 0) await repos.markets.setAll(data.markets);
+  if (data.tenants.length > 0) await repos.tenants.setAll(data.tenants);
+  if (data.users.length > 0) await repos.users.setAll(data.users);
+  for (const [tenantId, catalog] of Object.entries(data.catalog ?? {})) {
+    if (tenantId && (catalog.categories?.length > 0 || catalog.products?.length > 0 || catalog.optionGroups?.length > 0)) {
+      await repos.catalog.setCatalog(tenantId, catalog);
+    }
+  }
+  for (const [tenantId, settings] of Object.entries(data.delivery ?? {})) {
+    if (tenantId && settings && typeof settings === 'object') {
+      await repos.delivery.setSettings(tenantId, settings as Record<string, unknown>);
+    }
+  }
+  for (const [tenantId, zones] of Object.entries(data.deliveryZones ?? {})) {
+    if (tenantId && Array.isArray(zones)) {
+      await repos.deliveryZones.setAll(tenantId, zones);
+    }
+  }
+  if ((data.couriers ?? []).length > 0) await repos.couriers.setAll(data.couriers);
+  if ((data.customers ?? []).length > 0) await repos.customers.setAll(data.customers);
+  if ((data.orders ?? []).length > 0) await repos.orders.setAll(data.orders as OrderRecord[]);
+  console.log('[seed] Done: markets=', data.markets.length, 'tenants=', data.tenants.length, 'catalog tenants=', Object.keys(data.catalog ?? {}).length);
+}
+
 (async () => {
+  await seedDbFromJsonIfEmpty();
   await seedUsersIfNeeded();
   await seedMarketsIfNeeded();
   await seedTenantMarketIdsIfNeeded();

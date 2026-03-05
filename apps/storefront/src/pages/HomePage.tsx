@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { Skeleton, EmptyState, Button } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useTheme } from '@nmd/ui';
+import { onTenantUpdate } from '../lib/tenant-broadcast';
 import { TopHeroCarousel } from '../components/TopHeroCarousel';
 import { ProductCard } from '../components/ProductCard';
 import { ServiceCard } from '../components/ServiceCard';
@@ -57,6 +58,33 @@ function EntranceAlert({
   );
 }
 
+function CategoryTab({
+  id,
+  name,
+  activeCategoryId,
+  onSelect,
+}: {
+  id: string;
+  name: string;
+  activeCategoryId: string | null;
+  onSelect: () => void;
+}) {
+  const isActive = activeCategoryId === id;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+        isActive
+          ? 'bg-primary text-white'
+          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+      }`}
+    >
+      {name}
+    </button>
+  );
+}
+
 function CampaignBanner({ tenantId }: { tenantId: string }) {
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns', tenantId],
@@ -87,7 +115,7 @@ export default function HomePage() {
 
   const hero = branding.hero;
   const banners = branding.banners ?? [];
-  const collections = (branding.collections ?? []).filter((c) => c.isActive);
+  const collections = (branding.collections ?? []).filter((c) => (c as HomeCollection).isActive !== false);
   const mainCategories = (categories: { id: string; name: string; parentId?: string | null; isVisible?: boolean }[]) =>
     (categories ?? []).filter((c) => !c.parentId || c.parentId === '').filter((c) => c.isVisible !== false);
   const { data: categories, isLoading, refetch } = useQuery({
@@ -108,13 +136,22 @@ export default function HomePage() {
     enabled: !!tenantId,
   });
 
-  /** Use slug from URL when on tenant route to share cache with TenantGate; fallback to tenantId */
+  /** Use slug from URL when on tenant route to share cache with TenantGate; fallback to tenantId. Fetches from same API as Mall (Store Admin settings). */
   const tenantKey = urlSlug ?? tenantId;
-  const { data: tenant } = useQuery({
+  const { data: tenant, refetch: refetchTenant } = useQuery({
     queryKey: ['tenant', tenantKey],
     queryFn: () => api.getTenant(tenantKey!),
     enabled: !!tenantKey,
+    staleTime: 30 * 1000,
   });
+
+  /** Real-time sync: when Store Admin toggles status, refetch so Store Page reflects immediately */
+  useEffect(() => {
+    const unsub = onTenantUpdate((updatedTenantId) => {
+      if (tenant?.id === updatedTenantId || tenantId === updatedTenantId) refetchTenant();
+    });
+    return unsub;
+  }, [tenant?.id, tenantId, refetchTenant]);
 
   /** Keep document title in sync with tenant name (prefer tenant from query) */
   const displayName = tenant?.name ?? tenantName;
@@ -132,6 +169,7 @@ export default function HomePage() {
       return false;
     }
   });
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
 
   const showEntranceAlert = !alertDismissed && (operationalStatus === 'busy' || operationalStatus === 'closed');
 
@@ -144,29 +182,13 @@ export default function HomePage() {
     }
   };
 
-  const recentProducts = [...allProducts]
-    .sort((a, b) => {
-      const aDate = (a as Product).createdAt ?? '0';
-      const bDate = (b as Product).createdAt ?? '0';
-      return bDate.localeCompare(aDate);
-    })
-    .slice(0, 8) as Product[];
+  const mainCats = mainCategories(categories ?? []);
+  const services = (allProducts as Product[]).filter((p) => p.isAvailable !== false);
+  const isEmpty = !isLoading && mainCats.length === 0 && (!categories || categories.length === 0);
+  const isEmptyProfessional = isProfessional && !isLoading && services.length === 0;
 
-  const featuredProducts = (() => {
-    const featured = (allProducts as Product[]).filter((p) => p.isFeatured === true);
-    if (featured.length >= 8) return featured.slice(0, 8);
-    if (featured.length > 0) {
-      const rest = (allProducts as Product[]).filter((p) => !p.isFeatured).sort((a, b) => {
-        const aDate = a.createdAt ?? '0';
-        const bDate = b.createdAt ?? '0';
-        return bDate.localeCompare(aDate);
-      });
-      return [...featured, ...rest].slice(0, 8);
-    }
-    return recentProducts;
-  })();
-
-  /** Resolve products for a collection (category or manual) */
+  /** Use dynamic collections when configured (backup/10am store design); otherwise fallback to featured + category rows */
+  const useDynamicCollections = collections.length > 0;
   function resolveCollectionProducts(c: HomeCollection): Product[] {
     if (c.type === 'category' && c.targetId) {
       return (allProducts as Product[]).filter((p) => p.categoryId === c.targetId);
@@ -178,19 +200,20 @@ export default function HomePage() {
     return [];
   }
 
-  const mainCats = mainCategories(categories ?? []);
-  const services = (allProducts as Product[]).filter((p) => p.isAvailable !== false);
-  const isEmpty = !isLoading && mainCats.length === 0 && (!categories || categories.length === 0);
-  const isEmptyProfessional = isProfessional && !isLoading && services.length === 0;
-
-  /** Use dynamic collections when configured; otherwise fallback to featured + recent */
-  const useDynamicCollections = collections.length > 0;
-
   if (isEmptyProfessional) {
     return (
-      <div className="max-w-6xl mx-auto p-4">
-        {isProfessional && tenant && (tenant as { about?: string })?.about && (
-          <ProfessionalHero tenant={tenant} />
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
+        {tenant && (
+          <div className="flex justify-end mb-3">
+            <StatusBadge tenant={tenant} variant="hero" />
+          </div>
+        )}
+        {tenant ? (
+          <ProfessionalHero tenant={tenant} hero={hero} banners={banners} />
+        ) : (
+          <section className="mb-12">
+            <TopHeroCarousel hero={hero} banners={banners} />
+          </section>
         )}
         <EmptyState
           title="لا توجد خدمات متاحة"
@@ -240,22 +263,29 @@ export default function HomePage() {
     );
   }
 
-  /** PROFESSIONAL layout: About hero + Service List + Available Slots */
+  /** PROFESSIONAL layout: Status Badge + Hero (ProfessionalHero or fallback) + Service List + Available Slots */
   if (isProfessional) {
     return (
       <motion.div
-        className="max-w-6xl mx-auto p-4"
+        className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}
       >
+        {/* Back to Market is in Header; Status Badge stays above hero */}
         {tenant && (
-          <div className="mb-4">
-            <StatusBadge tenant={tenant} />
+          <div className="flex justify-end mb-3">
+            <StatusBadge tenant={tenant} variant="hero" />
           </div>
         )}
-        {tenant && (tenant as { about?: string })?.about && (
-          <ProfessionalHero tenant={tenant} />
+
+        {/* Hero: always render so the top is never empty */}
+        {tenant ? (
+          <ProfessionalHero tenant={tenant} hero={hero} banners={banners} />
+        ) : (
+          <section className="mb-12">
+            <TopHeroCarousel hero={hero} banners={banners} />
+          </section>
         )}
 
         {/* Service List */}
@@ -287,7 +317,7 @@ export default function HomePage() {
 
   return (
     <motion.div
-      className="max-w-6xl mx-auto p-4"
+      className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
@@ -299,165 +329,141 @@ export default function HomePage() {
           onDismiss={handleDismissAlert}
         />
       )}
-      {tenant && (
-        <div className="mb-4">
-          <StatusBadge tenant={tenant} />
-        </div>
-      )}
       <CampaignBanner tenantId={tenantId} />
 
-      {/* 1) Categories - minimal underline-style tabs */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">تصفحي حسب الفئة</h2>
-        {/* Mobile: horizontal scroll */}
-        <div className="flex gap-6 overflow-x-auto pb-2 -mx-4 px-4 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain">
-          {mainCats.map((cat) => (
-            <NavLink
-              key={cat.id}
-              to={`/${tenantSlug || tenantId}/c/${cat.id}`}
-              className={({ isActive }) =>
-                `group flex-shrink-0 relative pb-2 pt-1 text-base font-medium transition-colors duration-200 ${
-                  isActive ? 'text-primary font-semibold' : 'text-gray-500 hover:text-primary'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {cat.name}
-                  <span
-                    className={`absolute bottom-0 start-2 h-0.5 bg-primary transition-[width] duration-200 ease-out ${
-                      isActive ? 'w-[calc(100%-1rem)]' : 'w-0 group-hover:w-[calc(100%-1rem)]'
-                    }`}
-                  />
-                </>
-              )}
-            </NavLink>
-          ))}
+      {/* Store status above hero, aligned with Back to Market (left in RTL) */}
+      {tenant && (
+        <div className="flex justify-end mb-3">
+          <StatusBadge tenant={tenant} variant="hero" />
         </div>
-        {/* Desktop: centered row */}
-        <div className="hidden md:flex flex-wrap justify-center gap-8">
-          {mainCats.map((cat) => (
-            <NavLink
-              key={cat.id}
-              to={`/${tenantSlug || tenantId}/c/${cat.id}`}
-              className={({ isActive }) =>
-                `group relative pb-2 pt-1 text-lg font-medium transition-colors duration-200 ${
-                  isActive ? 'text-primary font-semibold' : 'text-gray-500 hover:text-primary'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {cat.name}
-                  <span
-                    className={`absolute bottom-0 start-2 h-0.5 bg-primary transition-[width] duration-200 ease-out ${
-                      isActive ? 'w-[calc(100%-1rem)]' : 'w-0 group-hover:w-[calc(100%-1rem)]'
-                    }`}
-                  />
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </section>
+      )}
 
-      {/* 2) TopHeroCarousel */}
+      {/* Horizontal category tabs: above Hero, below Status; smooth scroll to section on click */}
+      {(() => {
+        const mainCatIds = new Set(mainCats.map((c) => c.id));
+        const uncategorized = (allProducts as Product[]).filter(
+          (p) => !p.categoryId || !mainCatIds.has(p.categoryId)
+        );
+        const categoriesWithProducts = mainCats.filter((cat) =>
+          (allProducts as Product[]).some((p) => p.categoryId === cat.id)
+        );
+        const hasOther = uncategorized.length > 0;
+        const tabs = [...categoriesWithProducts, ...(hasOther ? [{ id: 'other', name: 'أخرى' }] : [])];
+        if (tabs.length === 0) return null;
+
+        return (
+          <nav
+            className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain"
+            aria-label="التصنيفات"
+          >
+            {tabs.map((tab) => (
+              <CategoryTab
+                key={tab.id}
+                id={tab.id}
+                name={tab.name}
+                activeCategoryId={activeCategoryId}
+                onSelect={() => {
+                  setActiveCategoryId(tab.id);
+                  const el = document.getElementById(`category-${tab.id}`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              />
+            ))}
+          </nav>
+        );
+      })()}
+
+      {/* TopHeroCarousel */}
       <motion.section
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-10"
+        className="mb-12"
       >
         <TopHeroCarousel hero={hero} banners={banners} />
       </motion.section>
 
-      {/* 3 & 4) Dynamic collections or fallback (مختارات + وصل حديثًا) */}
-      {useDynamicCollections ? (
-        [...collections]
-          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-          .map((c) => {
-            const products = resolveCollectionProducts(c);
-            const viewAllHref =
-              c.type === 'category' && c.targetId
-                ? `/${tenantSlug || tenantId}/c/${c.targetId}`
-                : c.type === 'manual' && c.targetIds?.length
-                  ? `/${tenantSlug || tenantId}/products?ids=${c.targetIds.join(',')}`
-                  : mainCats[0]
-                    ? `/${tenantSlug || tenantId}/c/${mainCats[0].id}`
-                    : `/${tenantSlug || tenantId}/products`;
-            return (
-              <CollectionSlider
-                key={c.id}
-                title={c.title}
-                products={products}
-                campaigns={campaigns}
-                viewAllHref={viewAllHref}
-              />
-            );
-          })
-      ) : (
+      {/* Dynamic collections (backup/10am store design) or category rows */}
+      {useDynamicCollections
+        ? [...collections]
+            .sort((a, b) => ((a as HomeCollection).sortOrder ?? 0) - ((b as HomeCollection).sortOrder ?? 0))
+            .map((c) => {
+              const coll = c as HomeCollection;
+              const products = resolveCollectionProducts(coll);
+              const viewAllHref =
+                coll.type === 'category' && coll.targetId
+                  ? `/${tenantSlug || tenantId}/category/${coll.targetId}`
+                  : coll.type === 'manual' && coll.targetIds?.length
+                    ? `/${tenantSlug || tenantId}/products?ids=${coll.targetIds.join(',')}`
+                    : mainCats[0]
+                      ? `/${tenantSlug || tenantId}/category/${mainCats[0].id}`
+                      : `/${tenantSlug || tenantId}/products`;
+              return (
+                <CollectionSlider
+                  key={coll.id}
+                  title={coll.title}
+                  products={products}
+                  campaigns={campaigns}
+                  viewAllHref={viewAllHref}
+                />
+              );
+            })
+        : null}
+
+      {!useDynamicCollections && (
         <>
-          <section className="mb-10">
-            <h2 className="text-xl font-bold text-gray-900 mb-1">مختارات {tenant?.name ?? tenantName} ⭐</h2>
-            <p className="text-sm text-gray-500 mb-4">أفضل اختياراتنا لك</p>
-            {featuredProducts.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                {featuredProducts.map((prod, i) => (
-                  <motion.div
-                    key={prod.id}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="w-full"
-                  >
-                    <ProductCard product={prod} campaigns={campaigns} />
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                variant="no-data"
-                title="لا توجد منتجات مميزة"
-                description="لا توجد منتجات مميزة في هذا المتجر حالياً."
-              />
-            )}
-          </section>
-          <section className="mb-10">
-            <div className="flex justify-between items-end mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-1">وصل حديثًا 💫</h2>
-                <p className="text-sm text-gray-500">موديلات جديدة كل أسبوع</p>
-              </div>
-              {mainCats[0] && recentProducts.length > 0 && (
-                <Link
-                  to={`/${tenantSlug || tenantId}/c/${mainCats[0].id}`}
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  عرض الكل
-                </Link>
-              )}
+      {/* Product rows by category: horizontal scroll per category, after Hero only */}
+      {mainCats.map((cat) => {
+        const categoryProducts = (allProducts as Product[]).filter((p) => p.categoryId === cat.id);
+        if (categoryProducts.length === 0) return null;
+        return (
+          <section key={cat.id} id={`category-${cat.id}`} className="mb-10 scroll-mt-24">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
+              <Link
+                to={`/${tenantSlug || tenantId}/category/${cat.id}`}
+                className="text-sm font-medium text-[#00A0A0] hover:text-[#008080] hover:underline transition-colors shrink-0"
+              >
+                عرض الكل
+              </Link>
             </div>
-            {recentProducts.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                {recentProducts.map((prod, i) => (
-                  <motion.div
-                    key={prod.id}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="w-full"
-                  >
-                    <ProductCard product={prod} campaigns={campaigns} />
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                variant="no-data"
-                title="لا توجد منتجات حديثة"
-                description="لا توجد منتجات حديثة في هذا المتجر حالياً."
-              />
-            )}
+            <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain">
+              {categoryProducts.map((prod) => (
+                <div key={prod.id} className="shrink-0 w-[160px] sm:w-[180px]">
+                  <ProductCard product={prod} campaigns={campaigns} />
+                </div>
+              ))}
+            </div>
           </section>
+        );
+      })}
+      {/* Uncategorized products if any */}
+      {(() => {
+        const mainCatIds = new Set(mainCats.map((c) => c.id));
+        const uncategorized = (allProducts as Product[]).filter(
+          (p) => !p.categoryId || !mainCatIds.has(p.categoryId)
+        );
+        if (uncategorized.length === 0) return null;
+        return (
+          <section id="category-other" className="mb-10 scroll-mt-24">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-lg font-bold text-gray-900">أخرى</h2>
+              <Link
+                to={`/${tenantSlug || tenantId}/category/other`}
+                className="text-sm font-medium text-[#00A0A0] hover:text-[#008080] hover:underline transition-colors shrink-0"
+              >
+                عرض الكل
+              </Link>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overscroll-x-contain">
+              {uncategorized.map((prod) => (
+                <div key={prod.id} className="shrink-0 w-[160px] sm:w-[180px]">
+                  <ProductCard product={prod} campaigns={campaigns} />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
         </>
       )}
 

@@ -68,15 +68,15 @@ export default function MarketsPickerPage() {
                 onClick={() => navigate(`/${m.slug}`)}
                 className="w-full text-right"
               >
-                <Card className="nmd-card-hover p-6 rounded-xl bg-white border border-gray-200 shadow-sm hover:border-[#D97706]/50 hover:shadow-md transition-all flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-[#FEF3C7] flex items-center justify-center text-[#D97706] shrink-0">
+                <Card className="nmd-card-hover p-6 rounded-xl bg-white border border-gray-200 shadow-sm hover:border-primary/50 hover:shadow-md transition-all flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                     <Store className="w-7 h-7" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-gray-900 text-lg">{m.name}</h3>
                     <p className="text-sm text-gray-500">/{m.slug}</p>
                   </div>
-                  <span className="text-[#D97706] font-medium">ادخل ←</span>
+                  <span className="text-primary font-medium">ادخل ←</span>
                 </Card>
               </button>
             </motion.div>

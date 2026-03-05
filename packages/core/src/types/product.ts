@@ -94,4 +94,8 @@ export interface Product {
   createdAt?: string;
   /** Show in "مختارات" section on homepage */
   isFeatured?: boolean;
+  /** When true, product is hidden from storefront but kept in catalog for admins */
+  isArchived?: boolean;
+  /** Display order within category (lower = first). Storefront sorts by this then createdAt. */
+  sortOrder?: number;
 }

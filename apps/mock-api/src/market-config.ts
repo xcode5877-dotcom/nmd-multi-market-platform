@@ -1,10 +1,11 @@
 /**
  * Admin-ready marketplace config. Persisted to market-config.json.
+ * Path: /data/market-config.json (persistent volume in Docker). Override with MARKET_CONFIG_FILE.
  * API: GET/PUT /markets/by-slug/:slug/banners, GET/PUT /markets/by-slug/:slug/layout
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 
 export interface MarketBanner {
   id: string;
@@ -28,7 +29,10 @@ interface MarketConfigStore {
   layout: Record<string, MarketSection[]>;
 }
 
-const CONFIG_FILE = join(process.cwd(), 'market-config.json');
+/** New path: inside persistent volume (Docker: /data). Override with MARKET_CONFIG_FILE. */
+const CONFIG_FILE = process.env.MARKET_CONFIG_FILE || '/data/market-config.json';
+/** Legacy path: app directory (not persisted in Docker). Used only for one-time migration. */
+const LEGACY_CONFIG_FILE = join(process.cwd(), 'market-config.json');
 
 const DEFAULT_BANNERS: MarketBanner[] = [
   {
@@ -63,7 +67,22 @@ const SEED_LAYOUT: Record<string, MarketSection[]> = {
   iksal: [{ id: 'featured', title: 'محلات مميزة', type: 'SLIDER', storeIds: ['buffalo'] }],
 };
 
+/** One-time migration: copy legacy market-config.json to persistent path if it exists and new path is missing. */
+function migrateFromLegacyIfNeeded(): void {
+  if (!existsSync(LEGACY_CONFIG_FILE)) return;
+  if (existsSync(CONFIG_FILE)) return;
+  try {
+    const dir = dirname(CONFIG_FILE);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    copyFileSync(LEGACY_CONFIG_FILE, CONFIG_FILE);
+    console.log('[market-config] Migrated from', LEGACY_CONFIG_FILE, 'to', CONFIG_FILE);
+  } catch (err) {
+    console.warn('[market-config] Migration copy failed (will use defaults):', err instanceof Error ? err.message : err);
+  }
+}
+
 function load(): MarketConfigStore {
+  migrateFromLegacyIfNeeded();
   try {
     if (existsSync(CONFIG_FILE)) {
       const raw = readFileSync(CONFIG_FILE, 'utf-8');
@@ -73,14 +92,16 @@ function load(): MarketConfigStore {
         layout: parsed.layout ?? SEED_LAYOUT,
       };
     }
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn('[market-config] Load failed (will use defaults):', err instanceof Error ? err.message : err);
   }
   return { banners: { ...SEED_BANNERS }, layout: { ...SEED_LAYOUT } };
 }
 
 function save(store: MarketConfigStore): void {
   try {
+    const dir = dirname(CONFIG_FILE);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(CONFIG_FILE, JSON.stringify(store, null, 2), 'utf-8');
   } catch (err) {
     console.error('[market-config] Failed to persist:', err);

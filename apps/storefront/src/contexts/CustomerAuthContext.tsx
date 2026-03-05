@@ -74,12 +74,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string }> => {
-    if (!API_BASE) return { ok: false, error: 'API غير متاح' };
+    if (!API_BASE) return { ok: false, error: 'API غير متاح. حدّث VITE_MOCK_API_URL أو شغّل Mock API.' };
+    const phoneNormalized = String(phone ?? '').trim().replace(/\D/g, '');
+    if (!phoneNormalized || phoneNormalized.length < 9) return { ok: false, error: 'رقم الجوال غير صالح' };
     try {
       const res = await fetch(`${API_BASE}/customer/auth/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({ phone: phoneNormalized }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };

@@ -1,3 +1,14 @@
+/**
+ * Seed script: loads data from data.json (and orders from packages/mock/data) into the database.
+ *
+ * Default data file: apps/mock-api/data/data.json (override with DATA_FILE).
+ * Requires DATABASE_URL for Prisma. Run after: npx prisma db push
+ *
+ * Image linking: logoUrl and product imageUrl in JSON are stored as-is. Ensure files in
+ * apps/mock-api/data/uploads match the filenames in those URLs (e.g. .../uploads/X.jpg → data/uploads/X.jpg).
+ *
+ * Initial admin: root@nmd.com / 123456. Reset: pnpm run reset-root-password
+ */
 import { PrismaClient } from '@prisma/client';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
@@ -7,8 +18,8 @@ const prisma = new PrismaClient();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MOCK_API_ROOT = join(__dirname, '..');
-const DATA_FILE = join(MOCK_API_ROOT, 'data.json');
-const ORDERS_FILE = join(MOCK_API_ROOT, '..', '..', 'packages', 'mock', 'data', 'orders.json');
+const DATA_FILE = process.env.DATA_FILE || join(MOCK_API_ROOT, 'data', 'data.json');
+const ORDERS_FILE = process.env.ORDERS_FILE || join(MOCK_API_ROOT, '..', '..', 'packages', 'mock', 'data', 'orders.json');
 
 function loadJson<T>(path: string, fallback: T): T {
   if (!existsSync(path)) return fallback;
@@ -29,7 +40,7 @@ async function seed() {
     customers?: Record<string, unknown>[];
     catalog?: Record<string, { categories?: unknown[]; products?: unknown[]; optionGroups?: unknown[]; optionItems?: unknown[] }>;
     delivery?: Record<string, Record<string, unknown>>;
-    deliveryZones?: Record<string, { id: string; tenantId: string; name: string; fee: number; etaMinutes?: number; isActive: boolean; sortOrder?: number }[]>;
+    deliveryZones?: Record<string, { id: string; tenantId: string; name: string; fee: number; etaMinutes?: number; minimumOrder?: number; isActive?: boolean; sortOrder?: number }[]>;
   }>(DATA_FILE, {});
 
   const orders = loadJson<Record<string, unknown>[]>(ORDERS_FILE, []);
@@ -76,16 +87,19 @@ async function seed() {
         fontFamily: String(t.fontFamily ?? 'inherit'),
         radiusScale: Number(t.radiusScale ?? 1),
         layoutStyle: String(t.layoutStyle ?? 'default'),
-        enabled: (t.enabled as boolean) ?? true,
+        enabled: typeof t.isActive === 'boolean' ? t.isActive : (t.enabled as boolean) ?? true,
         createdAt: String(t.createdAt ?? new Date().toISOString()),
         templateId: t.templateId != null ? String(t.templateId) : null,
         hero: t.hero ? JSON.stringify(t.hero) : null,
         banners: t.banners ? JSON.stringify(t.banners) : null,
         whatsappPhone: t.whatsappPhone != null ? String(t.whatsappPhone) : null,
         type: t.type != null ? String(t.type) : null,
-        businessType: (t.type as string) === 'FOOD' ? 'RESTAURANT' : 'RETAIL',
+        businessType: t.businessType != null ? String(t.businessType) : ((t.type as string) === 'FOOD' ? 'RESTAURANT' : 'RETAIL'),
         marketCategory: t.marketCategory != null ? String(t.marketCategory) : null,
         marketId: t.marketId != null ? String(t.marketId) : null,
+        addressLine: t.addressLine != null ? String(t.addressLine) : null,
+        location: t.location != null ? JSON.stringify(t.location) : null,
+        meta: t._meta != null ? JSON.stringify(t._meta) : null,
         isListedInMarket: typeof t.isListedInMarket === 'boolean' ? t.isListedInMarket : null,
         marketSortOrder: typeof t.marketSortOrder === 'number' ? t.marketSortOrder : null,
         tenantType: t.tenantType != null ? String(t.tenantType) : null,
@@ -95,6 +109,14 @@ async function seed() {
         defaultPrepTimeMin: typeof t.defaultPrepTimeMin === 'number' ? t.defaultPrepTimeMin : null,
         financialConfig: t.financialConfig ? JSON.stringify(t.financialConfig) : null,
         paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null,
+        operationalStatus: t.operationalStatus != null ? String(t.operationalStatus) : null,
+        orderPolicy: t.orderPolicy != null ? String(t.orderPolicy) : null,
+        businessHours: t.businessHours != null ? JSON.stringify(t.businessHours) : null,
+        busyBannerEnabled: typeof t.busyBannerEnabled === 'boolean' ? t.busyBannerEnabled : null,
+        busyBannerText: t.busyBannerText != null ? String(t.busyBannerText) : null,
+        openTime: t.openTime != null ? String(t.openTime) : null,
+        closeTime: t.closeTime != null ? String(t.closeTime) : null,
+        phone: t.phone != null ? String(t.phone) : null,
       },
       update: {
         slug: String(t.slug ?? id),
@@ -105,16 +127,19 @@ async function seed() {
         fontFamily: String(t.fontFamily ?? 'inherit'),
         radiusScale: Number(t.radiusScale ?? 1),
         layoutStyle: String(t.layoutStyle ?? 'default'),
-        enabled: (t.enabled as boolean) ?? true,
+        enabled: typeof t.isActive === 'boolean' ? t.isActive : (t.enabled as boolean) ?? true,
         createdAt: String(t.createdAt ?? new Date().toISOString()),
         templateId: t.templateId != null ? String(t.templateId) : null,
         hero: t.hero ? JSON.stringify(t.hero) : null,
         banners: t.banners ? JSON.stringify(t.banners) : null,
         whatsappPhone: t.whatsappPhone != null ? String(t.whatsappPhone) : null,
         type: t.type != null ? String(t.type) : null,
-        businessType: (t.type as string) === 'FOOD' ? 'RESTAURANT' : 'RETAIL',
+        businessType: t.businessType != null ? String(t.businessType) : ((t.type as string) === 'FOOD' ? 'RESTAURANT' : 'RETAIL'),
         marketCategory: t.marketCategory != null ? String(t.marketCategory) : null,
         marketId: t.marketId != null ? String(t.marketId) : null,
+        addressLine: t.addressLine != null ? String(t.addressLine) : null,
+        location: t.location != null ? JSON.stringify(t.location) : null,
+        meta: t._meta != null ? JSON.stringify(t._meta) : null,
         isListedInMarket: typeof t.isListedInMarket === 'boolean' ? t.isListedInMarket : null,
         marketSortOrder: typeof t.marketSortOrder === 'number' ? t.marketSortOrder : null,
         tenantType: t.tenantType != null ? String(t.tenantType) : null,
@@ -124,6 +149,14 @@ async function seed() {
         defaultPrepTimeMin: typeof t.defaultPrepTimeMin === 'number' ? t.defaultPrepTimeMin : null,
         financialConfig: t.financialConfig ? JSON.stringify(t.financialConfig) : null,
         paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null,
+        operationalStatus: t.operationalStatus != null ? String(t.operationalStatus) : null,
+        orderPolicy: t.orderPolicy != null ? String(t.orderPolicy) : null,
+        businessHours: t.businessHours != null ? JSON.stringify(t.businessHours) : null,
+        busyBannerEnabled: typeof t.busyBannerEnabled === 'boolean' ? t.busyBannerEnabled : null,
+        busyBannerText: t.busyBannerText != null ? String(t.busyBannerText) : null,
+        openTime: t.openTime != null ? String(t.openTime) : null,
+        closeTime: t.closeTime != null ? String(t.closeTime) : null,
+        phone: t.phone != null ? String(t.phone) : null,
       },
     });
   }
@@ -142,6 +175,7 @@ async function seed() {
         tenantId: u.tenantId != null ? String(u.tenantId) : null,
         courierId: u.courierId != null ? String(u.courierId) : null,
         password: u.password != null ? String(u.password) : null,
+        mustChangePassword: typeof u.mustChangePassword === 'boolean' ? u.mustChangePassword : null,
       },
       update: {
         email: String(u.email ?? ''),
@@ -150,6 +184,7 @@ async function seed() {
         tenantId: u.tenantId != null ? String(u.tenantId) : null,
         courierId: u.courierId != null ? String(u.courierId) : null,
         password: u.password != null ? String(u.password) : null,
+        mustChangePassword: typeof u.mustChangePassword === 'boolean' ? u.mustChangePassword : null,
       },
     });
   }
@@ -198,6 +233,7 @@ async function seed() {
       data: {
         id,
         phone,
+        name: c.name != null ? String(c.name) : null,
         createdAt: String(c.createdAt ?? new Date().toISOString()),
       },
     });
@@ -328,7 +364,7 @@ async function seed() {
             optionGroups: p.optionGroups != null ? JSON.stringify(p.optionGroups) : null,
             variants: p.variants != null ? JSON.stringify(p.variants) : null,
             stock: p.stock ?? null,
-            isAvailable: p.isAvailable ?? true,
+            isAvailable: typeof p.inStock === 'boolean' ? p.inStock : (p.isAvailable ?? true),
             createdAt: p.createdAt ?? null,
             isFeatured: p.isFeatured ?? null,
           },
@@ -346,7 +382,7 @@ async function seed() {
             optionGroups: p.optionGroups != null ? JSON.stringify(p.optionGroups) : null,
             variants: p.variants != null ? JSON.stringify(p.variants) : null,
             stock: p.stock ?? null,
-            isAvailable: p.isAvailable ?? true,
+            isAvailable: typeof p.inStock === 'boolean' ? p.inStock : (p.isAvailable ?? true),
             createdAt: p.createdAt ?? null,
             isFeatured: p.isFeatured ?? null,
           },
@@ -431,7 +467,7 @@ async function seed() {
           name: z.name ?? '',
           fee: z.fee ?? 0,
           etaMinutes: z.etaMinutes ?? null,
-          minimumOrder: null,
+          minimumOrder: typeof z.minimumOrder === 'number' ? z.minimumOrder : null,
           geo: null,
           isActive: z.isActive ?? true,
           sortOrder: z.sortOrder ?? null,
@@ -441,7 +477,7 @@ async function seed() {
           name: z.name ?? '',
           fee: z.fee ?? 0,
           etaMinutes: z.etaMinutes ?? null,
-          minimumOrder: null,
+          minimumOrder: typeof z.minimumOrder === 'number' ? z.minimumOrder : null,
           geo: null,
           isActive: z.isActive ?? true,
           sortOrder: z.sortOrder ?? null,

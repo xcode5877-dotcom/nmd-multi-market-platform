@@ -50,12 +50,45 @@ function getNowInStoreTz(): { dayIdx: number; hour: number; minute: number } {
   return { dayIdx, hour: hour ?? 0, minute: minute ?? 0 };
 }
 
+const DEFAULT_OPEN = '08:00';
+const DEFAULT_CLOSE = '17:00';
+
+function parseTimeHHmm(s: string | undefined): { h: number; m: number } {
+  if (!s || typeof s !== 'string') return { h: 8, m: 0 };
+  const parts = s.trim().split(':').map(Number);
+  const h = Math.min(23, Math.max(0, parts[0] ?? 8));
+  const m = Math.min(59, Math.max(0, parts[1] ?? 0));
+  return { h, m };
+}
+
 /**
  * Resolve effective operational status from tenant.
- * 1. If operationalStatus is set (manual override), use it.
- * 2. Else compute from businessHours using store timezone (Asia/Jerusalem).
+ * 1. If forceClosed is true (manual override), return 'closed'.
+ * 2. If operationalStatus is 'open' or 'busy', use it (priority over time so dev/manual override works).
+ * 3. If openTime/closeTime are used (simple daily window), compare current time in store TZ (supports next-day close e.g. 03:00).
+ * 4. If operationalStatus is set (manual override), use it.
+ * 5. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
-export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours'>): OperationalStatus {
+export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): OperationalStatus {
+  if ((tenant as { forceClosed?: boolean }).forceClosed === true) return 'closed';
+  if (tenant.operationalStatus === 'open' || tenant.operationalStatus === 'busy') return tenant.operationalStatus;
+  const hasSimpleHours = (tenant as { openTime?: string }).openTime !== undefined || (tenant as { closeTime?: string }).closeTime !== undefined;
+  if (hasSimpleHours) {
+    const openTime = (tenant as { openTime?: string }).openTime ?? DEFAULT_OPEN;
+    const closeTime = (tenant as { closeTime?: string }).closeTime ?? DEFAULT_CLOSE;
+    const { hour, minute } = getNowInStoreTz();
+    const open = parseTimeHHmm(openTime);
+    const close = parseTimeHHmm(closeTime);
+    const nowMin = hour * 60 + minute;
+    const openMin = open.h * 60 + open.m;
+    const closeMin = close.h * 60 + close.m;
+    if (closeMin > openMin) {
+      if (nowMin >= openMin && nowMin < closeMin) return 'open';
+    } else {
+      if (nowMin >= openMin || nowMin < closeMin) return 'open';
+    }
+    return 'closed';
+  }
   if (tenant.operationalStatus) return tenant.operationalStatus;
   const hours = tenant.businessHours;
   if (!hours || Object.keys(hours).length === 0) return 'open';
@@ -76,7 +109,7 @@ export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 
  * Whether the store is open (accepting orders from schedule + override).
  * For order blocking, also check orderPolicy.
  */
-export function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours'>): boolean {
+export function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): boolean {
   return getOperationalStatus(tenant) === 'open';
 }
 

@@ -1,0 +1,50 @@
+# Build stage
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Enable pnpm
+RUN corepack enable pnpm
+
+# Copy workspace config and lockfile
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+
+# Copy packages required by storefront
+COPY packages/core ./packages/core
+COPY packages/ui ./packages/ui
+COPY packages/mock ./packages/mock
+COPY apps/storefront ./apps/storefront
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Build API URL - set at build time for browser requests
+ARG VITE_MOCK_API_URL=http://147.93.120.244:5190
+ENV VITE_MOCK_API_URL=$VITE_MOCK_API_URL
+
+# Build storefront (build:docker skips tsc for Docker)
+RUN pnpm --filter @nmd/core build && \
+    pnpm --filter @nmd/ui build && \
+    pnpm --filter @nmd/mock build && \
+    pnpm --filter storefront run build:docker
+
+# Production stage - nginx
+FROM nginx:alpine
+
+# Copy built assets from builder
+COPY --from=builder /app/apps/storefront/dist /usr/share/nginx/html
+
+# SPA routing: serve index.html for all routes
+RUN echo 'server { \
+    listen 80; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+    location /health { return 200 "ok"; add_header Content-Type text/plain; } \
+}' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

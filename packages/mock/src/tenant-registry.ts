@@ -77,3 +77,9 @@ export function toggleTenant(id: string): RegistryTenant | null {
   save(tenants);
   return tenants[idx];
 }
+
+/** Remove tenant from local store. When using API, use DELETE /tenants/:id for full deep-delete. */
+export function deleteTenant(id: string): void {
+  const tenants = load().filter((t) => t.id !== id);
+  save(tenants);
+}

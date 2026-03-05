@@ -3,7 +3,7 @@ import { forwardRef } from 'react';
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
-  PENDING: 'bg-blue-100 text-blue-800',
+  PENDING: 'bg-primary/15 text-primary',
   CONFIRMED: 'bg-amber-100 text-amber-800',
   PREPARING: 'bg-purple-100 text-purple-800',
   READY: 'bg-green-100 text-green-800',

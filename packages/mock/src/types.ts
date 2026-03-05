@@ -47,8 +47,14 @@ export interface RegistryTenant {
   about?: string;
   /** Phone for call button (e.g. 972501234567). Falls back to whatsappPhone */
   phone?: string;
-  /** Office hours (ساعات العمل). For PROFESSIONAL stores */
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores. Legacy free-text. */
   officeHours?: string;
+  /** Daily open time HH:mm (e.g. 08:00). Fallback 08:00. */
+  openTime?: string;
+  /** Daily close time HH:mm (e.g. 17:00). Fallback 17:00. */
+  closeTime?: string;
+  /** Manual override: when true, store shows as CLOSED regardless of schedule. */
+  forceClosed?: boolean;
   /** Appointment duration in minutes. For PROFESSIONAL booking */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores */

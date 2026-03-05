@@ -107,6 +107,11 @@ export function createJsonDeliveryRepo(): DeliveryRepo {
       d[tenantId] = { ...settings, tenantId };
       setDelivery(d);
     },
+    async deleteSettings(tenantId: string) {
+      const d = getDelivery();
+      delete d[tenantId];
+      setDelivery(d);
+    },
   };
 }
 
@@ -125,6 +130,9 @@ export function createJsonPaymentsRepo(): PaymentsRepo {
   return {
     async createForOrder() {
       /* no-op: JSON driver keeps payment in order.payment only */
+    },
+    async deleteForOrderIds() {
+      /* no-op */
     },
   };
 }

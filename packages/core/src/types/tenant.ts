@@ -117,8 +117,14 @@ export interface Tenant {
   busyBannerEnabled?: boolean;
   /** Custom text for busy banner */
   busyBannerText?: string;
-  /** Office hours (ساعات العمل). For PROFESSIONAL stores. */
+  /** Office hours (ساعات العمل). For PROFESSIONAL stores. Legacy free-text; prefer openTime/closeTime. */
   officeHours?: string;
+  /** Daily open time (HH:mm, e.g. 08:00). Used with closeTime for automatic open/closed. Fallback 08:00. */
+  openTime?: string;
+  /** Daily close time (HH:mm, e.g. 17:00). Used with openTime for automatic open/closed. Fallback 17:00. */
+  closeTime?: string;
+  /** Manual override: when true, store displays as CLOSED regardless of openTime/closeTime. */
+  forceClosed?: boolean;
   /** Appointment duration in minutes. For PROFESSIONAL booking. */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */

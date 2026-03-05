@@ -3,13 +3,36 @@ import { useParams, useNavigate, useLocation, NavLink, Link } from 'react-router
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Input, Select } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
-import type { MarketCategory } from '@nmd/core';
+import { formatDateGregorian } from '@nmd/core';
 import { ArrowLeft, KeyRound } from 'lucide-react';
-import { apiHeaders } from '../api';
+import { apiHeaders, apiFetch, listCategories } from '../api';
 import MarketBannersTab from './MarketBannersTab';
 import MarketLayoutTab from './MarketLayoutTab';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+
+interface CategoryOption {
+  id: string;
+  title: string;
+  legacyCode?: string;
+}
+function normalizeCategories(raw: unknown[]): CategoryOption[] {
+  return raw.map((c) => {
+    const o = c as Record<string, unknown>;
+    const id = String(o?.id ?? '').trim();
+    const title = String(o?.nameAr ?? o?.title ?? '').trim() || id;
+    return { id, title, legacyCode: typeof o?.legacyCode === 'string' ? o.legacyCode : undefined };
+  }).filter((c) => c.id);
+}
+function resolveCategoryId(tenantMc: string | undefined, categories: CategoryOption[]): string {
+  const raw = (tenantMc ?? 'GENERAL').trim();
+  if (!raw) return categories[0]?.id ?? raw;
+  const byId = categories.find((c) => c.id === raw);
+  if (byId) return byId.id;
+  const byLegacy = categories.find((c) => c.legacyCode === raw);
+  if (byLegacy) return byLegacy.id;
+  return raw;
+}
 
 interface Market {
   id: string;
@@ -36,17 +59,6 @@ interface LeadRow {
   contactType?: string;
   timestamp: string;
 }
-
-const MARKET_CATEGORIES: { value: MarketCategory; label: string }[] = [
-  { value: 'FOOD', label: 'طعام' },
-  { value: 'CLOTHING', label: 'ملابس' },
-  { value: 'GROCERIES', label: 'بقالة' },
-  { value: 'BUTCHER', label: 'لحوم' },
-  { value: 'OFFERS', label: 'عروض' },
-  { value: 'ELECTRONICS', label: 'إلكترونيات' },
-  { value: 'HOME', label: 'منزل' },
-  { value: 'GENERAL', label: 'عام' },
-];
 
 const api = new MockApiClient();
 
@@ -98,6 +110,13 @@ export default function MarketDetailPage() {
     queryKey: ['tenants'],
     queryFn: () => api.listTenants(),
   });
+
+  const { data: categoriesRaw = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => listCategories(),
+    enabled: !!MOCK_API_URL,
+  });
+  const categoryOptions: CategoryOption[] = Array.isArray(categoriesRaw) ? normalizeCategories(categoriesRaw) : [];
 
   const marketTenants = (allTenants as (RegistryTenant & { marketId?: string })[]).filter(
     (t) => t.marketId === id
@@ -432,7 +451,7 @@ export default function MarketDetailPage() {
                         markets={markets}
                         isRootAdmin={!!isRootAdmin}
                         tenantAdmin={tenantAdminMap.get(t.id)}
-                        marketCategories={MARKET_CATEGORIES}
+                        categoryOptions={categoryOptions}
                         onSave={(updates) => updateMutation.mutate({ tenantId: t.id, updates })}
                         isSaving={updateMutation.isPending && updateMutation.variables?.tenantId === t.id}
                         canManageAccounts={canManageTenants}
@@ -496,7 +515,7 @@ export default function MarketDetailPage() {
                               {statusLabel}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('ar-SA') : '-'}</td>
+                          <td className="px-4 py-3 text-gray-500">{o.createdAt ? formatDateGregorian(o.createdAt) : '-'}</td>
                         </tr>
                       );
                     })}
@@ -846,20 +865,22 @@ function MarketDetailsTab({ market }: { market: Market }) {
 
   const saveMarket = async () => {
     if (!MOCK_API_URL) return;
-    const res = await fetch(`${MOCK_API_URL}/markets/${market.id}`, {
-      method: 'PUT',
-      headers: apiHeaders(),
-      body: JSON.stringify({
-        name: form.name,
-        slug: form.slug,
-        branding: { primaryColor: form.primaryColor },
-        isActive: form.isActive,
-      }),
-    });
-    if (res.ok) {
+    const payload = {
+      name: form.name,
+      slug: form.slug,
+      branding: { primaryColor: form.primaryColor },
+      isActive: Boolean(form.isActive),
+    };
+    try {
+      await apiFetch(`/markets/${market.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
       queryClient.invalidateQueries({ queryKey: ['market', market.id] });
       queryClient.invalidateQueries({ queryKey: ['markets'] });
-      addToast('تم الحفظ', 'success');
+      addToast('تم الحفظ بنجاح', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error');
     }
   };
 
@@ -916,7 +937,7 @@ interface MarketTenantRowProps {
   markets?: { id: string; name: string; slug?: string }[];
   isRootAdmin?: boolean;
   tenantAdmin?: { id: string; email: string; role: string; tenantId?: string } | null;
-  marketCategories: { value: MarketCategory; label: string }[];
+  categoryOptions: CategoryOption[];
   onSave: (updates: Partial<RegistryTenant & { marketId?: string }>) => void;
   isSaving: boolean;
   canManageAccounts?: boolean;
@@ -924,23 +945,24 @@ interface MarketTenantRowProps {
   onCreateAccount?: () => void;
 }
 
-function MarketTenantRow({ tenant, marketId, markets = [], isRootAdmin: isRoot, tenantAdmin, marketCategories, onSave, isSaving, canManageAccounts, onResetPassword, onCreateAccount }: MarketTenantRowProps) {
-  const [marketCategory, setMarketCategory] = useState<MarketCategory>(tenant.marketCategory ?? 'GENERAL');
+function MarketTenantRow({ tenant, marketId, markets = [], isRootAdmin: isRoot, tenantAdmin, categoryOptions, onSave, isSaving, canManageAccounts, onResetPassword, onCreateAccount }: MarketTenantRowProps) {
+  const resolvedCategoryId = resolveCategoryId(tenant.marketCategory, categoryOptions);
+  const [marketCategoryId, setMarketCategoryId] = useState(resolvedCategoryId);
   const [isListedInMarket, setIsListedInMarket] = useState(tenant.isListedInMarket !== false);
   const [marketSortOrder, setMarketSortOrder] = useState(String(tenant.marketSortOrder ?? 0));
   const [parentMarketId, setParentMarketId] = useState(tenant.marketId ?? '');
 
   useEffect(() => {
-    setMarketCategory(tenant.marketCategory ?? 'GENERAL');
+    setMarketCategoryId(resolveCategoryId(tenant.marketCategory, categoryOptions));
     setIsListedInMarket(tenant.isListedInMarket !== false);
     setMarketSortOrder(String(tenant.marketSortOrder ?? 0));
     setParentMarketId(tenant.marketId ?? '');
-  }, [tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder, tenant.marketId]);
+  }, [tenant.marketCategory, tenant.isListedInMarket, tenant.marketSortOrder, tenant.marketId, categoryOptions]);
 
   const handleSave = () => {
     const order = parseInt(marketSortOrder, 10);
     const updates: Partial<RegistryTenant & { marketId?: string }> = {
-      marketCategory,
+      marketCategory: marketCategoryId as RegistryTenant['marketCategory'],
       isListedInMarket,
       marketSortOrder: isNaN(order) ? 0 : order,
     };
@@ -951,7 +973,7 @@ function MarketTenantRow({ tenant, marketId, markets = [], isRootAdmin: isRoot, 
   };
 
   const hasChanges =
-    (tenant.marketCategory ?? 'GENERAL') !== marketCategory ||
+    resolvedCategoryId !== marketCategoryId ||
     (tenant.isListedInMarket !== false) !== isListedInMarket ||
     String(tenant.marketSortOrder ?? 0) !== marketSortOrder ||
     (isRoot && (tenant.marketId ?? '') !== parentMarketId);
@@ -995,16 +1017,20 @@ function MarketTenantRow({ tenant, marketId, markets = [], isRootAdmin: isRoot, 
       )}
       <td className="px-4 py-3">
         <select
-          value={marketCategory}
-          onChange={(e) => setMarketCategory(e.target.value as MarketCategory)}
+          value={marketCategoryId}
+          onChange={(e) => setMarketCategoryId(e.target.value)}
           onClick={(e) => e.stopPropagation()}
           className="h-9 px-2 rounded border border-gray-300 bg-white text-sm min-w-[120px]"
         >
-          {marketCategories.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
+          {categoryOptions.length === 0 ? (
+            <option value={marketCategoryId}>—</option>
+          ) : (
+            categoryOptions.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.title}
+              </option>
+            ))
+          )}
         </select>
       </td>
       <td className="px-4 py-3">

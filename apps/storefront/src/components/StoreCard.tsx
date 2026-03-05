@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { getOperationalStatus } from '@nmd/core';
 import type { OperationalStatus } from '@nmd/core';
-import { Card } from '@nmd/ui';
 
 const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; dotClass: string }> = {
   open: { label: 'مفتوح', badgeClass: 'bg-emerald-500/90', dotClass: 'bg-emerald-400' },
@@ -11,7 +10,9 @@ const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; dotClas
 
 export type StoreBadge = 'featured' | 'sponsored' | undefined;
 
-interface StoreCardProps {
+const RETURN_MARKET_KEY = 'nmd-return-market-slug';
+
+export interface StoreCardProps {
   id: string;
   slug: string;
   name: string;
@@ -20,8 +21,14 @@ interface StoreCardProps {
   branding: { logoUrl?: string; primaryColor?: string };
   operationalStatus?: OperationalStatus;
   businessHours?: Record<string, unknown>;
+  openTime?: string;
+  closeTime?: string;
+  forceClosed?: boolean;
   categoryLabel?: string;
   badge?: StoreBadge;
+  /** When set, stored before nav so Header can show "Back to Market" to this market */
+  marketSlug?: string;
+  /** @deprecated Card is always compact now; kept for backward compatibility */
   compact?: boolean;
 }
 
@@ -38,54 +45,68 @@ export function StoreCard({
   branding,
   operationalStatus,
   businessHours,
+  openTime,
+  closeTime,
+  forceClosed,
   categoryLabel,
   badge,
-  compact,
+  marketSlug,
 }: StoreCardProps) {
-  const status = getOperationalStatus({ operationalStatus, businessHours });
+  const status = getOperationalStatus({
+    operationalStatus,
+    businessHours,
+    openTime,
+    closeTime,
+    forceClosed,
+  });
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.closed;
   const logoUrl = branding?.logoUrl?.trim() || `${PLACEHOLDER_BASE}/${encodeURIComponent(slug || name)}/400/400`;
-  const cardClass = compact
-    ? 'w-full min-w-[210px] max-w-[210px] h-[260px]'
-    : 'w-full max-w-[220px] h-[320px]';
+
+  const handleClick = () => {
+    if (marketSlug && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(RETURN_MARKET_KEY, marketSlug);
+    }
+  };
 
   return (
     <Link
       to={`/${slug}`}
-      className={`block w-full group ${compact ? 'min-w-[210px] max-w-[210px]' : 'max-w-[220px]'}`}
+      onClick={handleClick}
+      className="block w-full group active:scale-[0.98] transition-transform duration-150 ease-out"
     >
-      <Card
-        className={`${cardClass} flex flex-col overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100`}
+      <div
+        className="w-full overflow-hidden rounded-xl shadow-sm border border-gray-100/80 bg-white hover:shadow-md hover:border-gray-200 transition-all duration-200"
+        dir="rtl"
       >
-        <div className="relative aspect-square w-full overflow-hidden shrink-0 bg-gray-100">
+        {/* Image: fixed 16/9 ratio, fill without stretch; object-fit: cover + object-position: center */}
+        <div className="relative w-full aspect-[16/9] overflow-hidden rounded-t-xl border-b border-gray-100/80 bg-gray-50">
           <img
             src={logoUrl}
             alt={name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-300"
           />
           <div
-            className={`absolute top-2 end-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium text-white shadow-sm ${cfg.badgeClass}`}
+            className={`absolute top-1.5 end-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-white ${cfg.badgeClass}`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClass}`} />
+            <span className={`w-1 h-1 rounded-full ${cfg.dotClass}`} />
             {cfg.label}
           </div>
           {badge && (
             <div
-              className={`absolute top-2 start-2 inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium shadow-sm ${BADGE_CONFIG[badge].className}`}
+              className={`absolute top-1.5 start-1.5 inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium ${BADGE_CONFIG[badge].className}`}
             >
               {BADGE_CONFIG[badge].label}
             </div>
           )}
         </div>
-        <div className="flex-1 min-h-0 flex flex-col justify-center px-2 py-2 shrink-0">
-          <h3 className="text-sm font-bold text-gray-900 text-center line-clamp-1 truncate">{name}</h3>
+        {/* Content: store name + tiny category */}
+        <div className="px-2.5 py-2 text-center min-w-0">
+          <h3 className="text-sm font-bold text-gray-900 truncate">{name}</h3>
           {categoryLabel && (
-            <p className="text-xs text-gray-500 text-center line-clamp-1 truncate mt-0.5">
-              {categoryLabel}
-            </p>
+            <p className="text-[10px] text-gray-500 truncate mt-0.5">{categoryLabel}</p>
           )}
         </div>
-      </Card>
+      </div>
     </Link>
   );
 }

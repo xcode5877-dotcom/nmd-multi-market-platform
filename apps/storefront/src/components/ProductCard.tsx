@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Info } from 'lucide-react';
 import type { Product, Campaign } from '@nmd/core';
 import { applyCampaign, formatMoney } from '@nmd/core';
-import { Skeleton, useToast } from '@nmd/ui';
+import { useToast } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 
@@ -106,17 +106,21 @@ function ProductCardInner({
         className="bg-white rounded-xl border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-[380px] md:h-[420px] overflow-hidden relative"
         dir="rtl"
       >
-        {/* Image - ~65–70% of card height */}
-        <div className="flex-[0_0_65%] min-h-0 w-full bg-[#fcfcfc] relative overflow-hidden shrink-0">
+        {/* Image - lazy load with blur placeholder */}
+        <div className="flex-[0_0_65%] min-h-0 w-full bg-[#f0f0f0] relative overflow-hidden shrink-0">
           {!imageLoaded && (
-            <Skeleton variant="rectangular" className="absolute inset-0 w-full h-full" />
+            <div
+              className="absolute inset-0 w-full h-full scale-110 blur-xl bg-gradient-to-br from-gray-200 to-gray-300"
+              aria-hidden
+            />
           )}
           <img
             src={imageUrl}
             alt={product.name}
             loading="lazy"
+            decoding="async"
             onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${!imageLoaded ? 'opacity-0' : 'opacity-100'}`}
+            className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${!imageLoaded ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}
           />
           {/* Badges */}
           <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">

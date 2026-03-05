@@ -1,26 +1,43 @@
-FROM node:20-alpine
+FROM node:20-slim
+
+# Prisma/OpenSSL: Debian base has compatible libssl for @prisma/client native bindings
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    openssl libssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 RUN corepack enable pnpm
 
+# Force rebuild when switching to PostgreSQL (set to current date or any value to bust cache)
+ARG PRISMA_REBUILD=postgresql
 # Copy workspace config and required packages
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core ./packages/core
 COPY packages/mock ./packages/mock
 COPY apps/mock-api ./apps/mock-api
 
-# Install (full workspace so @nmd/core gets zod etc.) and build
+# Install deps, generate Prisma client for container arch, then build
 RUN pnpm install --frozen-lockfile && \
     pnpm --filter @nmd/core build && \
+    pnpm --filter mock-api exec -- prisma generate && \
     pnpm --filter mock-api build
 
 WORKDIR /app/apps/mock-api
 
-# Use JSON storage (default), port 5190
+# Uploads dir for volume mount; ensure it exists and is writable by container user
+RUN mkdir -p /app/apps/mock-api/uploads /app/apps/mock-api/uploads/banners && chown -R node:node /app/apps/mock-api/uploads
+
+# Override in docker-compose: STORAGE_DRIVER=db + DATABASE_URL for persistent Postgres. Else JSON + DATA_FILE/ORDERS_FILE.
 ENV PORT=5190
 ENV STORAGE_DRIVER=json
+ENV DATA_FILE=/data/data.json
+ENV ORDERS_FILE=/data/orders.json
+# Uploads: use volume path so uploads_data persists images
+ENV UPLOADS_DIR=/app/apps/mock-api/uploads
 
 EXPOSE 5190
 
+RUN chmod +x /app/apps/mock-api/docker-entrypoint.sh
+ENTRYPOINT ["/app/apps/mock-api/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]

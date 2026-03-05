@@ -127,10 +127,11 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+              aria-label="تسجيل الخروج"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-[#334155] hover:text-white transition-colors"
             >
-              <LogOut className="w-5 h-5 shrink-0" />
-              <span>تسجيل الخروج</span>
+              <LogOut className="w-4 h-4 shrink-0" />
+              تسجيل الخروج
             </button>
           </div>
         )}

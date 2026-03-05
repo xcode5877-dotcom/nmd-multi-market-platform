@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@nmd/ui';
+import { formatDateTimeGregorian } from '@nmd/core';
 import { apiFetch } from '../api';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -57,7 +58,7 @@ export default function AuditLogPage() {
               ) : (
                 events.map((e) => (
                   <tr key={e.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3 text-gray-600">{new Date(e.at).toLocaleString('ar')}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDateTimeGregorian(e.at)}</td>
                     <td className="px-4 py-3">{e.userId}</td>
                     <td className="px-4 py-3">{e.role}</td>
                     <td className="px-4 py-3">{e.action}</td>

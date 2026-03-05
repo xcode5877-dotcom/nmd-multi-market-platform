@@ -7,6 +7,8 @@ export type OrderRecord = Record<string, unknown>;
 export interface DeliveryRepo {
   getSettings(tenantId: string): Promise<Record<string, unknown>>;
   setSettings(tenantId: string, settings: Record<string, unknown>): Promise<void>;
+  /** Remove delivery settings for tenant (used by tenant deep-delete). */
+  deleteSettings(tenantId: string): Promise<void>;
 }
 
 export interface DeliveryZonesRepo {
@@ -54,6 +56,8 @@ export interface OrdersRepo {
 export interface PaymentsRepo {
   /** Create a Payment row for an order (DB only; JSON no-op). Cash-first, card-ready. */
   createForOrder(orderId: string, payment: { method: string; status: string; amount: number; currency?: string }): Promise<void>;
+  /** Delete payments for given order IDs (DB only; JSON no-op). Used by tenant deep-delete. */
+  deleteForOrderIds(orderIds: string[]): Promise<void>;
 }
 
 export interface Repos {

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  base: '/', // Production path: storefront at root (nmd.marketing/)
   plugins: [react()],
   resolve: {
     alias: {

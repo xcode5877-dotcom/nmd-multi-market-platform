@@ -53,7 +53,7 @@ export default function CourierDashboard() {
 
       <main className="p-4 max-w-md mx-auto space-y-4">
         <Link
-          to="/courier/orders"
+          to="/orders"
           className="block p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-teal-300 transition-colors"
         >
           <div className="flex items-center gap-3">
@@ -68,7 +68,7 @@ export default function CourierDashboard() {
         </Link>
 
         <Link
-          to="/courier/route"
+          to="/route"
           className="block p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-teal-300 transition-colors"
         >
           <div className="flex items-center gap-3">

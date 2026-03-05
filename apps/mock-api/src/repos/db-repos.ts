@@ -27,6 +27,11 @@ function tenantToDomain(t: {
   isListedInMarket: boolean | null; marketSortOrder: number | null; tenantType: string | null;
   deliveryProviderMode: string | null; allowMarketCourierFallback: boolean | null; defaultPrepTimeMin: number | null;
   financialConfig: string | null; paymentCapabilities: string | null;
+  operationalStatus: string | null; orderPolicy: string | null; businessHours: string | null;
+  busyBannerEnabled: boolean | null; busyBannerText: string | null; bookingEnabled: boolean | null;
+  about: string | null; officeHours: string | null; openTime: string | null; closeTime: string | null; forceClosed: boolean | null;
+  phone: string | null; storeType: string | null; appointmentDuration: number | null;
+  collections: string | null;
 }): RegistryTenant {
   return {
     id: t.id,
@@ -43,6 +48,7 @@ function tenantToDomain(t: {
     templateId: t.templateId ?? undefined,
     hero: t.hero ? (JSON.parse(t.hero) as RegistryTenant['hero']) : undefined,
     banners: t.banners ? (JSON.parse(t.banners) as RegistryTenant['banners']) : undefined,
+    collections: t.collections ? (JSON.parse(t.collections) as RegistryTenant['collections']) : undefined,
     whatsappPhone: t.whatsappPhone ?? undefined,
     type: (t.type as RegistryTenant['type']) ?? undefined,
     businessType: (t.businessType as RegistryTenant['businessType']) ?? undefined,
@@ -56,6 +62,20 @@ function tenantToDomain(t: {
     defaultPrepTimeMin: t.defaultPrepTimeMin ?? undefined,
     financialConfig: t.financialConfig ? (JSON.parse(t.financialConfig) as RegistryTenant['financialConfig']) : undefined,
     paymentCapabilities: t.paymentCapabilities ? (JSON.parse(t.paymentCapabilities) as RegistryTenant['paymentCapabilities']) : undefined,
+    operationalStatus: (t.operationalStatus as RegistryTenant['operationalStatus']) ?? undefined,
+    orderPolicy: (t.orderPolicy as RegistryTenant['orderPolicy']) ?? undefined,
+    businessHours: t.businessHours ? (JSON.parse(t.businessHours) as RegistryTenant['businessHours']) : undefined,
+    busyBannerEnabled: t.busyBannerEnabled ?? undefined,
+    busyBannerText: t.busyBannerText ?? undefined,
+    bookingEnabled: t.bookingEnabled ?? undefined,
+    about: t.about ?? undefined,
+    officeHours: t.officeHours ?? undefined,
+    openTime: t.openTime ?? undefined,
+    closeTime: t.closeTime ?? undefined,
+    forceClosed: t.forceClosed ?? undefined,
+    phone: t.phone ?? undefined,
+    storeType: (t.storeType as RegistryTenant['storeType']) ?? undefined,
+    appointmentDuration: t.appointmentDuration ?? undefined,
   };
 }
 
@@ -169,6 +189,21 @@ export function createDbTenantsRepo(): TenantsRepo {
             defaultPrepTimeMin: t.defaultPrepTimeMin ?? null,
             financialConfig: t.financialConfig ? JSON.stringify(t.financialConfig) : null,
             paymentCapabilities: t.paymentCapabilities ? JSON.stringify(t.paymentCapabilities) : null,
+            operationalStatus: t.operationalStatus ?? null,
+            orderPolicy: t.orderPolicy ?? null,
+            businessHours: t.businessHours ? JSON.stringify(t.businessHours) : null,
+            busyBannerEnabled: t.busyBannerEnabled ?? null,
+            busyBannerText: t.busyBannerText ?? null,
+            bookingEnabled: t.bookingEnabled ?? null,
+            about: t.about ?? null,
+            officeHours: t.officeHours ?? null,
+            openTime: (t as RegistryTenant).openTime ?? null,
+            closeTime: (t as RegistryTenant).closeTime ?? null,
+            forceClosed: (t as RegistryTenant).forceClosed ?? null,
+            phone: t.phone ?? null,
+            storeType: t.storeType ?? null,
+            appointmentDuration: t.appointmentDuration ?? null,
+            collections: (t as RegistryTenant).collections ? JSON.stringify((t as RegistryTenant).collections) : null,
           })),
         });
       }
@@ -188,6 +223,7 @@ export function createDbUsersRepo(): UsersRepo {
         tenantId: u.tenantId ?? undefined,
         courierId: u.courierId ?? undefined,
         password: u.password ?? undefined,
+        mustChangePassword: u.mustChangePassword ?? undefined,
       }));
     },
     async setAll(users: User[]) {
@@ -202,6 +238,7 @@ export function createDbUsersRepo(): UsersRepo {
             tenantId: u.tenantId ?? null,
             courierId: u.courierId ?? null,
             password: u.password ?? null,
+            mustChangePassword: u.mustChangePassword ?? null,
           })),
         });
       }
@@ -257,6 +294,7 @@ export function createDbCustomersRepo(): CustomersRepo {
       return rows.map((c) => ({
         id: c.id,
         phone: c.phone,
+        name: c.name ?? undefined,
         createdAt: c.createdAt,
       }));
     },
@@ -267,6 +305,7 @@ export function createDbCustomersRepo(): CustomersRepo {
           data: customers.map((c) => ({
             id: c.id,
             phone: c.phone,
+            name: c.name ?? null,
             createdAt: c.createdAt ?? new Date().toISOString(),
           })),
         });
@@ -325,7 +364,7 @@ export function createDbOrdersRepo(): OrdersRepo {
 
 function catalogToDomain(
   categories: { id: string; tenantId: string; name: string; slug: string; description: string | null; imageUrl: string | null; sortOrder: number; parentId: string | null; isVisible: boolean | null }[],
-  products: { id: string; tenantId: string; categoryId: string; name: string; slug: string; description: string | null; type: string; basePrice: number; currency: string; imageUrl: string | null; images: string | null; optionGroups: string | null; variants: string | null; stock: number | null; isAvailable: boolean; createdAt: string | null; isFeatured: boolean | null }[],
+  products: { id: string; tenantId: string; categoryId: string; name: string; slug: string; description: string | null; type: string; basePrice: number; currency: string; imageUrl: string | null; images: string | null; optionGroups: string | null; variants: string | null; stock: number | null; isAvailable: boolean; createdAt: string | null; isFeatured: boolean | null; isArchived: boolean | null; sortOrder: number | null }[],
   optionGroups: { id: string; tenantId: string; name: string; type: string | null; required: boolean; minSelected: number; maxSelected: number; selectionType: string; scope: string | null; scopeId: string | null; allowHalfPlacement: boolean | null; items: string | null }[]
 ): TenantCatalog {
   const catArr = categories.map((c) => ({
@@ -355,6 +394,8 @@ function catalogToDomain(
       isAvailable: p.isAvailable,
       createdAt: p.createdAt ?? undefined,
       isFeatured: p.isFeatured ?? undefined,
+      isArchived: p.isArchived ?? undefined,
+      sortOrder: p.sortOrder ?? undefined,
     };
     if (p.images) base.images = JSON.parse(p.images) as unknown;
     if (p.optionGroups) base.optionGroups = JSON.parse(p.optionGroups) as unknown;
@@ -404,7 +445,7 @@ export function createDbCatalogRepo(): CatalogRepo {
         prisma.catalogOptionGroup.deleteMany({ where: { tenantId } }),
       ]);
       const cats = (catalog.categories ?? []) as { id?: string; tenantId?: string; name?: string; slug?: string; description?: string; imageUrl?: string; sortOrder?: number; parentId?: string | null; isVisible?: boolean }[];
-      const prods = (catalog.products ?? []) as { id?: string; tenantId?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; createdAt?: string; isFeatured?: boolean }[];
+      const prods = (catalog.products ?? []) as { id?: string; tenantId?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; createdAt?: string; isFeatured?: boolean; isArchived?: boolean; sortOrder?: number }[];
       const grps = (catalog.optionGroups ?? []) as { id?: string; tenantId?: string; name?: string; type?: string; required?: boolean; minSelected?: number; maxSelected?: number; selectionType?: string; scope?: string; scopeId?: string; allowHalfPlacement?: boolean; items?: unknown[] }[];
       for (const c of cats) {
         if (c.id) {
@@ -444,6 +485,8 @@ export function createDbCatalogRepo(): CatalogRepo {
               isAvailable: p.isAvailable ?? true,
               createdAt: p.createdAt ?? null,
               isFeatured: p.isFeatured ?? null,
+              isArchived: p.isArchived ?? false,
+              sortOrder: p.sortOrder ?? 0,
             },
           });
         }
@@ -520,6 +563,9 @@ export function createDbDeliveryRepo(): DeliveryRepo {
         },
       });
     },
+    async deleteSettings(tenantId: string) {
+      await prisma.tenantDeliverySettings.deleteMany({ where: { tenantId } });
+    },
   };
 }
 
@@ -588,6 +634,10 @@ export function createDbPaymentsRepo(): PaymentsRepo {
           updatedAt: now,
         },
       });
+    },
+    async deleteForOrderIds(orderIds: string[]) {
+      if (orderIds.length === 0) return;
+      await prisma.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     },
   };
 }

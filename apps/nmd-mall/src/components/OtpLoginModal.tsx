@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, Button, Input, useToast } from '@nmd/ui';
 import { useCustomerAuth, type Customer } from '../contexts/CustomerAuthContext';
 
+const OTP_RESEND_COOLDOWN_SEC = 60;
+
+/** Global Identity (NMD ID): phone → Send Code → 6-digit OTP → Verify. Session (nmd-customer-token) shared across Market, Store, Pro. */
 interface OtpLoginModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: (customer: Customer) => void;
-  /** When true, show OTP in toast for dev/testing */
   showOtpInToast?: boolean;
 }
 
@@ -27,8 +29,15 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
   const [isExistingUser, setIsExistingUser] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
 
-  const handlePhoneSubmit = async () => {
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const t = setInterval(() => setResendCountdown((c) => (c <= 1 ? 0 : c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendCountdown]);
+
+  const handleSendCode = async () => {
     setError('');
     const phoneTrimmed = phone.trim();
     if (!phoneTrimmed) {
@@ -47,12 +56,14 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       setError(startResult.error ?? 'حدث خطأ');
       return;
     }
-    if (startResult.devCode && showOtpInToast && import.meta.env?.DEV) {
-      addToast(`رمز التحقق (تجريبي): ${startResult.devCode}`, 'info');
+    if (startResult.devCode) {
+      if (showOtpInToast) addToast(`رمز التحقق (تجريبي): ${startResult.devCode}`, 'info');
+      if (typeof console !== 'undefined' && console.log) console.log('[OTP] رمز التحقق (للتجربة):', startResult.devCode);
     }
     setIsExistingUser(exists);
     setStep(exists ? 'code' : 'register');
     setCode('');
+    setResendCountdown(OTP_RESEND_COOLDOWN_SEC);
   };
 
   const handleCodeSubmit = async () => {
@@ -61,8 +72,8 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       setError('أدخل رمز التحقق');
       return;
     }
-    if (code.trim().length !== 4) {
-      setError('رمز التحقق 4 أرقام');
+    if (code.trim().length !== 6) {
+      setError('رمز التحقق 6 أرقام');
       return;
     }
     setLoading(true);
@@ -115,8 +126,8 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
               className="text-left"
             />
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button className="w-full" onClick={handlePhoneSubmit} loading={loading} disabled={loading}>
-              التالي
+            <Button className="w-full" onClick={handleSendCode} loading={loading} disabled={loading}>
+              إرسال الرمز
             </Button>
           </>
         ) : (
@@ -140,22 +151,33 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
               />
             )}
             <Input
-              label="رمز التحقق (4 أرقام)"
+              label="رمز التحقق (6 أرقام)"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="1234"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="123456"
               dir="ltr"
               className="text-left"
               inputMode="numeric"
-              maxLength={4}
+              maxLength={6}
             />
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="flex gap-2">
-              <Button variant="ghost" className="flex-1" onClick={goBackToPhone} disabled={loading}>
-                تغيير الرقم
-              </Button>
-              <Button className="flex-1" onClick={handleCodeSubmit} loading={loading} disabled={loading}>
-                تأكيد
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button variant="ghost" className="flex-1" onClick={goBackToPhone} disabled={loading}>
+                  تغيير الرقم
+                </Button>
+                <Button className="flex-1" onClick={handleCodeSubmit} loading={loading} disabled={loading}>
+                  تحقق
+                </Button>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleSendCode}
+                loading={loading && resendCountdown === 0}
+                disabled={resendCountdown > 0 || loading}
+              >
+                {resendCountdown > 0 ? `إعادة الإرسال بعد ${resendCountdown} ثانية` : 'إعادة إرسال الرمز'}
               </Button>
             </div>
           </>

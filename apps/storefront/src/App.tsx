@@ -9,12 +9,14 @@ import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
 import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
 import { MerchantAuthProvider } from './contexts/MerchantAuthContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
+import { InstallBanner } from './components/InstallBanner';
 
 const Layout = lazy(() => import('./layouts/Layout'));
 const LandingLayout = lazy(() => import('./layouts/LandingLayout'));
 const MarketLayout = lazy(() => import('./layouts/MarketLayout'));
 const MarketsPickerPage = lazy(() => import('./pages/MarketsPickerPage'));
 const MarketHomePage = lazy(() => import('./pages/MarketHomePage'));
+const MarketStoresPage = lazy(() => import('./pages/MarketStoresPage'));
 const LegacyProductRedirect = lazy(() => import('./pages/LegacyProductRedirect'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
@@ -44,7 +46,11 @@ function TenantGate() {
 
   useEffect(() => {
     if (tenant) {
-      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL', (tenant as { storeType?: 'RESTAURANT' | 'PROFESSIONAL' }).storeType ?? 'RESTAURANT');
+      const storeType = (tenant as { storeType?: 'RESTAURANT' | 'PROFESSIONAL'; businessType?: string }).storeType ?? 'RESTAURANT';
+      const businessType = (tenant as { businessType?: string }).businessType;
+      const useProfessionalLayout = storeType === 'PROFESSIONAL' || businessType === 'SERVICE';
+      const effectiveStoreType = useProfessionalLayout ? 'PROFESSIONAL' : storeType;
+      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL', effectiveStoreType);
       persistTenant(tenant.slug);
     }
   }, [tenant, setTenant]);
@@ -73,6 +79,7 @@ function TenantGate() {
                 <Route index element={<HomePage />} />
                 <Route path="p/:productId" element={<ProductPage />} />
                 <Route path="c/:categoryId" element={<CategoryPage />} />
+                <Route path="category/:categoryId" element={<CategoryPage />} />
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="cart" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
@@ -93,6 +100,7 @@ function AppContent() {
         <GlobalAuthModalProvider>
           <Suspense fallback={<PageSkeleton />}>
             <TenantBroadcastListener />
+            <InstallBanner />
             <Routes>
               <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
               <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
@@ -103,12 +111,15 @@ function AppContent() {
               </Route>
               <Route path="/daburiyya" element={<MarketLayout />}>
                 <Route index element={<MarketHomePage />} />
+                <Route path="stores" element={<MarketStoresPage />} />
               </Route>
               <Route path="/dabburiyya" element={<MarketLayout />}>
                 <Route index element={<MarketHomePage />} />
+                <Route path="stores" element={<MarketStoresPage />} />
               </Route>
               <Route path="/iksal" element={<MarketLayout />}>
                 <Route index element={<MarketHomePage />} />
+                <Route path="stores" element={<MarketStoresPage />} />
               </Route>
               <Route path="/p/:productId" element={<LegacyProductRedirect />} />
               <Route path="/:tenantSlug/*" element={<TenantGate />} />

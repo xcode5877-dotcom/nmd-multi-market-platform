@@ -1,9 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAdminContext } from '../context/AdminContext';
 import { listOrdersByTenant, updateOrderStatus } from '@nmd/mock';
+import { MockApiClient } from '@nmd/mock';
 import type { Order } from '@nmd/core';
 import { Card, PageHeader } from '@nmd/ui';
 import { formatPrice } from '@nmd/core';
+
+const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const api = new MockApiClient();
 
 const COLS = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'COMPLETED'] as const;
 const COL_LABELS: Record<string, string> = {
@@ -16,14 +20,26 @@ const COL_LABELS: Record<string, string> = {
 
 export default function OrdersBoardPage() {
   const { tenantId } = useAdminContext();
+  const queryClient = useQueryClient();
   const { data: orders, refetch } = useQuery({
     queryKey: ['orders-board', tenantId],
-    queryFn: () => Promise.resolve(listOrdersByTenant(tenantId)),
+    queryFn: () => (USE_API ? api.listOrdersByTenant(tenantId) : Promise.resolve(listOrdersByTenant(tenantId))),
     enabled: !!tenantId,
     refetchInterval: 5000,
   });
 
   const byStatus = (status: string) => (orders ?? []).filter((o) => o.status === status);
+
+  const handleAdvance = (order: Order, nextStatus: string) => {
+    if (USE_API) {
+      api.updateOrderStatus(order.id, nextStatus as Order['status']).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['orders-board', tenantId] });
+      });
+    } else {
+      updateOrderStatus(order.id, nextStatus as Order['status']);
+      refetch();
+    }
+  };
 
   return (
     <div>
@@ -39,7 +55,7 @@ export default function OrdersBoardPage() {
             </div>
             <div className="flex-1 min-h-[120px] rounded-lg bg-gray-100/50 p-2 space-y-2 flex flex-col">
               {byStatus(status).map((o) => (
-                <OrderCard key={o.id} order={o} onAdvance={() => refetch()} />
+                <OrderCard key={o.id} order={o} onAdvance={handleAdvance} />
               ))}
             </div>
           </div>
@@ -49,15 +65,12 @@ export default function OrdersBoardPage() {
   );
 }
 
-function OrderCard({ order, onAdvance }: { order: Order; onAdvance: () => void }) {
+function OrderCard({ order, onAdvance }: { order: Order; onAdvance: (order: Order, nextStatus: string) => void }) {
   const idx = COLS.indexOf(order.status as typeof COLS[number]);
   const nextStatus = idx >= 0 && idx < COLS.length - 1 ? COLS[idx + 1] : null;
 
   const handleAdvance = () => {
-    if (nextStatus) {
-      updateOrderStatus(order.id, nextStatus);
-      onAdvance();
-    }
+    if (nextStatus) onAdvance(order, nextStatus);
   };
 
   return (

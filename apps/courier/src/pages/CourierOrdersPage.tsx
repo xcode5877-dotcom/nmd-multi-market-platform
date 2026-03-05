@@ -322,7 +322,7 @@ export default function CourierOrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-teal-600 text-white p-4 shadow">
-        <Link to="/courier" className="text-sm text-teal-100 hover:text-white">
+        <Link to="/" className="text-sm text-teal-100 hover:text-white">
           ← رجوع
         </Link>
         <h1 className="text-lg font-bold mt-1">طلباتي المعيّنة</h1>

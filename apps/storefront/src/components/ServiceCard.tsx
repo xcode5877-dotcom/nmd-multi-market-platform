@@ -1,13 +1,14 @@
 import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MessageCircle } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
 import type { Product } from '@nmd/core';
 import { formatMoney } from '@nmd/core';
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
-import { trackProfessionalContact } from '../lib/trackLead';
+import { postProfessionalLead } from '../lib/trackLead';
 
 interface ServiceCardProps {
   product: Product;
@@ -21,6 +22,10 @@ function ServiceCardInner({ product, tenantSlug, actionType = 'inquire' }: Servi
   const tenantId = useAppStore((s) => s.tenantId);
   const { customer } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
+  const trackLeadMutation = useMutation({
+    mutationFn: ({ tenantId, contactType, customerId, customerName, customerPhone }: { tenantId: string; contactType: 'whatsapp' | 'call'; customerId?: string; customerName?: string; customerPhone?: string }) =>
+      postProfessionalLead(tenantId, contactType, customerId, customerName, customerPhone),
+  });
   const whatsapp = branding?.whatsappPhone;
   const hasPrice = (product.basePrice ?? 0) > 0;
   const waUrl = whatsapp
@@ -43,6 +48,8 @@ function ServiceCardInner({ product, tenantSlug, actionType = 'inquire' }: Servi
           <img
             src={product.images?.[0]?.url ?? product.imageUrl ?? 'https://placehold.co/128x128?text=خدمة'}
             alt={product.name}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
           />
         </div>
@@ -72,8 +79,8 @@ function ServiceCardInner({ product, tenantSlug, actionType = 'inquire' }: Servi
                 onClick={(e) => {
                   e.preventDefault();
                   if (!tenantId) return;
-                  const doRedirect = async (c?: { id: string }) => {
-                    await trackProfessionalContact(tenantId, 'whatsapp', c?.id);
+                  const doRedirect = async (c?: { id: string; name?: string }) => {
+                    await trackLeadMutation.mutateAsync({ tenantId, contactType: 'whatsapp', customerId: c?.id, customerName: c?.name, customerPhone: (c as { phone?: string })?.phone });
                     window.open(waUrl, '_blank', 'noopener,noreferrer');
                   };
                   if (customer) doRedirect(customer);

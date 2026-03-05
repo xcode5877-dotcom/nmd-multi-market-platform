@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, useToast } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { formatPrice } from '@nmd/core';
+import { formatPrice, formatDateTimeGregorian } from '@nmd/core';
 import { useTenant } from '../contexts/TenantContext';
 
 const api = new MockApiClient();
@@ -118,7 +118,7 @@ export default function TenantOrdersPage() {
                   return (
                     <tr key={o.id} className={`border-t border-gray-100 ${isLead ? 'bg-emerald-50/50' : ''}`}>
                       <td className="px-4 py-2 font-mono text-xs">{o.id.slice(0, 8)}</td>
-                      <td className="px-4 py-2 text-gray-600">{o.createdAt ? new Date(o.createdAt).toLocaleString('ar-SA') : '-'}</td>
+                      <td className="px-4 py-2 text-gray-600">{o.createdAt ? formatDateTimeGregorian(o.createdAt) : '-'}</td>
                       <td className="px-4 py-2">{isLead ? '—' : formatPrice(o.total ?? 0)}</td>
                       <td className="px-4 py-2">
                         <span className={isLead ? 'text-emerald-700 font-medium' : o.status === 'READY' ? 'text-green-600 font-medium' : ''}>

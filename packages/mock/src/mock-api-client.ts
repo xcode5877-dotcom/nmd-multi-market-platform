@@ -92,15 +92,19 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
   const template = r.templateId ? getTemplate(r.templateId) : null;
   const layoutStyle = template?.layoutStyle ?? r.layoutStyle;
   const type = (r.type === 'CLOTHING' || r.type === 'FOOD') ? r.type : 'GENERAL';
-  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; about?: string; phone?: string; officeHours?: string; appointmentDuration?: number };
+  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE'; about?: string; phone?: string; officeHours?: string; openTime?: string; closeTime?: string; forceClosed?: boolean; appointmentDuration?: number };
   return {
     id: r.id,
     name: r.name,
     slug: r.slug,
     type,
     storeType: t.storeType ?? 'RESTAURANT',
+    businessType: t.businessType,
     about: t.about,
     officeHours: t.officeHours,
+    openTime: t.openTime ?? '08:00',
+    closeTime: t.closeTime ?? '17:00',
+    forceClosed: t.forceClosed ?? false,
     appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? 'GENERAL',
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
@@ -290,13 +294,33 @@ export class MockApiClient implements ApiClient {
     }
   }
 
-  async getProducts(tenantId: string, categoryId?: string): Promise<Product[]> {
+  async getProducts(tenantId: string, categoryId?: string, options?: { includeArchived?: boolean }): Promise<Product[]> {
+    const includeArchived = options?.includeArchived === true;
+    /** Product with optional catalog fields (sortOrder, isArchived) for safe access when fields may be missing from API/store. */
+    type ProductWithOrder = Product & { sortOrder?: number; isArchived?: boolean };
+    const getSortOrder = (p: ProductWithOrder): number => {
+      const v = p.sortOrder;
+      return typeof v === 'number' ? v : 999;
+    };
+    const isProductArchived = (p: ProductWithOrder): boolean => p.isArchived === true;
+    const filterAndSort = (list: Product[]) => {
+      const safeList: ProductWithOrder[] = Array.isArray(list) ? list.filter((p): p is ProductWithOrder => p != null && typeof p === 'object') : [];
+      let out = includeArchived ? safeList : safeList.filter((p) => !isProductArchived(p));
+      out = categoryId ? out.filter((p) => p.categoryId === categoryId) : out;
+      out = [...out].sort((a, b) => {
+        const soA = getSortOrder(a);
+        const soB = getSortOrder(b);
+        if (soA !== soB) return soA - soB;
+        const ca = String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''));
+        return ca !== 0 ? ca : String(a.name ?? '').localeCompare(String(b.name ?? ''));
+      });
+      return out;
+    };
     if (this.useApi) {
       try {
         const catalog = await apiFetch<{ products: Product[] }>(`/catalog/${tenantId}`);
-        let products = catalog?.products ?? [];
-        if (categoryId) products = products.filter((p) => (p as Product).categoryId === categoryId);
-        return products as Product[];
+        const products = (catalog?.products ?? []) as Product[];
+        return filterAndSort(products);
       } catch {
         return [];
       }
@@ -304,11 +328,8 @@ export class MockApiClient implements ApiClient {
     await delay(80);
     try {
       const catalog = getCatalog(tenantId);
-      const products = catalog?.products ?? [];
-      if (categoryId) {
-        return products.filter((p) => p.categoryId === categoryId);
-      }
-      return products;
+      const products = (catalog?.products ?? []) as Product[];
+      return filterAndSort(products);
     } catch {
       return [];
     }
@@ -598,6 +619,15 @@ export class MockApiClient implements ApiClient {
     return tt(id);
   }
 
+  async deleteTenant(id: string): Promise<void> {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${id}`, { method: 'DELETE' });
+      return;
+    }
+    const { deleteTenant: dt } = await import('./tenant-registry');
+    return dt(id);
+  }
+
   async getTenantById(id: string): Promise<RegistryTenant | null> {
     if (this.useApi) {
       try {
@@ -829,12 +859,80 @@ export class MockApiClient implements ApiClient {
     });
   }
 
-  async listOrdersByTenant(tenantId: string): Promise<Order[]> {
+  async listOrdersByTenant(
+    tenantId: string,
+    options?: { from?: string; to?: string; search?: string }
+  ): Promise<Order[]> {
     if (this.useApi) {
-      return apiFetch<Order[]>(`/tenants/${encodeURIComponent(tenantId)}/orders`);
+      const params = new URLSearchParams();
+      if (options?.from) params.set('from', options.from);
+      if (options?.to) params.set('to', options.to);
+      if (options?.search?.trim()) params.set('search', options.search.trim());
+      const qs = params.toString();
+      const url = `/tenants/${encodeURIComponent(tenantId)}/orders` + (qs ? `?${qs}` : '');
+      return apiFetch<Order[]>(url);
     }
     const { listOrdersByTenant: lot } = await import('./orders-store');
     return lot(tenantId);
+  }
+
+  async getTenantDashboardStats(
+    tenantId: string,
+    options?: { from?: string; to?: string }
+  ): Promise<{
+    dailyRevenue: number;
+    monthlyRevenue: number;
+    orderCountToday: number;
+    orderCountMonth: number;
+    totalSales: number;
+    platformFee: number;
+    merchantBalance: number;
+    platformCommissionPercent: number;
+  }> {
+    if (this.useApi) {
+      const params = new URLSearchParams();
+      if (options?.from) params.set('from', options.from);
+      if (options?.to) params.set('to', options.to);
+      const qs = params.toString();
+      const url = `/tenants/${encodeURIComponent(tenantId)}/dashboard-stats` + (qs ? `?${qs}` : '');
+      return apiFetch(url);
+    }
+    const { listOrdersByTenant: lot } = await import('./orders-store');
+    const orders = lot(tenantId);
+    const completed = orders.filter((o) => (o as { status?: string }).status === 'DELIVERED' || (o as { status?: string }).status === 'COMPLETED');
+    const nonCancelled = orders.filter((o) => (o as { status?: string }).status !== 'CANCELLED');
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 10);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const toMs = (d: string) => new Date(d).setHours(23, 59, 59, 999);
+    const fromMs = (d: string) => new Date(d).setHours(0, 0, 0, 0);
+    const ordersToday = completed.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs(todayStart) && t <= toMs(todayStart);
+    });
+    const ordersMonth = completed.filter((o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      return t >= fromMs(monthStart) && t <= toMs(monthEnd);
+    });
+    const sum = (arr: { total?: number }[]) => arr.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const dailyRevenue = sum(ordersToday);
+    const monthlyRevenue = sum(ordersMonth);
+    const totalSales = sum(nonCancelled);
+    const tenant = getTenantById(tenantId) as { financialConfig?: { commissionValue?: number } } | null;
+    const commissionPercent = tenant?.financialConfig?.commissionValue ?? 0;
+    const platformFee = Math.round(totalSales * (commissionPercent / 100) * 100) / 100;
+    const merchantBalance = Math.round((totalSales - platformFee) * 100) / 100;
+    return {
+      dailyRevenue,
+      monthlyRevenue,
+      orderCountToday: ordersToday.length,
+      orderCountMonth: ordersMonth.length,
+      totalSales,
+      platformFee,
+      merchantBalance,
+      platformCommissionPercent: commissionPercent,
+    };
   }
 
   async updateOrderStatus(orderId: string, status: Order['status']): Promise<Order | null> {

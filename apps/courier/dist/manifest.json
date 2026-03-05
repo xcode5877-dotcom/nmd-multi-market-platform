@@ -1,8 +1,19 @@
 {
   "name": "NMD Courier",
   "short_name": "Courier",
-  "start_url": "/",
+  "description": "تطبيق السائق — طلبات التوصيل",
+  "start_url": "/courier/",
+  "scope": "/courier/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#ffffff",
-  "theme_color": "#0f766e"
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }

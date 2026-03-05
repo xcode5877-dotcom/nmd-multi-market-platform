@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./db.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Market {
@@ -45,16 +45,36 @@ model Tenant {
   defaultPrepTimeMin    Int?
   financialConfig       String?  // JSON
   paymentCapabilities   String?  // JSON
+  // Merchant Settings (Store Settings page)
+  operationalStatus    String?  // open | closed | busy
+  orderPolicy          String?  // accept_always | accept_only_when_open
+  businessHours        String?  // JSON: BusinessHours per-day
+  busyBannerEnabled    Boolean?
+  busyBannerText       String?
+  bookingEnabled       Boolean?
+  about                String?
+  officeHours          String?
+  openTime             String?  // HH:mm daily open (e.g. 08:00)
+  closeTime            String?  // HH:mm daily close (e.g. 17:00)
+  forceClosed          Boolean? @default(false)  // manual override: always show closed
+  phone                String?
+  storeType            String?  // RESTAURANT | PROFESSIONAL
+  appointmentDuration  Int?
+  collections          String?  // JSON: HomeCollection[] (admin homepage sections)
+  addressLine          String?
+  location             String?  // JSON: { lat, lng }
+  meta                 String?  // JSON: _meta from import (e.g. emergencyReason)
 }
 
 model User {
-  id        String   @id
-  email     String   @unique
-  role      String
-  marketId  String?
-  tenantId  String?
-  courierId String?
-  password  String?
+  id                 String   @id
+  email              String   @unique
+  role               String
+  marketId           String?
+  tenantId           String?
+  courierId          String?
+  password           String?
+  mustChangePassword Boolean? @default(false)
 }
 
 model Courier {
@@ -74,6 +94,7 @@ model Courier {
 model Customer {
   id        String   @id
   phone     String   @unique
+  name      String?
   createdAt String
 }
 
@@ -124,7 +145,7 @@ model CatalogCategory {
 }
 
 model CatalogProduct {
-  id           String  @id
+  id           String   @id
   tenantId     String
   categoryId   String
   name         String
@@ -141,6 +162,8 @@ model CatalogProduct {
   isAvailable  Boolean
   createdAt    String?
   isFeatured   Boolean?
+  isArchived   Boolean? @default(false)
+  sortOrder    Int?     @default(0)
   @@index([tenantId])
   @@index([tenantId, categoryId])
 }

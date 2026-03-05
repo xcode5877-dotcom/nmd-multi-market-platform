@@ -4,9 +4,9 @@ import { useToast } from '@nmd/ui';
 import { useAuth } from '../contexts/AuthContext';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
-const MARKET_ADMIN_LOGIN_URL = 'http://localhost:5176/login';
-/** Shown when MARKET_ADMIN (or other non-tenant role) logs into tenant-admin (5174). TENANT_ADMIN stays and proceeds. */
-const WRONG_ROLE_MSG = 'لديك صلاحيات مسؤول السوق. استخدم لوحة إدارة السوق (5176).';
+const MARKET_ADMIN_URL = (import.meta.env.VITE_NMD_ADMIN_URL ?? '').replace(/\/$/, '');
+/** Shown when MARKET_ADMIN (or other non-tenant role) logs into merchant app. TENANT_ADMIN stays and proceeds. */
+const WRONG_ROLE_MSG = 'لديك صلاحيات مسؤول السوق. استخدم لوحة إدارة السوق.';
 
 function getSafeReturnTo(returnTo: string | null): string | null {
   if (!returnTo || typeof returnTo !== 'string') return null;
@@ -107,7 +107,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#7C3AED] focus:outline-none"
+              className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#00A0A0] focus:outline-none"
               placeholder="أدخل البريد الإلكتروني"
               required
               autoComplete="email"
@@ -119,7 +119,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => addToast('تواصل مع الدعم لاستعادة كلمة المرور', 'info')}
-                className="text-xs text-[#7C3AED] hover:text-[#A78BFA] transition-colors"
+                className="text-xs text-[#00A0A0] hover:text-[#00C0C0] transition-colors"
               >
                 نسيت كلمة المرور؟
               </button>
@@ -128,7 +128,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#7C3AED] focus:outline-none"
+              className="w-full px-3 py-2 bg-[#334155] text-white rounded-lg border border-[#475569] focus:border-[#00A0A0] focus:outline-none"
               placeholder="••••••••"
               required
               autoComplete="current-password"
@@ -139,10 +139,10 @@ export default function LoginPage() {
               <p className="text-red-400 text-sm">{error}</p>
               {error === WRONG_ROLE_MSG && (
                 <a
-                  href={MARKET_ADMIN_LOGIN_URL}
-                  className="block w-full py-2 text-center text-sm text-[#7C3AED] hover:text-[#6D28D9] border border-[#7C3AED] rounded-lg transition-colors"
+                  href={MARKET_ADMIN_URL ? `${MARKET_ADMIN_URL}/login` : '#'}
+                  className="block w-full py-2 text-center text-sm text-[#00A0A0] hover:text-[#008080] border border-[#00A0A0] rounded-lg transition-colors"
                 >
-                  اذهب إلى لوحة إدارة السوق (5176)
+                  اذهب إلى لوحة إدارة السوق
                 </a>
               )}
             </div>
@@ -150,7 +150,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            className="w-full py-2 bg-[#00A0A0] hover:bg-[#008080] disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
           >
             {loading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
           </button>

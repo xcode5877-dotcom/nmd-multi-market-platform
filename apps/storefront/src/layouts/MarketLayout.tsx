@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { User } from 'lucide-react';
+import { User, Store } from 'lucide-react';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 
@@ -25,6 +25,11 @@ export default function MarketLayout() {
   const { customer } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
 
+  const handleLogout = () => {
+    localStorage.removeItem('nmd-customer-token');
+    window.location.reload();
+  };
+
   useEffect(() => {
     const slug = marketSlug === 'daburiyya' ? 'dabburiyya' : marketSlug;
     if (!slug) {
@@ -48,45 +53,54 @@ export default function MarketLayout() {
   }, [marketSlug]);
 
   const marketName = market?.name ?? 'السوق';
-  const marketSlugDisplay = market?.slug ?? marketSlug ?? '';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAF9] overflow-x-hidden">
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to={marketSlug ? `/${marketSlug}` : '/'} className="flex items-center gap-2">
-            <span className="font-bold text-xl text-gray-900">{marketName}</span>
-            <span className="text-xs text-gray-500">/{marketSlugDisplay}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F8FAFC] text-gray-500 border border-gray-200">NMD OS</span>
+        <div className="max-w-6xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between gap-2">
+          <Link to={marketSlug ? `/${marketSlug}` : '/'} className="flex items-center gap-2 min-w-0" title={marketName}>
+            <Store className="w-5 h-5 text-primary shrink-0" aria-hidden />
+            <span className="font-bold text-sm md:text-base text-gray-900 truncate max-w-[90px] sm:max-w-[120px] md:max-w-[140px]">
+              {marketName}
+            </span>
           </Link>
           <nav className="flex items-center gap-4">
             {customer ? (
-              <Link
-                to="/my-activity"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                <User className="w-5 h-5" />
-                <span className="hidden sm:inline">حسابي</span>
-              </Link>
+              <>
+                <Link
+                  to="/my-activity"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <User className="w-5 h-5" />
+                  <span className="hidden sm:inline">حسابي</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  aria-label="تسجيل الخروج"
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:underline transition-colors"
+                >
+                  تسجيل الخروج
+                </button>
+              </>
             ) : (
               <button
                 type="button"
                 onClick={() => openAuthModal()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[#D97706] hover:bg-amber-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
               >
                 <User className="w-5 h-5" />
                 <span className="hidden sm:inline">تسجيل الدخول</span>
               </button>
             )}
-            <Link to="/" className="text-gray-700 hover:text-[#D97706] transition-colors text-sm">الأسواق</Link>
+            <Link to="/" className="text-gray-700 hover:text-primary transition-colors text-sm">الأسواق</Link>
             {marketSlug && (
-              <button
-                type="button"
-                onClick={() => document.getElementById('shops')?.scrollIntoView({ behavior: 'smooth' })}
-                className="text-gray-700 hover:text-[#D97706] transition-colors text-sm"
+              <Link
+                to={marketSlug ? `/${marketSlug}/stores` : '#'}
+                className="text-gray-700 hover:text-primary transition-colors text-sm"
               >
                 المحلات
-              </button>
+              </Link>
             )}
           </nav>
         </div>
@@ -96,7 +110,7 @@ export default function MarketLayout() {
       </main>
       <Link
         to={marketSlug ? `/${marketSlug}` : '/'}
-        className="nmd-btn-active fixed bottom-6 end-6 z-50 md:hidden px-5 py-3 rounded-full bg-[#B45309] text-white font-semibold shadow-lg shadow-[#D97706]/25 hover:bg-[#92400E] transition-all"
+        className="nmd-btn-active fixed bottom-6 end-6 z-50 md:hidden px-5 py-3 rounded-full bg-primary text-white font-semibold shadow-lg shadow-primary/25 hover:opacity-90 transition-all"
       >
         اطلب الآن
       </Link>

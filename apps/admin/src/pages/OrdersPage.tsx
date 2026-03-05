@@ -1,14 +1,34 @@
 import { useState, useMemo } from 'react';
 import type { Order } from '@nmd/core';
 import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast } from '@nmd/ui';
+import { Package, Bell } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { listOrdersByTenant, updateOrderStatus } from '@nmd/mock';
-import { buildWhatsAppMessage, buildWhatsAppUrl, formatPrice, formatAddonNameWithPlacement, isValidWhatsAppPhone } from '@nmd/core';
+import { buildWhatsAppMessage, buildWhatsAppUrl, buildOrderActionLinksSection, formatPrice, formatDateTimeGregorian, formatAddonNameWithPlacement, isValidWhatsAppPhone } from '@nmd/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+
+function ProductThumb({ src }: { src?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const showImg = src && !failed;
+  return (
+    <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
+      {showImg ? (
+        <img
+          src={src}
+          alt=""
+          className="w-full h-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Package className="w-5 h-5 text-gray-400" aria-hidden />
+      )}
+    </div>
+  );
+}
 
 const SOFT_LAUNCH_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 const STATUS_LABELS: Record<string, string> = {
@@ -21,12 +41,24 @@ const STATUS_LABELS: Record<string, string> = {
 export default function OrdersPage() {
   const { tenantId } = useAdminContext();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<'today' | 'all'>('today');
+  const [filter, setFilter] = useState<'today' | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
+
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const listOptions = useMemo(() => {
+    if (USE_API) {
+      const from = filter === 'today' ? todayIso : dateFrom || undefined;
+      const to = filter === 'today' ? todayIso : dateTo || undefined;
+      return { from, to, search: search.trim() || undefined };
+    }
+    return undefined;
+  }, [USE_API, filter, todayIso, dateFrom, dateTo, search]);
 
   const { data: tenant } = useQuery({
     queryKey: ['tenant', tenantId],
@@ -35,28 +67,38 @@ export default function OrdersPage() {
   });
 
   const { data: ordersData = [] } = useQuery({
-    queryKey: ['orders', tenantId, refresh],
-    queryFn: () => api.listOrdersByTenant(tenantId),
+    queryKey: ['orders', tenantId, refresh, listOptions?.from, listOptions?.to, listOptions?.search],
+    queryFn: () => api.listOrdersByTenant(tenantId, listOptions),
     enabled: !!tenantId && USE_API,
   });
 
   const ordersLocal = useMemo(() => listOrdersByTenant(tenantId), [tenantId, refresh]);
   let orders = USE_API ? ordersData : ordersLocal;
-  if (filter === 'today') {
-    const today = new Date().toDateString();
-    orders = orders.filter((o) => new Date(o.createdAt).toDateString() === today);
+  if (!USE_API) {
+    if (filter === 'today') {
+      const today = new Date().toDateString();
+      orders = orders.filter((o) => new Date(o.createdAt).toDateString() === today);
+    } else if (dateFrom || dateTo) {
+      const fromMs = dateFrom ? new Date(dateFrom).setHours(0, 0, 0, 0) : -Infinity;
+      const toMs = dateTo ? new Date(dateTo).setHours(23, 59, 59, 999) : Infinity;
+      orders = orders.filter((o) => {
+        const t = new Date(o.createdAt).getTime();
+        return t >= fromMs && t <= toMs;
+      });
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const digits = q.replace(/\D/g, '');
+      orders = orders.filter(
+        (o) =>
+          String((o as { id?: unknown }).id ?? '').toLowerCase().includes(q) ||
+          (o.customerName ?? '').toLowerCase().includes(q) ||
+          (digits.length >= 4 ? (o.customerPhone ?? '').replace(/\D/g, '').includes(digits) : (o.customerPhone ?? '').toLowerCase().includes(q))
+      );
+    }
   }
   orders = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   if (statusFilter) orders = orders.filter((o) => o.status === statusFilter);
-  if (search.trim()) {
-    const q = search.trim().toLowerCase();
-    orders = orders.filter(
-      (o) =>
-        String((o as { id?: unknown }).id ?? '').toLowerCase().includes(q) ||
-        (o.customerName ?? '').toLowerCase().includes(q) ||
-        (o.customerPhone ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-    );
-  }
 
   const handleStatus = async (order: Order, status: Order['status']) => {
     if (USE_API) {
@@ -74,13 +116,15 @@ export default function OrdersPage() {
     const idStr = String((o as { id?: unknown }).id ?? '');
     const hasValidId = idStr.length > 0;
     if (!hasValidId && i < 3) console.warn('[OrdersPage] Order with missing/non-string id:', o);
-    const itemsArr = Array.isArray((o as { items?: unknown }).items) ? (o as { items: unknown[] }).items : [];
+    const itemsArr = Array.isArray((o as { items?: unknown }).items) ? (o as { items: { imageUrl?: string | null }[] }).items : [];
+    const firstItem = itemsArr[0];
+    const firstImg = firstItem && 'imageUrl' in firstItem ? firstItem.imageUrl : undefined;
     return {
     orderId: (
       <span className="font-mono text-sm font-medium">{hasValidId ? idStr.slice(0, 8) : '—'}</span>
     ),
     date: (
-      <span className="text-gray-500 text-sm">{new Date(o.createdAt).toLocaleString('ar-SA')}</span>
+      <span className="text-gray-500 text-sm">{formatDateTimeGregorian(o.createdAt)}</span>
     ),
     customer: (
       <div className="text-sm">
@@ -91,12 +135,27 @@ export default function OrdersPage() {
       </div>
     ),
     items: (
-      <span className="text-sm text-gray-600">
-        {itemsArr.length} {itemsArr.length === 1 ? 'منتج' : 'منتجات'}
-      </span>
+      <div className="flex items-center gap-2">
+        <ProductThumb src={firstImg} />
+        <span className="text-sm text-gray-600">
+          {itemsArr.length} {itemsArr.length === 1 ? 'منتج' : 'منتجات'}
+        </span>
+      </div>
     ),
     total: <span className="font-bold text-primary">{formatPrice(o.total)}</span>,
-    status: <InlineBadge status={o.status} />,
+    status: (
+      <span className="inline-flex items-center gap-1.5">
+        <InlineBadge status={o.status} />
+        {(o as { lastStatusNotification?: { status: string } }).lastStatusNotification && (
+          <span
+            className="inline-flex items-center text-gray-500"
+            title="Notification triggered automatically"
+          >
+            <Bell className="w-4 h-4" aria-hidden />
+          </span>
+        )}
+      </span>
+    ),
     actions: hasValidId ? (
       <div className="flex gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
         {o.status !== 'CONFIRMED' && o.status !== 'CANCELLED' && (
@@ -152,13 +211,35 @@ export default function OrdersPage() {
           />
         }
         chips={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant={filter === 'today' ? 'primary' : 'outline'} size="sm" onClick={() => setFilter('today')}>
               اليوم
             </Button>
             <Button variant={filter === 'all' ? 'primary' : 'outline'} size="sm" onClick={() => setFilter('all')}>
               الكل
             </Button>
+            {filter === 'all' && (
+              <>
+                <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                  من
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="border rounded px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                  إلى
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="border rounded px-2 py-1.5 text-sm"
+                  />
+                </label>
+              </>
+            )}
           </div>
         }
         selects={
@@ -241,7 +322,10 @@ function OrderDrawerContent({
 }) {
   const [updating, setUpdating] = useState(false);
   const addToast = useToast().addToast;
-  const message = tenant ? buildWhatsAppMessage(order, tenant) : '';
+  const orderActionsBase = import.meta.env.VITE_ORDER_ACTIONS_BASE_URL ?? (typeof window !== 'undefined' ? `${window.location.origin}/merchant` : 'https://nmd.marketing/merchant');
+  const message = tenant
+    ? buildWhatsAppMessage(order, tenant) + buildOrderActionLinksSection(order.id, orderActionsBase)
+    : '';
   const storePhone = tenant?.branding?.whatsappPhone ?? '';
   const canOpenWhatsApp = isValidWhatsAppPhone(storePhone);
   const waUrl = canOpenWhatsApp ? buildWhatsAppUrl(storePhone, message) : null;
@@ -321,6 +405,20 @@ function OrderDrawerContent({
             <p className="text-sm text-gray-600">{order.notes}</p>
           </div>
         )}
+        {(order as { whatsappNotification?: { status: string; at: string; orderStatus?: string; error?: string } }).whatsappNotification && (() => {
+          const wa = (order as { whatsappNotification?: { status: string; at: string; orderStatus?: string; error?: string } }).whatsappNotification!;
+          const atDate = wa.at ? new Date(wa.at).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }) : '';
+          return (
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-xs text-gray-500 mb-1">إشعار واتساب (آخر تحديث)</p>
+              {wa.status === 'sent' ? (
+                <p className="text-sm text-emerald-600">تم الإرسال {atDate}</p>
+              ) : (
+                <p className="text-sm text-red-600">فشل الإرسال {atDate}{wa.error ? ` — ${wa.error}` : ''}</p>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div>
@@ -344,8 +442,9 @@ function OrderDrawerContent({
               .filter(Boolean)
               .join(' | ');
             return (
-              <li key={i} className="flex justify-between items-start text-sm gap-2">
-                <div className="min-w-0">
+              <li key={i} className="flex justify-between items-start text-sm gap-3">
+                <ProductThumb src={(item as { imageUrl?: string }).imageUrl} />
+                <div className="min-w-0 flex-1">
                   <span>{item.productName} × {item.quantity}</span>
                   {variantLabels && (
                     <span className="block text-xs text-gray-500 mt-0.5">{variantLabels}</span>

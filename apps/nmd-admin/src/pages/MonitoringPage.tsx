@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@nmd/ui';
+import { formatPrice } from '@nmd/core';
 import { apiFetch } from '../api';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -48,7 +49,7 @@ export default function MonitoringPage() {
         <Card className="border-s-4 border-s-[#059669]">
           <div className="p-4">
             <p className="text-sm text-gray-500">إجمالي الإيرادات</p>
-            <p className="text-2xl font-bold text-[#059669]">{totalRevenue.toLocaleString()} ₪</p>
+            <p className="text-2xl font-bold text-[#059669]">{formatPrice(totalRevenue)}</p>
           </div>
         </Card>
       </div>
@@ -67,7 +68,7 @@ export default function MonitoringPage() {
               </div>
               <div>
                 <span className="text-gray-500">الإيرادات:</span>
-                <span className="font-medium ms-1">{m.revenue.toLocaleString()} ₪</span>
+                <span className="font-medium ms-1">{formatPrice(m.revenue)}</span>
               </div>
             </div>
           </Card>

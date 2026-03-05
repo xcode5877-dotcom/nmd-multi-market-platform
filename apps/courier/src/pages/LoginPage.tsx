@@ -12,7 +12,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (authStatus === 'authed') {
-      navigate('/courier', { replace: true });
+      navigate('/', { replace: true }); // basename /courier → /courier
     }
   }, [authStatus, navigate]);
 
@@ -30,7 +30,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      navigate('/courier', { replace: true });
+      navigate('/', { replace: true }); // basename /courier → /courier
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل تسجيل الدخول');
     } finally {

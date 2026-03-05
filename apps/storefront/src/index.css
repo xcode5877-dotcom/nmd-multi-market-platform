@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: #0f766e;
+  --color-primary: #00A0A0;
   --color-secondary: #d4a574;
   --radius: 8px;
   --font: "Cairo", system-ui, sans-serif;

@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Skeleton } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { buildWhatsAppUrl, buildWhatsAppMessage } from '@nmd/core';
+import { buildWhatsAppUrl, buildWhatsAppMessage, formatTimeGregorian } from '@nmd/core';
 import { ArrowLeft, Copy, Phone, Search, Package, UserCheck, CheckCircle, MessageCircle, Users } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
@@ -525,7 +525,7 @@ export default function MarketDispatchPage() {
                 <td className="px-4 py-2">
                   <DurationAndSla order={o} />
                 </td>
-                <td className="px-4 py-2 text-gray-500">{o.readyAt ? new Date(o.readyAt).toLocaleTimeString('ar-SA') : '-'}</td>
+                <td className="px-4 py-2 text-gray-500">{o.readyAt ? formatTimeGregorian(o.readyAt) : '-'}</td>
                 <td className="px-4 py-2 flex flex-wrap gap-1">
                   {canAssign && (
                     <select

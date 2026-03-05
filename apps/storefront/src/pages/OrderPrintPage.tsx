@@ -56,7 +56,7 @@ export default function OrderPrintPage() {
         <div className="text-center border-b border-gray-200 pb-4 mb-4">
           <h1 className="text-xl font-bold">{tenant?.name ?? 'المتجر'}</h1>
           <p className="text-gray-600">طلب #{order.id.slice(0, 8)}</p>
-          <p className="text-sm text-gray-500">{new Date(order.createdAt).toLocaleString('ar-SA')}</p>
+          <p className="text-sm text-gray-500">{new Date(order.createdAt).toLocaleString()}</p>
         </div>
         <div className="space-y-2 text-sm">
           <p><span className="font-medium">نوع التوصيل:</span> {order.fulfillmentType === 'DELIVERY' ? 'توصيل' : 'استلام'}</p>
