@@ -4,11 +4,12 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import jwt from "jsonwebtoken";
-import { join as join3 } from "path";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2 } from "fs";
+import { join as join4, resolve, dirname as dirname3, basename } from "path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readdirSync, unlinkSync } from "fs";
+import sharp from "sharp";
 
 // src/store.ts
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync } from "fs";
 import { join, dirname } from "path";
 var DATA_FILE = process.env.DATA_FILE || join(process.cwd(), "data.json");
 var ORDERS_FILE = process.env.ORDERS_FILE || join(process.cwd(), "..", "..", "packages", "mock", "data", "orders.json");
@@ -108,59 +109,82 @@ function migrateCourier(c) {
   }
   return courier;
 }
+function parseToMockData(parsed) {
+  const rawMarkets = parsed.markets ?? [];
+  const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t));
+  const markets = rawMarkets.map((m) => {
+    const market = migrateMarket(m);
+    market.categories = m.categories ?? [];
+    market.stores = (m.stores ?? []).map(
+      (s) => migrateTenant({ ...s, marketId: m.id })
+    );
+    return market;
+  });
+  const catalog = {};
+  for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
+    const c = cat;
+    catalog[tid] = {
+      categories: (c.categories ?? []).map((x) => migrateCategory(x)),
+      products: c.products ?? [],
+      optionGroups: c.optionGroups ?? [],
+      optionItems: c.optionItems ?? []
+    };
+  }
+  const users = parsed.users ?? [];
+  const auditEvents = parsed.auditEvents ?? [];
+  const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0 ? parsed.globalCategories : [...DEFAULT_GLOBAL_CATEGORIES];
+  return {
+    markets,
+    tenants,
+    users,
+    auditEvents,
+    catalog,
+    orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+    campaigns: parsed.campaigns ?? [],
+    delivery: parsed.delivery && typeof parsed.delivery === "object" ? parsed.delivery : {},
+    deliveryZones: parsed.deliveryZones && typeof parsed.deliveryZones === "object" ? parsed.deliveryZones : {},
+    couriers: (parsed.couriers ?? []).map((c) => migrateCourier(c)),
+    customers: parsed.customers ?? [],
+    deliveryJobs: parsed.deliveryJobs ?? [],
+    templates: parsed.templates ?? [],
+    staff: parsed.staff ?? [],
+    globalCategories,
+    leads: parsed.leads ?? []
+  };
+}
 function load() {
   try {
     if (existsSync(DATA_FILE)) {
       const raw = readFileSync(DATA_FILE, "utf-8");
       const parsed = JSON.parse(raw);
-      const rawMarkets = parsed.markets ?? [];
-      const tenants = (parsed.tenants ?? []).map((t) => migrateTenant(t));
-      const markets = rawMarkets.map((m) => {
-        const market = migrateMarket(m);
-        market.categories = m.categories ?? [];
-        market.stores = (m.stores ?? []).map(
-          (s) => migrateTenant({ ...s, marketId: m.id })
-        );
-        return market;
-      });
-      const catalog = {};
-      for (const [tid, cat] of Object.entries(parsed.catalog ?? {})) {
-        const c = cat;
-        catalog[tid] = {
-          categories: (c.categories ?? []).map((x) => migrateCategory(x)),
-          products: c.products ?? [],
-          optionGroups: c.optionGroups ?? [],
-          optionItems: c.optionItems ?? []
-        };
-      }
-      const users = parsed.users ?? [];
-      const auditEvents = parsed.auditEvents ?? [];
-      const globalCategories = Array.isArray(parsed.globalCategories) && parsed.globalCategories.length > 0 ? parsed.globalCategories : [...DEFAULT_GLOBAL_CATEGORIES];
-      return {
-        markets,
-        tenants,
-        users,
-        auditEvents,
-        catalog,
-        orders: [],
-        campaigns: parsed.campaigns ?? [],
-        delivery: parsed.delivery ?? {},
-        deliveryZones: parsed.deliveryZones ?? {},
-        couriers: (parsed.couriers ?? []).map((c) => migrateCourier(c)),
-        customers: parsed.customers ?? [],
-        deliveryJobs: parsed.deliveryJobs ?? [],
-        templates: parsed.templates ?? [],
-        staff: parsed.staff ?? [],
-        globalCategories,
-        leads: parsed.leads ?? []
-      };
+      const data = parseToMockData(parsed);
+      data.orders = [];
+      return data;
     }
   } catch {
   }
   return { ...DEFAULT, users: [], auditEvents: [] };
 }
+function loadFromPath(filePath) {
+  try {
+    if (!existsSync(filePath)) return null;
+    const raw = readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parseToMockData(parsed);
+  } catch (err) {
+    console.error("[store] loadFromPath failed:", filePath, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 function save(data) {
-  writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  try {
+    const dir = dirname(DATA_FILE);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[store] Failed to persist data (check permissions, e.g. DATA_FILE path):", err instanceof Error ? err.message : err);
+    throw err;
+  }
 }
 function loadOrders() {
   try {
@@ -182,12 +206,31 @@ function saveOrders(orders) {
   }
 }
 var cache = null;
+var lastLoadedMtimeMs = 0;
+function dataFileMtimeMs() {
+  try {
+    if (existsSync(DATA_FILE)) return statSync(DATA_FILE).mtimeMs;
+  } catch {
+  }
+  return 0;
+}
 function getData() {
-  if (!cache) cache = load();
+  const mtime = dataFileMtimeMs();
+  if (!cache || mtime > lastLoadedMtimeMs) {
+    cache = load();
+    lastLoadedMtimeMs = mtime || Date.now();
+  }
   return cache;
 }
+function invalidateDataCache() {
+  cache = null;
+  lastLoadedMtimeMs = 0;
+}
 function persist() {
-  if (cache) save(cache);
+  if (cache) {
+    save(cache);
+    lastLoadedMtimeMs = dataFileMtimeMs() || Date.now();
+  }
 }
 function getMarkets() {
   return getData().markets;
@@ -335,9 +378,10 @@ function appendLead(lead) {
 }
 
 // src/market-config.ts
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, existsSync as existsSync2 } from "fs";
-import { join as join2 } from "path";
-var CONFIG_FILE = join2(process.cwd(), "market-config.json");
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, existsSync as existsSync2, copyFileSync, mkdirSync as mkdirSync2 } from "fs";
+import { join as join2, dirname as dirname2 } from "path";
+var CONFIG_FILE = process.env.MARKET_CONFIG_FILE || join2(process.cwd(), "market-config.json");
+var LEGACY_CONFIG_FILE = join2(process.cwd(), "market-config.json");
 var DEFAULT_BANNERS = [
   {
     id: "b1",
@@ -367,7 +411,20 @@ var SEED_LAYOUT = {
   ],
   iksal: [{ id: "featured", title: "\u0645\u062D\u0644\u0627\u062A \u0645\u0645\u064A\u0632\u0629", type: "SLIDER", storeIds: ["buffalo"] }]
 };
+function migrateFromLegacyIfNeeded() {
+  if (!existsSync2(LEGACY_CONFIG_FILE)) return;
+  if (existsSync2(CONFIG_FILE)) return;
+  try {
+    const dir = dirname2(CONFIG_FILE);
+    if (!existsSync2(dir)) mkdirSync2(dir, { recursive: true });
+    copyFileSync(LEGACY_CONFIG_FILE, CONFIG_FILE);
+    console.log("[market-config] Migrated from", LEGACY_CONFIG_FILE, "to", CONFIG_FILE);
+  } catch (err) {
+    console.warn("[market-config] Migration copy failed (will use defaults):", err instanceof Error ? err.message : err);
+  }
+}
 function load2() {
+  migrateFromLegacyIfNeeded();
   try {
     if (existsSync2(CONFIG_FILE)) {
       const raw = readFileSync2(CONFIG_FILE, "utf-8");
@@ -377,12 +434,15 @@ function load2() {
         layout: parsed.layout ?? SEED_LAYOUT
       };
     }
-  } catch {
+  } catch (err) {
+    console.warn("[market-config] Load failed (will use defaults):", err instanceof Error ? err.message : err);
   }
   return { banners: { ...SEED_BANNERS }, layout: { ...SEED_LAYOUT } };
 }
 function save2(store) {
   try {
+    const dir = dirname2(CONFIG_FILE);
+    if (!existsSync2(dir)) mkdirSync2(dir, { recursive: true });
     writeFileSync2(CONFIG_FILE, JSON.stringify(store, null, 2), "utf-8");
   } catch (err) {
     console.error("[market-config] Failed to persist:", err);
@@ -588,6 +648,11 @@ function createJsonDeliveryRepo() {
       const d = getDelivery();
       d[tenantId] = { ...settings, tenantId };
       setDelivery(d);
+    },
+    async deleteSettings(tenantId) {
+      const d = getDelivery();
+      delete d[tenantId];
+      setDelivery(d);
     }
   };
 }
@@ -604,6 +669,8 @@ function createJsonDeliveryZonesRepo() {
 function createJsonPaymentsRepo() {
   return {
     async createForOrder() {
+    },
+    async deleteForOrderIds() {
     }
   };
 }
@@ -962,7 +1029,9 @@ function catalogToDomain(categories, products, optionGroups) {
       stock: p.stock ?? void 0,
       isAvailable: p.isAvailable,
       createdAt: p.createdAt ?? void 0,
-      isFeatured: p.isFeatured ?? void 0
+      isFeatured: p.isFeatured ?? void 0,
+      isArchived: p.isArchived ?? void 0,
+      sortOrder: p.sortOrder ?? void 0
     };
     if (p.images) base.images = JSON.parse(p.images);
     if (p.optionGroups) base.optionGroups = JSON.parse(p.optionGroups);
@@ -1050,7 +1119,9 @@ function createDbCatalogRepo() {
               stock: p.stock ?? null,
               isAvailable: p.isAvailable ?? true,
               createdAt: p.createdAt ?? null,
-              isFeatured: p.isFeatured ?? null
+              isFeatured: p.isFeatured ?? null,
+              isArchived: p.isArchived ?? false,
+              sortOrder: p.sortOrder ?? 0
             }
           });
         }
@@ -1124,6 +1195,9 @@ function createDbDeliveryRepo() {
           payload: payload ?? void 0
         }
       });
+    },
+    async deleteSettings(tenantId) {
+      await prisma.tenantDeliverySettings.deleteMany({ where: { tenantId } });
     }
   };
 }
@@ -1191,6 +1265,10 @@ function createDbPaymentsRepo() {
           updatedAt: now
         }
       });
+    },
+    async deleteForOrderIds(orderIds) {
+      if (orderIds.length === 0) return;
+      await prisma.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     }
   };
 }
@@ -1242,7 +1320,7 @@ function hashCode(code) {
   return createHash("sha256").update(String(code).trim()).digest("hex");
 }
 function generateOtp() {
-  return String(randomInt(1e3, 9999));
+  return String(randomInt(1e5, 999999));
 }
 function createOtp(phone) {
   const key = normalizePhone(phone);
@@ -1270,9 +1348,9 @@ function createOtp(phone) {
   const isDevOrMock = process.env.NODE_ENV !== "production" || process.env.MOCK_OTP === "1" || process.env.MOCK_OTP === "true";
   if (isDevOrMock) {
     console.log(`[OTP] ${phone} (normalized: ${key}) \u2192 code: ${code} (expires in 5 min)`);
-    return { ok: true, devCode: code };
+    return { ok: true, codeForSending: code, devCode: code };
   }
-  return { ok: true };
+  return { ok: true, codeForSending: code };
 }
 function verifyOtp(phone, code) {
   const key = normalizePhone(phone);
@@ -1297,6 +1375,185 @@ function verifyOtp(phone, code) {
   }
   otpStore.delete(key);
   return { ok: true };
+}
+
+// src/services/NotificationService.ts
+var WHATSAPP_SERVICE_URL = process.env.WHATSAPP_WEB_SERVICE_URL ?? process.env.WHATSAPP_SERVICE_URL ?? "http://whatsapp-service:3000";
+var ORDER_ACTIONS_BASE = process.env.ORDER_ACTIONS_BASE_URL ?? "https://nmd.marketing/merchant";
+function formatMoney(value) {
+  if (value == null || Number.isNaN(value)) return "0";
+  return `\u20AA${Number(value).toFixed(2)}`;
+}
+function buildMerchantOrderMessage(order, _storeName) {
+  const orderId = (order.id ?? "").toString();
+  const shortId = orderId.slice(0, 8);
+  const lines = [
+    "*\u0637\u0644\u0628 \u062C\u062F\u064A\u062F*",
+    "",
+    `#${shortId}`,
+    `\u0627\u0644\u0639\u0645\u064A\u0644: ${(order.customerName ?? "").trim() || "\u2014"}`,
+    order.customerPhone ? `\u0627\u0644\u062C\u0648\u0627\u0644: ${order.customerPhone}` : "",
+    "",
+    "*\u0627\u0644\u0639\u0646\u0627\u0635\u0631:*"
+  ].filter(Boolean);
+  const items = Array.isArray(order.items) ? order.items : [];
+  for (const item of items) {
+    const name = (item.productName ?? "\u0645\u0646\u062A\u062C").toString();
+    const qty = Number(item.quantity) || 1;
+    const price = item.totalPrice != null ? formatMoney(item.totalPrice) : "";
+    lines.push(`\u2022 ${name} x${qty}${price ? `: ${price}` : ""}`);
+  }
+  if (items.length === 0) lines.push("\u2014");
+  lines.push("");
+  lines.push(`*\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: ${formatMoney(order.total)}*`);
+  if (order.notes) lines.push(`\u0645\u0644\u0627\u062D\u0638\u0627\u062A: ${order.notes}`);
+  const base = ORDER_ACTIONS_BASE.replace(/\/$/, "");
+  lines.push("");
+  lines.push("\u2014\u2014\u2014 \u0631\u0648\u0627\u0628\u0637 \u0633\u0631\u064A\u0639\u0629 \u2014\u2014\u2014");
+  lines.push(`\u2705 \u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0637\u0644\u0628: ${base}/order-actions/${orderId}/confirm`);
+  lines.push(`\u{1F9D1}\u200D\u{1F373} \u0627\u0644\u0637\u0644\u0628 \u062C\u0627\u0647\u0632: ${base}/order-actions/${orderId}/ready`);
+  lines.push(`\u{1F69A} \u062A\u0645 \u0627\u0644\u0625\u0631\u0633\u0627\u0644: ${base}/order-actions/${orderId}/shipped`);
+  lines.push("");
+  lines.push("\u0631\u062F \u0639\u0644\u0649 \u0647\u0630\u0647 \u0627\u0644\u0631\u0633\u0627\u0644\u0629 \u0628\u0640 (1) \u0644\u0644\u062A\u0623\u0643\u064A\u062F\u060C (2) \u0644\u0644\u062C\u0627\u0647\u0632\u064A\u0629\u060C (3) \u0644\u0644\u0634\u062D\u0646.");
+  return lines.join("\n");
+}
+async function sendMessage(phone, message, orderId) {
+  const url = WHATSAPP_SERVICE_URL.replace(/\/$/, "") + "/send-message";
+  const number = phone.replace(/\D/g, "");
+  if (number.length < 9) {
+    return { success: false, error: "Invalid phone" };
+  }
+  try {
+    const body = { number, message };
+    if (orderId) body.orderId = orderId;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { success: false, error: data.error ?? `HTTP ${res.status}` };
+    }
+    if (data.success === false) {
+      return { success: false, error: data.error ?? "Send failed" };
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+function notifyMerchantNewOrder(order, tenant) {
+  const phone = (tenant.whatsappPhone ?? tenant.phone ?? "").toString().replace(/\D/g, "").trim();
+  if (phone.length < 9) {
+    console.warn("[NotificationService] notifyMerchantNewOrder: no merchant phone for tenant", tenant.name ?? order.tenantId);
+    return;
+  }
+  const withCountry = phone.startsWith("0") ? "972" + phone.slice(1) : phone.length <= 10 ? "972" + phone : phone;
+  const message = buildMerchantOrderMessage(order, tenant.name);
+  const orderId = order.id != null ? String(order.id) : void 0;
+  (async () => {
+    try {
+      const result = await sendMessage(withCountry, message, orderId);
+      if (result.success) {
+        console.log("[NotificationService] Merchant notified for order", order.id);
+      } else {
+        console.error("[NotificationService] Merchant notify failed:", result.error);
+      }
+    } catch (e) {
+      console.error("[NotificationService] notifyMerchantNewOrder error:", e);
+    }
+  })();
+}
+var TEMPLATES = {
+  CONFIRMED: (name, num, store) => `\u0623\u0647\u0644\u0627\u064B ${name}\u060C \u0645\u062A\u062C\u0631 ${store} \u0642\u0627\u0645 \u0628\u062A\u0623\u0643\u064A\u062F \u0637\u0644\u0628\u0643 #${num} \u0648\u0647\u0648 \u0642\u064A\u062F \u0627\u0644\u062A\u062C\u0647\u064A\u0632! \u{1F468}\u200D\u{1F373}`,
+  READY: (name, num, store) => `\u0628\u0634\u0631\u0649 \u0633\u0627\u0631\u0629! \u0645\u062A\u062C\u0631 ${store} \u2014 \u0637\u0644\u0628\u0643 #${num} \u0623\u0635\u0628\u062D \u062C\u0627\u0647\u0632\u0627\u064B. \u2705`,
+  COMPLETED: (name, num, store) => `\u0645\u062A\u062C\u0631 ${store}: \u0637\u0644\u0628\u0643 #${num} \u062E\u0631\u062C \u0627\u0644\u0622\u0646 \u0645\u0639 \u0627\u0644\u0645\u0631\u0633\u0644\u060C \u0646\u062A\u0645\u0646\u0649 \u0644\u0643 \u062A\u062C\u0631\u0628\u0629 \u0631\u0627\u0626\u0639\u0629! \u{1F69A}`
+};
+function triggerStatusNotification(order, newStatus, storeName) {
+  const status = String(newStatus).toUpperCase();
+  if (!TEMPLATES[status]) {
+    return;
+  }
+  const phone = order.customerPhone ? String(order.customerPhone).replace(/\s/g, "").trim() : "";
+  const name = (order.customerName ?? "").trim() || "\u0639\u0645\u064A\u0644\u0646\u0627";
+  const orderNumber = (order.id ?? "").toString().slice(0, 8);
+  const store = (storeName ?? "").trim() || "\u0627\u0644\u0645\u062A\u062C\u0631";
+  const message = TEMPLATES[status](name, orderNumber, store);
+  console.log("[NotificationService] WhatsApp (simulation)");
+  console.log("[NotificationService] To:", phone || "(no phone)");
+  console.log("[NotificationService] Message:", message);
+  console.log("[NotificationService] ---");
+}
+
+// src/push-subscriptions.ts
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync3, existsSync as existsSync3, mkdirSync as mkdirSync3 } from "fs";
+import { join as join3 } from "path";
+import webpush from "web-push";
+var VAPID_PUBLIC_KEY_ENV = "VAPID_PUBLIC_KEY";
+var VAPID_PRIVATE_KEY_ENV = "VAPID_PRIVATE_KEY";
+var PUSH_SUBS_FILE = process.env.PUSH_SUBSCRIPTIONS_FILE || "/app/data/push-subscriptions.json";
+var vapidPublicKey;
+var vapidPrivateKey;
+function ensureVapidKeys() {
+  const pub = process.env[VAPID_PUBLIC_KEY_ENV];
+  const priv = process.env[VAPID_PRIVATE_KEY_ENV];
+  if (pub && priv) {
+    vapidPublicKey = pub;
+    vapidPrivateKey = priv;
+    webpush.setVapidDetails("mailto:noreply@nmd.local", vapidPublicKey, vapidPrivateKey);
+    return;
+  }
+  const keys = webpush.generateVAPIDKeys();
+  vapidPublicKey = keys.publicKey;
+  vapidPrivateKey = keys.privateKey;
+  webpush.setVapidDetails("mailto:noreply@nmd.local", vapidPublicKey, vapidPrivateKey);
+  if (!process.env[VAPID_PUBLIC_KEY_ENV]) {
+    console.log("[Push] VAPID keys generated. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY for production.");
+  }
+}
+ensureVapidKeys();
+function getVapidPublicKey() {
+  return vapidPublicKey;
+}
+function load3() {
+  try {
+    if (existsSync3(PUSH_SUBS_FILE)) {
+      const raw = readFileSync3(PUSH_SUBS_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      return typeof data === "object" && data !== null ? data : {};
+    }
+  } catch {
+  }
+  return {};
+}
+function save3(data) {
+  try {
+    const dir = join3(PUSH_SUBS_FILE, "..");
+    if (!existsSync3(dir)) {
+      mkdirSync3(dir, { recursive: true });
+    }
+    writeFileSync3(PUSH_SUBS_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[Push] Failed to save subscriptions:", err);
+  }
+}
+var memory = load3();
+function saveSubscription(phone, subscription) {
+  const key = String(phone).replace(/\D/g, "");
+  if (!key) return;
+  const list = memory[key] ?? [];
+  const sameEndpoint = list.find((s) => s.endpoint === subscription.endpoint);
+  const isNew = !sameEndpoint;
+  if (sameEndpoint) {
+    sameEndpoint.keys = subscription.keys;
+    sameEndpoint.expirationTime = subscription.expirationTime;
+  } else {
+    list.push({ ...subscription });
+  }
+  memory[key] = list.slice(-10);
+  save3(memory);
+  console.log(`[Push] Subscription ${isNew ? "registered" : "updated"} for phone ***${key.slice(-4)} (${list.length} device(s))`);
 }
 
 // src/index.ts
@@ -1425,10 +1682,18 @@ async function seedDeliveryZonesIfNeeded() {
     await repos.deliveryZones.setAll(t.id, zones);
   }
 }
-var UPLOADS_DIR = process.env.UPLOADS_DIR || (process.cwd() === "/app/apps/mock-api" ? "/app/apps/mock-api/uploads" : join3(process.cwd(), "..", "..", "packages", "mock", "uploads"));
-var UPLOADS_BANNERS_DIR = join3(UPLOADS_DIR, "banners");
-if (!existsSync3(UPLOADS_DIR)) mkdirSync2(UPLOADS_DIR, { recursive: true });
-if (!existsSync3(UPLOADS_BANNERS_DIR)) mkdirSync2(UPLOADS_BANNERS_DIR, { recursive: true });
+var UPLOADS_DIR = (() => {
+  const envDir = process.env.UPLOADS_DIR;
+  if (envDir) return resolve(envDir);
+  const dataUploads = join4(process.cwd(), "data", "uploads");
+  if (existsSync4(dataUploads)) return resolve(dataUploads);
+  if (process.cwd() === "/app/apps/mock-api") return "/app/uploads";
+  return resolve(join4(process.cwd(), "..", "..", "packages", "mock", "uploads"));
+})();
+var UPLOADS_BANNERS_DIR = join4(UPLOADS_DIR, "banners");
+if (!existsSync4(UPLOADS_DIR)) mkdirSync4(UPLOADS_DIR, { recursive: true });
+if (!existsSync4(UPLOADS_BANNERS_DIR)) mkdirSync4(UPLOADS_BANNERS_DIR, { recursive: true });
+console.log("[mock-api] UPLOADS_DIR (static /uploads):", UPLOADS_DIR, "exists:", existsSync4(UPLOADS_DIR));
 var storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -1481,6 +1746,45 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+var UPLOAD_WEBP_QUALITY = 75;
+async function compressNewUploadToWebP(filePath) {
+  const ext = (filePath.match(/\.([^.]+)$/)?.[1] ?? "").toLowerCase();
+  if (!["jpg", "jpeg", "png", "webp"].includes(ext)) return basename(filePath);
+  try {
+    const dir = dirname3(filePath);
+    const base = basename(filePath, ext ? `.${ext}` : "");
+    const webpPath = join4(dir, `${base}.webp`);
+    await sharp(filePath).resize(1920, 1920, { fit: "inside", withoutEnlargement: true }).webp({ quality: UPLOAD_WEBP_QUALITY }).toFile(webpPath);
+    if (webpPath !== filePath) unlinkSync(filePath);
+    return basename(webpPath);
+  } catch (err) {
+    console.warn("[Upload] WebP convert failed (file left as-is):", err instanceof Error ? err.message : err);
+    return basename(filePath);
+  }
+}
+var UPLOADS_CACHE = "public, max-age=31536000, immutable";
+app.use("/uploads", cors({ origin: "*", methods: ["GET", "HEAD", "OPTIONS"] }), (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const rel = (req.path.replace(/^\/uploads\/?/, "") || "").replace(/^\/+/, "");
+  if (!rel) return next();
+  const full = resolve(join4(UPLOADS_DIR, rel));
+  if (!full.startsWith(resolve(UPLOADS_DIR))) return res.status(400).end();
+  if (existsSync4(full)) return next();
+  const dir = dirname3(full);
+  const base = basename(full);
+  if (!existsSync4(dir)) return next();
+  const lower = base.toLowerCase();
+  const found = readdirSync(dir).find((f) => f.toLowerCase() === lower);
+  if (found) {
+    const target = join4(dir, found);
+    res.setHeader("Cache-Control", UPLOADS_CACHE);
+    res.sendFile(target, { maxAge: 31536e3 }, (err) => {
+      if (err) next();
+    });
+  } else {
+    next();
+  }
+}, express.static(UPLOADS_DIR, { index: false, setHeaders: (res) => res.setHeader("Cache-Control", UPLOADS_CACHE) }));
 app.use((req, res, next) => {
   console.log(`INCOMING REQUEST: ${req.method} ${req.url}`);
   next();
@@ -1505,7 +1809,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use("/uploads", cors({ origin: "*", methods: ["GET", "OPTIONS"] }), express.static(UPLOADS_DIR));
 var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/$/ },
   { method: "POST", path: /^\/auth\/login$/ },
@@ -1531,7 +1834,10 @@ var PUBLIC_ROUTES = [
   { method: "GET", path: /^\/categories$/ },
   { method: "POST", path: /^\/leads$/ },
   { method: "GET", path: /^\/merchant\/dashboard$/ },
-  { method: "GET", path: /^\/merchant\/leads$/ }
+  { method: "GET", path: /^\/merchant\/leads$/ },
+  { method: "POST", path: /^\/internal\/orders\/[^/]+\/status$/ },
+  { method: "GET", path: /^\/customer\/push-public-key$/ },
+  { method: "GET", path: /^\/data$/ }
 ];
 function isPublicRoute(method, path) {
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
@@ -1684,6 +1990,23 @@ app.post("/customer/auth/start", async (req, res) => {
     console.log("[customer/auth/start] 429:", result.error, result.code);
     return res.status(429).json({ error: result.error, code: result.code });
   }
+  const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || "").replace(/\/$/, "");
+  const waApiKey = process.env.WA_API_KEY;
+  if (gatewayUrl && waApiKey && result.codeForSending) {
+    try {
+      const sendRes = await fetch(`${gatewayUrl}/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": waApiKey },
+        body: JSON.stringify({ phone: normalized, code: result.codeForSending })
+      });
+      if (!sendRes.ok) {
+        const errText = await sendRes.text();
+        console.warn("[customer/auth/start] WhatsApp send-otp failed:", sendRes.status, errText);
+      }
+    } catch (e) {
+      console.warn("[customer/auth/start] WhatsApp send-otp error:", e instanceof Error ? e.message : e);
+    }
+  }
   if (result.devCode) console.log("[customer/auth/start] 200 \u2192 OTP sent (see [OTP] log above or client toast)");
   res.json({ ok: true, ...result.devCode && { devCode: result.devCode } });
 });
@@ -1739,6 +2062,27 @@ app.patch("/customer/profile", async (req, res) => {
   customers[idx] = updated;
   await repos.customers.setAll(customers);
   res.json({ customer: { id: updated.id, phone: updated.phone, name: updated.name } });
+});
+app.get("/customer/push-public-key", (_req, res) => {
+  res.json({ publicKey: getVapidPublicKey() });
+});
+app.post("/customer/push-subscription", async (req, res) => {
+  console.log("[Push] POST /customer/push-subscription received, Authorization:", req.headers.authorization ? "present" : "missing");
+  const customer = req.customer;
+  if (!customer) {
+    console.log("[Push] 401 Unauthorized: no customer on request");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const body = req.body;
+  const sub = body?.subscription;
+  if (!sub || !sub.endpoint) return res.status(400).json({ error: "subscription with endpoint required" });
+  const subscription = {
+    endpoint: sub.endpoint,
+    keys: sub.keys ? { p256dh: sub.keys.p256dh, auth: sub.keys.auth } : void 0,
+    expirationTime: sub.expirationTime ?? null
+  };
+  saveSubscription(customer.phone, subscription);
+  res.json({ ok: true });
 });
 app.get("/customer/activity", wrapAsync(async (req, res) => {
   const customer = req.customer;
@@ -2575,24 +2919,32 @@ app.post("/markets", async (req, res) => {
   res.status(201).json(market);
 });
 app.put("/markets/:id", async (req, res) => {
-  if (req.user?.role !== "ROOT_ADMIN") return res.status(403).json({ error: "Forbidden" });
-  if (!requireWriteWithReason(req, res)) return;
+  const user = req.user;
   const { id } = req.params;
+  const isRoot = user?.role === "ROOT_ADMIN";
+  const isMarketAdminOwn = user?.role === "MARKET_ADMIN" && user.marketId === id;
+  if (!isRoot && !isMarketAdminOwn) return res.status(403).json({ error: "Forbidden" });
+  if (isRoot && !requireWriteWithReason(req, res)) return;
   const body = req.body;
   const markets = await repos.markets.findAll();
   const idx = markets.findIndex((m) => m.id === id);
   if (idx === -1) return res.status(404).json({ error: "Market not found" });
   const before = markets[idx];
   markets[idx] = { ...markets[idx], ...body };
-  await repos.markets.setAll(markets);
+  try {
+    await repos.markets.setAll(markets);
+  } catch (err) {
+    console.error("[markets] Failed to persist (check file permissions, e.g. /data):", err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: "Failed to save market", code: "PERSIST_ERROR" });
+  }
   appendAuditEvent({
-    userId: req.user.id,
-    role: req.user.role,
+    userId: user.id,
+    role: user.role,
     action: "update",
     entity: "market",
     entityId: id,
-    reason: getEmergencyReason(req),
-    emergencyMode: true,
+    reason: isRoot ? getEmergencyReason(req) : void 0,
+    emergencyMode: isRoot,
     before,
     after: markets[idx]
   });
@@ -2802,7 +3154,10 @@ app.get("/markets/:marketId/tenants", async (req, res) => {
       marketCategory: n.marketCategory ?? "GENERAL",
       operationalStatus: n.operationalStatus,
       orderPolicy: n.orderPolicy,
-      businessHours: n.businessHours
+      businessHours: n.businessHours,
+      openTime: n.openTime,
+      closeTime: n.closeTime,
+      forceClosed: n.forceClosed
     };
   });
   res.json(tenants);
@@ -3236,28 +3591,83 @@ app.put("/tenants/:id/operational-settings", async (req, res) => {
   });
   res.json(normalizeTenantResponse(tenants[idx]));
 });
+app.delete("/tenants/:id", async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const tenants = await repos.tenants.findAll();
+  const t = tenants.find((x) => x.id === id);
+  if (!t) return res.status(404).json({ error: "Tenant not found" });
+  if (user.role === "MARKET_ADMIN" && t.marketId !== user.marketId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (user.role === "ROOT_ADMIN" && !requireWriteWithReason(req, res)) return;
+  const orderIds = (await repos.orders.findAll()).filter((o) => o.tenantId === id).map((o) => o.id).filter(Boolean);
+  await repos.payments.deleteForOrderIds(orderIds);
+  const orders = (await repos.orders.findAll()).filter((o) => o.tenantId !== id);
+  await repos.orders.setAll(orders);
+  await repos.catalog.setCatalog(id, { categories: [], products: [], optionGroups: [] });
+  await repos.delivery.deleteSettings(id);
+  await repos.deliveryZones.setAll(id, []);
+  const couriers = (await repos.couriers.findAll()).filter(
+    (c) => !(c.scopeType === "TENANT" && c.scopeId === id)
+  );
+  await repos.couriers.setAll(couriers);
+  const remainingTenants = tenants.filter((x) => x.id !== id);
+  await repos.tenants.setAll(remainingTenants);
+  appendAuditEvent({
+    userId: user.id,
+    role: user.role,
+    marketId: t.marketId,
+    action: "delete",
+    entity: "tenant",
+    entityId: id,
+    reason: user.role === "ROOT_ADMIN" ? getEmergencyReason(req) : "full store delete",
+    emergencyMode: user.role === "ROOT_ADMIN",
+    before: t,
+    after: null
+  });
+  res.status(204).send();
+});
 var UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 app.post("/upload", async (req, res) => {
-  console.log("Query Params:", req.query);
-  console.log("Incoming Headers:", req.headers);
   const files = req.files ?? [];
   const base = UPLOAD_BASE;
-  const urls = files.map((f) => `${base}/uploads/${f.filename}`);
-  console.log("[Upload] Success:", files.length, "files, base:", base);
+  const urls = [];
+  for (const f of files) {
+    const fullPath = join4(UPLOADS_DIR, f.filename);
+    const name = existsSync4(fullPath) ? await compressNewUploadToWebP(fullPath) : f.filename;
+    urls.push(`${base}/uploads/${name}`);
+  }
+  console.log("[Upload] Success:", files.length, "files (WebP q75), base:", base);
   res.json({ urls });
 });
 app.post("/upload/banner", async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
+  const fullPath = join4(UPLOADS_BANNERS_DIR, file.filename);
+  const name = existsSync4(fullPath) ? await compressNewUploadToWebP(fullPath) : file.filename;
   const base = UPLOAD_BASE;
-  const relativePath = `/uploads/banners/${file.filename}`;
+  const relativePath = `/uploads/banners/${name}`;
   const fullUrl = `${base}${relativePath}`;
-  console.log("[Upload/banner] Saved:", file.filename);
+  console.log("[Upload/banner] Saved:", name, "(WebP q75)");
   res.json({ urls: [fullUrl], relativePath });
 });
+async function resolveCatalogTenantId(param) {
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
+  if (uuidLike) return param;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.slug === param);
+  return tenant?.id ?? param;
+}
 app.get("/catalog/:tenantId", wrapAsync(async (req, res) => {
-  const catalog = await repos.catalog.getCatalog(req.params.tenantId);
-  res.json(catalog);
+  try {
+    const tenantId = await resolveCatalogTenantId(req.params.tenantId);
+    const catalog = await repos.catalog.getCatalog(tenantId);
+    res.json(catalog);
+  } catch (err) {
+    console.error("[catalog] getCatalog failed:", err instanceof Error ? err.message : err);
+    res.status(200).json({ categories: [], products: [], optionGroups: [], optionItems: [] });
+  }
 }));
 function normalizeProductForCompat(p) {
   const images = p.images ?? [];
@@ -3267,13 +3677,14 @@ function normalizeProductForCompat(p) {
   return p;
 }
 app.put("/catalog/:tenantId", wrapAsync(async (req, res) => {
+  const tenantId = await resolveCatalogTenantId(req.params.tenantId);
   const catalog = req.body;
   const products = (catalog.products ?? []).map(
     (p) => normalizeProductForCompat(p)
   );
   const normalized = { ...catalog, products };
-  await repos.catalog.setCatalog(req.params.tenantId, normalized);
-  const updated = await repos.catalog.getCatalog(req.params.tenantId);
+  await repos.catalog.setCatalog(tenantId, normalized);
+  const updated = await repos.catalog.getCatalog(tenantId);
   res.json(updated);
 }));
 async function getMarketTenantIds(marketId) {
@@ -3373,6 +3784,9 @@ app.post("/orders", wrapAsync(async (req, res) => {
     amount: payment.financials.gross,
     currency: payment.currency
   });
+  if (tenant) {
+    notifyMerchantNewOrder(created, tenant);
+  }
   res.status(201).json(created);
 }));
 app.get("/orders/:orderId", wrapAsync(async (req, res) => {
@@ -3409,6 +3823,41 @@ app.get("/public/orders/:orderId", wrapAsync(async (req, res) => {
   };
   res.json(safe);
 }));
+var INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET ?? process.env.WA_INTERNAL_SECRET ?? "";
+app.post("/internal/orders/:orderId/status", wrapAsync(async (req, res) => {
+  if (INTERNAL_API_SECRET && req.headers["x-internal-secret"] !== INTERNAL_API_SECRET) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const orderId = req.params.orderId;
+  const { status } = req.body;
+  if (!status || !["CONFIRMED", "READY", "COMPLETED", "DELIVERED"].includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  const orders = await repos.orders.findAll();
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: "Order not found" });
+  const order = orders[idx];
+  const updated = { ...orders[idx], status };
+  if (status === "DELIVERED" && order.courierId) {
+    updated.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
+    const couriers = await repos.couriers.findAll();
+    const cIdx = couriers.findIndex((c) => c.id === order.courierId);
+    if (cIdx >= 0) {
+      couriers[cIdx] = { ...couriers[cIdx], isAvailable: true, deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1 };
+      await repos.couriers.setAll(couriers);
+    }
+  }
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+  if (["CONFIRMED", "READY", "COMPLETED"].includes(status)) {
+    const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
+    triggerStatusNotification(updated, status, tenantForNotify?.name);
+    updated.lastStatusNotification = { status, at: (/* @__PURE__ */ new Date()).toISOString() };
+    orders[idx] = updated;
+    await repos.orders.setAll(orders);
+  }
+  res.json(orders[idx]);
+}));
 app.patch("/orders/:orderId/status", wrapAsync(async (req, res) => {
   const { status } = req.body;
   const orders = await repos.orders.findAll();
@@ -3419,6 +3868,11 @@ app.patch("/orders/:orderId/status", wrapAsync(async (req, res) => {
     const tenant = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant || tenant.marketId !== req.user.marketId) {
       return res.status(403).json({ error: "Forbidden" });
+    }
+  }
+  if (req.user?.role === "TENANT_ADMIN" && req.user.tenantId) {
+    if (order.tenantId !== req.user.tenantId) {
+      return res.status(403).json({ error: "Forbidden: order does not belong to your store" });
     }
   }
   const updated = { ...orders[idx], status };
@@ -3437,6 +3891,13 @@ app.patch("/orders/:orderId/status", wrapAsync(async (req, res) => {
   }
   orders[idx] = updated;
   await repos.orders.setAll(orders);
+  if (["CONFIRMED", "READY", "COMPLETED"].includes(status)) {
+    const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
+    triggerStatusNotification(updated, status, tenantForNotify?.name);
+    updated.lastStatusNotification = { status, at: (/* @__PURE__ */ new Date()).toISOString() };
+    orders[idx] = updated;
+    await repos.orders.setAll(orders);
+  }
   res.json(orders[idx]);
 }));
 app.get("/campaigns", async (req, res) => {
@@ -3589,7 +4050,12 @@ app.post("/tenants/:tenantId/orders/:orderId/ready", async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: "Order not found" });
   if (orders[idx].tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  orders[idx] = { ...orders[idx], status: "READY", readyAt: now };
+  const updated = { ...orders[idx], status: "READY", readyAt: now };
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+  triggerStatusNotification(updated, "READY", tenant?.name);
+  updated.lastStatusNotification = { status: "READY", at: now };
+  orders[idx] = updated;
   await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
@@ -3840,21 +4306,30 @@ app.delete("/markets/:marketId/couriers/:courierId", async (req, res) => {
     return res.status(404).json({ error: "Courier not found" });
   }
   const before = { ...couriers[idx] };
-  couriers[idx] = { ...couriers[idx], isActive: false };
-  await repos.couriers.setAll(couriers);
+  const orders = await repos.orders.findAll();
+  let ordersChanged = false;
+  for (let i = 0; i < orders.length; i++) {
+    if (orders[i].courierId === courierId) {
+      orders[i] = { ...orders[i], courierId: void 0 };
+      ordersChanged = true;
+    }
+  }
+  if (ordersChanged) await repos.orders.setAll(orders);
+  const remaining = couriers.filter((_, i) => i !== idx);
+  await repos.couriers.setAll(remaining);
   appendAuditEvent({
     userId: user.id,
     role: user.role,
     marketId,
-    action: "update",
+    action: "delete",
     entity: "courier",
     entityId: courierId,
-    reason: user.role === "ROOT_ADMIN" ? getEmergencyReason(req) : "soft-delete",
+    reason: user.role === "ROOT_ADMIN" ? getEmergencyReason(req) : "driver deleted and unassigned from orders",
     emergencyMode: user.role === "ROOT_ADMIN",
     before,
-    after: couriers[idx]
+    after: null
   });
-  res.json(couriers[idx]);
+  res.json(before);
 });
 app.get("/tenants/:tenantId/couriers", async (req, res) => {
   const { tenantId } = req.params;
@@ -4430,6 +4905,16 @@ app.get("/", (_req, res) => {
 app.get("/health", async (_req, res) => {
   res.json({ ok: true });
 });
+app.get("/data", async (_req, res) => {
+  const tenants = await repos.tenants.findAll();
+  const names = tenants.map((t) => t.name ?? "");
+  const hasShaghaf = names.some((n) => n.includes("\u0634\u063A\u0641"));
+  res.json({
+    tenantCount: tenants.length,
+    hasShaghaf,
+    sampleTenantNames: names.slice(0, 10)
+  });
+});
 app.use((err, _req, res, _next) => {
   console.error(err);
   const status = err.status ?? 500;
@@ -4440,12 +4925,57 @@ app.use((err, _req, res, _next) => {
   if (process.env.NODE_ENV !== "production") body.details = err.stack;
   res.status(status).json(body);
 });
+async function seedDbFromJsonIfEmpty() {
+  if ((process.env.STORAGE_DRIVER ?? "").toLowerCase() !== "db") return;
+  const markets = await repos.markets.findAll();
+  if (markets.length > 0) return;
+  const candidates = [
+    process.env.SEED_JSON_PATH,
+    process.env.DATA_FILE,
+    "/data/data.json",
+    join4(process.cwd(), "data", "data.json"),
+    join4(process.cwd(), "data.json")
+  ].filter(Boolean);
+  const seedPath = candidates.find((p) => existsSync4(p)) ?? candidates[0] ?? join4(process.cwd(), "data", "data.json");
+  const data = loadFromPath(seedPath);
+  if (!data) {
+    console.log("[seed] No JSON file at", seedPath, "- starting with empty DB");
+    return;
+  }
+  console.log("[seed] Seeding DB from", seedPath);
+  if (data.markets.length > 0) await repos.markets.setAll(data.markets);
+  if (data.tenants.length > 0) await repos.tenants.setAll(data.tenants);
+  if (data.users.length > 0) await repos.users.setAll(data.users);
+  for (const [tenantId, catalog] of Object.entries(data.catalog ?? {})) {
+    if (tenantId && (catalog.categories?.length > 0 || catalog.products?.length > 0 || catalog.optionGroups?.length > 0)) {
+      await repos.catalog.setCatalog(tenantId, catalog);
+    }
+  }
+  for (const [tenantId, settings] of Object.entries(data.delivery ?? {})) {
+    if (tenantId && settings && typeof settings === "object") {
+      await repos.delivery.setSettings(tenantId, settings);
+    }
+  }
+  for (const [tenantId, zones] of Object.entries(data.deliveryZones ?? {})) {
+    if (tenantId && Array.isArray(zones)) {
+      await repos.deliveryZones.setAll(tenantId, zones);
+    }
+  }
+  if ((data.couriers ?? []).length > 0) await repos.couriers.setAll(data.couriers);
+  if ((data.customers ?? []).length > 0) await repos.customers.setAll(data.customers);
+  if ((data.orders ?? []).length > 0) await repos.orders.setAll(data.orders);
+  console.log("[seed] Done: markets=", data.markets.length, "tenants=", data.tenants.length, "catalog tenants=", Object.keys(data.catalog ?? {}).length);
+}
 (async () => {
+  await seedDbFromJsonIfEmpty();
   await seedUsersIfNeeded();
   await seedMarketsIfNeeded();
   await seedTenantMarketIdsIfNeeded();
   await seedOrdersIfNeeded();
   await seedDeliveryZonesIfNeeded();
+  if ((process.env.STORAGE_DRIVER ?? "").toLowerCase() !== "db") {
+    invalidateDataCache();
+  }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "json"})`);
   });

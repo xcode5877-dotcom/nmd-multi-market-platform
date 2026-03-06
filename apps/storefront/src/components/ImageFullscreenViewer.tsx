@@ -100,6 +100,8 @@ function ImageFullscreenViewerInner({
         <img
           src={currentImage}
           alt={productName ? `${productName} - صورة ${index + 1}` : `صورة ${index + 1}`}
+          loading="lazy"
+          decoding="async"
           className="max-w-full max-h-full w-auto h-auto object-contain select-none"
           draggable={false}
           style={{ touchAction: 'pan-y' }}
@@ -140,7 +142,7 @@ function ImageFullscreenViewerInner({
                 index === i ? 'border-white' : 'border-transparent opacity-60 hover:opacity-100'
               }`}
             >
-              <img src={url} alt="" className="w-full h-full object-cover" />
+              <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
             </button>
           ))}
         </div>

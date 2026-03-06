@@ -6,6 +6,20 @@ import { initMock } from '@nmd/mock';
 import App from './App';
 import './index.css';
 
+/** Catch script/chunk load failures (e.g. after deploy) and reload to get new assets */
+window.addEventListener('error', (e: ErrorEvent | Event) => {
+  const message = (e as ErrorEvent).message || '';
+  const chunkErrorMsgs = [
+    'Failed to fetch dynamically imported module',
+    'Unable to preload',
+    'error loading dynamically imported module',
+  ];
+  const isChunkError = chunkErrorMsgs.some((msg) => message.includes(msg));
+  if (isChunkError || e.target instanceof HTMLScriptElement) {
+    window.location.reload();
+  }
+}, true);
+
 initMock();
 
 function hideSplash() {

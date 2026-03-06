@@ -1049,6 +1049,18 @@ export class MockApiClient implements ApiClient {
     return true;
   }
 
+  /** Sync current store's delivery zones to all other stores in the same market. Only when using API. */
+  async syncMarketDeliveryApi(marketId: string, sourceTenantId: string): Promise<{ synced: number; tenantIds: string[] }> {
+    if (this.useApi) {
+      const res = await apiFetch<{ synced: number; tenantIds: string[] }>(`/markets/${marketId}/sync-delivery`, {
+        method: 'POST',
+        body: JSON.stringify({ sourceTenantId }),
+      });
+      return res;
+    }
+    return { synced: 0, tenantIds: [] };
+  }
+
   /** Update homepage collections (admin-controlled sections). */
   async updateCollectionsApi(tenantId: string, collections: import('@nmd/core').HomeCollection[]): Promise<void> {
     if (this.useApi) {

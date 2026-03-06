@@ -8,5 +8,6 @@ db.sqlite
 coverage
 .vscode
 .DS_Store
-node_modules
-node_modules
+
+# Full backup lives on disk only (see BACKUP_MARCH_2026/README.md if present)
+BACKUP_MARCH_2026/

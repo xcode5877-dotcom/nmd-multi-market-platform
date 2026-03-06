@@ -65,6 +65,8 @@ export default function CartPage() {
               <img
                 src={item.imageUrl ?? 'https://placehold.co/96x96?text=No+Image'}
                 alt={item.productName}
+                loading="lazy"
+                decoding="async"
                 className="w-20 h-20 md:w-24 md:h-24 object-cover rounded-lg flex-shrink-0"
               />
               <div className="flex-1 min-w-0">

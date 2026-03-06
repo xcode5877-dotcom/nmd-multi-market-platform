@@ -21,6 +21,18 @@ interface ThemeProviderProps {
   children: React.ReactNode;
 }
 
+const THEME_CSS_KEYS = [
+  '--color-primary',
+  '--color-secondary',
+  '--radius',
+  '--font',
+  '--layout-header',
+  '--layout-card',
+  '--layout-section',
+  '--layout-button',
+  '--layout-badge',
+];
+
 export function ThemeProvider({ branding, dir = 'rtl', children }: ThemeProviderProps) {
   const vars = useMemo(() => tenantBrandingToCssVars(branding), [branding]);
 
@@ -34,6 +46,9 @@ export function ThemeProvider({ branding, dir = 'rtl', children }: ThemeProvider
     Object.entries(vars).forEach(([key, value]) => {
       root.style.setProperty(key, value as string);
     });
+    return () => {
+      THEME_CSS_KEYS.forEach((key) => root.style.removeProperty(key));
+    };
   }, [vars]);
 
   const value = useMemo(() => ({ branding, layoutStyle: branding.layoutStyle }), [branding]);

@@ -3,8 +3,9 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
-import { join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { join, resolve, dirname, basename } from 'path';
+import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'fs';
+import sharp from 'sharp';
 import type { RequestHandler } from 'express';
 import {
   getAuditEvents,
@@ -31,6 +32,8 @@ import {
   type DeliveryJob,
   type GlobalCategory,
   loadFromPath,
+  invalidateDataCache,
+  getData,
 } from './store.js';
 import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
@@ -56,6 +59,11 @@ const app = express();
 const DABBURIYYA_MARKET_ID = 'market-dabburiyya';
 const IKSAL_MARKET_ID = 'market-iksal';
 const ROOT_ADMIN_ID = 'user-root-admin';
+
+/** ROOT_ADMIN and SUPER_ADMIN both have platform-wide access (e.g. delivery settings, emergency mode). */
+function isPlatformAdmin(role: string | undefined): boolean {
+  return role === 'ROOT_ADMIN' || role === 'SUPER_ADMIN';
+}
 
 const BUFFALO28_TENANT_ID = '78463821-ccb7-48af-841b-84a18c42abb6';
 const OBR_TENANT_ID = '3f801fb9-f6f9-4e81-b3a2-f8954498cdac';
@@ -153,39 +161,30 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
   for (const t of tenants) {
     const existing = await repos.deliveryZones.getByTenant(t.id);
     if (existing.length > 0) continue;
-    const slug = (t as { slug?: string }).slug ?? '';
-    let zones: DeliveryZoneRecord[] = [];
-    if (slug === 'buffalo' || slug === 'pizza') {
-      zones = [
-        { id: `dz-${t.id}-1`, tenantId: t.id, name: 'المنطقة الوسطى', fee: 15, etaMinutes: 30, isActive: true, sortOrder: 0 },
-        { id: `dz-${t.id}-2`, tenantId: t.id, name: 'الشمال', fee: 20, etaMinutes: 45, isActive: true, sortOrder: 1 },
-        { id: `dz-${t.id}-3`, tenantId: t.id, name: 'الجنوب', fee: 18, etaMinutes: 40, isActive: true, sortOrder: 2 },
-        { id: `dz-${t.id}-4`, tenantId: t.id, name: 'الشرق', fee: 22, etaMinutes: 50, isActive: true, sortOrder: 3 },
-        { id: `dz-${t.id}-5`, tenantId: t.id, name: 'الغرب', fee: 25, etaMinutes: 55, isActive: true, sortOrder: 4 },
-        { id: `dz-${t.id}-6`, tenantId: t.id, name: 'ضواحي', fee: 30, etaMinutes: 60, isActive: true, sortOrder: 5 },
-        { id: `dz-${t.id}-7`, tenantId: t.id, name: 'خارج المدينة', fee: 40, etaMinutes: 90, isActive: true, sortOrder: 6 },
-      ];
-    } else if (slug === 'ms-brands') {
-      zones = [{ id: `dz-${t.id}-1`, tenantId: t.id, name: 'التوصيل العام', fee: 10, etaMinutes: 45, isActive: true, sortOrder: 0 }];
-    } else {
-      zones = [
-        { id: `dz-${t.id}-1`, tenantId: t.id, name: 'المنطقة الافتراضية', fee: 10, etaMinutes: 45, isActive: true, sortOrder: 0 },
-      ];
-    }
+    const zones: DeliveryZoneRecord[] = [
+      { id: `dz-${t.id}-1`, tenantId: t.id, name: 'دبورية', fee: 15, isActive: true, sortOrder: 0 },
+      { id: `dz-${t.id}-2`, tenantId: t.id, name: 'الشبلي / أم الغنم', fee: 25, isActive: true, sortOrder: 1 },
+      { id: `dz-${t.id}-3`, tenantId: t.id, name: 'القرى الزعبية', fee: 40, isActive: true, sortOrder: 2 },
+      { id: `dz-${t.id}-4`, tenantId: t.id, name: 'إكسال', fee: 35, isActive: true, sortOrder: 3 },
+    ];
     await repos.deliveryZones.setAll(t.id, zones);
   }
 }
 
+// Absolute path so Docker volume /app/uploads is used correctly (no __dirname/dist resolution).
+// API serves at /uploads/* (no /api prefix); Nginx strips /api and proxies /api/uploads/ → mock-api:5190/uploads/.
 const UPLOADS_DIR = (() => {
-  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
+  const envDir = process.env.UPLOADS_DIR;
+  if (envDir) return resolve(envDir);
   const dataUploads = join(process.cwd(), 'data', 'uploads');
-  if (existsSync(dataUploads)) return dataUploads;
-  if (process.cwd() === '/app/apps/mock-api') return '/app/apps/mock-api/uploads';
-  return join(process.cwd(), '..', '..', 'packages', 'mock', 'uploads');
+  if (existsSync(dataUploads)) return resolve(dataUploads);
+  if (process.cwd() === '/app/apps/mock-api') return '/app/uploads';
+  return resolve(join(process.cwd(), '..', '..', 'packages', 'mock', 'uploads'));
 })();
 const UPLOADS_BANNERS_DIR = join(UPLOADS_DIR, 'banners');
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!existsSync(UPLOADS_BANNERS_DIR)) mkdirSync(UPLOADS_BANNERS_DIR, { recursive: true });
+console.log('[mock-api] UPLOADS_DIR (static /uploads):', UPLOADS_DIR, 'exists:', existsSync(UPLOADS_DIR));
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
@@ -243,6 +242,55 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+/** WebP quality for all new uploads (lightweight standard). */
+const UPLOAD_WEBP_QUALITY = 75;
+
+/**
+ * Convert a newly uploaded image to WebP (quality 75), max 1920px. Replaces the file and returns
+ * the new filename (.webp) for use in URLs; if conversion fails, returns the original filename.
+ */
+async function compressNewUploadToWebP(filePath: string): Promise<string> {
+  const ext = (filePath.match(/\.([^.]+)$/)?.[1] ?? '').toLowerCase();
+  if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return basename(filePath);
+  try {
+    const dir = dirname(filePath);
+    const base = basename(filePath, ext ? `.${ext}` : '');
+    const webpPath = join(dir, `${base}.webp`);
+    await sharp(filePath)
+      .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: UPLOAD_WEBP_QUALITY })
+      .toFile(webpPath);
+    if (webpPath !== filePath) unlinkSync(filePath);
+    return basename(webpPath);
+  } catch (err) {
+    console.warn('[Upload] WebP convert failed (file left as-is):', err instanceof Error ? err.message : err);
+    return basename(filePath);
+  }
+}
+
+// Serve /uploads with maximum compression-friendly headers: long cache, immutable for versioned filenames
+const UPLOADS_CACHE = 'public, max-age=31536000, immutable';
+app.use('/uploads', cors({ origin: '*', methods: ['GET', 'HEAD', 'OPTIONS'] }), (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const rel = (req.path.replace(/^\/uploads\/?/, '') || '').replace(/^\/+/, '');
+  if (!rel) return next();
+  const full = resolve(join(UPLOADS_DIR, rel));
+  if (!full.startsWith(resolve(UPLOADS_DIR))) return res.status(400).end();
+  if (existsSync(full)) return next(); // let express.static serve it
+  const dir = dirname(full);
+  const base = basename(full);
+  if (!existsSync(dir)) return next();
+  const lower = base.toLowerCase();
+  const found = readdirSync(dir).find((f) => f.toLowerCase() === lower);
+  if (found) {
+    const target = join(dir, found);
+    res.setHeader('Cache-Control', UPLOADS_CACHE);
+    res.sendFile(target, { maxAge: 31536000 }, (err) => { if (err) next(); });
+  } else {
+    next();
+  }
+}, express.static(UPLOADS_DIR, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', UPLOADS_CACHE) }));
+
 app.use((req, res, next) => {
   console.log(`INCOMING REQUEST: ${req.method} ${req.url}`);
   next();
@@ -271,7 +319,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use('/uploads', cors({ origin: '*', methods: ['GET', 'OPTIONS'] }), express.static(UPLOADS_DIR));
 
 declare global {
   namespace Express {
@@ -310,6 +357,7 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/merchant\/leads$/ },
   { method: 'POST', path: /^\/internal\/orders\/[^/]+\/status$/ },
   { method: 'GET', path: /^\/customer\/push-public-key$/ },
+  { method: 'GET', path: /^\/data$/ },
 ];
 
 function isPublicRoute(method: string, path: string): boolean {
@@ -341,7 +389,7 @@ app.use(async (req, _res, next) => {
         if (user) {
           req.user = { ...user, password: undefined };
           if (isUpload) console.log('[Auth] req.user set from DB:', user.id, user.role);
-        } else if (decoded.role && ['ROOT_ADMIN', 'TENANT_ADMIN', 'MARKET_ADMIN'].includes(decoded.role)) {
+        } else if (decoded.role && ['ROOT_ADMIN', 'SUPER_ADMIN', 'TENANT_ADMIN', 'MARKET_ADMIN'].includes(decoded.role)) {
           req.user = { id: decoded.sub, email: `${decoded.sub}@jwt`, role: decoded.role, tenantId: (decoded as { tenantId?: string }).tenantId, marketId: (decoded as { marketId?: string }).marketId } as User;
           if (isUpload) console.log('[Auth] req.user set from JWT fallback (user not in DB):', decoded.sub, decoded.role);
         } else if (isUpload) {
@@ -404,8 +452,8 @@ app.post('/auth/login', async (req, res) => {
     const phone = String(body.phone).replace(/\D/g, '');
     const code = String(body.code).trim();
     if (phone === '999' && code === '1234') {
-      user = users.find((u) => u.role === 'ROOT_ADMIN' && u.email?.toLowerCase() === 'root@nmd.com');
-      if (!user) user = users.find((u) => u.role === 'ROOT_ADMIN');
+      user = users.find((u) => isPlatformAdmin(u.role) && u.email?.toLowerCase() === 'root@nmd.com');
+      if (!user) user = users.find((u) => isPlatformAdmin(u.role));
     }
   }
 
@@ -858,12 +906,12 @@ app.post('/auth/change-password', async (req, res) => {
   res.json({ ok: true });
 });
 
-/** ROOT_ADMIN: require emergency mode for writes. MARKET_ADMIN: always allowed (scope checked elsewhere). */
+/** ROOT_ADMIN/SUPER_ADMIN: require emergency mode for writes. MARKET_ADMIN: always allowed (scope checked elsewhere). */
 function requireWrite(req: express.Request): boolean {
   const user = req.user;
   if (!user) return false;
   if (user.role === 'MARKET_ADMIN') return true;
-  if (user.role === 'ROOT_ADMIN') {
+  if (isPlatformAdmin(user.role)) {
     const em = (req as express.Request & { emergencyMode?: boolean }).emergencyMode;
     return em === true;
   }
@@ -880,7 +928,7 @@ function requireWriteWithReason(req: express.Request, res: express.Response): bo
     res.status(403).json({ error: 'Emergency mode required', code: 'EMERGENCY_MODE_REQUIRED' });
     return false;
   }
-  if (req.user?.role === 'ROOT_ADMIN' && !getEmergencyReason(req)) {
+  if (isPlatformAdmin(req.user?.role) && !getEmergencyReason(req)) {
     res.status(400).json({ error: 'emergencyReason is required in body _meta when emergency mode is on', code: 'EMERGENCY_REASON_REQUIRED' });
     return false;
   }
@@ -1018,7 +1066,7 @@ app.get('/leads', wrapAsync(async (req, res) => {
     }
   }
   let leads = getLeads();
-  if (caller.role === 'ROOT_ADMIN') {
+  if (isPlatformAdmin(caller.role)) {
     if (filterTenantId) {
       const t = tenants.find((x) => x.id === filterTenantId);
       const slug = (t as { slug?: string })?.slug;
@@ -1074,7 +1122,7 @@ app.get('/customers', wrapAsync(async (req, res) => {
   const allOrders = (await repos.orders.findAll()) as { customerId?: string; tenantId?: string }[];
   const allLeads = getLeads();
 
-  if (caller.role === 'ROOT_ADMIN') {
+  if (isPlatformAdmin(caller.role)) {
     const querySlug = (req.query.tenantSlug as string)?.trim();
     if (querySlug) {
       const filterTenantId = await resolveTenantId(querySlug);
@@ -1218,7 +1266,7 @@ app.get('/merchant/leads', wrapAsync(async (req, res) => {
 
 // --- Audit (ROOT only) ---
 app.get('/audit-events', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const events = getAuditEvents().slice(-limit).reverse();
   res.json(events);
@@ -1226,7 +1274,7 @@ app.get('/audit-events', async (req, res) => {
 
 // --- Monitoring (ROOT only) ---
 app.get('/monitoring/stats', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   const markets = (await repos.markets.findAll());
   const tenants = (await repos.tenants.findAll());
   const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; total?: number; createdAt?: string }[];
@@ -1248,7 +1296,7 @@ app.get('/monitoring/stats', async (req, res) => {
 
 // --- Users (ROOT only) ---
 app.get('/users', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   const users = (await repos.users.findAll()).map((u) => ({ ...u, password: undefined }));
   res.json(users);
 });
@@ -1267,7 +1315,7 @@ app.post('/admin/users/:userId/reset-password', async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
   const target = users[idx];
 
-  if (caller.role === 'ROOT_ADMIN') {
+  if (isPlatformAdmin(caller.role)) {
     // Root can reset anyone
   } else if (caller.role === 'MARKET_ADMIN' && caller.marketId) {
     if (target.role !== 'TENANT_ADMIN' || !target.tenantId) {
@@ -1393,7 +1441,7 @@ app.get('/categories', (_req, res) => {
 });
 
 app.post('/global-categories', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const body = req.body as { title: string; nameAr?: string; icon: string; isProfessional?: boolean; sortOrder?: number };
   const id = crypto.randomUUID?.() ?? `cat-${Date.now()}`;
@@ -1422,7 +1470,7 @@ app.post('/global-categories', async (req, res) => {
 });
 
 app.put('/global-categories/:id', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const { id } = req.params;
   const body = req.body as Partial<Omit<GlobalCategory, 'id'>>;
@@ -1447,7 +1495,7 @@ app.put('/global-categories/:id', async (req, res) => {
 });
 
 app.delete('/global-categories/:id', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const { id } = req.params;
   const cats = getGlobalCategories();
@@ -1483,7 +1531,7 @@ app.get('/markets', async (req, res) => {
 });
 
 app.post('/markets', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const body = req.body as {
     name: string; slug: string; branding?: unknown; isActive?: boolean; sortOrder?: number;
@@ -1545,7 +1593,7 @@ app.post('/markets', async (req, res) => {
 app.put('/markets/:id', async (req, res) => {
   const user = req.user;
   const { id } = req.params;
-  const isRoot = user?.role === 'ROOT_ADMIN';
+  const isRoot = isPlatformAdmin(user?.role);
   const isMarketAdminOwn = user?.role === 'MARKET_ADMIN' && user.marketId === id;
   if (!isRoot && !isMarketAdminOwn) return res.status(403).json({ error: 'Forbidden' });
   if (isRoot && !requireWriteWithReason(req, res)) return;
@@ -1599,7 +1647,7 @@ app.get('/markets/by-slug/:slug/layout', async (req, res) => {
 app.put('/markets/by-slug/:slug/banners', async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (user.role !== 'ROOT_ADMIN' && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
@@ -1615,13 +1663,24 @@ app.put('/markets/by-slug/:slug/banners', async (req, res) => {
 app.put('/markets/by-slug/:slug/layout', async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (user.role !== 'ROOT_ADMIN' && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  const layout = req.body as MarketSection[];
-  if (!Array.isArray(layout)) return res.status(400).json({ error: 'layout must be an array' });
+  const raw = req.body as unknown;
+  let layout: MarketSection[];
+  if (Array.isArray(raw)) {
+    layout = raw;
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'layout' in raw && Array.isArray((raw as { layout: unknown }).layout)) {
+    layout = (raw as { layout: MarketSection[] }).layout;
+  } else if (raw && typeof raw === 'object' && '_meta' in raw) {
+    const obj = raw as Record<string, unknown>;
+    const keys = Object.keys(obj).filter((k) => k !== '_meta' && /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    layout = keys.map((k) => obj[k]).filter((x): x is MarketSection => x != null && typeof x === 'object' && 'id' in x && Array.isArray((x as MarketSection).storeIds));
+  } else {
+    return res.status(400).json({ error: 'layout must be an array' });
+  }
   setLayoutForMarket(req.params.slug, layout);
   res.json(layout);
 });
@@ -1636,7 +1695,7 @@ app.get('/markets/:id', async (req, res) => {
 });
 
 app.get('/markets/:marketId/admins', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   const { marketId } = req.params;
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
@@ -1645,7 +1704,7 @@ app.get('/markets/:marketId/admins', async (req, res) => {
 });
 
 app.post('/markets/:marketId/admins', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const { marketId } = req.params;
   const { email, password } = req.body as { email?: string; password?: string };
@@ -1683,7 +1742,7 @@ app.post('/markets/:marketId/admins', async (req, res) => {
 
 /** Update market admin login (email and/or password). ROOT_ADMIN only. Updates first MARKET_ADMIN for this market; creates one if none. */
 app.put('/markets/:marketId/admin-credentials', async (req, res) => {
-  if (req.user?.role !== 'ROOT_ADMIN') return res.status(403).json({ error: 'Forbidden' });
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const { marketId } = req.params;
   const { email, password } = req.body as { email?: string; password?: string };
@@ -1805,7 +1864,7 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
   const { marketId } = req.params;
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user.role) && !requireWriteWithReason(req, res)) return;
   if (user.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -1888,8 +1947,8 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
     action: 'create',
     entity: 'tenant',
     entityId: tenant.id,
-    reason: user.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user.role),
     after: tenant,
   });
   res.status(201).json(normalizeTenantResponse(tenant));
@@ -1935,7 +1994,7 @@ app.get('/storefront/tenants', async (_req, res) => {
 app.post('/tenants', async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user.role) && !requireWriteWithReason(req, res)) return;
   const input = req.body as Omit<RegistryTenant, 'id' | 'createdAt'> & { marketId?: string };
   let marketId: string | undefined;
   if (user.role === 'MARKET_ADMIN' && user.marketId) {
@@ -1983,8 +2042,8 @@ app.post('/tenants', async (req, res) => {
     action: 'create',
     entity: 'tenant',
     entityId: tenant.id,
-    reason: user.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user.role),
     after: tenant,
   });
   res.status(201).json(tenant);
@@ -2011,7 +2070,7 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
   }
   const tenant = tenants[idx];
 
-  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user.role) && !requireWriteWithReason(req, res)) return;
 
   if (user.role === 'MARKET_ADMIN') {
     const callerMarketId = normalizeId(user.marketId);
@@ -2045,8 +2104,8 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     action: 'update',
     entity: 'tenant',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2066,7 +2125,7 @@ app.post('/tenants/:id/toggle', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && tenant.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
   const before = { ...tenants[idx] };
   tenants[idx] = { ...tenants[idx], enabled: !tenants[idx].enabled };
   await repos.tenants.setAll(tenants);
@@ -2077,8 +2136,8 @@ app.post('/tenants/:id/toggle', async (req, res) => {
     action: 'update',
     entity: 'tenant',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2094,7 +2153,9 @@ app.get('/tenants/by-id/:id', async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  res.json(normalizeTenantResponse(tenant));
+  // deliveryZones strictly scoped to this tenant (e.g. findMany({ where: { tenantId } }))
+  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id));
+  res.json({ ...normalizeTenantResponse(tenant), deliveryZones });
 });
 
 app.get('/tenants/by-slug/:slug', async (req, res) => {
@@ -2107,7 +2168,9 @@ app.get('/tenants/by-slug/:slug', async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  res.json(normalizeTenantResponse(tenant));
+  // deliveryZones strictly scoped to this tenant (e.g. findMany({ where: { tenantId } }))
+  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id));
+  res.json({ ...normalizeTenantResponse(tenant), deliveryZones });
 });
 
 app.put('/tenants/:id/branding', async (req, res) => {
@@ -2120,7 +2183,7 @@ app.put('/tenants/:id/branding', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
   const body = req.body as {
     logoUrl?: string;
     hero?: StorefrontHero;
@@ -2164,8 +2227,8 @@ app.put('/tenants/:id/branding', async (req, res) => {
     action: 'update',
     entity: 'tenant',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2181,7 +2244,7 @@ app.put('/tenants/:id/collections', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
   const body = req.body as { collections?: import('@nmd/core').HomeCollection[] };
   const collections = Array.isArray(body.collections) ? body.collections : [];
   const idx = tenants.findIndex((x) => x.id === id);
@@ -2196,8 +2259,8 @@ app.put('/tenants/:id/collections', async (req, res) => {
     action: 'update',
     entity: 'tenant',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2214,7 +2277,7 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
   const body = req.body as {
     operationalStatus?: 'open' | 'closed' | 'busy';
     orderPolicy?: 'accept_always' | 'accept_only_when_open';
@@ -2276,8 +2339,8 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     action: 'update',
     entity: 'tenant',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2295,7 +2358,7 @@ app.delete('/tenants/:id', async (req, res) => {
   if (user.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user.role) && !requireWriteWithReason(req, res)) return;
 
   const orderIds = ((await repos.orders.findAll()) as { id?: string; tenantId?: string }[])
     .filter((o) => o.tenantId === id)
@@ -2321,8 +2384,8 @@ app.delete('/tenants/:id', async (req, res) => {
     action: 'delete',
     entity: 'tenant',
     entityId: id,
-    reason: user.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : 'full store delete',
-    emergencyMode: user.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user.role) ? getEmergencyReason(req) : 'full store delete',
+    emergencyMode: isPlatformAdmin(user.role),
     before: t,
     after: null,
   });
@@ -2335,26 +2398,42 @@ const UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 app.post('/upload', async (req, res) => {
   const files = (req as { files?: Express.Multer.File[] }).files ?? [];
   const base = UPLOAD_BASE;
-  const urls = files.map((f) => `${base}/uploads/${f.filename}`);
-  console.log('[Upload] Success:', files.length, 'files, base:', base);
+  const urls: string[] = [];
+  for (const f of files) {
+    const fullPath = join(UPLOADS_DIR, f.filename);
+    const name = existsSync(fullPath) ? await compressNewUploadToWebP(fullPath) : f.filename;
+    urls.push(`${base}/uploads/${name}`);
+  }
+  console.log('[Upload] Success:', files.length, 'files (WebP q75), base:', base);
   res.json({ urls });
 });
 
-/** Banner image upload: saves to public/uploads/banners, returns relative path for storage. Max 10MB, WebP/JPG/PNG only. */
+/** Banner image upload: saves to public/uploads/banners as WebP (q75), returns relative path for storage. Max 10MB, WebP/JPG/PNG only. */
 app.post('/upload/banner', async (req, res) => {
   const file = (req as { file?: Express.Multer.File }).file;
   if (!file) return res.status(400).json({ error: 'No file uploaded' });
+  const fullPath = join(UPLOADS_BANNERS_DIR, file.filename);
+  const name = existsSync(fullPath) ? await compressNewUploadToWebP(fullPath) : file.filename;
   const base = UPLOAD_BASE;
-  const relativePath = `/uploads/banners/${file.filename}`;
+  const relativePath = `/uploads/banners/${name}`;
   const fullUrl = `${base}${relativePath}`;
-  console.log('[Upload/banner] Saved:', file.filename);
+  console.log('[Upload/banner] Saved:', name, '(WebP q75)');
   res.json({ urls: [fullUrl], relativePath });
 });
 
 // --- Catalog ---
+/** Catalog is keyed by tenant id. Resolve slug to id when client sends GET /catalog/buffalo. */
+async function resolveCatalogTenantId(param: string): Promise<string> {
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
+  if (uuidLike) return param;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.slug === param);
+  return tenant?.id ?? param;
+}
+
 app.get('/catalog/:tenantId', wrapAsync(async (req, res) => {
   try {
-    const catalog = await repos.catalog.getCatalog(req.params.tenantId);
+    const tenantId = await resolveCatalogTenantId(req.params.tenantId);
+    const catalog = await repos.catalog.getCatalog(tenantId);
     res.json(catalog);
   } catch (err) {
     console.error('[catalog] getCatalog failed:', err instanceof Error ? err.message : err);
@@ -2371,13 +2450,17 @@ function normalizeProductForCompat(p: { imageUrl?: string; images?: { url: strin
 }
 
 app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
+  const tenantId = await resolveCatalogTenantId(req.params.tenantId);
   const catalog = req.body as TenantCatalog;
   const products = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[] }[]).map((p) =>
     normalizeProductForCompat(p)
   );
-  const normalized = { ...catalog, products };
-  await repos.catalog.setCatalog(req.params.tenantId, normalized);
-  const updated = await repos.catalog.getCatalog(req.params.tenantId);
+  const optionGroups = ((catalog.optionGroups ?? []) as Array<Record<string, unknown> & { tenantId?: string }>).map(
+    (g) => ({ ...g, tenantId: g.tenantId ?? tenantId })
+  );
+  const normalized = { ...catalog, products, optionGroups };
+  await repos.catalog.setCatalog(tenantId, normalized);
+  const updated = await repos.catalog.getCatalog(tenantId);
   res.json(updated);
 }));
 
@@ -2436,6 +2519,7 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
       return name.includes(search) || (searchDigits.length >= 4 && phone.includes(searchDigits));
     });
   }
+  orders.forEach(enrichOrderWithMerchantAmount);
   res.json(orders);
 }));
 
@@ -2487,6 +2571,8 @@ app.post('/orders', wrapAsync(async (req, res) => {
   const payment = await computePaymentForOrder(created as { items?: { totalPrice?: number }[]; subtotal?: number; total?: number; delivery?: { fee?: number } }, created.tenantId ?? '');
   const method = ((created as { paymentMethod?: string }).paymentMethod === 'CARD' ? 'CARD' : 'CASH') as 'CASH' | 'CARD';
   (created as Record<string, unknown>).payment = { ...payment, method };
+  (created as Record<string, unknown>).merchantAmount = payment.breakdown.itemsTotal;
+  (created as Record<string, unknown>).platformDeliveryFee = payment.breakdown.deliveryFee;
 
   (created as Record<string, unknown>).id = (created as { id?: string }).id ?? crypto.randomUUID?.() ?? `order-${Date.now()}`;
   (created as Record<string, unknown>).orderType = (created as { orderType?: string }).orderType ?? 'PRODUCT';
@@ -2514,6 +2600,7 @@ app.get('/orders/:orderId', wrapAsync(async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
   }
+  enrichOrderWithMerchantAmount(order);
   res.json(order);
 }));
 
@@ -2683,11 +2770,21 @@ function sortZones(zones: DeliveryZoneRecord[]): DeliveryZoneRecord[] {
 }
 
 app.get('/tenants/:tenantId/delivery-zones', wrapAsync(async (req, res) => {
-  const zones = await repos.deliveryZones.getByTenant(req.params.tenantId);
+  const { tenantId } = req.params;
+  const zones = await repos.deliveryZones.getByTenant(tenantId);
   res.json(sortZones(zones));
 }));
 
+function requirePlatformAdminForDelivery(req: express.Request, res: express.Response): boolean {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    res.status(403).json({ error: 'Forbidden: only platform admin (ROOT_ADMIN/SUPER_ADMIN) can manage delivery zones' });
+    return false;
+  }
+  return true;
+}
+
 app.post('/tenants/:tenantId/delivery-zones', wrapAsync(async (req, res) => {
+  if (!requirePlatformAdminForDelivery(req, res)) return;
   const { tenantId } = req.params;
   const body = req.body as Omit<DeliveryZoneRecord, 'id' | 'tenantId'>;
   const id = crypto.randomUUID?.() ?? `dz-${Date.now()}`;
@@ -2707,6 +2804,7 @@ app.post('/tenants/:tenantId/delivery-zones', wrapAsync(async (req, res) => {
 }));
 
 app.put('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
+  if (!requirePlatformAdminForDelivery(req, res)) return;
   const { tenantId, zoneId } = req.params;
   const body = req.body as Partial<Omit<DeliveryZoneRecord, 'id' | 'tenantId'>>;
   const zones = await repos.deliveryZones.getByTenant(tenantId);
@@ -2718,6 +2816,7 @@ app.put('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) 
 }));
 
 app.patch('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
+  if (!requirePlatformAdminForDelivery(req, res)) return;
   const { tenantId, zoneId } = req.params;
   const body = req.body as Partial<Pick<DeliveryZoneRecord, 'isActive' | 'name' | 'fee' | 'etaMinutes' | 'sortOrder'>>;
   const zones = await repos.deliveryZones.getByTenant(tenantId);
@@ -2729,12 +2828,61 @@ app.patch('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res
 }));
 
 app.delete('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
+  if (!requirePlatformAdminForDelivery(req, res)) return;
   const { tenantId, zoneId } = req.params;
   const zones = await repos.deliveryZones.getByTenant(tenantId);
   const filtered = zones.filter((z) => z.id !== zoneId);
   if (filtered.length === zones.length) return res.status(404).json({ error: 'Zone not found' });
   await repos.deliveryZones.setAll(tenantId, filtered);
   res.json({ deleted: true });
+}));
+
+/** Sync delivery zones from one store to all other stores in the same market. ROOT_ADMIN: any market; MARKET_ADMIN: own market only. */
+app.post('/markets/:marketId/sync-delivery', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const body = req.body as { sourceTenantId?: string };
+  const sourceTenantId = typeof body?.sourceTenantId === 'string' ? body.sourceTenantId.trim() : undefined;
+  if (!sourceTenantId) {
+    return res.status(400).json({ error: 'sourceTenantId is required', code: 'SOURCE_TENANT_REQUIRED' });
+  }
+  const user = req.user as { role?: string; marketId?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role !== 'ROOT_ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'MARKET_ADMIN' || user.marketId !== marketId) {
+      return res.status(403).json({ error: 'Forbidden: only platform admin or market admin for this market can sync delivery' });
+    }
+  }
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const tenantIds = await getMarketTenantIds(marketId);
+  if (!tenantIds.has(sourceTenantId)) {
+    return res.status(400).json({ error: 'Source tenant is not in this market', code: 'SOURCE_NOT_IN_MARKET' });
+  }
+  const sourceZones = await repos.deliveryZones.getByTenant(sourceTenantId);
+  const templateZones = sourceZones.map((z) => ({
+    name: z.name,
+    fee: z.fee,
+    etaMinutes: z.etaMinutes,
+    isActive: z.isActive ?? true,
+    sortOrder: z.sortOrder,
+  }));
+  const synced: string[] = [];
+  for (const tid of tenantIds) {
+    if (tid === sourceTenantId) continue;
+    const newZones: DeliveryZoneRecord[] = templateZones.map((t, i) => ({
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `dz-sync-${tid}-${Date.now()}-${i}`,
+      tenantId: tid,
+      name: t.name,
+      fee: t.fee,
+      etaMinutes: t.etaMinutes,
+      isActive: t.isActive,
+      sortOrder: t.sortOrder,
+    }));
+    await repos.deliveryZones.setAll(tid, newZones);
+    synced.push(tid);
+  }
+  res.json({ synced: synced.length, tenantIds: synced });
 }));
 
 // --- Tenant delivery settings (PATCH) ---
@@ -2751,7 +2899,7 @@ app.patch('/tenants/:tenantId/settings/delivery', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== tenant.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { tenantType?: string; deliveryProviderMode?: string; allowMarketCourierFallback?: boolean; defaultPrepTimeMin?: number };
   const updates: Partial<RegistryTenant> = {};
@@ -2771,8 +2919,8 @@ app.patch('/tenants/:tenantId/settings/delivery', async (req, res) => {
     action: 'update',
     entity: 'tenant',
     entityId: tenantId,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: tenants[idx],
   });
@@ -2792,7 +2940,7 @@ app.post('/tenants/:tenantId/orders/:orderId/ready', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== tenant.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string }[];
   const idx = orders.findIndex((o) => o.id === orderId);
@@ -3011,7 +3159,7 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot create couriers in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { name?: string; phone?: string };
   const id = `courier-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -3038,8 +3186,8 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
     action: 'create',
     entity: 'courier',
     entityId: id,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     after: courier,
   });
   res.status(201).json(courier);
@@ -3054,7 +3202,7 @@ app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot update couriers in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const couriers = (await repos.couriers.findAll());
   const idx = couriers.findIndex((c) => c.id === courierId && courierMarketId(c) === marketId);
@@ -3076,8 +3224,8 @@ app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
     action: 'update',
     entity: 'courier',
     entityId: courierId,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : undefined,
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : undefined,
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: couriers[idx],
   });
@@ -3093,7 +3241,7 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot delete couriers in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const couriers = (await repos.couriers.findAll());
   const idx = couriers.findIndex((c) => c.id === courierId && courierMarketId(c) === marketId);
@@ -3123,8 +3271,8 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
     action: 'delete',
     entity: 'courier',
     entityId: courierId,
-    reason: user!.role === 'ROOT_ADMIN' ? getEmergencyReason(req) : 'driver deleted and unassigned from orders',
-    emergencyMode: user!.role === 'ROOT_ADMIN',
+    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : 'driver deleted and unassigned from orders',
+    emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: null,
   });
@@ -3157,7 +3305,7 @@ app.post('/tenants/:tenantId/couriers', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== tenant.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { name?: string; phone?: string };
   const id = `courier-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -3188,7 +3336,7 @@ app.patch('/tenants/:tenantId/couriers/:courierId', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== tenant.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const couriers = (await repos.couriers.findAll());
   const idx = couriers.findIndex((c) => c.id === courierId && c.scopeType === 'TENANT' && c.scopeId === tenantId);
@@ -3244,6 +3392,16 @@ function ordersInDateRange(orders: OrderWithPayment[], from?: string, to?: strin
     const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
     return t >= fromMs && t <= toMs;
   });
+}
+
+/** Ensure order has merchantAmount and platformDeliveryFee (for API responses). Mutates order in place. */
+function enrichOrderWithMerchantAmount(o: OrderWithPayment | Record<string, unknown>): void {
+  if (o == null) return;
+  const rec = o as Record<string, unknown>;
+  if (rec.merchantAmount != null && rec.platformDeliveryFee != null) return;
+  const f = computeOrderFinancials(o as OrderWithPayment);
+  if (rec.merchantAmount == null) rec.merchantAmount = f.itemsTotal;
+  if (rec.platformDeliveryFee == null) rec.platformDeliveryFee = f.deliveryFee;
 }
 
 /** Safely compute financial values from order. Handles legacy orders missing payment fields. Never throws. */
@@ -3385,17 +3543,17 @@ app.get('/tenants/:tenantId/dashboard-stats', wrapAsync(async (req, res) => {
   let monthlyNet = 0;
   for (const o of ordersToday) {
     const f = computeOrderFinancials(o);
-    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
-    dailyRevenue += f.gross;
-    dailyCommission += commission;
-    dailyNet += netToMerchant;
+    const commissionOnItems = Math.round(f.itemsTotal * (commissionPercent / 100) * 100) / 100;
+    dailyRevenue += f.itemsTotal;
+    dailyCommission += commissionOnItems;
+    dailyNet += f.itemsTotal - commissionOnItems;
   }
   for (const o of ordersThisMonth) {
     const f = computeOrderFinancials(o);
-    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
-    monthlyRevenue += f.gross;
-    monthlyCommission += commission;
-    monthlyNet += netToMerchant;
+    const commissionOnItems = Math.round(f.itemsTotal * (commissionPercent / 100) * 100) / 100;
+    monthlyRevenue += f.itemsTotal;
+    monthlyCommission += commissionOnItems;
+    monthlyNet += f.itemsTotal - commissionOnItems;
   }
 
   let totalSales = 0;
@@ -3403,10 +3561,10 @@ app.get('/tenants/:tenantId/dashboard-stats', wrapAsync(async (req, res) => {
   let totalMerchantBalance = 0;
   for (const o of nonCancelled) {
     const f = computeOrderFinancials(o);
-    const { commission, netToMerchant } = applyCommissionFallback(f, commissionPercent);
-    totalSales += f.gross;
-    totalPlatformFee += commission;
-    totalMerchantBalance += netToMerchant;
+    const commissionOnItems = Math.round(f.itemsTotal * (commissionPercent / 100) * 100) / 100;
+    totalSales += f.itemsTotal;
+    totalPlatformFee += commissionOnItems;
+    totalMerchantBalance += f.itemsTotal - commissionOnItems;
   }
 
   res.json({
@@ -3530,7 +3688,7 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot assign couriers in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { courierId?: string; reassign?: boolean };
   const courierId = body.courierId;
@@ -3615,7 +3773,7 @@ app.post('/markets/:marketId/orders/:orderId/contact', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Order not in this market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { channel?: string; notes?: string; message?: string };
   const notes = body.notes?.trim() || body.message?.trim() || undefined;
@@ -3659,7 +3817,7 @@ app.delete('/markets/:marketId/orders/:orderId/assign-courier', async (req, res)
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot unassign in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; marketId?: string; deliveryAssignmentMode?: string; courierId?: string; deliveryStatus?: string }[];
   const idx = orders.findIndex((o) => o.id === orderId);
@@ -3741,7 +3899,7 @@ app.post('/markets/:marketId/delivery-jobs', async (req, res) => {
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { items?: { orderId: string; tenantId: string }[] };
   const items = body.items ?? [];
@@ -3772,7 +3930,7 @@ app.patch('/markets/:marketId/delivery-jobs/:jobId/assign', async (req, res) => 
   if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
     return res.status(403).json({ error: 'Cannot assign couriers in another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (user?.role === 'ROOT_ADMIN' && !requireWriteWithReason(req, res)) return;
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
   const body = req.body as { courierId: string };
   const jobs = getDeliveryJobs();
@@ -3815,6 +3973,21 @@ app.get('/', (_req, res) => {
 
 app.get('/health', async (_req, res) => {
   res.json({ ok: true });
+});
+
+/** Verification: return tenant list and whether شغف (Shaghaf) appears (for volume/cache checks). Public. */
+app.get('/data', async (_req, res) => {
+  const tenants = await repos.tenants.findAll();
+  const names = tenants.map((t) => t.name ?? '');
+  const hasShaghafInTenants = names.some((n) => n.includes('شغف'));
+  const fullData = getData();
+  const hasShaghafAnywhere = JSON.stringify(fullData).includes('شغف');
+  res.json({
+    tenantCount: tenants.length,
+    hasShaghaf: hasShaghafInTenants,
+    hasShaghafAnywhereInData: hasShaghafAnywhere,
+    sampleTenantNames: names.slice(0, 10),
+  });
 });
 
 /** Global error handler: prevents uncaught errors from crashing the server. */
@@ -3879,6 +4052,10 @@ async function seedDbFromJsonIfEmpty(): Promise<void> {
   await seedTenantMarketIdsIfNeeded();
   await seedOrdersIfNeeded();
   await seedDeliveryZonesIfNeeded();
+
+  if ((process.env.STORAGE_DRIVER ?? '').toLowerCase() !== 'db') {
+    invalidateDataCache();
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);

@@ -83,6 +83,8 @@ export function StoreCard({
           <img
             src={logoUrl}
             alt={name}
+            loading="lazy"
+            decoding="async"
             className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-300"
           />
           <div

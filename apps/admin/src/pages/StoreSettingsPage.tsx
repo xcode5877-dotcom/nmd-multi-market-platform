@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { DayKey, BusinessHours, DayHours } from '@nmd/core';
-import { Card, Button, Input, useToast } from '@nmd/ui';
+import type { DeliveryZone } from '@nmd/core';
+import { formatMoney } from '@nmd/core';
+import { Card, Button, Input, Modal, useToast } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { Store, Palette, Clock, Activity, Link2, Trash2, Truck, CheckCircle, AlertCircle, XCircle, Shield } from 'lucide-react';
 import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
+import { normalizeStorePhoneForSave, validateStorePhone, storedPhoneToDisplay, STORE_PHONE_HELPER_TEXT } from '../lib/store-phone';
+import { isPlatformAdmin } from '../lib/is-platform-admin';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -36,6 +41,7 @@ function defaultBusinessHours(): BusinessHours {
 
 export default function StoreSettingsPage() {
   const { tenantId } = useAdminContext();
+  const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const addToast = useToast().addToast;
@@ -44,6 +50,13 @@ export default function StoreSettingsPage() {
     queryKey: ['tenant-by-id', tenantId],
     queryFn: () => api.getTenant(tenantId) as Promise<{ name?: string; operationalStatus?: string; orderPolicy?: string; businessHours?: BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; bookingEnabled?: boolean; about?: string; officeHours?: string; phone?: string; whatsappPhone?: string } | null>,
     enabled: !!tenantId,
+  });
+
+  const canSeeDelivery = isPlatformAdmin(currentUser?.role);
+  const { data: deliveryZones = [], isLoading: zonesLoading } = useQuery({
+    queryKey: ['delivery-zones', tenantId],
+    queryFn: () => api.getDeliveryZones(tenantId),
+    enabled: !!tenantId && canSeeDelivery,
   });
 
   const [storeName, setStoreName] = useState('');
@@ -61,7 +74,7 @@ export default function StoreSettingsPage() {
     if (tenant) {
       setStoreName(tenant.name ?? '');
       const phone = (tenant as { phone?: string }).phone ?? (tenant as { whatsappPhone?: string }).whatsappPhone ?? '';
-      setContactPhone(phone);
+      setContactPhone(storedPhoneToDisplay(phone));
       setBusyBannerText(tenant.busyBannerText ?? 'المحل مشغول حالياً، قد يستغرق الطلب وقتاً أطول');
       setAbout((tenant as { about?: string }).about ?? '');
       setOfficeHours((tenant as { officeHours?: string }).officeHours ?? '');
@@ -192,6 +205,50 @@ export default function StoreSettingsPage() {
   };
 
   const [deleteStoreModalOpen, setDeleteStoreModalOpen] = useState(false);
+
+  const [zoneModalOpen, setZoneModalOpen] = useState(false);
+  const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
+  const [zoneForm, setZoneForm] = useState({ name: '', fee: 0 });
+  const sortedZones = [...deliveryZones].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  const handleAddDeliveryZone = () => {
+    setEditingZone(null);
+    setZoneForm({ name: '', fee: 0 });
+    setZoneModalOpen(true);
+  };
+  const handleEditDeliveryZone = (z: DeliveryZone) => {
+    setEditingZone(z);
+    setZoneForm({ name: z.name, fee: z.fee });
+    setZoneModalOpen(true);
+  };
+  const handleSaveDeliveryZone = async () => {
+    if (!zoneForm.name.trim()) {
+      addToast('أدخل اسم المنطقة', 'error');
+      return;
+    }
+    try {
+      if (editingZone) {
+        await api.patchDeliveryZoneApi(tenantId, editingZone.id, { name: zoneForm.name.trim(), fee: zoneForm.fee });
+        addToast('تم تحديث المنطقة', 'success');
+      } else {
+        await api.createDeliveryZoneApi(tenantId, { name: zoneForm.name.trim(), fee: zoneForm.fee, isActive: true, sortOrder: sortedZones.length });
+        addToast('تم إضافة المنطقة', 'success');
+      }
+      queryClient.invalidateQueries({ queryKey: ['delivery-zones', tenantId] });
+      setZoneModalOpen(false);
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
+  const handleDeleteDeliveryZone = async (zoneId: string) => {
+    try {
+      await api.deleteDeliveryZoneApi(tenantId, zoneId);
+      queryClient.invalidateQueries({ queryKey: ['delivery-zones', tenantId] });
+      addToast('تم حذف المنطقة', 'success');
+      setZoneModalOpen(false);
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
   const handleDeleteStore = async () => {
     if (!tenantId) return;
     try {
@@ -358,17 +415,27 @@ export default function StoreSettingsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف / واتساب</label>
                 <p className="text-sm text-gray-500 mb-2">يُستخدم للزرين: اتصال هاتفي وتواصل واتساب</p>
-                <div className="flex gap-2 max-w-md">
-                  <Input
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="972501234567"
-                    dir="ltr"
-                  />
+                <div className="flex gap-2 max-w-md flex-wrap items-start">
+                  <div className="flex flex-1 min-w-[200px]">
+                    <span className="inline-flex items-center h-10 px-3 rounded-l-[var(--radius)] border border-r-0 border-gray-300 bg-gray-100 text-gray-600 text-sm font-medium" dir="ltr">+972</span>
+                    <Input
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, ''))}
+                      placeholder="541234567"
+                      dir="ltr"
+                      className="rounded-l-none border-l-0"
+                    />
+                  </div>
                   <Button
                     onClick={async () => {
+                      const validation = validateStorePhone(contactPhone);
+                      if (!validation.ok) {
+                        addToast(validation.error ?? 'رقم غير صالح', 'error');
+                        return;
+                      }
+                      const normalized = normalizeStorePhoneForSave(contactPhone);
                       try {
-                        await api.updateOperationalSettingsApi(tenantId, { whatsappPhone: contactPhone.replace(/\D/g, ''), phone: contactPhone.replace(/\D/g, '') });
+                        await api.updateOperationalSettingsApi(tenantId, { whatsappPhone: normalized, phone: normalized });
                         queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
                         broadcastTenantUpdate(tenantId);
                         addToast('تم حفظ رقم الهاتف', 'success');
@@ -378,6 +445,7 @@ export default function StoreSettingsPage() {
                     حفظ
                   </Button>
                 </div>
+                <p className="text-xs text-gray-600 mt-1.5" dir="rtl" role="note">{STORE_PHONE_HELPER_TEXT}</p>
               </div>
             </>
           )}
@@ -492,6 +560,72 @@ export default function StoreSettingsPage() {
         </div>
       </Card>
 
+      {/* Delivery settings: completely hidden from merchants; only ROOT_ADMIN / SUPER_ADMIN */}
+      {!canSeeDelivery ? null : (
+        <Card className="p-6 bg-white" dir="rtl">
+          <div className="flex items-center gap-2 mb-4">
+            <Truck className="w-5 h-5 text-gray-600" />
+            <h2 className="font-semibold text-gray-900">إعدادات مناطق التوصيل</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-gray-600">المنطقة ورسوم التوصيل. يمكنك التعديل أو الحذف أو إضافة منطقة جديدة.</p>
+              <Button onClick={handleAddDeliveryZone} size="sm">
+                إضافة منطقة توصيل جديدة
+              </Button>
+            </div>
+            {zonesLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-right">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-gray-700">المنطقة</th>
+                      <th className="px-4 py-3 font-semibold text-gray-700">رسوم التوصيل</th>
+                      <th className="px-4 py-3 font-semibold text-gray-700 w-32">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {sortedZones.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-gray-500">
+                          لا توجد مناطق. اضغط «إضافة منطقة توصيل جديدة».
+                        </td>
+                      </tr>
+                    ) : (
+                      sortedZones.map((z) => (
+                        <tr key={z.id} className="hover:bg-gray-50/50">
+                          <td className="px-4 py-3 font-medium text-gray-900">{z.name}</td>
+                          <td className="px-4 py-3 text-gray-700">{formatMoney(z.fee)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2 justify-start">
+                              <Button variant="outline" size="sm" onClick={() => handleEditDeliveryZone(z)}>
+                                تعديل
+                              </Button>
+                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => handleDeleteDeliveryZone(z.id)}>
+                                حذف
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-sm text-gray-500">
+              <Link to="/settings/delivery" className="text-primary font-medium hover:underline">
+                صفحة إعدادات التوصيل الكاملة
+              </Link>
+            </p>
+          </div>
+        </Card>
+      )}
+
       {/* Row 4: إعدادات إضافية then Danger Zone */}
       {/* Card E: إعدادات إضافية (Links & Logistics) */}
       <Card className="p-6 bg-white">
@@ -500,13 +634,15 @@ export default function StoreSettingsPage() {
           <h2 className="font-semibold text-gray-900">إعدادات إضافية</h2>
         </div>
         <div className="space-y-4">
-          <div>
-            <p className="text-sm text-gray-500 mb-2">مناطق التوصيل والإعدادات اللوجستية</p>
-            <Link to="/settings/delivery" className="inline-flex items-center gap-2 text-primary font-medium hover:underline">
-              <Truck className="w-4 h-4" />
-              إعدادات التوصيل
-            </Link>
-          </div>
+          {canSeeDelivery ? (
+            <div>
+              <p className="text-sm text-gray-500 mb-2">رابط سريع لمناطق التوصيل</p>
+              <Link to="/settings/delivery" className="inline-flex items-center gap-2 text-primary font-medium hover:underline">
+                <Truck className="w-4 h-4" />
+                إعدادات التوصيل
+              </Link>
+            </div>
+          ) : null}
           {isProfessional && (
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">الحجز أونلاين (قريباً)</p>
@@ -586,6 +722,31 @@ export default function StoreSettingsPage() {
           حذف المتجر
         </Button>
       </Card>
+
+      {/* Add/Edit Delivery Zone Modal — only for platform admin */}
+      {canSeeDelivery ? (
+        <Modal open={zoneModalOpen} onClose={() => setZoneModalOpen(false)} title={editingZone ? 'تعديل منطقة التوصيل' : 'إضافة منطقة توصيل جديدة'}>
+          <div className="space-y-4" dir="rtl">
+            <Input
+              label="المنطقة"
+              value={zoneForm.name}
+              onChange={(e) => setZoneForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="مثال: دبورية"
+            />
+            <Input
+              label="رسوم التوصيل (₪)"
+              type="number"
+              min={0}
+              value={zoneForm.fee}
+              onChange={(e) => setZoneForm((f) => ({ ...f, fee: +e.target.value || 0 }))}
+            />
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setZoneModalOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSaveDeliveryZone}>حفظ</Button>
+          </div>
+        </Modal>
+      ) : null}
 
       {/* Delete Store Confirmation Modal */}
       {deleteStoreModalOpen && (

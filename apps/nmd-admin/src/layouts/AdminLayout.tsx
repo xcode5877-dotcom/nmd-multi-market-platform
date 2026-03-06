@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
-import { Outlet, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { Outlet, NavLink, useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users } from 'lucide-react';
+import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck } from 'lucide-react';
 import { setEmergencyHeaders, TOKEN_KEY } from '../api';
 import { MockApiClient } from '@nmd/mock';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
@@ -10,9 +10,17 @@ import { useAuth } from '../contexts/AuthContext';
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
 
+/** Parse marketId and tenantId from pathname when inside markets/:id/tenants/:tenantId (or nested). */
+function parseMarketAndTenantFromPath(pathname: string): { marketId?: string; tenantId?: string } {
+  const match = pathname.match(/\/markets\/([^/]+)\/tenants\/([^/]+)/);
+  if (match) return { marketId: match[1], tenantId: match[2] };
+  return {};
+}
+
 export default function AdminLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const emergency = useEmergencyMode();
 
   /** Ultimate Auth Sync: Admin logout — remove only nmd-access-token, then redirect. Do not clear nmd-customer-token (storefront). */
@@ -31,6 +39,11 @@ export default function AdminLayout() {
   const isMarketAdmin = me?.role === 'MARKET_ADMIN';
   const isTenantAdmin = me?.role === 'TENANT_ADMIN';
   const marketId = me?.marketId;
+  const params = useParams<{ id?: string; tenantId?: string }>();
+  const fromPath = useMemo(() => parseMarketAndTenantFromPath(location.pathname), [location.pathname]);
+  const marketIdFromUrl = params.id ?? fromPath.marketId;
+  const tenantIdFromUrl = params.tenantId ?? fromPath.tenantId;
+  const isInsideStoreDashboard = Boolean(marketIdFromUrl && tenantIdFromUrl);
 
   useEffect(() => {
     setEmergencyHeaders(emergency?.enabled ?? false, emergency?.reason ?? '');
@@ -66,7 +79,12 @@ export default function AdminLayout() {
     { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false },
   ];
 
-  const navItems = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : isRootAdmin ? rootNav : [];
+  const baseNavItems = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : isRootAdmin ? rootNav : [];
+  const deliveryLink =
+    isInsideStoreDashboard && marketIdFromUrl && tenantIdFromUrl
+      ? { to: `/markets/${marketIdFromUrl}/tenants/${tenantIdFromUrl}/settings/delivery`, icon: Truck, label: 'مناطق التوصيل', end: false }
+      : null;
+  const navItems = deliveryLink ? [...baseNavItems, deliveryLink] : baseNavItems;
   const navLoading = (isMarketAdmin && !marketId) || (isTenantAdmin && !me?.tenantId) || (isRootAdmin === false && isMarketAdmin === false && !isTenantAdmin && !!me);
 
   const [searchParams] = useSearchParams();

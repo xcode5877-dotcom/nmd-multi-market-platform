@@ -333,6 +333,8 @@ export default function MarketHomePage() {
                       <img
                         src={b.imageUrl || BANNER_PLACEHOLDER}
                         alt={b.title}
+                        loading="lazy"
+                        decoding="async"
                         className={`w-full h-full object-cover transition-opacity duration-300 ${bannerImageLoaded[b.id] ? 'opacity-100' : 'opacity-0'}`}
                         onLoad={() => setBannerImageLoaded((prev) => ({ ...prev, [b.id]: true }))}
                         onError={(e) => {

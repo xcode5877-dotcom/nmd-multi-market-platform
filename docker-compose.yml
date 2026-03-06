@@ -81,15 +81,21 @@ services:
     ports:
       # External port 3001 (host) → container port 5190 (API runs on 5190 inside container)
       - "3001:5190"
-    # Bypass entrypoint (no prisma migrate deploy on startup); run app only
-    entrypoint: ["node", "dist/index.js"]
+    # Entrypoint: chmod /app/uploads for real-time sync, then run app (set CMD to skip migrate: node dist/index.js)
+    entrypoint: ["/app/apps/mock-api/docker-entrypoint.sh"]
+    command: ["node", "dist/index.js"]
     environment:
       PORT: "5190"
-      # Use database by default in Docker so Orders/Customers persist in postgres_data volume
-      STORAGE_DRIVER: "${STORAGE_DRIVER:-db}"
-      DATA_FILE: "/data/data.json"
-      # When STORAGE_DRIVER=json, orders persist on host in ./data/orders.json
-      ORDERS_FILE: "/data/orders.json"
+      # json = persist tenants/markets/catalog to host data.json (Admin edits saved to apps/mock-api/data.json)
+      STORAGE_DRIVER: "${STORAGE_DRIVER:-json}"
+      # Host data.json at apps/mock-api/data.json → container /app/data/data.json (ensure script fix-perms.sh is run)
+      DATA_FILE: "/app/data/data.json"
+      # Market banners/layout (dabburiyya): same volume as data.json so layout survives rebuild
+      MARKET_CONFIG_FILE: "/app/data/market-config.json"
+      # When STORAGE_DRIVER=json, orders persist on host (mounted below)
+      ORDERS_FILE: "/app/data/orders.json"
+      # Uploads: host apps/mock-api/uploads → container /app/uploads
+      UPLOADS_DIR: "/app/uploads"
       # Use service name "postgres" and internal port 5432; schema=public for Prisma
       DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
       PUBLIC_URL: "https://nmd.marketing/api"
@@ -97,10 +103,15 @@ services:
       WHATSAPP_GATEWAY_URL: "http://whatsapp-service:3000"
       WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
     volumes:
-      # Persistent: JSON state (data.json, orders.json when using json driver) on host ./data
-      - ./data:/data
-      # Persistent: uploaded images
-      - uploads_data:/app/apps/mock-api/uploads
+      # LOCK PERSISTENCE: root apps/mock-api/data.json and uploads/ — do not change these paths.
+      # SINGLE SOURCE OF TRUTH: apps/mock-api/data.json (no script must overwrite with older copy)
+      - ./apps/mock-api/data.json:/app/data/data.json
+      # Orders (when STORAGE_DRIVER=json): persist on host so they survive down/up
+      - ./apps/mock-api/orders.json:/app/data/orders.json
+      # Market layout & banners (dabburiyya etc.): persist so they survive rebuild
+      - ./apps/mock-api/market-config.json:/app/data/market-config.json
+      # Host uploads: images persist to apps/mock-api/uploads (run scripts/fix-perms.sh once)
+      - ./apps/mock-api/uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

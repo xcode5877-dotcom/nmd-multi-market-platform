@@ -3,23 +3,23 @@
     "dabburiyya": [
       {
         "id": "b1",
-        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772446601283-rzu8krke.png",
+        "imageUrl": "",
         "title": "استشارة مجانية",
         "linkTo": "lawyer-falan",
         "active": true
       },
       {
         "id": "b2",
-        "imageUrl": "https://placehold.co/1200x514/0f766e/ffffff?text=توصيل+سريع",
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772732984073-dftkg6hw.webp",
         "title": "اطلب من محلاتك المفضلة",
-        "linkTo": "buffalo",
+        "linkTo": "-",
         "active": true
       }
     ],
     "iksal": [
       {
         "id": "b-1772447249385",
-        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772447632566-zzdz9n1m.png",
+        "imageUrl": "",
         "title": "استشارة مجانية",
         "linkTo": "",
         "active": true
@@ -30,12 +30,13 @@
     "dabburiyya": [
       {
         "id": "featured",
-        "title": "محلات مميزة",
+        "title": "سحور رمصان",
         "type": "SLIDER",
         "storeIds": [
           "buffalo",
-          "ms-brands",
-          "obr"
+          "بيتسا-اشرف",
+          "shaghaf",
+          "rianbow-land"
         ]
       },
       {
@@ -44,7 +45,8 @@
         "type": "SLIDER",
         "storeIds": [
           "buffalo",
-          "بيتسا-اشرف"
+          "بيتسا-اشرف",
+          "buffalo-28"
         ]
       },
       {

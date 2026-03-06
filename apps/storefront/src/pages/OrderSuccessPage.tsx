@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { MockApiClient } from '@nmd/mock';
 import { Button } from '@nmd/ui';
-import { buildWhatsAppMessage, buildWhatsAppUrl, isValidWhatsAppPhone } from '@nmd/core';
+import { buildWhatsAppMessage, buildWhatsAppUrl, buildWhatsAppDeepLink, isValidWhatsAppPhone } from '@nmd/core';
+import { openWhatsAppOrderLink } from '../lib/whatsapp';
 import { useAppStore } from '../store/app';
 import { MessageCircle, ArrowRight } from 'lucide-react';
 
@@ -34,12 +35,15 @@ export default function OrderSuccessPage() {
     retry: false,
   });
 
-  const waUrl = useMemo(() => {
-    if (!order || !tenant) return null;
+  const { waUrl, deepLinkUrl } = useMemo(() => {
+    if (!order || !tenant) return { waUrl: null as string | null, deepLinkUrl: null as string | null };
     const phone = tenant.branding?.whatsappPhone ?? '';
-    if (!isValidWhatsAppPhone(phone)) return null;
+    if (!isValidWhatsAppPhone(phone)) return { waUrl: null, deepLinkUrl: null };
     const message = buildWhatsAppMessage(order, tenant);
-    return buildWhatsAppUrl(phone, message);
+    return {
+      waUrl: buildWhatsAppUrl(phone, message),
+      deepLinkUrl: buildWhatsAppDeepLink(phone, message),
+    };
   }, [order, tenant]);
 
   if (isLoading || tenantLoading) {
@@ -72,9 +76,8 @@ export default function OrderSuccessPage() {
   }
 
   const handleWhatsApp = () => {
-    if (!waUrl || !waUrl.startsWith('https://wa.me/')) return;
-    const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
-    if (!opened) window.location.href = waUrl;
+    if (!waUrl && !deepLinkUrl) return;
+    openWhatsAppOrderLink(waUrl ?? '', deepLinkUrl ?? '');
   };
 
   return (
@@ -94,7 +97,7 @@ export default function OrderSuccessPage() {
       </div>
 
       <div className="space-y-3">
-        {waUrl && (
+        {(waUrl || deepLinkUrl) && (
           <Button
             className="w-full gap-2 justify-center bg-[#25D366] hover:bg-[#20bd5a] text-white py-3 text-base font-medium rounded-xl"
             onClick={handleWhatsApp}

@@ -112,6 +112,8 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
             <img
               src={imgUrl}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="absolute inset-0 w-full h-full object-cover object-center"
             />
           ) : (
@@ -142,6 +144,8 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
         <img
           src={b.imageUrl}
           alt={b.title ?? ''}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-black/40 z-[1]" />
@@ -206,7 +210,7 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
         <div className="flex flex-col md:flex-row gap-6 items-start">
           {logoUrl && (
             <div className="flex-shrink-0 w-24 h-24 rounded-2xl overflow-hidden border-2 border-gray-100 shadow-md">
-              <img src={logoUrl} alt={name} className="w-full h-full object-cover" />
+              <img src={logoUrl} alt={name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             </div>
           )}
           <div className="flex-1 min-w-0">

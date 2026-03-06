@@ -14,7 +14,13 @@ import { useAdminContext } from '../context/AdminContext';
 export default function OptionsPage() {
   const { tenantId, tenantType } = useAdminContext();
   const [allGroups, setAllGroups] = useState<OptionGroup[]>([]);
-  const groups = filterOptionGroupsForTenant(tenantType, allGroups);
+  const groupsForTenant = allGroups.filter(
+    (g) =>
+      (g as { tenantId?: string; ownerId?: string }).tenantId === tenantId ||
+      (g as { tenantId?: string; ownerId?: string }).ownerId === tenantId ||
+      (!(g as { tenantId?: string; ownerId?: string }).tenantId && !(g as { tenantId?: string; ownerId?: string }).ownerId)
+  );
+  const groups = filterOptionGroupsForTenant(tenantType, groupsForTenant);
   const [selected, setSelected] = useState<OptionGroup | null>(null);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [itemModalOpen, setItemModalOpen] = useState(false);

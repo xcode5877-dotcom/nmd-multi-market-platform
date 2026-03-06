@@ -486,7 +486,53 @@ async function seed() {
     }
   }
 
-  console.log('Seed complete: markets, tenants, users, couriers, customers, orders, payments, catalog, delivery, deliveryZones');
+  // 10. Ensure a "default" tenant exists (storefront fallback for delivery zones and policies)
+  const defaultId = 'default';
+  await prisma.tenant.upsert({
+    where: { id: defaultId },
+    create: {
+      id: defaultId,
+      slug: 'default',
+      name: 'المتجر الافتراضي',
+      logoUrl: '',
+      primaryColor: '#000000',
+      secondaryColor: '#ffffff',
+      fontFamily: 'inherit',
+      radiusScale: 1,
+      layoutStyle: 'default',
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    },
+    update: {},
+  });
+  await prisma.tenantDeliverySettings.upsert({
+    where: { tenantId: defaultId },
+    create: {
+      tenantId: defaultId,
+      modes: JSON.stringify({ pickup: true, delivery: true }),
+      minimumOrder: 0,
+      deliveryFee: 0,
+      payload: null,
+    },
+    update: {},
+  });
+  const defaultZoneId = 'default-zone';
+  await prisma.deliveryZone.upsert({
+    where: { id: defaultZoneId },
+    create: {
+      id: defaultZoneId,
+      tenantId: defaultId,
+      name: 'المنطقة الافتراضية',
+      fee: 0,
+      etaMinutes: 30,
+      minimumOrder: 0,
+      isActive: true,
+      sortOrder: 0,
+    },
+    update: {},
+  });
+
+  console.log('Seed complete: markets, tenants, users, couriers, customers, orders, payments, catalog, delivery, deliveryZones, default tenant');
 }
 
 seed()

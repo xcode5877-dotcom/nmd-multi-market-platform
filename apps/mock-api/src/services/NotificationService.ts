@@ -64,7 +64,19 @@ export function buildMerchantOrderMessage(
   }
   if (items.length === 0) lines.push('—');
   lines.push('');
-  lines.push(`*الإجمالي: ${formatMoney(order.total)}*`);
+  lines.push('---');
+  const subtotal =
+    (order as { merchantAmount?: number }).merchantAmount ??
+    (order as { subtotal?: number }).subtotal ??
+    items.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
+  const deliveryFee =
+    (order as { platformDeliveryFee?: number }).platformDeliveryFee ??
+    order.delivery?.fee ??
+    0;
+  const total = Number(order.total) ?? subtotal + deliveryFee;
+  lines.push(`المجموع: ${formatMoney(subtotal)}`);
+  lines.push(`خدمة التوصيل: ${formatMoney(deliveryFee)}`);
+  lines.push(`*المطلوب للدفع: ${formatMoney(total)}*`);
   if (order.notes) lines.push(`ملاحظات: ${order.notes}`);
   const base = ORDER_ACTIONS_BASE.replace(/\/$/, '');
   lines.push('');

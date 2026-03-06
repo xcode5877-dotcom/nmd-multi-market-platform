@@ -100,6 +100,8 @@ export default function ProductsPage() {
     basePrice: 0,
     imageUrl: '',
     images: [] as ProductImage[],
+    /** IDs of catalog option groups to link (from Options page) */
+    selectedOptionGroupIds: [] as string[],
     optionGroups: [] as OptionGroup[],
     variants: [] as ProductVariant[],
     isFeatured: false,
@@ -111,6 +113,13 @@ export default function ProductsPage() {
     isArchived: false,
     sortOrder: 0,
   });
+  /** Option groups for current tenant only (from catalog / Options page). */
+  const catalogOptionGroups = adminData.getOptionGroups().filter(
+    (g) =>
+      (g as { tenantId?: string; ownerId?: string }).tenantId === tenantId ||
+      (g as { tenantId?: string; ownerId?: string }).ownerId === tenantId ||
+      (!(g as { tenantId?: string; ownerId?: string }).tenantId && !(g as { tenantId?: string; ownerId?: string }).ownerId)
+  );
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -156,6 +165,9 @@ export default function ProductsPage() {
     const slug = form.slug || form.name.toLowerCase().replace(/\s/g, '-');
     const images = [...(form.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
     const imageUrl = images.length > 0 ? images[0].url : (form.imageUrl || undefined);
+    const linkedGroups = catalogOptionGroups.filter((g) => form.selectedOptionGroupIds.includes(g.id));
+    const allOptionGroups = [...linkedGroups, ...form.optionGroups];
+    const optionGroupIds = form.selectedOptionGroupIds;
     if (editing) {
       const next = products.map((p) =>
         p.id === editing.id
@@ -169,7 +181,8 @@ export default function ProductsPage() {
               basePrice: form.basePrice,
               imageUrl,
               images,
-              optionGroups: form.optionGroups,
+              optionGroups: allOptionGroups,
+              optionGroupIds,
               variants: form.variants,
               isFeatured: form.isFeatured,
               inStock: form.inStock,
@@ -200,7 +213,8 @@ export default function ProductsPage() {
           currency: 'ILS',
           imageUrl,
           images,
-          optionGroups: form.optionGroups,
+          optionGroups: allOptionGroups,
+          optionGroupIds,
           variants: form.variants,
           createdAt: new Date().toISOString(),
           isFeatured: form.isFeatured,
@@ -229,6 +243,7 @@ export default function ProductsPage() {
       basePrice: 0,
       imageUrl: '',
       images: [],
+      selectedOptionGroupIds: [],
       optionGroups: [],
       variants: [],
       isFeatured: false,
@@ -261,6 +276,9 @@ export default function ProductsPage() {
     const q = p.quantity ?? p.stock;
     const inStock = p.inStock ?? (q === undefined || q > 0);
     const imgs = (p.images ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+    const linkedIds = (p as { optionGroupIds?: string[] }).optionGroupIds ?? (p.optionGroups ?? []).map((g) => g.id);
+    const catalogIdsSet = new Set(catalogOptionGroups.map((g) => g.id));
+    const inlineOnly = (p.optionGroups ?? []).filter((g) => !catalogIdsSet.has(g.id));
     setForm({
       name: p.name,
       slug: p.slug,
@@ -270,7 +288,8 @@ export default function ProductsPage() {
       basePrice: p.basePrice,
       imageUrl: p.imageUrl ?? '',
       images: imgs,
-      optionGroups: p.optionGroups ?? [],
+      selectedOptionGroupIds: linkedIds,
+      optionGroups: inlineOnly,
       variants: p.variants ?? [],
       isFeatured: p.isFeatured ?? false,
       inStock,
@@ -296,6 +315,7 @@ export default function ProductsPage() {
       basePrice: 0,
       imageUrl: '',
       images: [],
+      selectedOptionGroupIds: [],
       optionGroups: [],
       variants: [],
       isFeatured: false,
@@ -420,10 +440,15 @@ export default function ProductsPage() {
     }));
   };
 
+  const effectiveOptionGroupsForVariants = useMemo(() => {
+    const linked = catalogOptionGroups.filter((g) => form.selectedOptionGroupIds.includes(g.id));
+    return [...linked, ...form.optionGroups];
+  }, [catalogOptionGroups, form.selectedOptionGroupIds, form.optionGroups]);
+
   const handleGenerateVariants = () => {
-    const groups = form.optionGroups.filter((g) => (g.items?.length ?? 0) > 0);
+    const groups = effectiveOptionGroupsForVariants.filter((g) => (g.items?.length ?? 0) > 0);
     if (groups.length === 0) {
-      addToast('أضف مجموعات خيارات مع عناصر أولاً', 'error');
+      addToast('أضف مجموعات خيارات مع عناصر أولاً (ربط مجموعات أو إضافة مخصصة)', 'error');
       return;
     }
     const newVariants = generateVariantsFromGroups(groups);
@@ -432,7 +457,7 @@ export default function ProductsPage() {
   };
 
   const handleRegenerateVariants = () => {
-    const groups = form.optionGroups.filter((g) => (g.items?.length ?? 0) > 0);
+    const groups = effectiveOptionGroupsForVariants.filter((g) => (g.items?.length ?? 0) > 0);
     if (groups.length === 0) {
       setForm((f) => ({ ...f, variants: [] }));
       addToast('لا توجد مجموعات خيارات', 'info');
@@ -797,6 +822,34 @@ export default function ProductsPage() {
           </div>
           {/* Option Groups */}
           <div className="space-y-3" dir="rtl">
+            <div className="space-y-2" dir="rtl">
+              <label className="block text-sm font-medium text-gray-700">ربط مجموعات الخيارات</label>
+              <p className="text-xs text-gray-500 mb-1">اختر مجموعات معرّفة من صفحة مجموعات الخيارات لربطها بهذا المنتج.</p>
+              {catalogOptionGroups.length === 0 ? (
+                <p className="text-sm text-amber-600">لا توجد مجموعات خيارات. أضفها من صفحة &quot;مجموعات الخيارات&quot; أولاً.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                  {catalogOptionGroups.map((g) => (
+                    <label key={g.id} className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.selectedOptionGroupIds.includes(g.id)}
+                        onChange={(e) => {
+                          setForm((f) => ({
+                            ...f,
+                            selectedOptionGroupIds: e.target.checked
+                              ? [...f.selectedOptionGroupIds, g.id]
+                              : f.selectedOptionGroupIds.filter((id) => id !== g.id),
+                          }));
+                        }}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-gray-800">{g.name || g.id}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex flex-wrap justify-between items-center gap-2">
               <label className="block text-sm font-medium text-gray-700">مجموعات الخيارات (مقاس، لون)</label>
               <div className="flex flex-wrap gap-2">

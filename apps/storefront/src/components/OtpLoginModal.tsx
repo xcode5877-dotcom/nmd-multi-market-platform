@@ -12,7 +12,7 @@ interface OtpLoginModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: (customer: Customer) => void;
-  showOtpInToast?: boolean;
+  showOtpInToast?: boolean; // ignored: OTP is only sent via WhatsApp, never shown in UI
 }
 
 function isValidIsraelPhone(v: string): boolean {
@@ -23,7 +23,7 @@ function isValidIsraelPhone(v: string): boolean {
 type AuthMode = 'LOGIN' | 'SIGNUP';
 type Step = 'phone' | 'code' | 'profile';
 
-export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true }: OtpLoginModalProps) {
+export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast: _showOtpInToast }: OtpLoginModalProps) {
   const { checkPhone, start, verify, updateProfile } = useCustomerAuth();
   const { addToast } = useToast();
   const [mode, setMode] = useState<AuthMode>('LOGIN');
@@ -71,10 +71,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       setError(startResult.error ?? 'حدث خطأ');
       return;
     }
-    if (startResult.devCode) {
-      if (showOtpInToast) addToast(`رمز التحقق (تجريبي): ${startResult.devCode}`, 'info');
-      if (typeof console !== 'undefined' && console.log) console.log('[OTP] رمز التحقق (للتجربة):', startResult.devCode);
-    }
+    addToast('تم إرسال الرمز إلى جوالك', 'info');
     setStep('code');
     setCode('');
     setResendCountdown(OTP_RESEND_COOLDOWN_SEC);
@@ -209,7 +206,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
           <>
             <p className="text-sm text-gray-600">
               أدخل الرمز المرسل إلى {phone}
-              <span className="block mt-1 text-xs text-amber-600">(تحقق من الواتساب أو التوست في وضع التجربة)</span>
+              <span className="block mt-1 text-xs text-amber-600">(تحقق من الواتساب)</span>
             </p>
             {mode === 'SIGNUP' && name.trim() && (
               <p className="text-sm text-gray-500">الاسم: {name}</p>

@@ -104,6 +104,8 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
             <img
               src={h.imageUrl}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="absolute inset-0 w-full h-full object-cover object-center"
               style={{ objectFit: 'cover', objectPosition: 'center' }}
             />
@@ -163,6 +165,8 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
         <img
           src={b.imageUrl}
           alt={b.title ?? ''}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 w-full h-full object-cover object-center"
           style={{ objectFit: 'cover', objectPosition: 'center' }}
         />

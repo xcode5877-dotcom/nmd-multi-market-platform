@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, Package, Truck, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ChevronDown, Package, Truck, MessageCircle, ShieldCheck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import type { Product, OptionGroup, OptionItem, SelectedOption, PizzaSelectedOption, ProductVariant } from '@nmd/core';
@@ -14,6 +14,10 @@ import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 
 const api = new MockApiClient();
+
+/** Flexible Arabic labels for delivery and store policy (restaurants and stores) */
+const DELIVERY_LABEL = 'توصيل سريع ومباشر | يتم التنسيق فور تأكيد الطلب';
+const STORE_POLICY_LABEL = 'نضمن لكم أفضل جودة. في حال وجود أي ملاحظة على الطلب، يرجى التواصل مع المتجر مباشرة عبر الواتساب';
 
 /** Color name to hex mapping for fashion variants */
 const COLOR_MAP: Record<string, string> = {
@@ -556,11 +560,11 @@ export default function ProductPage() {
             <div className="mt-4 flex flex-col gap-2" dir="rtl">
               <div className="flex items-center gap-2 text-sm text-neutral-500">
                 <Truck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-                <span>توصيل سريع خلال 2–3 أيام</span>
+                <span>{DELIVERY_LABEL}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <RefreshCw className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-                <span>استبدال خلال 7 أيام</span>
+                <MessageCircle className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
+                <span>{STORE_POLICY_LABEL}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-neutral-500">
                 <ShieldCheck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
@@ -579,10 +583,10 @@ export default function ProductPage() {
             {!isProfessional && (
               <>
                 <AccordionSection title="التوصيل">
-                  التوصيل متاح لجميع المناطق. يتم الشحن خلال 2-5 أيام عمل.
+                  {DELIVERY_LABEL}
                 </AccordionSection>
-                <AccordionSection title="الاستبدال والاسترجاع">
-                  يمكنك الاستبدال أو الاسترجاع خلال 14 يوماً من الاستلام في حال عدم الاستخدام.
+                <AccordionSection title="سياسة المتجر وضمان الجودة">
+                  {STORE_POLICY_LABEL}
                 </AccordionSection>
               </>
             )}

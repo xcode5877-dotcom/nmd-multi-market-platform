@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
-import { formatPrice, formatAddonNameWithPlacement, buildWhatsAppMessage, buildWhatsAppUrl, isValidWhatsAppPhone, getOperationalStatus } from '@nmd/core';
+import { formatPrice, formatAddonNameWithPlacement, buildWhatsAppMessage, buildWhatsAppUrl, buildWhatsAppDeepLink, isValidWhatsAppPhone, getOperationalStatus } from '@nmd/core';
+import { openWhatsAppOrderLink } from '../lib/whatsapp';
 import { Button, Input, useToast } from '@nmd/ui';
 import { Banknote, CreditCard, Lock } from 'lucide-react';
 import { useAppStore } from '../store/app';
@@ -12,6 +13,10 @@ import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 
 const api = new MockApiClient();
+
+/** Same flexible Arabic labels as ProductPage (restaurants and stores) */
+const DELIVERY_LABEL = 'توصيل سريع ومباشر | يتم التنسيق فور تأكيد الطلب';
+const STORE_POLICY_LABEL = 'نضمن لكم أفضل جودة. في حال وجود أي ملاحظة على الطلب، يرجى التواصل مع المتجر مباشرة عبر الواتساب';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
@@ -150,10 +155,8 @@ export default function CheckoutPage() {
         };
         const message = buildWhatsAppMessage(orderForWa, tenant);
         const waUrl = buildWhatsAppUrl(storePhone, message);
-        if (waUrl && waUrl.startsWith('https://wa.me/')) {
-          const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
-          if (!opened) window.location.href = waUrl;
-        }
+        const deepLinkUrl = buildWhatsAppDeepLink(storePhone, message);
+        if (waUrl || deepLinkUrl) openWhatsAppOrderLink(waUrl ?? '', deepLinkUrl ?? '');
       } else {
         addToast('تم حفظ الطلب، واتساب غير مُهيأ', 'info');
       }
@@ -482,6 +485,10 @@ export default function CheckoutPage() {
                 <span className="text-lg font-bold text-gray-900">
                   {formatPrice(totalWithDelivery)}
                 </span>
+              </div>
+              <div className="pt-3 space-y-1.5 text-neutral-500 text-xs border-t border-neutral-100 mt-3" dir="rtl">
+                <p>{DELIVERY_LABEL}</p>
+                <p>{STORE_POLICY_LABEL}</p>
               </div>
             </div>
 

@@ -29,9 +29,9 @@ interface MarketConfigStore {
   layout: Record<string, MarketSection[]>;
 }
 
-/** New path: inside persistent volume (Docker: /data). Override with MARKET_CONFIG_FILE. */
-const CONFIG_FILE = process.env.MARKET_CONFIG_FILE || '/data/market-config.json';
-/** Legacy path: app directory (not persisted in Docker). Used only for one-time migration. */
+/** Persistent path: in Docker set MARKET_CONFIG_FILE=/app/data/market-config.json and mount host file there. */
+const CONFIG_FILE = process.env.MARKET_CONFIG_FILE || join(process.cwd(), 'market-config.json');
+/** Legacy path for one-time migration into persistent dir. */
 const LEGACY_CONFIG_FILE = join(process.cwd(), 'market-config.json');
 
 const DEFAULT_BANNERS: MarketBanner[] = [
@@ -103,6 +103,7 @@ function save(store: MarketConfigStore): void {
     const dir = dirname(CONFIG_FILE);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(CONFIG_FILE, JSON.stringify(store, null, 2), 'utf-8');
+    // Synchronous write: admin UI changes are on disk immediately (persistent volume)
   } catch (err) {
     console.error('[market-config] Failed to persist:', err);
   }

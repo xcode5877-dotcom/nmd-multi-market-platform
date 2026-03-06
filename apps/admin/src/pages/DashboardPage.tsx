@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, PageHeader, EmptyState, Button } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
+import { useAuth } from '../contexts/AuthContext';
+import { isPlatformAdmin } from '../lib/is-platform-admin';
 import { createAdminData } from '../store/admin-data';
 import { getDeliverySettings, getTenantById, listOrdersByTenant, listCampaigns } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
@@ -15,6 +17,7 @@ const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL ?? '').replace(/\/$/
 
 export default function DashboardPage() {
   const { tenantId } = useAdminContext();
+  const { user } = useAuth();
   const adminData = createAdminData(tenantId);
 
   const catalogQuery = useQuery({
@@ -82,7 +85,7 @@ export default function DashboardPage() {
   };
   const launchReady = Object.values(launchChecks).every(Boolean);
 
-  const setupComplete = hasCategories && hasProducts && hasDelivery && hasCampaign;
+  const setupComplete = hasCategories && hasProducts && (isPlatformAdmin(user?.role) ? hasDelivery : true) && hasCampaign;
   const catalogEmpty = !hasCategories && !hasProducts;
   const isLoading = USE_API && catalogQuery.isLoading;
 
@@ -226,7 +229,7 @@ export default function DashboardPage() {
             <ul className="space-y-2">
               <SetupItem done={hasCategories} label="إضافة التصنيفات" to="/catalog/categories" />
               <SetupItem done={hasProducts} label="إضافة المنتجات" to="/catalog/products" />
-              <SetupItem done={hasDelivery} label="إعداد التوصيل" to="/settings/delivery" />
+              {isPlatformAdmin(user?.role) && <SetupItem done={hasDelivery} label="إعداد التوصيل" to="/settings/delivery" />}
               <SetupItem done={hasCampaign} label="إنشاء أول حملة" to="/campaigns" />
             </ul>
           </div>

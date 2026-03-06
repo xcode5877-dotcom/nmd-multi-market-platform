@@ -142,7 +142,7 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
         <Link to={basePath} className="flex items-center justify-center min-w-0 flex-1 mx-2 order-2 overflow-hidden" onClick={() => setMenuOpen(false)}>
           <span className="flex items-center justify-center max-h-[48px] w-full min-w-0">
             {centerLogoUrl ? (
-              <img src={centerLogoUrl} alt={centerLabel} className="max-h-[48px] w-auto max-w-[180px] object-contain" />
+              <img src={centerLogoUrl} alt={centerLabel} loading="lazy" decoding="async" className="max-h-[48px] w-auto max-w-[180px] object-contain" />
             ) : (
               <span className="font-bold text-base sm:text-lg text-primary truncate max-w-[140px] sm:max-w-[220px]">{centerLabel}</span>
             )}

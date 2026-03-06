@@ -142,16 +142,28 @@ const LAYOUT_STYLES: Record<TenantBranding['layoutStyle'], { header: string; car
   spacious: { header: 'strong', card: 'strong', section: 'spacious', button: 'pill', badge: 'strong' },
 };
 
+/** Platform (mall/city) brand identity – used when no tenant is active. Do not allow tenant colors to persist on platform routes. */
+export const PLATFORM_BRANDING: TenantBranding = {
+  logoUrl: '',
+  primaryColor: '#0f766e',
+  secondaryColor: '#f0fdfa',
+  fontFamily: '"Cairo", system-ui, sans-serif',
+  radiusScale: 1,
+  layoutStyle: 'default',
+};
+
 /**
- * Convert tenant branding to CSS variables for runtime theming
+ * Convert tenant branding to CSS variables for runtime theming.
+ * If branding is null or undefined, reverts to PLATFORM_BRANDING so platform colors are applied immediately.
  */
-export function tenantBrandingToCssVars(branding: TenantBranding): Record<string, string> {
-  const style = LAYOUT_STYLES[branding.layoutStyle] ?? LAYOUT_STYLES.default;
+export function tenantBrandingToCssVars(branding: TenantBranding | null | undefined): Record<string, string> {
+  const b = branding ?? PLATFORM_BRANDING;
+  const style = LAYOUT_STYLES[b.layoutStyle] ?? LAYOUT_STYLES.default;
   return {
-    '--color-primary': branding.primaryColor,
-    '--color-secondary': branding.secondaryColor,
-    '--radius': `${branding.radiusScale * 4}px`,
-    '--font': branding.fontFamily,
+    '--color-primary': b.primaryColor,
+    '--color-secondary': b.secondaryColor,
+    '--radius': `${b.radiusScale * 4}px`,
+    '--font': b.fontFamily,
     '--layout-header': style.header,
     '--layout-card': style.card,
     '--layout-section': style.section,

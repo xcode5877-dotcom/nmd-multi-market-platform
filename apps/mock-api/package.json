@@ -10,7 +10,10 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
+    "db:push:force": "prisma db push --accept-data-loss",
     "db:seed": "tsx prisma/seed.ts",
+    "ensure-default-tenant": "tsx scripts/ensure-default-tenant.ts",
+    "promote-user-to-root": "tsx scripts/promote-user-to-root.ts",
     "reset-root-password": "tsx scripts/reset-root-password.ts",
     "verify:storage": "tsx scripts/verify-storage-drivers.ts"
   },

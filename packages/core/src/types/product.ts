@@ -81,6 +81,8 @@ export interface Product {
   /** Multi-image gallery; when saving, imageUrl = images[0].url if images has ≥1 item */
   images?: ProductImage[];
   optionGroups: OptionGroup[];
+  /** IDs of catalog option groups linked to this product (resolved to optionGroups when loading catalog) */
+  optionGroupIds?: string[];
   /** Auto-generated variants (cartesian product of option groups); stock/priceOverride per variant */
   variants?: ProductVariant[];
   stock?: number;

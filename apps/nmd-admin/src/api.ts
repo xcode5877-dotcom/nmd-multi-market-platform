@@ -43,7 +43,10 @@ function mergeEmergencyMeta(body: string | undefined, method: string): string | 
   if (!isWrite) return body;
   try {
     const parsed = body ? JSON.parse(body) : {};
-    const merged = { ...parsed, _meta: { ...parsed._meta, emergencyReason } };
+    if (Array.isArray(parsed)) {
+      return JSON.stringify({ layout: parsed, _meta: { emergencyReason } });
+    }
+    const merged = { ...parsed, _meta: { ...(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { _meta?: unknown })._meta : undefined), emergencyReason } };
     return JSON.stringify(merged);
   } catch {
     return body;

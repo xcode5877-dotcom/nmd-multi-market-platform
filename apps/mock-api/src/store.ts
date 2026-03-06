@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 
 const DATA_FILE = process.env.DATA_FILE || join(process.cwd(), 'data.json');
@@ -156,7 +156,7 @@ export interface DeliveryZoneRecord {
   sortOrder?: number;
 }
 
-export type UserRole = 'ROOT_ADMIN' | 'MARKET_ADMIN' | 'TENANT_ADMIN' | 'COURIER' | 'CUSTOMER';
+export type UserRole = 'ROOT_ADMIN' | 'SUPER_ADMIN' | 'MARKET_ADMIN' | 'TENANT_ADMIN' | 'COURIER' | 'CUSTOMER';
 
 export interface User {
   id: string;
@@ -484,14 +484,38 @@ function saveOrders(orders: unknown[]): void {
 }
 
 let cache: MockData | null = null;
+let lastLoadedMtimeMs = 0;
+
+/** Read data.json from disk; cache invalidated when file mtime changes (e.g. host volume updated). */
+function dataFileMtimeMs(): number {
+  try {
+    if (existsSync(DATA_FILE)) return statSync(DATA_FILE).mtimeMs;
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
 
 export function getData(): MockData {
-  if (!cache) cache = load();
+  const mtime = dataFileMtimeMs();
+  if (!cache || mtime > lastLoadedMtimeMs) {
+    cache = load();
+    lastLoadedMtimeMs = mtime || Date.now();
+  }
   return cache;
 }
 
+/** Force next getData() to re-read from disk (e.g. after volume mount). */
+export function invalidateDataCache(): void {
+  cache = null;
+  lastLoadedMtimeMs = 0;
+}
+
 export function persist(): void {
-  if (cache) save(cache);
+  if (cache) {
+    save(cache);
+    lastLoadedMtimeMs = dataFileMtimeMs() || Date.now();
+  }
 }
 
 export function getMarkets(): Market[] {
@@ -547,10 +571,29 @@ export function getCatalog(tenantId: string): TenantCatalog {
     if (x.isVisible === undefined) x.isVisible = true;
     return x;
   });
+  const allOptionGroups = (cat.optionGroups ?? []) as Array<{ id: string; tenantId?: string; ownerId?: string }>;
+  const optionGroupsList = allOptionGroups.filter(
+    (g) =>
+      g.tenantId === tenantId ||
+      g.ownerId === tenantId ||
+      (!g.tenantId && !g.ownerId)
+  );
+  const optionGroupsById = new Map(optionGroupsList.map((g) => [g.id, g]));
+  const products = (cat.products ?? []).map((p) => {
+    const prod = p as Record<string, unknown>;
+    const optionGroupIds = prod.optionGroupIds as string[] | undefined;
+    if (Array.isArray(optionGroupIds) && optionGroupIds.length > 0) {
+      const resolved = optionGroupIds
+        .map((id) => optionGroupsById.get(id))
+        .filter(Boolean) as unknown[];
+      return { ...prod, optionGroups: resolved.length > 0 ? resolved : prod.optionGroups };
+    }
+    return prod;
+  });
   return {
     categories,
-    products: cat.products ?? [],
-    optionGroups: cat.optionGroups ?? [],
+    products,
+    optionGroups: optionGroupsList,
     optionItems: cat.optionItems ?? [],
   };
 }

@@ -12,6 +12,8 @@ export function buildWhatsAppMessage(order: Order, tenant: Tenant): string {
   const lines: string[] = [];
   const orderId = typeof order?.id === 'string' ? order.id : String(order?.id ?? '');
   const createdAt = order?.createdAt ? new Date(order.createdAt) : new Date();
+  lines.push(`*تفاصيل الطلب الجديد:*`);
+  lines.push('---');
   lines.push(`*طلب جديد - ${tenant?.name ?? ''}*`);
   lines.push('');
   lines.push(`#${orderId.slice(0, 8)}`);
@@ -20,8 +22,13 @@ export function buildWhatsAppMessage(order: Order, tenant: Tenant): string {
   const delivery = (order as { delivery?: { method?: string; zoneName?: string; fee?: number; addressText?: string } }).delivery;
   if (order.fulfillmentType === 'DELIVERY' || delivery?.method === 'DELIVERY') {
     lines.push('طريقة الاستلام: توصيل');
-    if (delivery?.zoneName) lines.push(`المنطقة: ${delivery.zoneName}`);
-    if (delivery?.fee != null) lines.push(`سعر التوصيل: ₪${delivery.fee}`);
+    if (delivery?.zoneName && delivery?.fee != null) {
+      lines.push(`المنطقة: ${delivery.zoneName} (+${formatMoney(delivery.fee)})`);
+    } else if (delivery?.zoneName) {
+      lines.push(`المنطقة: ${delivery.zoneName}`);
+    } else if (delivery?.fee != null) {
+      lines.push(`سعر التوصيل: ${formatMoney(delivery.fee)}`);
+    }
     if (delivery?.addressText) lines.push(`العنوان: ${delivery.addressText}`);
     else if (order.deliveryAddress) lines.push(`العنوان: ${order.deliveryAddress}`);
   } else {
@@ -58,7 +65,19 @@ export function buildWhatsAppMessage(order: Order, tenant: Tenant): string {
   }
   if (items.length === 0) lines.push('—');
   lines.push('');
-  lines.push(`*الإجمالي: ${formatMoney(order.total)}*`);
+  lines.push('---');
+  const subtotal =
+    (order as { merchantAmount?: number }).merchantAmount ??
+    order.subtotal ??
+    items.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
+  const deliveryFee =
+    (order as { platformDeliveryFee?: number }).platformDeliveryFee ??
+    (order as { delivery?: { fee?: number } }).delivery?.fee ??
+    0;
+  const total = Number(order.total) || subtotal + deliveryFee;
+  lines.push(`المجموع: ${formatMoney(subtotal)}`);
+  lines.push(`خدمة التوصيل: ${formatMoney(deliveryFee)}`);
+  lines.push(`*المطلوب للدفع: ${formatMoney(total)}*`);
   if (order.notes) lines.push(`ملاحظات: ${order.notes}`);
   return lines.join('\n');
 }
@@ -74,8 +93,8 @@ export function isValidWhatsAppPhone(phone: string | undefined | null): boolean 
 }
 
 /**
- * Build WhatsApp URL with pre-filled message.
- * Phone must be digits only (with country code). No fallback.
+ * Build WhatsApp web URL (wa.me) with pre-filled message.
+ * Use for desktop; opens in browser. Phone must be digits only (with country code). No fallback.
  */
 export function buildWhatsAppUrl(phone: string, message: string): string {
   if (!phone || typeof phone !== 'string') return '';
@@ -83,6 +102,19 @@ export function buildWhatsAppUrl(phone: string, message: string): string {
   if (cleaned.length < 9) return '';
   const encoded = encodeURIComponent(typeof message === 'string' ? message : '');
   return `https://wa.me/${cleaned}?text=${encoded}`;
+}
+
+/**
+ * Build WhatsApp native deep link (whatsapp://send) for mobile.
+ * Opens the WhatsApp app directly without a browser landing page; the current tab stays on your site.
+ * Phone must be digits only (with country code). No fallback.
+ */
+export function buildWhatsAppDeepLink(phone: string, message: string): string {
+  if (!phone || typeof phone !== 'string') return '';
+  const cleaned = phone.replace(/\D/g, '');
+  if (cleaned.length < 9) return '';
+  const encoded = encodeURIComponent(typeof message === 'string' ? message : '');
+  return `whatsapp://send?phone=${cleaned}&text=${encoded}`;
 }
 
 /** Default base URL for order action links (merchant dashboard). */

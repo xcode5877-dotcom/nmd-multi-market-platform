@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 const SIDEBAR_KEY = 'sidebar-collapsed';
 
 // All paths must be absolute (leading /) so they resolve correctly under basename /merchant. Use NavLink only (no <a>).
-const nav = [
+const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'لوحة التحكم' },
   { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات' },
   { to: '/orders', icon: ShoppingCart, label: 'الطلبات' },
@@ -57,6 +57,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(() => getStorage<boolean>(SIDEBAR_KEY) ?? false);
+  const nav = NAV_ITEMS;
 
   useEffect(() => {
     setStorage(SIDEBAR_KEY, collapsed);

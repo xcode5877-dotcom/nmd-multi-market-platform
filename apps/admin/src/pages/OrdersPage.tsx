@@ -3,6 +3,8 @@ import type { Order } from '@nmd/core';
 import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast } from '@nmd/ui';
 import { Package, Bell } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
+import { useAuth } from '../contexts/AuthContext';
+import { isPlatformAdmin } from '../lib/is-platform-admin';
 import { listOrdersByTenant, updateOrderStatus } from '@nmd/mock';
 import { buildWhatsAppMessage, buildWhatsAppUrl, buildOrderActionLinksSection, formatPrice, formatDateTimeGregorian, formatAddonNameWithPlacement, isValidWhatsAppPhone } from '@nmd/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +32,13 @@ function ProductThumb({ src }: { src?: string | null }) {
   );
 }
 
+function getOrderAmounts(order: Order & { merchantAmount?: number; platformDeliveryFee?: number; subtotal?: number; delivery?: { fee?: number }; items?: { totalPrice?: number }[] }): { merchantAmount: number; platformDeliveryFee: number; grandTotal: number } {
+  const merchantAmount = order.merchantAmount ?? order.subtotal ?? (order.items ?? []).reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
+  const platformDeliveryFee = order.platformDeliveryFee ?? order.delivery?.fee ?? 0;
+  const grandTotal = Number(order.total) || merchantAmount + platformDeliveryFee;
+  return { merchantAmount, platformDeliveryFee, grandTotal };
+}
+
 const SOFT_LAUNCH_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'جديد',
@@ -40,7 +49,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function OrdersPage() {
   const { tenantId } = useAdminContext();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const showGrandTotal = isPlatformAdmin(user?.role);
   const [filter, setFilter] = useState<'today' | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -142,7 +153,10 @@ export default function OrdersPage() {
         </span>
       </div>
     ),
-    total: <span className="font-bold text-primary">{formatPrice(o.total)}</span>,
+    total: (() => {
+      const { merchantAmount, grandTotal } = getOrderAmounts(o as Order & { merchantAmount?: number; platformDeliveryFee?: number; subtotal?: number; delivery?: { fee?: number }; items?: { totalPrice?: number }[] });
+      return <span className="font-bold text-primary">{formatPrice(showGrandTotal ? grandTotal : merchantAmount)}</span>;
+    })(),
     status: (
       <span className="inline-flex items-center gap-1.5">
         <InlineBadge status={o.status} />
@@ -266,7 +280,7 @@ export default function OrdersPage() {
                 { key: 'date', label: 'التاريخ' },
                 { key: 'customer', label: 'العميل' },
                 { key: 'items', label: 'العناصر' },
-                { key: 'total', label: 'المجموع' },
+                { key: 'total', label: showGrandTotal ? 'المجموع الكلي' : 'حصة التاجر' },
                 { key: 'status', label: 'الحالة' },
                 { key: 'actions', label: 'إجراءات', className: 'w-48' },
               ]}
@@ -293,6 +307,7 @@ export default function OrdersPage() {
               setSelectedOrder(null);
             }}
             useApi={USE_API}
+            showGrandTotal={showGrandTotal}
           />
         )}
       </Drawer>
@@ -314,12 +329,15 @@ function OrderDrawerContent({
   tenant,
   onStatusChange,
   useApi,
+  showGrandTotal,
 }: {
-  order: Order;
+  order: Order & { merchantAmount?: number; platformDeliveryFee?: number; subtotal?: number; delivery?: { fee?: number }; items?: { totalPrice?: number }[] };
   tenant: import('@nmd/core').Tenant | null | undefined;
   onStatusChange: () => void;
   useApi?: boolean;
+  showGrandTotal?: boolean;
 }) {
+  const { merchantAmount, platformDeliveryFee, grandTotal } = getOrderAmounts(order);
   const [updating, setUpdating] = useState(false);
   const addToast = useToast().addToast;
   const orderActionsBase = import.meta.env.VITE_ORDER_ACTIONS_BASE_URL ?? (typeof window !== 'undefined' ? `${window.location.origin}/merchant` : 'https://nmd.marketing/merchant');
@@ -424,7 +442,7 @@ function OrderDrawerContent({
       <div>
         <p className="text-sm font-medium text-gray-700 mb-2">العناصر</p>
         <ul className="space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50/50">
-          {order.items.map((item, i) => {
+          {(order.items ?? []).map((item, i) => {
             const variantLabels = (item.selectedOptions ?? [])
               .map((s) => {
                 const g = item.optionGroups?.find((x) => x.id === s.optionGroupId);
@@ -455,9 +473,21 @@ function OrderDrawerContent({
             );
           })}
         </ul>
-        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
-          <span className="font-semibold text-gray-900">المجموع</span>
-          <span className="font-bold text-primary text-lg">{formatPrice(order.total)}</span>
+        <div className="space-y-1 mt-2 pt-2 border-t border-gray-200">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-600">المجموع (منتجات)</span>
+            <span>{formatPrice(merchantAmount)}</span>
+          </div>
+          {platformDeliveryFee > 0 && (
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-600">رسوم التوصيل</span>
+              <span>{formatPrice(platformDeliveryFee)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-1">
+            <span className="font-semibold text-gray-900">{showGrandTotal ? 'المجموع الكلي' : 'حصة التاجر (صافي المنتجات)'}</span>
+            <span className="font-bold text-primary text-lg">{formatPrice(showGrandTotal ? grandTotal : merchantAmount)}</span>
+          </div>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { useAdminContext } from '../context/AdminContext';
 import { createAdminData } from '../store/admin-data';
 import { getTenantById, uploadFiles } from '@nmd/mock';
 import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
+import { normalizeStorePhoneForSave, validateStorePhone, storedPhoneToDisplay, STORE_PHONE_HELPER_TEXT } from '../lib/store-phone';
 import { MockApiClient } from '@nmd/mock';
 import type { TenantBranding, StorefrontHero, StorefrontBanner } from '@nmd/core';
 import { tenantBrandingToCssVars, generateId, formatMoney } from '@nmd/core';
@@ -47,7 +48,7 @@ export default function BrandingPage() {
     layoutStyle: tenant.layoutStyle ?? 'default',
     hero: normalizeHero(tenant.hero),
     banners: tenant.banners ?? [],
-    whatsappPhone: (tenant as { whatsappPhone?: string }).whatsappPhone ?? '',
+    whatsappPhone: storedPhoneToDisplay((tenant as { whatsappPhone?: string }).whatsappPhone ?? ''),
   } : {
     logoUrl: '',
     primaryColor: '#0f766e',
@@ -88,7 +89,7 @@ export default function BrandingPage() {
         layoutStyle: tenant.layoutStyle ?? f.layoutStyle ?? 'default',
         hero: normalizeHero(tenant.hero),
         banners: tenant.banners ?? [],
-        whatsappPhone: (tenant as { whatsappPhone?: string }).whatsappPhone ?? f.whatsappPhone ?? '',
+        whatsappPhone: storedPhoneToDisplay((tenant as { whatsappPhone?: string }).whatsappPhone ?? '') || (f.whatsappPhone ?? ''),
       }));
     }
   }, [tenant?.id, tenant?.logoUrl, tenant?.primaryColor, tenant?.secondaryColor, tenant?.fontFamily, tenant?.radiusScale, tenant?.layoutStyle, tenant?.hero, tenant?.banners]);
@@ -231,7 +232,12 @@ export default function BrandingPage() {
         link: cta,
       };
     });
-    const whatsappPhone = /^\d*$/.test(form.whatsappPhone ?? '') ? (form.whatsappPhone ?? '').trim() : (form.whatsappPhone ?? '').replace(/\D/g, '');
+    const phoneValidation = validateStorePhone(form.whatsappPhone ?? '');
+    if (!phoneValidation.ok) {
+      addToast(phoneValidation.error ?? 'رقم الهاتف غير صالح', 'error');
+      return;
+    }
+    const whatsappPhone = normalizeStorePhoneForSave(form.whatsappPhone ?? '');
     try {
       if (USE_API) {
         const logoUrl = form.logoUrl || lastUploadedLogoRef.current || '';
@@ -407,17 +413,23 @@ export default function BrandingPage() {
                 setForm((f) => ({ ...f, layoutStyle: e.target.value as TenantBranding['layoutStyle'] }))
               }
             />
-            <Input
-              label="رقم واتساب لاستقبال الطلبات"
-              value={form.whatsappPhone ?? ''}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '');
-                setForm((f) => ({ ...f, whatsappPhone: v }));
-              }}
-              placeholder="966501234567"
-              dir="ltr"
-            />
-            <p className="text-xs text-gray-500">أرقام فقط مع رمز الدولة (مثال: 966501234567)</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1 ms-1">رقم واتساب لاستقبال الطلبات</label>
+              <div className="flex rounded-[var(--radius)] border border-gray-300 overflow-hidden">
+                <span className="inline-flex items-center h-10 px-3 bg-gray-100 text-gray-600 text-sm font-medium border-r border-gray-300" dir="ltr">+972</span>
+                <Input
+                  value={form.whatsappPhone ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    setForm((f) => ({ ...f, whatsappPhone: v }));
+                  }}
+                  placeholder="541234567"
+                  dir="ltr"
+                  className="rounded-none border-0 border-l border-gray-300"
+                />
+              </div>
+              <p className="text-xs text-gray-600 mt-1.5 ms-1" dir="rtl" role="note">{STORE_PHONE_HELPER_TEXT}</p>
+            </div>
           </div>
         </Card>
         <Card>

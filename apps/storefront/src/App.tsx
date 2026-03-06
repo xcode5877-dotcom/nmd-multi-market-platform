@@ -1,8 +1,9 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { Routes, Route, useParams } from 'react-router-dom';
+import { Routes, Route, useParams, useLocation } from 'react-router-dom';
 import { ThemeProvider, ToastProvider, LayoutShell } from '@nmd/ui';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
+import { PLATFORM_BRANDING } from '@nmd/core';
 import { getTenantSlugOrId, persistTenant } from './lib/tenant';
 import { useAppStore } from './store/app';
 import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
@@ -10,6 +11,17 @@ import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
 import { MerchantAuthProvider } from './contexts/MerchantAuthContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 import { InstallBanner } from './components/InstallBanner';
+
+/** True when route is mall/city (platform), not a tenant store (/:slug). Forces platform brand colors. */
+function isPlatformRoute(pathname: string): boolean {
+  const p = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+  const first = p.split('/').filter(Boolean)[0] ?? '';
+  if (!first) return true; // "/"
+  if (first === 'order' || first === 'merchant' || first === 'my-activity') return true;
+  if (first === 'daburiyya' || first === 'dabburiyya' || first === 'iksal') return true;
+  if (first === 'p') return true; // /p/:productId
+  return false;
+}
 
 const Layout = lazy(() => import('./layouts/Layout'));
 const LandingLayout = lazy(() => import('./layouts/LandingLayout'));
@@ -36,6 +48,10 @@ function TenantGate() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const tenantSlugOrId = tenantSlug ?? getTenantSlugOrId();
   const setTenant = useAppStore((s) => s.setTenant);
+
+  useEffect(() => {
+    if (tenantSlugOrId) setTenant(null, null, null, null, null);
+  }, [tenantSlugOrId, setTenant]);
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant', tenantSlugOrId],
@@ -72,7 +88,7 @@ function TenantGate() {
   }
 
   return (
-    <ThemeProvider branding={tenant.branding} dir="rtl">
+    <ThemeProvider key={tenant.id} branding={tenant.branding} dir="rtl">
       <LayoutShell layoutStyle={tenant.branding.layoutStyle}>
         <Routes>
               <Route element={<Layout />}>
@@ -92,12 +108,23 @@ function TenantGate() {
   );
 }
 
+function PlatformThemeGate({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  if (!isPlatformRoute(pathname)) return <>{children}</>;
+  return (
+    <ThemeProvider key="platform" branding={PLATFORM_BRANDING} dir="rtl">
+      {children}
+    </ThemeProvider>
+  );
+}
+
 function AppContent() {
   return (
     <ToastProvider>
       <CustomerAuthProvider>
         <MerchantAuthProvider>
         <GlobalAuthModalProvider>
+          <PlatformThemeGate>
           <Suspense fallback={<PageSkeleton />}>
             <TenantBroadcastListener />
             <InstallBanner />
@@ -125,6 +152,7 @@ function AppContent() {
               <Route path="/:tenantSlug/*" element={<TenantGate />} />
             </Routes>
           </Suspense>
+          </PlatformThemeGate>
         </GlobalAuthModalProvider>
         </MerchantAuthProvider>
       </CustomerAuthProvider>

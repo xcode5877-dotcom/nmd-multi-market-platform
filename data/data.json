@@ -22011,6 +22011,254 @@
       },
       "id": "audit-eb658ecf-fbf6-4be8-af68-b5e265c2d1a6",
       "at": "2026-03-05T08:59:46.338Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "reason": "jyddv",
+      "emergencyMode": true,
+      "before": {
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "slug": "ms-brands",
+        "name": "MS BRAND",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772515525402-nueajgna.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "MS BRAND",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772515548660-csdwypi2.jpg",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://nmd.marketing/api/uploads/1772515563630-p64gyieq.jpg",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "businessType": "SERVICE",
+        "marketCategory": "816423cd-d95a-4018-91b8-be6adade85f9",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "marketSortOrder": 0,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "openTime": "08:00",
+        "closeTime": "17:00",
+        "forceClosed": false,
+        "storeType": "RESTAURANT"
+      },
+      "after": {
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "slug": "ms-brands",
+        "name": "MS BRAND",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772515525402-nueajgna.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "MS BRAND",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772515548660-csdwypi2.jpg",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://nmd.marketing/api/uploads/1772515563630-p64gyieq.jpg",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "businessType": "SERVICE",
+        "marketCategory": "816423cd-d95a-4018-91b8-be6adade85f9",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "marketSortOrder": 0,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "openTime": "08:00",
+        "closeTime": "17:00",
+        "forceClosed": false,
+        "storeType": "RESTAURANT"
+      },
+      "id": "audit-291d165c-b2fb-41b4-b7c3-c2148e23653e",
+      "at": "2026-03-05T11:54:21.986Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+      "reason": "jyddv",
+      "emergencyMode": true,
+      "before": {
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "slug": "ms-brands",
+        "name": "MS BRAND",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772515525402-nueajgna.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "MS BRAND",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772515548660-csdwypi2.jpg",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://nmd.marketing/api/uploads/1772515563630-p64gyieq.jpg",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "businessType": "SERVICE",
+        "marketCategory": "816423cd-d95a-4018-91b8-be6adade85f9",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "marketSortOrder": 0,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "openTime": "08:00",
+        "closeTime": "17:00",
+        "forceClosed": false,
+        "storeType": "PROFESSIONAL"
+      },
+      "after": {
+        "id": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+        "slug": "ms-brands",
+        "name": "MS BRAND",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772515525402-nueajgna.jpg",
+        "primaryColor": "#420f0c",
+        "secondaryColor": "#fcfcfc",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "createdAt": "2026-02-13T09:43:17.616Z",
+        "hero": {
+          "title": "MS BRAND",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772515548660-csdwypi2.jpg",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [
+          {
+            "id": "060cee1a-b710-4a58-bc74-79f09c0fbe2d",
+            "imageUrl": "https://nmd.marketing/api/uploads/1772515563630-p64gyieq.jpg",
+            "enabled": true,
+            "sortOrder": 0,
+            "title": "تخفيضات هائلة",
+            "ctaHref": "",
+            "link": ""
+          }
+        ],
+        "whatsappPhone": "972505595957",
+        "type": "CLOTHING",
+        "businessType": "SERVICE",
+        "marketCategory": "816423cd-d95a-4018-91b8-be6adade85f9",
+        "marketId": "market-dabburiyya",
+        "isListedInMarket": true,
+        "marketSortOrder": 0,
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "defaultPrepTimeMin": 30,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "openTime": "08:00",
+        "closeTime": "17:00",
+        "forceClosed": false,
+        "storeType": "PROFESSIONAL"
+      },
+      "id": "audit-51080ba1-9811-4f8b-96c1-5f1346c5b376",
+      "at": "2026-03-05T11:56:39.113Z"
     }
   ],
   "catalog": {
