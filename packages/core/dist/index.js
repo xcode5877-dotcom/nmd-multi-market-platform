@@ -111,6 +111,7 @@ function parseTimeHHmm(s) {
 }
 function getOperationalStatus(tenant) {
   if (tenant.forceClosed === true) return "closed";
+  if (tenant.operationalStatus === "open" || tenant.operationalStatus === "busy") return tenant.operationalStatus;
   const hasSimpleHours = tenant.openTime !== void 0 || tenant.closeTime !== void 0;
   if (hasSimpleHours) {
     const openTime = tenant.openTime ?? DEFAULT_OPEN;
@@ -121,7 +122,11 @@ function getOperationalStatus(tenant) {
     const nowMin2 = hour2 * 60 + minute2;
     const openMin2 = open.h * 60 + open.m;
     const closeMin2 = close.h * 60 + close.m;
-    if (nowMin2 >= openMin2 && nowMin2 < closeMin2) return "open";
+    if (closeMin2 > openMin2) {
+      if (nowMin2 >= openMin2 && nowMin2 < closeMin2) return "open";
+    } else {
+      if (nowMin2 >= openMin2 || nowMin2 < closeMin2) return "open";
+    }
     return "closed";
   }
   if (tenant.operationalStatus) return tenant.operationalStatus;
@@ -162,13 +167,22 @@ var LAYOUT_STYLES = {
   compact: { header: "flat", card: "flat", section: "tight", button: "square", badge: "subtle" },
   spacious: { header: "strong", card: "strong", section: "spacious", button: "pill", badge: "strong" }
 };
+var PLATFORM_BRANDING = {
+  logoUrl: "",
+  primaryColor: "#0f766e",
+  secondaryColor: "#f0fdfa",
+  fontFamily: '"Cairo", system-ui, sans-serif',
+  radiusScale: 1,
+  layoutStyle: "default"
+};
 function tenantBrandingToCssVars(branding) {
-  const style = LAYOUT_STYLES[branding.layoutStyle] ?? LAYOUT_STYLES.default;
+  const b = branding ?? PLATFORM_BRANDING;
+  const style = LAYOUT_STYLES[b.layoutStyle] ?? LAYOUT_STYLES.default;
   return {
-    "--color-primary": branding.primaryColor,
-    "--color-secondary": branding.secondaryColor,
-    "--radius": `${branding.radiusScale * 4}px`,
-    "--font": branding.fontFamily,
+    "--color-primary": b.primaryColor,
+    "--color-secondary": b.secondaryColor,
+    "--radius": `${b.radiusScale * 4}px`,
+    "--font": b.fontFamily,
     "--layout-header": style.header,
     "--layout-card": style.card,
     "--layout-section": style.section,
@@ -263,6 +277,8 @@ function buildWhatsAppMessage(order, tenant) {
   const lines = [];
   const orderId = typeof order?.id === "string" ? order.id : String(order?.id ?? "");
   const createdAt = order?.createdAt ? new Date(order.createdAt) : /* @__PURE__ */ new Date();
+  lines.push(`*\u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u062C\u062F\u064A\u062F:*`);
+  lines.push("---");
   lines.push(`*\u0637\u0644\u0628 \u062C\u062F\u064A\u062F - ${tenant?.name ?? ""}*`);
   lines.push("");
   lines.push(`#${orderId.slice(0, 8)}`);
@@ -271,8 +287,13 @@ function buildWhatsAppMessage(order, tenant) {
   const delivery = order.delivery;
   if (order.fulfillmentType === "DELIVERY" || delivery?.method === "DELIVERY") {
     lines.push("\u0637\u0631\u064A\u0642\u0629 \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645: \u062A\u0648\u0635\u064A\u0644");
-    if (delivery?.zoneName) lines.push(`\u0627\u0644\u0645\u0646\u0637\u0642\u0629: ${delivery.zoneName}`);
-    if (delivery?.fee != null) lines.push(`\u0633\u0639\u0631 \u0627\u0644\u062A\u0648\u0635\u064A\u0644: \u20AA${delivery.fee}`);
+    if (delivery?.zoneName && delivery?.fee != null) {
+      lines.push(`\u0627\u0644\u0645\u0646\u0637\u0642\u0629: ${delivery.zoneName} (+${formatMoney(delivery.fee)})`);
+    } else if (delivery?.zoneName) {
+      lines.push(`\u0627\u0644\u0645\u0646\u0637\u0642\u0629: ${delivery.zoneName}`);
+    } else if (delivery?.fee != null) {
+      lines.push(`\u0633\u0639\u0631 \u0627\u0644\u062A\u0648\u0635\u064A\u0644: ${formatMoney(delivery.fee)}`);
+    }
     if (delivery?.addressText) lines.push(`\u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${delivery.addressText}`);
     else if (order.deliveryAddress) lines.push(`\u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${order.deliveryAddress}`);
   } else {
@@ -303,7 +324,13 @@ function buildWhatsAppMessage(order, tenant) {
   }
   if (items.length === 0) lines.push("\u2014");
   lines.push("");
-  lines.push(`*\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: ${formatMoney(order.total)}*`);
+  lines.push("---");
+  const subtotal = order.merchantAmount ?? order.subtotal ?? items.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
+  const deliveryFee = order.platformDeliveryFee ?? order.delivery?.fee ?? 0;
+  const total = Number(order.total) || subtotal + deliveryFee;
+  lines.push(`\u0627\u0644\u0645\u062C\u0645\u0648\u0639: ${formatMoney(subtotal)}`);
+  lines.push(`\u062E\u062F\u0645\u0629 \u0627\u0644\u062A\u0648\u0635\u064A\u0644: ${formatMoney(deliveryFee)}`);
+  lines.push(`*\u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u062F\u0641\u0639: ${formatMoney(total)}*`);
   if (order.notes) lines.push(`\u0645\u0644\u0627\u062D\u0638\u0627\u062A: ${order.notes}`);
   return lines.join("\n");
 }
@@ -318,6 +345,27 @@ function buildWhatsAppUrl(phone, message) {
   if (cleaned.length < 9) return "";
   const encoded = encodeURIComponent(typeof message === "string" ? message : "");
   return `https://wa.me/${cleaned}?text=${encoded}`;
+}
+function buildWhatsAppDeepLink(phone, message) {
+  if (!phone || typeof phone !== "string") return "";
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length < 9) return "";
+  const encoded = encodeURIComponent(typeof message === "string" ? message : "");
+  return `whatsapp://send?phone=${cleaned}&text=${encoded}`;
+}
+var DEFAULT_ORDER_ACTIONS_BASE = "https://nmd.marketing/merchant";
+function buildOrderActionLinksSection(orderId, baseUrl = DEFAULT_ORDER_ACTIONS_BASE) {
+  const id = typeof orderId === "string" ? orderId : String(orderId ?? "");
+  if (!id) return "";
+  const base = (baseUrl ?? DEFAULT_ORDER_ACTIONS_BASE).replace(/\/$/, "");
+  const lines = [
+    "",
+    "\u2014\u2014\u2014 (\u0644\u0644\u062A\u0627\u062C\u0631 \u0641\u0642\u0637) \u2014\u2014\u2014",
+    `\u2705 \u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0637\u0644\u0628: ${base}/order-actions/${id}/confirm`,
+    `\u{1F9D1}\u200D\u{1F373} \u0627\u0644\u0637\u0644\u0628 \u062C\u0627\u0647\u0632: ${base}/order-actions/${id}/ready`,
+    `\u{1F69A} \u062A\u0645 \u0627\u0644\u0625\u0631\u0633\u0627\u0644: ${base}/order-actions/${id}/shipped`
+  ];
+  return lines.join("\n");
 }
 
 // src/utils/option-groups.ts
@@ -503,9 +551,12 @@ export {
   LAST_TENANT_KEY,
   PLACEMENT_LABELS_AR,
   PLACEMENT_OPTIONS_AR,
+  PLATFORM_BRANDING,
   ROLE_PERMISSIONS,
   applyCampaign,
   applyOptionDeltas,
+  buildOrderActionLinksSection,
+  buildWhatsAppDeepLink,
   buildWhatsAppMessage,
   buildWhatsAppUrl,
   filterOptionGroupsForTenant,

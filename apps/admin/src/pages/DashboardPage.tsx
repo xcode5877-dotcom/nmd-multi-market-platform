@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, PageHeader, EmptyState, Button } from '@nmd/ui';
@@ -8,7 +9,7 @@ import { createAdminData } from '../store/admin-data';
 import { getDeliverySettings, getTenantById, listOrdersByTenant, listCampaigns } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { isValidWhatsAppPhone, formatPrice } from '@nmd/core';
-import { Check, Circle, Copy, ExternalLink, AlertCircle } from 'lucide-react';
+import { Check, Circle, Copy, ExternalLink, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
@@ -18,6 +19,7 @@ const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL ?? '').replace(/\/$/
 export default function DashboardPage() {
   const { tenantId } = useAdminContext();
   const { user } = useAuth();
+  const [readinessPanelCollapsed, setReadinessPanelCollapsed] = useState(false);
   const adminData = createAdminData(tenantId);
 
   const catalogQuery = useQuery({
@@ -101,7 +103,7 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader title="لوحة التحكم" subtitle="نظرة عامة على متجرك" />
-        <LaunchReadinessPanel checks={launchChecks} ready={launchReady} />
+        <LaunchReadinessPanel checks={launchChecks} ready={launchReady} collapsed={readinessPanelCollapsed} onToggleCollapsed={() => setReadinessPanelCollapsed((c) => !c)} />
         <EmptyState
           title="المحل جاهز ✅"
           description="لسه ما تمت إضافة تصنيفات أو منتجات."
@@ -124,34 +126,34 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title="لوحة التحكم" subtitle="نظرة عامة على متجرك" />
-      <LaunchReadinessPanel checks={launchChecks} ready={launchReady} />
+      <LaunchReadinessPanel checks={launchChecks} ready={launchReady} collapsed={readinessPanelCollapsed} onToggleCollapsed={() => setReadinessPanelCollapsed((c) => !c)} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
+        <Card className="w-full shadow-sm border border-slate-100">
           <div className="p-4">
             <p className="text-sm text-gray-500">إيرادات اليوم</p>
             <p className="text-2xl font-bold text-primary">{stats ? formatPrice(stats.dailyRevenue) : '—'}</p>
           </div>
         </Card>
-        <Card>
+        <Card className="w-full shadow-sm border border-slate-100">
           <div className="p-4">
             <p className="text-sm text-gray-500">إيرادات الشهر</p>
             <p className="text-2xl font-bold text-primary">{stats ? formatPrice(stats.monthlyRevenue) : '—'}</p>
           </div>
         </Card>
-        <Card>
+        <Card className="w-full shadow-sm border border-slate-100">
           <div className="p-4">
             <p className="text-sm text-gray-500">الطلبات اليوم</p>
             <p className="text-2xl font-bold text-primary">{ordersTodayCount}</p>
           </div>
         </Card>
-        <Card>
+        <Card className="w-full shadow-sm border border-slate-100">
           <div className="p-4">
             <p className="text-sm text-gray-500">التصنيفات</p>
             <p className="text-2xl font-bold text-primary">{categories.length}</p>
           </div>
         </Card>
       </div>
-      <Card className="mb-6">
+      <Card className="mb-6 shadow-sm border border-slate-100">
         <div className="p-4">
           <h2 className="font-semibold text-gray-900 mb-3">الملخص المالي (من الطلبات المكتملة)</h2>
           <p className="text-sm text-gray-500 mb-2">عمولة المنصة: {stats?.platformCommissionPercent ?? 0}%</p>
@@ -165,7 +167,7 @@ export default function DashboardPage() {
         </div>
       </Card>
       <div className="grid md:grid-cols-2 gap-6 mb-6">
-        <Card>
+        <Card className="shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">تنبيه المخزون المنخفض</h2>
             <div className="h-12 rounded-lg bg-amber-50 flex items-center justify-center text-amber-700 text-sm">
@@ -173,7 +175,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
-        <Card>
+        <Card className="shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">الوحدات المفعّلة</h2>
             <p className="text-sm text-gray-500">Commerce, Restaurant, Apparel, Inventory, Analytics</p>
@@ -181,7 +183,7 @@ export default function DashboardPage() {
         </Card>
       </div>
       <div className="grid md:grid-cols-2 gap-6 mb-6">
-        <Card>
+        <Card className="shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">رابط المتجر</h2>
             <div className="flex gap-2">
@@ -203,7 +205,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
-        <Card>
+        <Card className="shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">معاينة الجوال</h2>
             <div className="flex justify-center">
@@ -223,7 +225,7 @@ export default function DashboardPage() {
         </Card>
       </div>
       {!setupComplete && (
-        <Card className="mb-6">
+        <Card className="mb-6 shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">قائمة الإعداد</h2>
             <ul className="space-y-2">
@@ -265,39 +267,69 @@ const LAUNCH_LABELS: Record<string, string> = {
 function LaunchReadinessPanel({
   checks,
   ready,
+  collapsed,
+  onToggleCollapsed,
 }: {
   checks: Record<string, boolean>;
   ready: boolean;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
   return (
-    <Card className="mb-6" dir="rtl">
+    <Card className="mb-6 shadow-sm border border-slate-100" dir="rtl">
       <div className="p-4">
-        <h2 className="font-semibold text-gray-900 mb-3">جاهزية الإطلاق</h2>
-        <ul className="space-y-2 mb-4">
-          {Object.entries(checks).map(([key, ok]) => (
-            <li key={key} className="flex items-center gap-2 text-sm">
-              {ok ? (
-                <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold text-gray-900">جاهزية الإطلاق</h2>
+          {onToggleCollapsed && (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? (
+                <>
+                  <span>إظهار</span>
+                  <ChevronDown className="w-4 h-4" />
+                </>
               ) : (
-                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <>
+                  <span>إخفاء</span>
+                  <ChevronUp className="w-4 h-4" />
+                </>
               )}
-              <span className={ok ? 'text-gray-700' : 'text-gray-600'}>{LAUNCH_LABELS[key] ?? key}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="pt-2 border-t border-gray-200">
-          {ready ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 text-green-800 text-sm font-medium">
-              <Check className="w-4 h-4" />
-              المحل جاهز للإطلاق
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium">
-              <AlertCircle className="w-4 h-4" />
-              المحل غير جاهز بعد
-            </span>
+            </button>
           )}
         </div>
+        {!collapsed && (
+          <>
+            <ul className="space-y-2 mb-4 mt-3">
+              {Object.entries(checks).map(([key, ok]) => (
+                <li key={key} className="flex items-center gap-2 text-sm">
+                  {ok ? (
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  )}
+                  <span className={ok ? 'text-gray-700' : 'text-gray-600'}>{LAUNCH_LABELS[key] ?? key}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="pt-2 border-t border-gray-200">
+              {ready ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 text-green-800 text-sm font-medium">
+                  <Check className="w-4 h-4" />
+                  المحل جاهز للإطلاق
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium">
+                  <AlertCircle className="w-4 h-4" />
+                  المحل غير جاهز بعد
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </Card>
   );

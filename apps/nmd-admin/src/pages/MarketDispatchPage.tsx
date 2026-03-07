@@ -43,6 +43,14 @@ type OrderRow = {
 /** SLA thresholds (minutes): < 30 green, 30–45 amber, > 45 red */
 const SLA_OK = 30;
 const SLA_WARN = 45;
+/** In-transit (PICKED_UP) duration: 15m = orange warning, 25m = red critical */
+const IN_TRANSIT_WARN_MIN = 15;
+const IN_TRANSIT_CRITICAL_MIN = 25;
+/** Legacy badge "تأخر توصيل" when > this many minutes in transit */
+const IN_TRANSIT_DELAY_MIN = 20;
+/** READY without courier: 3m = warning, 5m = panic (red pulse) */
+const READY_WARNING_MIN = 3;
+const READY_PANIC_MIN = 5;
 
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
   UNASSIGNED: 'غير معيّن',
@@ -79,6 +87,47 @@ function DurationAndSla({ order }: { order: OrderRow }) {
       <span className={`inline-flex w-fit px-2 py-0.5 rounded text-xs font-medium ${slaClass}`}>{slaLabel}</span>
     </div>
   );
+}
+
+/** Minutes in transit (since PICKED_UP); null if not PICKED_UP */
+function inTransitMinutes(order: OrderRow): number | null {
+  if ((order.deliveryStatus ?? '') !== 'PICKED_UP') return null;
+  const pickedUpAt = order.deliveryTimeline?.pickedUpAt;
+  if (!pickedUpAt) return null;
+  return (Date.now() - new Date(pickedUpAt).getTime()) / (60 * 1000);
+}
+
+/** True if order is PICKED_UP and has been in transit for more than IN_TRANSIT_DELAY_MIN minutes */
+function isInTransitDelayed(order: OrderRow): boolean {
+  const min = inTransitMinutes(order);
+  return min != null && min > IN_TRANSIT_DELAY_MIN;
+}
+
+/** In-transit row styling: > 25m = critical (red), > 15m = warning (orange) */
+function inTransitRowClass(order: OrderRow): string {
+  const min = inTransitMinutes(order);
+  if (min == null) return '';
+  if (min >= IN_TRANSIT_CRITICAL_MIN) return 'bg-red-100';
+  if (min >= IN_TRANSIT_WARN_MIN) return 'bg-amber-50';
+  return '';
+}
+
+/** Minutes READY without courier; null if not READY or has courier */
+function readyWaitingMinutes(order: OrderRow): number | null {
+  if (order.status !== 'READY' || order.courierId) return null;
+  const since = order.readyAt ?? order.createdAt;
+  if (!since) return null;
+  return (Date.now() - new Date(since).getTime()) / (60 * 1000);
+}
+
+function isReadyPanic(order: OrderRow): boolean {
+  const min = readyWaitingMinutes(order);
+  return min != null && min >= READY_PANIC_MIN;
+}
+
+function isReadyWarning(order: OrderRow): boolean {
+  const min = readyWaitingMinutes(order);
+  return min != null && min >= READY_WARNING_MIN && min < READY_PANIC_MIN;
 }
 
 export default function MarketDispatchPage() {
@@ -471,8 +520,16 @@ export default function MarketDispatchPage() {
             const deliveryStatusClass = DELIVERY_STATUS_CLASSES[deliveryStatus] ?? 'bg-gray-100 text-gray-700';
             const respBadge = isMarket ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700';
             const assignableCouriers = getAssignableCouriers(o);
+            const readyWaitMin = readyWaitingMinutes(o);
+            const inTransitClass = inTransitRowClass(o);
+            const rowClass = [
+              'border-t border-gray-100',
+              isReadyPanic(o) && 'bg-red-50 animate-pulse',
+              isReadyWarning(o) && !isReadyPanic(o) && 'bg-amber-50',
+              inTransitClass && !isReadyPanic(o) && !isReadyWarning(o) && inTransitClass,
+            ].filter(Boolean).join(' ');
             return (
-              <tr key={o.id} className="border-t border-gray-100">
+              <tr key={o.id} className={rowClass}>
                 <td className="px-4 py-2 font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</td>
                 <td className="px-4 py-2">
                   <div className="flex flex-col gap-0.5">
@@ -517,9 +574,21 @@ export default function MarketDispatchPage() {
                   )}
                 </td>
                 <td className="px-4 py-2">
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 items-center">
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass}`}>{statusLabel}</span>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${deliveryStatusClass}`}>{deliveryStatusLabel}</span>
+                    {isInTransitDelayed(o) && (
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title="تأخر في التوصيل (أكثر من 20 دقيقة منذ الاستلام)">
+                        تأخر توصيل
+                      </span>
+                    )}
+                    {readyWaitMin != null && (
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium font-mono ${
+                        readyWaitMin >= READY_PANIC_MIN ? 'bg-red-100 text-red-800' : readyWaitMin >= READY_WARNING_MIN ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                      }`} title="وقت انتظار السائق">
+                        انتظار: {Math.floor(readyWaitMin)}:{String(Math.floor((readyWaitMin % 1) * 60)).padStart(2, '0')}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-2">

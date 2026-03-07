@@ -887,6 +887,99 @@
       "collections": [],
       "operationalStatus": "open",
       "businessType": "RETAIL"
+    },
+    {
+      "name": "Hamodi flowers",
+      "slug": "hamodi-flowers",
+      "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+      "primaryColor": "#f0d681",
+      "secondaryColor": "#d4a574",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "_meta": {
+        "emergencyReason": "اضافة متجر"
+      },
+      "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "marketId": "market-dabburiyya",
+      "createdAt": "2026-03-06T16:40:54.459Z",
+      "hero": {
+        "title": "Hamodi flowers",
+        "subtitle": "",
+        "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [],
+      "isListedInMarket": true,
+      "marketCategory": "GENERAL",
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      },
+      "collections": [],
+      "whatsappPhone": "972527282742",
+      "phone": "972527282742",
+      "operationalStatus": "open",
+      "businessType": "RETAIL"
+    },
+    {
+      "name": "قشطوطة",
+      "slug": "store-1772815941301",
+      "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+      "primaryColor": "#2e8fff",
+      "secondaryColor": "#ffffff",
+      "fontFamily": "\"Cairo\", system-ui, sans-serif",
+      "radiusScale": 1,
+      "layoutStyle": "default",
+      "enabled": true,
+      "type": "GENERAL",
+      "_meta": {
+        "emergencyReason": "اضافة متجر"
+      },
+      "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "marketId": "market-dabburiyya",
+      "createdAt": "2026-03-06T16:52:29.234Z",
+      "hero": {
+        "title": "قشطوطة",
+        "subtitle": "",
+        "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+        "ctaText": "تسوق الآن",
+        "ctaLink": "#",
+        "ctaHref": "#"
+      },
+      "banners": [],
+      "isListedInMarket": true,
+      "marketCategory": "d5716a93-00c8-4cd2-898f-1619f774f430",
+      "tenantType": "SHOP",
+      "deliveryProviderMode": "TENANT",
+      "allowMarketCourierFallback": true,
+      "financialConfig": {
+        "commissionType": "PERCENTAGE",
+        "commissionValue": 10,
+        "deliveryFeeModel": "TENANT"
+      },
+      "paymentCapabilities": {
+        "cash": true,
+        "card": false
+      },
+      "collections": [],
+      "whatsappPhone": "972502505230",
+      "phone": "972502505230",
+      "operationalStatus": "open",
+      "marketSortOrder": 0,
+      "businessType": "RETAIL"
     }
   ],
   "users": [
@@ -1007,6 +1100,20 @@
       "role": "TENANT_ADMIN",
       "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
       "password": "bf123456"
+    },
+    {
+      "id": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "email": "hflowers@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "password": "hf123456"
+    },
+    {
+      "id": "adaad583-742a-491e-8f74-a21975a8c780",
+      "email": "kshtota@nmd.com",
+      "role": "TENANT_ADMIN",
+      "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "password": "ks123456"
     }
   ],
   "auditEvents": [
@@ -25547,6 +25654,1117 @@
       "reason": "Password reset by root@nmd.com",
       "id": "audit-1ca0ee78-563b-4a15-8765-f94504907d38",
       "at": "2026-03-06T12:58:21.537Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "reason": "اضافة متجر",
+      "emergencyMode": true,
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-89f101ae-ee3c-4416-aa1a-8cee015ac517",
+      "at": "2026-03-06T16:40:54.506Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-07ed8fcb-98ff-4023-b538-3bef919253d6",
+      "at": "2026-03-06T16:43:23.984Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-9dbf1183-4413-4989-857e-39557aac16b8",
+      "at": "2026-03-06T16:45:57.477Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-0ad863cb-1cc5-4e09-873b-17602d3a0840",
+      "at": "2026-03-06T16:46:27.998Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "اكتشف أفضل المنتجات لدينا",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-ba996b99-cde5-48bc-9aa8-39a0320d0846",
+      "at": "2026-03-06T16:46:55.029Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-dc4dbf46-5128-4ff2-8375-25979cb3b09f",
+      "at": "2026-03-06T16:47:52.117Z"
+    },
+    {
+      "userId": "b189150c-2525-4794-8dbf-ea78d1b9bdd7",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+      "emergencyMode": false,
+      "before": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "after": {
+        "name": "Hamodi flowers",
+        "slug": "hamodi-flowers",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772815552538-eoyo6rzk.webp",
+        "primaryColor": "#f0d681",
+        "secondaryColor": "#d4a574",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:40:54.459Z",
+        "hero": {
+          "title": "Hamodi flowers",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772815586132-b6531rgo.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972527282742",
+        "phone": "972527282742",
+        "operationalStatus": "open"
+      },
+      "id": "audit-4ef627d4-1ca5-435a-8427-c778206d4965",
+      "at": "2026-03-06T16:48:01.139Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "create",
+      "entity": "tenant",
+      "entityId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "reason": "اضافة متجر",
+      "emergencyMode": true,
+      "after": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open"
+      },
+      "id": "audit-71709884-8063-49cd-b658-b59313a3b3fb",
+      "at": "2026-03-06T16:52:29.278Z"
+    },
+    {
+      "userId": "adaad583-742a-491e-8f74-a21975a8c780",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "emergencyMode": false,
+      "before": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230"
+      },
+      "after": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open"
+      },
+      "id": "audit-79a93b9b-5fad-4045-969c-d5ecd73cd6db",
+      "at": "2026-03-06T17:08:08.863Z"
+    },
+    {
+      "userId": "adaad583-742a-491e-8f74-a21975a8c780",
+      "role": "TENANT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "emergencyMode": false,
+      "before": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open"
+      },
+      "after": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open"
+      },
+      "id": "audit-e61ff477-e867-428c-b745-1dceb262809b",
+      "at": "2026-03-06T17:09:08.814Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "action": "create",
+      "entity": "globalCategory",
+      "entityId": "d5716a93-00c8-4cd2-898f-1619f774f430",
+      "reason": "اضافة متجر",
+      "emergencyMode": true,
+      "after": {
+        "id": "d5716a93-00c8-4cd2-898f-1619f774f430",
+        "title": "حلويات",
+        "icon": "📦🍰",
+        "isProfessional": false,
+        "sortOrder": 8
+      },
+      "id": "audit-ca161b2f-375b-436a-a003-8d6a7806788d",
+      "at": "2026-03-06T17:18:27.339Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "action": "update",
+      "entity": "globalCategory",
+      "entityId": "d5716a93-00c8-4cd2-898f-1619f774f430",
+      "reason": "اضافة متجر",
+      "emergencyMode": true,
+      "before": {
+        "id": "d5716a93-00c8-4cd2-898f-1619f774f430",
+        "title": "حلويات",
+        "icon": "📦🍰",
+        "isProfessional": false,
+        "sortOrder": 8
+      },
+      "after": {
+        "id": "d5716a93-00c8-4cd2-898f-1619f774f430",
+        "title": "حلويات",
+        "icon": "🍰",
+        "isProfessional": false,
+        "sortOrder": 8,
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        }
+      },
+      "id": "audit-4daaded0-241a-4d76-b3f0-1fce32a6db73",
+      "at": "2026-03-06T17:18:34.300Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "tenant",
+      "entityId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+      "reason": "اضافة متجر",
+      "emergencyMode": true,
+      "before": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "GENERAL",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open"
+      },
+      "after": {
+        "name": "قشطوطة",
+        "slug": "store-1772815941301",
+        "logoUrl": "https://nmd.marketing/api/uploads/1772816838211-wvrnb48f.webp",
+        "primaryColor": "#2e8fff",
+        "secondaryColor": "#ffffff",
+        "fontFamily": "\"Cairo\", system-ui, sans-serif",
+        "radiusScale": 1,
+        "layoutStyle": "default",
+        "enabled": true,
+        "type": "GENERAL",
+        "_meta": {
+          "emergencyReason": "اضافة متجر"
+        },
+        "id": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "marketId": "market-dabburiyya",
+        "createdAt": "2026-03-06T16:52:29.234Z",
+        "hero": {
+          "title": "قشطوطة",
+          "subtitle": "",
+          "imageUrl": "https://nmd.marketing/api/uploads/1772816883883-vn2sa009.webp",
+          "ctaText": "تسوق الآن",
+          "ctaLink": "#",
+          "ctaHref": "#"
+        },
+        "banners": [],
+        "isListedInMarket": true,
+        "marketCategory": "d5716a93-00c8-4cd2-898f-1619f774f430",
+        "tenantType": "SHOP",
+        "deliveryProviderMode": "TENANT",
+        "allowMarketCourierFallback": true,
+        "financialConfig": {
+          "commissionType": "PERCENTAGE",
+          "commissionValue": 10,
+          "deliveryFeeModel": "TENANT"
+        },
+        "paymentCapabilities": {
+          "cash": true,
+          "card": false
+        },
+        "collections": [],
+        "whatsappPhone": "972502505230",
+        "phone": "972502505230",
+        "operationalStatus": "open",
+        "marketSortOrder": 0
+      },
+      "id": "audit-75d0b732-18be-4c28-9d7a-edb43e2facce",
+      "at": "2026-03-06T17:18:51.666Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "a175a880-6d2d-440f-88b5-1f60d3ed5028",
+      "reason": "assign-courier courier-50971b77-4811-49e8-825b-78bd84041782",
+      "before": {},
+      "after": {
+        "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "deliveryStatus": "ASSIGNED"
+      },
+      "id": "audit-7c8b7147-2829-41a3-a19f-be9b9bfa1983",
+      "at": "2026-03-06T18:57:53.260Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "seed-order-preparing-001",
+      "reason": "assign-courier courier-dab-003",
+      "before": {},
+      "after": {
+        "courierId": "courier-dab-003",
+        "deliveryStatus": "ASSIGNED"
+      },
+      "id": "audit-e453cd2f-cc76-43f3-b646-d42b6d311149",
+      "at": "2026-03-06T20:05:57.938Z"
+    },
+    {
+      "userId": "user-root-admin",
+      "role": "ROOT_ADMIN",
+      "marketId": "market-dabburiyya",
+      "action": "update",
+      "entity": "order",
+      "entityId": "seed-order-preparing-001",
+      "reason": "assign-courier courier-50971b77-4811-49e8-825b-78bd84041782",
+      "before": {},
+      "after": {
+        "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+        "deliveryStatus": "ASSIGNED"
+      },
+      "id": "audit-9080f79f-2015-46e0-8292-d57ce651fe75",
+      "at": "2026-03-06T21:11:32.889Z"
     }
   ],
   "catalog": {
@@ -28007,6 +29225,38 @@
       ],
       "optionGroups": [],
       "optionItems": []
+    },
+    "b48b688d-fb40-4dd8-86da-b3d34dd1fffc": {
+      "categories": [
+        {
+          "id": "59609c45-3fbb-4b39-82be-6dd7209e240b",
+          "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+          "name": "ورود",
+          "slug": "ورود",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [],
+      "optionItems": []
+    },
+    "2f663230-f9b3-463c-b8ab-eb55a5474b95": {
+      "categories": [
+        {
+          "id": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+          "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+          "name": "قشطوطة",
+          "slug": "قشطوطة",
+          "sortOrder": 0,
+          "parentId": null,
+          "isVisible": true
+        }
+      ],
+      "products": [],
+      "optionGroups": [],
+      "optionItems": []
     }
   },
   "orders": [],
@@ -28105,7 +29355,7 @@
     "78463821-ccb7-48af-841b-84a18c42abb6": [],
     "f741d517-e7e6-48c9-a046-18d85acf1d25": [
       {
-        "id": "2dc9959a-701d-42c4-8256-baa015851c0d",
+        "id": "3871f209-9f9e-43c5-b0c0-39948828b59b",
         "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
         "name": "دبوريه ",
         "fee": 15,
@@ -28114,7 +29364,7 @@
         "sortOrder": 0
       },
       {
-        "id": "2bb1be89-5067-4bc4-bdfd-6c5f58281473",
+        "id": "8ca7c3a4-920a-4565-9319-41cbdc2d0346",
         "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28123,7 +29373,7 @@
         "sortOrder": 1
       },
       {
-        "id": "89fb31b4-30c6-4a9d-876c-31b5d147c285",
+        "id": "de145b33-56f8-43b3-bc1d-d856ee97aea4",
         "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28132,7 +29382,7 @@
         "sortOrder": 2
       },
       {
-        "id": "3d3ffbf5-d5f1-4252-afbf-4bea800887b7",
+        "id": "60fe0154-b474-44c5-a6d2-70cad9cb61c6",
         "tenantId": "f741d517-e7e6-48c9-a046-18d85acf1d25",
         "name": "اكسال",
         "fee": 30,
@@ -28143,7 +29393,7 @@
     ],
     "3f801fb9-f6f9-4e81-b3a2-f8954498cdac": [
       {
-        "id": "f9dcb4a5-4a33-48b6-a8a1-c5ed4333118c",
+        "id": "9506533e-abc5-4ade-81e0-94eec70c79d3",
         "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
         "name": "دبوريه ",
         "fee": 15,
@@ -28152,7 +29402,7 @@
         "sortOrder": 0
       },
       {
-        "id": "a1a251d2-a2e8-48e4-8001-30a0390ba1bf",
+        "id": "6fea2722-8946-4079-a1a4-f32002e4ee2b",
         "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28161,7 +29411,7 @@
         "sortOrder": 1
       },
       {
-        "id": "2c09d2c4-6fdb-4425-99ba-c149cc6a2d59",
+        "id": "e95b8cf8-8620-49ae-a99c-ac5b867083d8",
         "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28170,7 +29420,7 @@
         "sortOrder": 2
       },
       {
-        "id": "5aa01c2f-8483-47ec-b431-2bfd3b1c286a",
+        "id": "d9d690d9-d62e-450c-991c-2deff10520d5",
         "tenantId": "3f801fb9-f6f9-4e81-b3a2-f8954498cdac",
         "name": "اكسال",
         "fee": 30,
@@ -28181,7 +29431,7 @@
     ],
     "1cc59722-3687-45a1-9121-e7a608fba225": [
       {
-        "id": "e8958d1e-d689-426d-869c-bf1453c84c4e",
+        "id": "e9cc9d8e-62db-4ca8-b2c9-2f932327686e",
         "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
         "name": "دبوريه ",
         "fee": 15,
@@ -28190,7 +29440,7 @@
         "sortOrder": 0
       },
       {
-        "id": "dea9b82c-a4ec-42ae-9ae5-aed24477a3df",
+        "id": "f21c49cf-e585-4008-830f-ba07fc330d92",
         "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28199,7 +29449,7 @@
         "sortOrder": 1
       },
       {
-        "id": "9adbd846-917f-4137-b5b8-d053c90dde4c",
+        "id": "f0444720-9241-4126-8233-48287d18fdca",
         "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28208,7 +29458,7 @@
         "sortOrder": 2
       },
       {
-        "id": "cdf13e97-5e41-4647-a317-872a04965071",
+        "id": "c2a45055-51c3-4b04-bd6a-14f366e90b7e",
         "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
         "name": "اكسال",
         "fee": 30,
@@ -28219,7 +29469,7 @@
     ],
     "60904bcc-970a-45e3-8669-8015ee2afe64": [
       {
-        "id": "f55f6907-e7d3-4c42-9dad-6ddec47f6899",
+        "id": "5281ca33-2cfa-4016-9929-a3b3c64299b0",
         "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
         "name": "دبوريه ",
         "fee": 15,
@@ -28228,7 +29478,7 @@
         "sortOrder": 0
       },
       {
-        "id": "f9cac5a9-8029-4690-9152-83cad9c333a5",
+        "id": "58836db1-4852-456f-92fa-4622e1052e73",
         "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28237,7 +29487,7 @@
         "sortOrder": 1
       },
       {
-        "id": "84ea9972-a01e-452b-a869-4fa5c3d96da5",
+        "id": "5ac62dd1-ade8-49fd-ae5d-ddb131b40d91",
         "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28246,7 +29496,7 @@
         "sortOrder": 2
       },
       {
-        "id": "fb028103-c392-4272-b021-6f0e791cd339",
+        "id": "51c5dc8e-3a64-493e-ad7f-ad2b2157e357",
         "tenantId": "60904bcc-970a-45e3-8669-8015ee2afe64",
         "name": "اكسال",
         "fee": 30,
@@ -28257,7 +29507,7 @@
     ],
     "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d": [
       {
-        "id": "f268f34f-de7f-4c28-b562-df6718efded9",
+        "id": "800a479e-1d7a-4f69-9b7e-2a7ef31d8ace",
         "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
         "name": "دبوريه ",
         "fee": 15,
@@ -28266,7 +29516,7 @@
         "sortOrder": 0
       },
       {
-        "id": "bbe08af7-3367-47b0-a1ac-9dc7b21048ba",
+        "id": "35982cc0-e875-4f2d-bd1a-f62a00da35b8",
         "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28275,7 +29525,7 @@
         "sortOrder": 1
       },
       {
-        "id": "1cbcbbc2-2369-4e05-9138-c56d62591be4",
+        "id": "94499c00-59ed-4040-8f0d-4a8a94eaffa3",
         "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28284,7 +29534,7 @@
         "sortOrder": 2
       },
       {
-        "id": "1b2785d7-3780-48ea-95df-01bfda6de583",
+        "id": "1e9bd2a3-7cc7-449a-abc1-9d6d769e5e93",
         "tenantId": "a7b8c9d0-e1f2-4a3b-8c9d-0e1f2a3b4c5d",
         "name": "اكسال",
         "fee": 30,
@@ -28309,7 +29559,7 @@
     "store-dab-grocery": [],
     "6d59233f-5edd-463b-b379-2697e5b6df34": [
       {
-        "id": "e648e798-859a-4ddb-8f44-b7a5d4abbb83",
+        "id": "cf7ccc8d-46c6-4bd1-9a79-2184ab34e795",
         "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
         "name": "دبوريه ",
         "fee": 15,
@@ -28318,7 +29568,7 @@
         "sortOrder": 0
       },
       {
-        "id": "02efbd23-9d35-4fcc-9c3e-bd779c7943ae",
+        "id": "3ce0196b-325a-46af-9bca-4800b56808f3",
         "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28327,7 +29577,7 @@
         "sortOrder": 1
       },
       {
-        "id": "c246473a-eb01-4d02-879b-98cec935113d",
+        "id": "f84711fd-4dde-4bd2-b87f-1cd3a97cffe0",
         "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28336,7 +29586,7 @@
         "sortOrder": 2
       },
       {
-        "id": "314454c3-b4d6-41f4-a1b4-a13d696db4ae",
+        "id": "1701acb1-55b1-4aca-b713-e00f20003c4b",
         "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
         "name": "اكسال",
         "fee": 30,
@@ -28347,7 +29597,7 @@
     ],
     "0c36235a-9473-4226-b091-71e3fb0efdc5": [
       {
-        "id": "6d19d00f-ef9d-46ea-a356-c0d2c084c43d",
+        "id": "abd4f9f5-ac05-446f-8a51-65964ef7aac8",
         "tenantId": "0c36235a-9473-4226-b091-71e3fb0efdc5",
         "name": "دبوريه ",
         "fee": 15,
@@ -28356,7 +29606,7 @@
         "sortOrder": 0
       },
       {
-        "id": "55048009-cf74-47d7-afe1-95a1a269da75",
+        "id": "566a4bdc-2b0b-4123-af90-c004ea80ce71",
         "tenantId": "0c36235a-9473-4226-b091-71e3fb0efdc5",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28365,7 +29615,7 @@
         "sortOrder": 1
       },
       {
-        "id": "820109c1-0a0f-43b7-bebd-647bc233145b",
+        "id": "d33d7051-afd9-4433-951a-6ea132f1958b",
         "tenantId": "0c36235a-9473-4226-b091-71e3fb0efdc5",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28374,7 +29624,7 @@
         "sortOrder": 2
       },
       {
-        "id": "21e5f777-3a74-4d43-af37-47386adb303f",
+        "id": "81fe2517-cd0e-4969-9572-1bdd29863866",
         "tenantId": "0c36235a-9473-4226-b091-71e3fb0efdc5",
         "name": "اكسال",
         "fee": 30,
@@ -28385,7 +29635,7 @@
     ],
     "f6e493da-e69f-4bbc-877b-8842a1dfb72e": [
       {
-        "id": "326f0813-0834-4957-9867-ed37803006a7",
+        "id": "c600b900-1a26-4c31-8f3d-0f9cdb19ab0f",
         "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
         "name": "دبوريه ",
         "fee": 15,
@@ -28394,7 +29644,7 @@
         "sortOrder": 0
       },
       {
-        "id": "d04473cd-9907-4ed2-88f0-0b566127beaa",
+        "id": "c84fd5c2-3e67-420c-a80c-a8412a93a356",
         "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
         "name": "الشبلي/ام الغنم ",
         "fee": 25,
@@ -28403,7 +29653,7 @@
         "sortOrder": 1
       },
       {
-        "id": "5fc52a0b-dc6a-4949-a844-82413bce241f",
+        "id": "23c77ecf-ed75-4c97-a979-5cb39ff1ec42",
         "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
         "name": "القرى الزعبية",
         "fee": 40,
@@ -28412,8 +29662,84 @@
         "sortOrder": 2
       },
       {
-        "id": "67335ad8-c894-42f1-988c-3a973c6a04c8",
+        "id": "4966978b-09db-4371-90cd-e44e44d5077d",
         "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+        "name": "اكسال",
+        "fee": 30,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 3
+      }
+    ],
+    "b48b688d-fb40-4dd8-86da-b3d34dd1fffc": [
+      {
+        "id": "2ff4ce1f-8631-454a-9b54-cdd93b15fd69",
+        "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "name": "دبوريه ",
+        "fee": 15,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 0
+      },
+      {
+        "id": "9ce87591-fa6e-4e17-967e-fadfb1b8760f",
+        "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "name": "الشبلي/ام الغنم ",
+        "fee": 25,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 1
+      },
+      {
+        "id": "a1d02fd2-54d4-4f98-abfb-c153f4fff00b",
+        "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "name": "القرى الزعبية",
+        "fee": 40,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 2
+      },
+      {
+        "id": "46817e98-a680-4ef6-9e39-b79527a7d1de",
+        "tenantId": "b48b688d-fb40-4dd8-86da-b3d34dd1fffc",
+        "name": "اكسال",
+        "fee": 30,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 3
+      }
+    ],
+    "2f663230-f9b3-463c-b8ab-eb55a5474b95": [
+      {
+        "id": "e88cad83-01ba-4614-a675-40da9244b1bf",
+        "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "name": "دبوريه ",
+        "fee": 15,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 0
+      },
+      {
+        "id": "9e87d2fd-2dfe-45fc-85bd-25bf86e6e50e",
+        "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "name": "الشبلي/ام الغنم ",
+        "fee": 25,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 1
+      },
+      {
+        "id": "1672f7e0-d6cb-46e5-8722-f00f7d12eddc",
+        "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+        "name": "القرى الزعبية",
+        "fee": 40,
+        "etaMinutes": 0,
+        "isActive": true,
+        "sortOrder": 2
+      },
+      {
+        "id": "6e16806b-3aa9-407c-8390-80eb39ba8e75",
+        "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
         "name": "اكسال",
         "fee": 30,
         "etaMinutes": 0,
@@ -28434,7 +29760,7 @@
       "isOnline": true,
       "capacity": 3,
       "isAvailable": true,
-      "deliveryCount": 2
+      "deliveryCount": 20
     },
     {
       "id": "courier-dab-002",
@@ -28459,7 +29785,7 @@
       "isActive": true,
       "isOnline": true,
       "capacity": 2,
-      "isAvailable": true,
+      "isAvailable": false,
       "deliveryCount": 5
     },
     {
@@ -28512,6 +29838,24 @@
       "phone": "0505124617",
       "name": "رازي سليم",
       "createdAt": "2026-03-05T21:25:13.079Z"
+    },
+    {
+      "id": "customer-7f5238f2-d75b-4708-9285-216ad0604df0",
+      "phone": "0546340035",
+      "name": "الاء",
+      "createdAt": "2026-03-06T20:06:58.061Z"
+    },
+    {
+      "id": "customer-0d1b9cea-e5b9-4fd8-92d5-f8493bda0c48",
+      "phone": "‏0507162162",
+      "name": "يزيد اطرش",
+      "createdAt": "2026-03-06T21:15:20.206Z"
+    },
+    {
+      "id": "customer-e1e39a08-0645-43bf-b68b-025f40ca9735",
+      "phone": "0528150750",
+      "name": "اسعد سموعي",
+      "createdAt": "2026-03-06T21:40:01.760Z"
     }
   ],
   "deliveryJobs": [],
@@ -28585,6 +29929,16 @@
       "icon": "🥖",
       "isProfessional": false,
       "sortOrder": 7
+    },
+    {
+      "id": "d5716a93-00c8-4cd2-898f-1619f774f430",
+      "title": "حلويات",
+      "icon": "🍰",
+      "isProfessional": false,
+      "sortOrder": 8,
+      "_meta": {
+        "emergencyReason": "اضافة متجر"
+      }
     }
   ],
   "leads": [
@@ -28732,6 +30086,15 @@
         "customerPhone": "0525093085"
       },
       "id": "lead-34d3d776-5103-4bc6-b91f-997ee89a5ec8"
+    },
+    {
+      "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
+      "type": "cta",
+      "timestamp": "2026-03-06T21:40:28.416Z",
+      "metadata": {
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/145.0.7632.108 Mobile/15E148 Safari/604.1"
+      },
+      "id": "lead-9f274e10-4e1d-47c8-a8b7-5054e078dc87"
     }
   ]
 }

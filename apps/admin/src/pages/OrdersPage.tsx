@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { Order } from '@nmd/core';
-import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast } from '@nmd/ui';
-import { Package, Bell } from 'lucide-react';
+import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal } from '@nmd/ui';
+import { Package, Bell, MessageCircle, FileText, Phone, Truck } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
@@ -12,6 +12,183 @@ import { MockApiClient } from '@nmd/mock';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+
+const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'] as const;
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: 'جديد',
+  CONFIRMED: 'تم التواصل',
+  PREPARING: 'قيد التحضير',
+  READY: 'جاهز للاستلام',
+  COMPLETED: 'تم التسليم',
+  CANCELLED: 'ملغي',
+};
+
+/** Next actionable step. PICKUP READY → handover to COMPLETED (no courier). */
+function getNextOrderAction(status: string, fulfillmentType?: string): { label: string; nextStatus: Order['status'] } | null {
+  switch (status) {
+    case 'PENDING':
+      return { label: 'بدء التحضير', nextStatus: 'PREPARING' };
+    case 'CONFIRMED':
+      return { label: 'بدء التحضير', nextStatus: 'PREPARING' };
+    case 'PREPARING':
+      return { label: 'الطلب جاهز', nextStatus: 'READY' };
+    case 'READY':
+      if (fulfillmentType === 'PICKUP') return { label: 'تم تسليم الطلب للزبون', nextStatus: 'COMPLETED' };
+      return null;
+    case 'COMPLETED':
+      return null;
+    default:
+      return null;
+  }
+}
+
+
+function formatTimeAgo(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return 'الآن';
+  if (diffMins < 60) return `منذ ${diffMins} د`;
+  if (diffHours < 24) return `منذ ${diffHours} س`;
+  if (diffDays < 7) return `منذ ${diffDays} يوم`;
+  return formatDateTimeGregorian(date);
+}
+
+/** Pill-style status badge: Blue = on the stove (Preparing), Green = on the counter (Ready) */
+function StatusPill({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    PENDING: 'bg-amber-500 text-white',
+    CONFIRMED: 'bg-amber-500 text-white',
+    PREPARING: 'bg-blue-500 text-white',
+    READY: 'bg-emerald-500 text-white',
+    COMPLETED: 'bg-emerald-600 text-white',
+    CANCELLED: 'bg-slate-500 text-white',
+  };
+  const label = STATUS_LABELS[status] ?? status;
+  const className = styles[status] ?? 'bg-slate-500 text-white';
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${className}`}>
+      {label}
+    </span>
+  );
+}
+
+type OrderWithAmounts = Order & { merchantAmount?: number; platformDeliveryFee?: number; subtotal?: number; delivery?: { fee?: number }; items?: { totalPrice?: number }[]; assignedDriver?: { name: string; phone?: string }; fulfillmentType?: string };
+
+function OrderCard({
+  order,
+  tenant,
+  showGrandTotal,
+  onViewDetails,
+  onStatusChange,
+}: {
+  order: OrderWithAmounts;
+  tenant: import('@nmd/core').Tenant | null | undefined;
+  showGrandTotal: boolean;
+  onViewDetails: () => void;
+  onStatusChange: (order: Order, status: Order['status']) => void;
+}) {
+  const idStr = String((order as { id?: unknown }).id ?? '');
+  const itemsArr = Array.isArray((order as { items?: unknown }).items) ? (order as { items: unknown[] }).items : [];
+  const { merchantAmount, grandTotal } = getOrderAmounts(order);
+  const amountDisplay = formatPrice(showGrandTotal ? grandTotal : merchantAmount);
+  const orderActionsBase = import.meta.env.VITE_ORDER_ACTIONS_BASE_URL ?? (typeof window !== 'undefined' ? `${window.location.origin}/merchant` : 'https://nmd.marketing/merchant');
+  const message = tenant ? buildWhatsAppMessage(order, tenant) + buildOrderActionLinksSection(order.id, orderActionsBase) : '';
+  const storePhone = tenant?.branding?.whatsappPhone ?? '';
+  const canOpenWhatsApp = isValidWhatsAppPhone(storePhone);
+  const waUrl = canOpenWhatsApp ? buildWhatsAppUrl(storePhone, message) : null;
+  const nextAction = getNextOrderAction(order.status, order.fulfillmentType);
+  const assignedDriver = order.assignedDriver;
+  const isPickup = order.fulfillmentType === 'PICKUP';
+
+  const statusCardStyle =
+    order.status === 'PREPARING'
+      ? 'border-blue-200 bg-blue-50/60'
+      : order.status === 'READY'
+        ? 'border-emerald-200 bg-emerald-50/60'
+        : 'border-slate-200 bg-white';
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onViewDetails}
+      onKeyDown={(e) => e.key === 'Enter' && onViewDetails()}
+      className={`rounded-xl border p-4 shadow-sm transition-shadow hover:shadow-md text-right flex flex-col gap-3 ${statusCardStyle}`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-sm font-medium text-slate-600">{idStr.slice(0, 8) || '—'}</span>
+        <StatusPill status={order.status} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-1">
+        <span className="font-bold text-lg sm:text-xl text-slate-900">{order.customerName || '—'}</span>
+        <span className="text-sm text-slate-500">{formatTimeAgo(order.createdAt)}</span>
+      </div>
+      {order.status === 'READY' && !isPickup && (
+        <div className="flex items-center justify-between gap-2 py-1 px-2 rounded-lg bg-slate-50 border border-slate-100">
+          {assignedDriver ? (
+            <>
+              <span className="text-sm font-medium text-slate-700">{assignedDriver.name}</span>
+              {assignedDriver.phone && (
+                <a
+                  href={`tel:${assignedDriver.phone}`}
+                  className="flex items-center gap-1 text-sm text-primary font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Phone className="w-4 h-4" />
+                  اتصال
+                </a>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-slate-600">في انتظار السائق</span>
+          )}
+        </div>
+      )}
+      {order.status === 'READY' && isPickup && (
+        <div className="py-1 px-2 rounded-lg bg-violet-50 border border-violet-100">
+          <span className="text-sm font-medium text-violet-800">جاهز للاستلام من المحل</span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-lg sm:text-xl font-bold text-emerald-600">{amountDisplay}</span>
+        <span className="text-sm text-slate-600">
+          {itemsArr.length} {itemsArr.length === 1 ? 'منتج' : 'منتجات'}
+        </span>
+      </div>
+      <div className="flex gap-2 pt-1 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+        {nextAction && (
+          <Button
+            variant="primary"
+            size="sm"
+            className="flex-1 gap-1.5 py-2.5 text-sm font-medium"
+            onClick={() => onStatusChange(order, nextAction.nextStatus)}
+          >
+            <Truck className="w-4 h-4 shrink-0" />
+            {nextAction.label}
+          </Button>
+        )}
+        {waUrl && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 bg-[#25D366]/10 text-[#25D366] border-[#25D366]/30 hover:bg-[#25D366]/20 gap-1.5 py-2.5 text-sm font-medium"
+            onClick={() => window.open(waUrl, '_blank')}
+          >
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            واتساب
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className="flex-1 gap-1.5 py-2.5 text-sm font-medium" onClick={onViewDetails}>
+          <FileText className="w-4 h-4 shrink-0" />
+          التفاصيل
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function ProductThumb({ src }: { src?: string | null }) {
   const [failed, setFailed] = useState(false);
@@ -38,14 +215,6 @@ function getOrderAmounts(order: Order & { merchantAmount?: number; platformDeliv
   const grandTotal = Number(order.total) || merchantAmount + platformDeliveryFee;
   return { merchantAmount, platformDeliveryFee, grandTotal };
 }
-
-const SOFT_LAUNCH_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'جديد',
-  CONFIRMED: 'تم التواصل',
-  COMPLETED: 'تم التسليم',
-  CANCELLED: 'ملغي',
-};
 
 export default function OrdersPage() {
   const { tenantId } = useAdminContext();
@@ -172,24 +341,14 @@ export default function OrdersPage() {
     ),
     actions: hasValidId ? (
       <div className="flex gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-        {o.status !== 'CONFIRMED' && o.status !== 'CANCELLED' && (
+        {getNextOrderAction(o.status, (o as OrderWithAmounts).fulfillmentType) && (
           <Button
             variant="outline"
             size="sm"
             className="text-xs h-7 px-2 rounded-lg border-gray-300 hover:border-primary hover:bg-primary/5"
-            onClick={() => handleStatus(o, 'CONFIRMED')}
+            onClick={() => handleStatus(o, getNextOrderAction(o.status, (o as OrderWithAmounts).fulfillmentType)!.nextStatus)}
           >
-            تم التواصل
-          </Button>
-        )}
-        {o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 px-2 rounded-lg border-gray-300 hover:border-primary hover:bg-primary/5"
-            onClick={() => handleStatus(o, 'COMPLETED')}
-          >
-            تم التسليم
+            {getNextOrderAction(o.status, (o as OrderWithAmounts).fulfillmentType)!.label}
           </Button>
         )}
         {o.status !== 'CANCELLED' && (
@@ -263,7 +422,7 @@ export default function OrdersPage() {
             className="border rounded px-3 py-2 text-sm min-w-[140px]"
           >
             <option value="">كل الحالات</option>
-            {SOFT_LAUNCH_STATUSES.map((s) => (
+            {ORDER_STATUSES.map((s) => (
               <option key={s} value={s}>{STATUS_LABELS[s]}</option>
             ))}
           </select>
@@ -274,20 +433,38 @@ export default function OrdersPage() {
           {orders.length === 0 ? (
             <EmptyState variant="no-data" title="لا توجد طلبات" />
           ) : (
-            <DataTable
-              columns={[
-                { key: 'orderId', label: 'رقم' },
-                { key: 'date', label: 'التاريخ' },
-                { key: 'customer', label: 'العميل' },
-                { key: 'items', label: 'العناصر' },
-                { key: 'total', label: showGrandTotal ? 'المجموع الكلي' : 'حصة التاجر' },
-                { key: 'status', label: 'الحالة' },
-                { key: 'actions', label: 'إجراءات', className: 'w-48' },
-              ]}
-              rows={rows}
-              onRowClick={(_row, index) => setSelectedOrder(orders[index])}
-              emptyMessage="لا توجد طلبات"
-            />
+            <>
+              {/* Mobile & tablet: card layout. sm/md = 1 col, lg = 2 col. Hidden on xl (table shown). */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 xl:hidden">
+                {orders.map((order) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order as OrderWithAmounts}
+                    tenant={tenant}
+                    showGrandTotal={showGrandTotal}
+                    onViewDetails={() => setSelectedOrder(order)}
+                    onStatusChange={handleStatus}
+                  />
+                ))}
+              </div>
+              {/* Desktop xl: table */}
+              <div className="hidden xl:block">
+                <DataTable
+                  columns={[
+                    { key: 'orderId', label: 'رقم' },
+                    { key: 'date', label: 'التاريخ' },
+                    { key: 'customer', label: 'العميل' },
+                    { key: 'items', label: 'العناصر' },
+                    { key: 'total', label: showGrandTotal ? 'المجموع الكلي' : 'حصة التاجر' },
+                    { key: 'status', label: 'الحالة' },
+                    { key: 'actions', label: 'إجراءات', className: 'w-48' },
+                  ]}
+                  rows={rows}
+                  onRowClick={(_row, index) => setSelectedOrder(orders[index])}
+                  emptyMessage="لا توجد طلبات"
+                />
+              </div>
+            </>
           )}
         </div>
       </Card>
@@ -296,10 +473,11 @@ export default function OrdersPage() {
         onClose={() => setSelectedOrder(null)}
         title={selectedOrder ? `طلب #${String((selectedOrder as { id?: unknown }).id ?? '').slice(0, 8) || '—'}` : ''}
         side="start"
+        contentClassName="w-full max-w-full md:max-w-sm"
       >
         {selectedOrder && (
           <OrderDrawerContent
-            order={selectedOrder}
+            order={selectedOrder as OrderWithAmounts}
             tenant={tenant}
             onStatusChange={() => {
               if (USE_API) queryClient.invalidateQueries({ queryKey: ['orders', tenantId] });
@@ -308,6 +486,7 @@ export default function OrdersPage() {
             }}
             useApi={USE_API}
             showGrandTotal={showGrandTotal}
+            isPlatformAdmin={showGrandTotal}
           />
         )}
       </Drawer>
@@ -324,22 +503,34 @@ export default function OrdersPage() {
   );
 }
 
+const MOCK_AVAILABLE_DRIVERS = [
+  { id: 'd1', name: 'سائق ١', phone: '+966501234567' },
+  { id: 'd2', name: 'سائق ٢', phone: '+966509876543' },
+  { id: 'd3', name: 'سائق ٣', phone: '+966551112233' },
+];
+
 function OrderDrawerContent({
   order,
   tenant,
   onStatusChange,
   useApi,
   showGrandTotal,
+  isPlatformAdmin: isPlatformAdminUser,
 }: {
-  order: Order & { merchantAmount?: number; platformDeliveryFee?: number; subtotal?: number; delivery?: { fee?: number }; items?: { totalPrice?: number }[] };
+  order: OrderWithAmounts;
   tenant: import('@nmd/core').Tenant | null | undefined;
   onStatusChange: () => void;
   useApi?: boolean;
   showGrandTotal?: boolean;
+  isPlatformAdmin?: boolean;
 }) {
   const { merchantAmount, platformDeliveryFee, grandTotal } = getOrderAmounts(order);
   const [updating, setUpdating] = useState(false);
+  const [assignDriverOpen, setAssignDriverOpen] = useState(false);
   const addToast = useToast().addToast;
+  const assignedDriver = order.assignedDriver;
+  const nextAction = getNextOrderAction(order.status, order.fulfillmentType);
+  const showAssignDriver = isPlatformAdminUser && order.status === 'READY' && order.fulfillmentType !== 'PICKUP' && !assignedDriver;
   const orderActionsBase = import.meta.env.VITE_ORDER_ACTIONS_BASE_URL ?? (typeof window !== 'undefined' ? `${window.location.origin}/merchant` : 'https://nmd.marketing/merchant');
   const message = tenant
     ? buildWhatsAppMessage(order, tenant) + buildOrderActionLinksSection(order.id, orderActionsBase)
@@ -374,23 +565,24 @@ function OrderDrawerContent({
   };
 
   return (
-    <div className="space-y-4" dir="rtl">
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-gray-700">معلومات العميل</h3>
-        <div>
-          <p className="text-xs text-gray-500">الاسم</p>
-          <p className="font-medium">{order.customerName || '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500">الجوال</p>
-          <p dir="ltr" className="font-medium">{order.customerPhone || '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500">طريقة الاستلام</p>
-          <p className="font-medium">
-            {order.fulfillmentType === 'DELIVERY' ? 'توصيل' : 'استلام من المحل'}
-          </p>
-        </div>
+    <div className="flex flex-col flex-1 min-h-0" dir="rtl">
+      <div className="flex-1 overflow-auto space-y-4">
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-gray-700">معلومات العميل</h3>
+          <div>
+            <p className="text-xs text-gray-500">الاسم</p>
+            <p className="font-medium text-lg sm:text-base">{order.customerName || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">الجوال</p>
+            <p dir="ltr" className="font-medium text-lg sm:text-base">{order.customerPhone || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">طريقة الاستلام</p>
+            <p className="font-medium">
+              {order.fulfillmentType === 'DELIVERY' ? 'توصيل' : 'استلام من المحل'}
+            </p>
+          </div>
         {order.fulfillmentType === 'DELIVERY' && (() => {
           const d = (order as { delivery?: { zoneName?: string; fee?: number; addressText?: string } }).delivery;
           const addr = d?.addressText || order.deliveryAddress;
@@ -421,6 +613,33 @@ function OrderDrawerContent({
           <div>
             <p className="text-xs text-gray-500">ملاحظات</p>
             <p className="text-sm text-gray-600">{order.notes}</p>
+          </div>
+        )}
+        {order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && (
+          <div className="pt-2 border-t border-slate-100">
+            <p className="text-xs text-gray-500 mb-1">السائق</p>
+            {assignedDriver ? (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-medium text-slate-900">{assignedDriver.name}</span>
+                {assignedDriver.phone && (
+                  <a
+                    href={`tel:${assignedDriver.phone}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium text-sm"
+                  >
+                    <Phone className="w-4 h-4" />
+                    اتصال
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">في انتظار السائق</p>
+            )}
+          </div>
+        )}
+        {order.status === 'READY' && order.fulfillmentType === 'PICKUP' && (
+          <div className="pt-2 border-t border-slate-100">
+            <p className="text-xs text-gray-500 mb-1">طريقة الاستلام</p>
+            <p className="text-sm font-medium text-violet-700">جاهز للاستلام من المحل</p>
           </div>
         )}
         {(order as { whatsappNotification?: { status: string; at: string; orderStatus?: string; error?: string } }).whatsappNotification && (() => {
@@ -486,49 +705,63 @@ function OrderDrawerContent({
           )}
           <div className="flex justify-between items-center pt-1">
             <span className="font-semibold text-gray-900">{showGrandTotal ? 'المجموع الكلي' : 'حصة التاجر (صافي المنتجات)'}</span>
-            <span className="font-bold text-primary text-lg">{formatPrice(showGrandTotal ? grandTotal : merchantAmount)}</span>
+            <span className="font-bold text-primary text-xl sm:text-lg">{formatPrice(showGrandTotal ? grandTotal : merchantAmount)}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
-        {waUrl && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-[#25D366]/10 text-[#25D366] border-[#25D366]/30 hover:bg-[#25D366]/20"
-            onClick={() => window.open(waUrl, '_blank')}
-          >
-            فتح واتساب
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+          {waUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-[#25D366]/10 text-[#25D366] border-[#25D366]/30 hover:bg-[#25D366]/20"
+              onClick={() => window.open(waUrl, '_blank')}
+            >
+              فتح واتساب
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={handleCopyMessage}>
+            نسخ رسالة واتساب
           </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={handleCopyMessage}>
-          نسخ رسالة واتساب
-        </Button>
-        {order.customerPhone && (
-          <Button variant="outline" size="sm" onClick={handleCopyPhone}>
-            نسخ رقم الهاتف
+          {order.customerPhone && (
+            <Button variant="outline" size="sm" onClick={handleCopyPhone}>
+              نسخ رقم الهاتف
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => window.open(printUrl, '_blank')}>
+            طباعة
           </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={() => window.open(printUrl, '_blank')}>
-          طباعة
-        </Button>
+        </div>
       </div>
 
-      <div className="pt-4 border-t border-gray-200">
+      {/* Sticky footer: unified flow (next action + Assign Driver + Cancel) */}
+      <div className="shrink-0 pt-4 pb-2 border-t border-gray-200 bg-white -mx-4 px-4 mt-auto">
         <p className="text-sm font-medium text-gray-700 mb-2">تغيير الحالة</p>
         <div className="flex flex-wrap gap-2">
-          {SOFT_LAUNCH_STATUSES.filter((s) => s !== 'CANCELLED').map((s) => (
+          {nextAction && (
             <Button
-              key={s}
-              variant={order.status === s ? 'primary' : 'outline'}
+              variant="primary"
               size="sm"
-              onClick={() => handleStatus(s)}
+              onClick={() => handleStatus(nextAction.nextStatus)}
               disabled={updating}
+              className="gap-1.5"
             >
-              {STATUS_LABELS[s]}
+              <Truck className="w-4 h-4" />
+              {nextAction.label}
             </Button>
-          ))}
+          )}
+          {showAssignDriver && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAssignDriverOpen(true)}
+              className="gap-1.5"
+            >
+              <Truck className="w-4 h-4" />
+              تعيين سائق يدوياً
+            </Button>
+          )}
           {order.status !== 'CANCELLED' && (
             <Button
               variant="ghost"
@@ -542,6 +775,33 @@ function OrderDrawerContent({
           )}
         </div>
       </div>
+
+      <Modal
+        open={assignDriverOpen}
+        onClose={() => setAssignDriverOpen(false)}
+        title="تعيين سائق"
+      >
+        <ul className="space-y-2">
+          {MOCK_AVAILABLE_DRIVERS.map((d) => (
+            <li key={d.id}>
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 text-right"
+                onClick={() => {
+                  addToast('تم تعيين السائق (واجهة تجريبية)', 'success');
+                  setAssignDriverOpen(false);
+                }}
+              >
+                <span className="font-medium">{d.name}</span>
+                <a href={`tel:${d.phone}`} className="text-sm text-primary" onClick={(e) => e.stopPropagation()}>
+                  <Phone className="w-4 h-4 inline ml-1" />
+                  {d.phone}
+                </a>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Modal>
     </div>
   );
 }

@@ -203,7 +203,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 pt-6 md:pt-4" dir="rtl">
+    <div className="max-w-5xl mx-auto p-4 pt-6 md:pt-4 pb-24 md:pb-0" dir="rtl">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">إتمام الطلب</h1>
 
       {showBusyBanner && (
@@ -493,7 +493,7 @@ export default function CheckoutPage() {
             </div>
 
             <Button
-              className="w-full h-12 rounded-xl mt-4"
+              className="w-full h-12 rounded-xl mt-4 hidden md:flex"
               onClick={handleSubmit}
               loading={createOrder.isPending}
               disabled={!formValid || !canPlaceOrder}
@@ -502,10 +502,38 @@ export default function CheckoutPage() {
                 ? 'لا نقبل الطلبات حالياً'
                 : !isAuthenticated
                   ? 'تسجيل الدخول وإتمام الطلب'
-                  : 'إتمام الطلب'}
+                  : 'تأكيد الطلب'}
             </Button>
           </div>
         </div>
+        </div>
+      </div>
+
+      {/* Sticky footer: mobile only — total + full-width تأكيد الطلب with loading state */}
+      <div
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-lg border-t border-neutral-200"
+        style={{
+          boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        }}
+      >
+        <div className="flex flex-col gap-3 px-4 pt-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">المجموع النهائي</span>
+            <span className="text-xl font-bold text-gray-900">{formatPrice(totalWithDelivery)}</span>
+          </div>
+          <Button
+            className="w-full h-12 rounded-xl font-semibold text-base"
+            onClick={handleSubmit}
+            loading={createOrder.isPending}
+            disabled={!formValid || !canPlaceOrder}
+          >
+            {!canPlaceOrder
+              ? 'لا نقبل الطلبات حالياً'
+              : !isAuthenticated
+                ? 'تسجيل الدخول وإتمام الطلب'
+                : 'تأكيد الطلب'}
+          </Button>
         </div>
       </div>
     </div>

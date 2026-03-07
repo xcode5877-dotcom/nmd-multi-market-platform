@@ -11,6 +11,7 @@ import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
 import { MerchantAuthProvider } from './contexts/MerchantAuthContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 import { InstallBanner } from './components/InstallBanner';
+import { OrderTrackingWidget } from './components/OrderTrackingWidget';
 
 /** True when route is mall/city (platform), not a tenant store (/:slug). Forces platform brand colors. */
 function isPlatformRoute(pathname: string): boolean {
@@ -128,6 +129,7 @@ function AppContent() {
           <Suspense fallback={<PageSkeleton />}>
             <TenantBroadcastListener />
             <InstallBanner />
+            <OrderTrackingWidget />
             <Routes>
               <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
               <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />

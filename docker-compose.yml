@@ -103,6 +103,7 @@ services:
       WHATSAPP_GATEWAY_URL: "http://whatsapp-service:3000"
       WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
     volumes:
+      # Data persistence: container reads/writes to host files; no reset on restart (do not change data.json/orders.json content)
       # LOCK PERSISTENCE: root apps/mock-api/data.json and uploads/ — do not change these paths.
       # SINGLE SOURCE OF TRUTH: apps/mock-api/data.json (no script must overwrite with older copy)
       - ./apps/mock-api/data.json:/app/data/data.json

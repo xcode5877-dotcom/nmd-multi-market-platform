@@ -684,24 +684,107 @@ app.get('/courier/me', async (req, res) => {
   });
 });
 
+/** Enrich delivery orders for courier API (tenant, customer, payment, delivery zone/area). */
+function enrichCourierOrders(
+  orders: { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown>; delivery?: { zoneName?: string; addressText?: string } }[],
+  tenants: { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[]
+): Record<string, unknown>[] {
+  return orders.map((o) => {
+    const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : undefined;
+    const tenant = t ? { name: t.name ?? '', phone: t.whatsappPhone, address: t.addressLine, location: t.location } : { name: '', phone: undefined, address: undefined, location: undefined };
+    const deliveryZoneName = (o.delivery as { zoneName?: string } | undefined)?.zoneName ?? '';
+    const customer = { name: o.customerName ?? '', phone: o.customerPhone ?? '', deliveryAddress: o.deliveryAddress ?? '', deliveryLocation: o.deliveryLocation, deliveryZoneName };
+    const currency = o.currency ?? 'ILS';
+    const pay = (o as Record<string, unknown>).payment;
+    const orderTotal = (pay as { financials?: { gross?: number } } | undefined)?.financials?.gross ?? (Number(o.total) || 0);
+    const paymentMethod = ((pay as { method?: string } | undefined)?.method ?? ((o as Record<string, unknown>).paymentMethod === 'CARD' ? 'CARD' : 'CASH')) as 'CASH' | 'CARD';
+    const amountToCollect = paymentMethod === 'CASH' ? orderTotal : 0;
+    return { ...o, tenant, customer, currency, orderTotal, paymentMethod, amountToCollect, cashChangeFor: o.cashChangeFor, deliveryZoneName };
+  });
+}
+
+/** Courier's assigned orders. PICKUP orders are excluded — only DELIVERY appears in courier lists. */
 app.get('/courier/orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number } }[])
     .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED');
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
-  const enriched = orders.map((o) => {
-    const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : undefined;
-    const tenant = t ? { name: t.name ?? '', phone: t.whatsappPhone, address: t.addressLine, location: t.location } : { name: '', phone: undefined, address: undefined, location: undefined };
-    const customer = { name: o.customerName ?? '', phone: o.customerPhone ?? '', deliveryAddress: o.deliveryAddress ?? '', deliveryLocation: o.deliveryLocation };
-    const currency = o.currency ?? 'ILS';
-    const pay = (o as Record<string, unknown>).payment;
-    const orderTotal = (pay as { financials?: { gross?: number } } | undefined)?.financials?.gross ?? (Number(o.total) || 0);
-    const paymentMethod = ((pay as { method?: string } | undefined)?.method ?? ((o as Record<string, unknown>).paymentMethod === 'CARD' ? 'CARD' : 'CASH')) as 'CASH' | 'CARD';
-    const amountToCollect = paymentMethod === 'CASH' ? orderTotal : 0;
-    return { ...o, tenant, customer, currency, orderTotal, paymentMethod, amountToCollect, cashChangeFor: o.cashChangeFor };
+  res.json(enrichCourierOrders(orders, tenants));
+}));
+
+/** Open-market: only DELIVERY orders (PICKUP hidden from couriers). PREPARING or READY, no courierId, in market. */
+app.get('/courier/orders/available', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const tenants = (await repos.tenants.findAll()) as { id?: string; marketId?: string }[];
+  const allOrders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; marketId?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown> }[];
+  const available = allOrders.filter((o) => {
+    if (o.fulfillmentType !== 'DELIVERY' || o.courierId || o.status === 'CANCELED') return false;
+    if (o.status !== 'PREPARING' && o.status !== 'READY') return false;
+    const orderMarketId = o.marketId ?? tenants.find((t) => t.id === o.tenantId)?.marketId;
+    return orderMarketId === scope.marketId;
   });
-  res.json(enriched);
+  const tenantList = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
+  res.json(enrichCourierOrders(available, tenantList));
+}));
+
+/** Courier claims an order (open-market accept). Race-safe: 409 ORDER_TAKEN if another courier took it. */
+app.post('/courier/orders/:orderId/accept', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const { orderId } = req.params;
+  const tenants = (await repos.tenants.findAll()) as { id?: string; marketId?: string }[];
+  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; marketId?: string; deliveryAssignmentMode?: string; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown> }[];
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const order = orders[idx];
+  if (order.fulfillmentType !== 'DELIVERY') return res.status(400).json({ error: 'Order is not a delivery order', code: 'BAD_REQUEST' });
+  if (order.status !== 'PREPARING' && order.status !== 'READY') return res.status(400).json({ error: 'Order is not available to accept', code: 'BAD_REQUEST' });
+  const orderMarketId = order.marketId ?? tenants.find((t) => t.id === order.tenantId)?.marketId;
+  if (orderMarketId !== scope.marketId) return res.status(403).json({ error: 'Order not in your market', code: 'CROSS_MARKET_ACCESS' });
+  if (order.courierId) {
+    return res.status(409).json({
+      error: 'This order was taken by another courier',
+      code: 'ORDER_TAKEN',
+      details: { orderId, currentCourierId: order.courierId },
+    });
+  }
+  const couriers = (await repos.couriers.findAll()) as { id?: string; isActive?: boolean; isOnline?: boolean; isAvailable?: boolean }[];
+  const courier = couriers.find((c) => c.id === scope.courierId);
+  if (!courier || !courier.isActive || !courier.isOnline) return res.status(400).json({ error: 'Courier must be active and online', code: 'BAD_REQUEST' });
+  if (courier.isAvailable === false) {
+    const activeOrdersForCourier = orders.filter(
+      (o) => o.courierId === scope.courierId && o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
+    ) as { id?: string; status?: string }[];
+    if (activeOrdersForCourier.length > 0) {
+      return res.status(400).json({ error: 'You are busy with another delivery', code: 'COURIER_BUSY' });
+    }
+    // Auto-recover: courier marked busy but has no active order (e.g. previous order completed without clearing flag)
+  }
+
+  const now = new Date().toISOString();
+  const timeline = order.deliveryTimeline ?? {};
+  const updated = {
+    ...order,
+    courierId: scope.courierId,
+    deliveryStatus: 'ASSIGNED',
+    deliveryTimeline: { ...timeline, assignedAt: timeline.assignedAt ?? now },
+  };
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+
+  const courierIdx = couriers.findIndex((c) => c.id === scope.courierId);
+  if (courierIdx >= 0) {
+    couriers[courierIdx] = { ...couriers[courierIdx], isAvailable: false };
+    await repos.couriers.setAll(couriers);
+  }
+
+  emitCourierAssigned(scope.courierId, updated);
+
+  const tenantList = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
+  const enriched = enrichCourierOrders([updated], tenantList);
+  res.status(200).json(enriched[0]);
 }));
 
 /** Courier's own performance stats (points, badges, metrics). */
@@ -811,7 +894,16 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   const hasDelivered = !!tl.deliveredAt;
   const hasClosed = !!tl.closedAt;
   if (action === 'ACKNOWLEDGE' && hasAck) return res.json(order);
-  if (action === 'PICKED_UP' && hasPicked) return res.json(order);
+  if (action === 'PICKED_UP') {
+    if (hasPicked) return res.json(order);
+    if (!tl.handedToDriverAt) {
+      return res.status(400).json({
+        error: 'Merchant must mark order as handed to driver first',
+        code: 'HANDOVER_REQUIRED',
+        details: { message: 'انتظر تسليم الطلب من المحل' },
+      });
+    }
+  }
   if (action === 'DELIVERED' && hasDelivered) return res.json(order);
   if (action === 'FINISH' && hasClosed) return res.json(order);
   const now = new Date().toISOString();
@@ -836,7 +928,10 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   const deliveryStatusMap: Record<string, string> = { ACKNOWLEDGE: 'IN_PROGRESS', PICKED_UP: 'PICKED_UP', DELIVERED: 'DELIVERED', FINISH: 'DELIVERED' };
   const newDeliveryStatus = deliveryStatusMap[action] ?? currentDeliveryStatus;
   const updated = { ...order, deliveryStatus: newDeliveryStatus, deliveryTimeline: tl };
-  if (action === 'DELIVERED') (updated as { deliveredAt?: string }).deliveredAt = tl.deliveredAt as string;
+  if (action === 'DELIVERED') {
+    (updated as { deliveredAt?: string }).deliveredAt = tl.deliveredAt as string;
+    (updated as { status?: string }).status = 'COMPLETED'; // Scrubs from Active; order appears only in History
+  }
   if (action === 'FINISH') {
     const pay = (updated as { payment?: { status?: string; method?: string; cashLedger?: unknown } }).payment;
     if (pay && (pay.method === 'CASH' || !pay.method)) {
@@ -884,6 +979,22 @@ export function emitCourierAssigned(courierId: string, order: { id?: string; ten
 export function emitCourierUnassigned(courierId: string, orderId: string) {
   const send = courierEventListeners.get(courierId);
   if (send) send(JSON.stringify({ type: 'order_unassigned', orderId }));
+}
+
+/** Broadcast to all couriers in a market: order is READY for pickup (open-market call to action). */
+export function emitOrderReadyForMarket(marketId: string, orderId: string, couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
+  const marketCourierIds = couriers.filter((c) => (c.scopeType === 'MARKET' && (c.marketId ?? c.scopeId) === marketId)).map((c) => c.id).filter(Boolean);
+  const payload = JSON.stringify({ type: 'order_ready', orderId });
+  for (const cid of marketCourierIds) {
+    const send = courierEventListeners.get(cid);
+    if (send) {
+      try {
+        send(payload);
+      } catch {
+        courierEventListeners.delete(cid);
+      }
+    }
+  }
 }
 
 /** Change password (self-service). Requires auth. TENANT_ADMIN can change only their own. */
@@ -2520,6 +2631,10 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
     });
   }
   orders.forEach(enrichOrderWithMerchantAmount);
+  const couriers = (await repos.couriers.findAll()) as { id?: string; name?: string; phone?: string }[];
+  for (const o of orders) {
+    await enrichOrderWithCourierInfo(o as Record<string, unknown>, couriers);
+  }
   res.json(orders);
 }));
 
@@ -2546,7 +2661,8 @@ app.post('/orders', wrapAsync(async (req, res) => {
 
   const now = new Date().toISOString();
   const created = { ...order, createdAt: order.createdAt ?? now };
-  if (tenant?.marketId) (created as { marketId?: string }).marketId = tenant.marketId;
+  // Ensure every new order has the store's marketId so GET /courier/orders/available includes it
+  if (tenant != null) (created as { marketId?: string }).marketId = tenant.marketId;
   const customer = (req as express.Request & { customer?: { id: string } }).customer;
   if (customer) (created as Record<string, unknown>).customerId = customer.id;
 
@@ -2604,13 +2720,18 @@ app.get('/orders/:orderId', wrapAsync(async (req, res) => {
   res.json(order);
 }));
 
-/** Public order status: no auth. Returns safe fields for customer order confirmation. */
+/** Public order status: no auth. Returns safe fields for customer order confirmation + courier for tracking. */
 app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
   const order = ((await repos.orders.findAll()) as Record<string, unknown>[]).find((o) => o.id === req.params.orderId);
   if (!order) return res.status(404).json({ error: 'Order not found' });
   const tenant = (order.tenantId as string)
     ? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId)
     : undefined;
+  let assignedDriver: { name: string; phone: string } | undefined;
+  if (order.courierId) {
+    const courier = (await repos.couriers.findAll()).find((c) => c.id === order.courierId);
+    if (courier) assignedDriver = { name: courier.name ?? '', phone: courier.phone ?? '' };
+  }
   const safe: Record<string, unknown> = {
     id: order.id,
     status: order.status,
@@ -2627,6 +2748,7 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
     notes: order.notes,
     tenantId: order.tenantId,
     tenantSlug: tenant?.slug,
+    assignedDriver,
   };
   res.json(safe);
 }));
@@ -2957,8 +3079,39 @@ app.post('/tenants/:tenantId/orders/:orderId/ready', async (req, res) => {
   orders[idx] = updated;
   await repos.orders.setAll(orders);
 
+  const fulfillmentType = (updated as { fulfillmentType?: string }).fulfillmentType;
+  if (fulfillmentType === 'DELIVERY') {
+    const marketId = (tenant as { marketId?: string }).marketId;
+    if (marketId) {
+      const couriers = (await repos.couriers.findAll()) as { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[];
+      emitOrderReadyForMarket(marketId, orderId, couriers);
+    }
+  }
+
   res.json(orders[idx]);
 });
+
+/** Merchant marks order as handed to driver (sync point for courier "Start Delivery"). */
+app.post('/tenants/:tenantId/orders/:orderId/handed-to-driver', wrapAsync(async (req, res) => {
+  const { tenantId, orderId } = req.params;
+  const user = req.user;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (user?.role === 'TENANT_ADMIN' && user.tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden' });
+  if (user?.role === 'MARKET_ADMIN' && user.marketId !== tenant.marketId) return res.status(403).json({ error: 'Forbidden' });
+  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; deliveryTimeline?: Record<string, unknown> }[];
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const order = orders[idx];
+  if (order.tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden' });
+  if (!order.courierId) return res.status(400).json({ error: 'Order has no driver assigned', code: 'BAD_REQUEST' });
+  if (order.status !== 'READY') return res.status(400).json({ error: 'Order must be READY', code: 'BAD_REQUEST' });
+  const now = new Date().toISOString();
+  const tl = { ...(order.deliveryTimeline || {}), handedToDriverAt: (order.deliveryTimeline as { handedToDriverAt?: string })?.handedToDriverAt ?? now };
+  orders[idx] = { ...order, deliveryTimeline: tl };
+  await repos.orders.setAll(orders);
+  res.json(orders[idx]);
+}));
 
 /** Helper: courier's market ID (for MARKET-scoped couriers) */
 function courierMarketId(c: { scopeType?: string; scopeId?: string; marketId?: string }): string | undefined {
@@ -3359,6 +3512,11 @@ app.get('/markets/:marketId/orders', wrapAsync(async (req, res) => {
   const orders = ((await repos.orders.findAll()) as { tenantId?: string }[]).filter(
     (o) => o.tenantId && tenantIds.has(o.tenantId)
   );
+  orders.forEach(enrichOrderWithMerchantAmount);
+  const couriers = (await repos.couriers.findAll()) as { id?: string; name?: string; phone?: string }[];
+  for (const o of orders) {
+    await enrichOrderWithCourierInfo(o as Record<string, unknown>, couriers);
+  }
   res.json(orders);
 }));
 
@@ -3402,6 +3560,18 @@ function enrichOrderWithMerchantAmount(o: OrderWithPayment | Record<string, unkn
   const f = computeOrderFinancials(o as OrderWithPayment);
   if (rec.merchantAmount == null) rec.merchantAmount = f.itemsTotal;
   if (rec.platformDeliveryFee == null) rec.platformDeliveryFee = f.deliveryFee;
+}
+
+/** Enrich order with assignedDriver { name, phone } when courierId is set. Mutates order in place. */
+async function enrichOrderWithCourierInfo(
+  o: Record<string, unknown>,
+  couriers: { id?: string; name?: string; phone?: string }[]
+): Promise<void> {
+  if (o == null) return;
+  const courierId = o.courierId as string | undefined;
+  if (!courierId) return;
+  const courier = couriers.find((c) => c.id === courierId);
+  if (courier) o.assignedDriver = { name: courier.name ?? 'سائق', phone: courier.phone };
 }
 
 /** Safely compute financial values from order. Handles legacy orders missing payment fields. Never throws. */

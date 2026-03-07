@@ -1,1 +1,132 @@
-[]
+[
+  {
+    "id": "seed-order-pending-001",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "id": "seed-item-p1",
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 2,
+        "basePrice": 160,
+        "selectedOptions": [{"optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7", "optionItemIds": ["8a15d3ab-3688-42a0-9a85-c68bd5449221"]}],
+        "optionGroups": [{"id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7", "name": "مقاس", "type": "SIZE", "required": true, "minSelected": 1, "maxSelected": 1, "selectionType": "single", "items": [{"id": "821cb6c4-2d96-44e5-8ab2-4666556085f3", "name": "36", "sortOrder": 0}, {"id": "8a15d3ab-3688-42a0-9a85-c68bd5449221", "name": "38", "sortOrder": 1}]}],
+        "totalPrice": 320
+      }
+    ],
+    "subtotal": 320,
+    "total": 320,
+    "currency": "ILS",
+    "createdAt": "2026-03-05T10:00:00.000Z",
+    "customerName": "عميل تجريبي ١",
+    "customerPhone": "0546111668",
+    "marketId": "market-dabburiyya",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "seed-order-preparing-001",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "id": "seed-item-p2",
+        "productId": "2a939e4c-d6cc-47ff-8d3c-a7b844121774",
+        "productName": "jeans jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 1,
+        "basePrice": 220,
+        "selectedOptions": [{"optionGroupId": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a", "optionItemIds": ["c4ac47ec-17a5-40b9-b0c6-d14ee9811a14"]}],
+        "optionGroups": [{"id": "eee67cd7-1cd2-445e-8e2e-d0ccb307dd1a", "name": "", "type": "SIZE", "required": true, "minSelected": 1, "maxSelected": 1, "selectionType": "single", "items": [{"id": "12f4d808-c6ef-4ed3-a5f8-082b8f8fc57b", "name": "xl", "sortOrder": 0}, {"id": "c4ac47ec-17a5-40b9-b0c6-d14ee9811a14", "name": "m", "sortOrder": 1}, {"id": "bf9ca34e-bbbd-4a2d-8664-993be425124a", "name": "s", "sortOrder": 2}]}],
+        "totalPrice": 220
+      }
+    ],
+    "subtotal": 220,
+    "total": 230,
+    "currency": "ILS",
+    "createdAt": "2026-03-05T10:15:00.000Z",
+    "customerName": "عميل تجريبي ٢",
+    "customerPhone": "0501234567",
+    "deliveryAddress": "البستان ٤",
+    "delivery": {"method": "DELIVERY", "zoneId": "dz-5b35539f-90e1-49cc-8c32-8d26cdce20f2-1", "zoneName": "التوصيل العام", "fee": 10, "addressText": "البستان ٤"},
+    "marketId": "market-dabburiyya",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "seed-order-ready-001",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "id": "seed-item-p3",
+        "productId": "8f2231fd-b4a2-4b43-b35b-50a6392f3298",
+        "productName": "white jacket",
+        "categoryId": "470a17ec-8b2f-41d5-9e60-ce9077ae644c",
+        "quantity": 1,
+        "basePrice": 270,
+        "selectedOptions": [],
+        "optionGroups": [{"id": "e345456e-2425-49b9-959d-c67b8bfe8efc", "name": "", "type": "SIZE", "required": true, "minSelected": 1, "maxSelected": 1, "selectionType": "single", "items": []}],
+        "totalPrice": 270
+      }
+    ],
+    "subtotal": 270,
+    "total": 270,
+    "currency": "ILS",
+    "createdAt": "2026-03-05T10:30:00.000Z",
+    "customerName": "عميل تجريبي ٣",
+    "customerPhone": "0546111668",
+    "marketId": "market-dabburiyya",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "seed-order-completed-001",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "id": "seed-item-p4",
+        "productId": "71993b5b-c3c0-4c67-9de9-6a825f2787d7",
+        "productName": "jeans new collection",
+        "categoryId": "82a1f61b-eee2-4ed5-890d-8cf32b4e2151",
+        "quantity": 1,
+        "basePrice": 160,
+        "selectedOptions": [{"optionGroupId": "3340ab1c-5e79-46bd-b128-9bf94926b5e7", "optionItemIds": ["821cb6c4-2d96-44e5-8ab2-4666556085f3"]}],
+        "optionGroups": [{"id": "3340ab1c-5e79-46bd-b128-9bf94926b5e7", "name": "مقاس", "type": "SIZE", "required": true, "minSelected": 1, "maxSelected": 1, "selectionType": "single", "items": [{"id": "821cb6c4-2d96-44e5-8ab2-4666556085f3", "name": "36", "sortOrder": 0}, {"id": "8a15d3ab-3688-42a0-9a85-c68bd5449221", "name": "38", "sortOrder": 1}]}],
+        "totalPrice": 160
+      }
+    ],
+    "subtotal": 160,
+    "total": 160,
+    "currency": "ILS",
+    "createdAt": "2026-03-05T09:00:00.000Z",
+    "customerName": "عميل تجريبي ٤",
+    "customerPhone": "0546111668",
+    "marketId": "market-dabburiyya",
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "order-alaa-001",
+    "tenantId": "5b35539f-90e1-49cc-8c32-8d26cdce20f2",
+    "status": "PREPARING",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [],
+    "subtotal": 0,
+    "total": 0,
+    "currency": "ILS",
+    "createdAt": "2026-03-06T20:07:00.000Z",
+    "customerName": "الاء",
+    "customerPhone": "0546340035",
+    "marketId": "market-dabburiyya",
+    "orderType": "PRODUCT"
+  }
+]

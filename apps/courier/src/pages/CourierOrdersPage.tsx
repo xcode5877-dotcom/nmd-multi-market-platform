@@ -36,10 +36,12 @@ export type CourierOrder = {
   amountToCollect?: number;
   cashChangeFor?: number;
   tenant?: { name?: string; phone?: string; address?: string; location?: { lat: number; lng: number } };
-  customer?: { name?: string; phone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number } };
+  customer?: { name?: string; phone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryZoneName?: string };
+  deliveryZoneName?: string;
   deliveryTimeline?: {
     assignedAt?: string;
     acknowledgedAt?: string;
+    handedToDriverAt?: string;
     pickedUpAt?: string;
     deliveredAt?: string;
     closedAt?: string;
@@ -111,6 +113,66 @@ function getAllowedCourierAction(order: CourierOrder): string | null {
   return null;
 }
 
+/** Area/zone first (bold, larger), then address secondary. */
+function DeliveryLocationDisplay({ order }: { order: CourierOrder }) {
+  const zoneName = order.deliveryZoneName ?? order.customer?.deliveryZoneName ?? '';
+  const address = order.customer?.deliveryAddress ?? (order as { deliveryAddress?: string }).deliveryAddress ?? '';
+  const primary = zoneName || address;
+  const secondary = zoneName && address ? address : null;
+  return (
+    <div>
+      {primary && <p className="font-bold text-base text-gray-900">{primary}</p>}
+      {secondary && <p className="text-xs text-gray-500 mt-0.5">{secondary}</p>}
+      {!primary && <p className="text-sm text-gray-500">—</p>}
+    </div>
+  );
+}
+
+/** Compact card for open-market available order: show key info + Accept button. */
+function AvailableOrderCard({
+  order,
+  onAccept,
+  isPending,
+}: {
+  order: CourierOrder;
+  onAccept: () => void;
+  isPending: boolean;
+}) {
+  const tenant = order.tenant ?? { name: '', phone: undefined, address: undefined };
+  const customer = order.customer ?? { name: order.customerName ?? '', deliveryAddress: (order as { deliveryAddress?: string }).deliveryAddress ?? '' };
+  const curr = order.currency ?? 'ILS';
+  const sym = CURRENCY_SYMBOL[curr] ?? curr;
+  const total = order.orderTotal ?? (order as { total?: number }).total ?? 0;
+  const statusLabel = order.status === 'READY' ? 'جاهز' : order.status === 'PREPARING' ? 'قيد التحضير' : order.status ?? '—';
+
+  return (
+    <div className="p-4 bg-white rounded-xl shadow-sm border border-amber-200 bg-amber-50/30">
+      <div className="flex justify-between items-start gap-2">
+        <p className="font-mono text-xl font-bold text-gray-900">#{order.id?.slice(0, 8)}</p>
+        <span className="text-xs px-2 py-0.5 rounded font-medium bg-amber-100 text-amber-800">{statusLabel}</span>
+      </div>
+      <div className="mt-2 space-y-2 text-sm">
+        <p><span className="text-gray-500">من:</span> <strong>{tenant.name || '—'}</strong></p>
+        <div>
+          <p><span className="text-gray-500">إلى:</span> <strong>{customer.name || '—'}</strong></p>
+          <div className="mt-1">
+            <DeliveryLocationDisplay order={order} />
+          </div>
+        </div>
+        <p className="font-medium text-teal-700">{sym}{total}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onAccept}
+        disabled={isPending}
+        className="mt-3 w-full py-2.5 px-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        {isPending ? 'جاري الاستلام...' : 'استلم الطلب'}
+      </button>
+    </div>
+  );
+}
+
 function OrderCard({
   order,
   allowedAction,
@@ -137,10 +199,14 @@ function OrderCard({
   const method = order.paymentMethod ?? 'CASH';
   const toCollect = order.amountToCollect ?? (method === 'CASH' ? total : 0);
 
+  const handedToDriverAt = order.deliveryTimeline?.handedToDriverAt;
+  const preparationLabel = order.status === 'PREPARING' ? 'قيد التحضير' : 'جاهز وفي الانتظار';
+  const canStartDelivery = allowedAction === 'PICKED_UP' && !!handedToDriverAt;
+
   return (
     <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
       <div className="flex justify-between items-start">
-        <p className="font-mono text-sm text-gray-600">#{order.id?.slice(0, 8)}</p>
+        <p className="font-mono text-xl font-bold text-gray-900">#{order.id?.slice(0, 8)}</p>
         <span className={`text-xs px-2 py-0.5 rounded font-medium ${STEP_BADGE_CLASS[step]}`}>
           {STEP_LABELS[step]}
         </span>
@@ -150,10 +216,14 @@ function OrderCard({
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-2.5">
           <p className="text-xs font-medium text-amber-800 mb-1">استلام</p>
           <p className="text-sm font-medium text-gray-900">{tenant.name || '—'}</p>
+          <p className="text-xs text-amber-700 mt-0.5">حالة التحضير: {preparationLabel}</p>
           {pickupAddr && <p className="text-xs text-gray-600">{pickupAddr}</p>}
-          <div className="mt-1.5 flex gap-2">
+          <div className="mt-1.5 flex gap-2 flex-wrap">
+            <a href={mapsUrl(tenant.location, pickupAddr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium">
+              <MapPin className="w-4 h-4" /> التوجه للمحل
+            </a>
             <a href={mapsUrl(tenant.location, pickupAddr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline">
-              <MapPin className="w-3.5 h-3.5" /> خرائط
+              خرائط
             </a>
             {tenant.phone && (
               <a href={`tel:${tenant.phone}`} className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline">
@@ -171,7 +241,16 @@ function OrderCard({
               <a href={whatsappUrl(customer.phone)} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:underline">واتساب</a>
             </div>
           )}
-          {dropoffAddr && <p className="text-xs text-gray-600 mt-0.5">{dropoffAddr}</p>}
+          <div className="mt-1">
+            {order.deliveryZoneName || (customer as { deliveryZoneName?: string }).deliveryZoneName ? (
+              <>
+                <p className="font-bold text-base text-gray-900">{order.deliveryZoneName ?? (customer as { deliveryZoneName?: string }).deliveryZoneName}</p>
+                {dropoffAddr && <p className="text-xs text-gray-500 mt-0.5">{dropoffAddr}</p>}
+              </>
+            ) : (
+              dropoffAddr && <p className="text-sm text-gray-700">{dropoffAddr}</p>
+            )}
+          </div>
           <a href={mapsUrl(customer.deliveryLocation, dropoffAddr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline mt-1">
             <MapPin className="w-3.5 h-3.5" /> خرائط
           </a>
@@ -217,13 +296,26 @@ function OrderCard({
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => onAction(order, allowedAction)}
-            disabled={isPending}
-            className={`flex-1 py-2 px-3 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5 ${
-              allowedAction === 'DELIVERED' ? 'bg-green-600 hover:bg-green-700' : allowedAction === 'FINISH' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-teal-600 hover:bg-teal-700'
+            disabled={isPending || (allowedAction === 'PICKED_UP' && !handedToDriverAt)}
+            className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 ${
+              allowedAction === 'PICKED_UP'
+                ? canStartDelivery
+                  ? 'bg-teal-600 hover:bg-teal-700 text-white'
+                  : 'bg-white border-2 border-teal-400 text-teal-700 hover:bg-teal-50'
+                : allowedAction === 'DELIVERED'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : allowedAction === 'FINISH'
+                    ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                    : 'bg-teal-600 hover:bg-teal-700 text-white'
             }`}
           >
-            {allowedAction === 'FINISH' && <CheckCircle2 className="w-4 h-4" />}
-            {ACTION_LABELS[allowedAction] ?? allowedAction}
+            <span className="flex items-center gap-1.5">
+              {allowedAction === 'FINISH' && <CheckCircle2 className="w-4 h-4" />}
+              {ACTION_LABELS[allowedAction] ?? allowedAction}
+            </span>
+            {allowedAction === 'PICKED_UP' && !canStartDelivery && (
+              <span className="text-xs opacity-90">انتظر تسليم الطلب من المحل</span>
+            )}
           </button>
         </div>
       )}
@@ -242,6 +334,11 @@ export default function CourierOrdersPage() {
   useCourierEvents((event) => {
     if (event.type === 'order_assigned' || event.type === 'order_unassigned') {
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+    }
+    if (event.type === 'order_ready' && event.orderId) {
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+      setToastMessage(`Order #${event.orderId.slice(0, 8)} is READY for pickup! Grab it now! 🚀`);
     }
   });
 
@@ -255,6 +352,14 @@ export default function CourierOrdersPage() {
     queryKey: ['courier-orders'],
     queryFn: () => apiFetch<CourierOrder[]>('/courier/orders'),
     enabled: !!user,
+    refetchInterval: 6000,
+  });
+
+  const { data: availableOrders = [], isLoading: availableLoading } = useQuery({
+    queryKey: ['courier-orders-available'],
+    queryFn: () => apiFetch<CourierOrder[]>('/courier/orders/available'),
+    enabled: !!user,
+    refetchInterval: 4000,
   });
 
   const statusMutation = useMutation({
@@ -275,13 +380,16 @@ export default function CourierOrdersPage() {
             console.warn('[CourierOrdersPage] 409 conflict', { status: e.status, code, details: e.details });
           }
           const msg =
-            code === 'CONCURRENCY_CONFLICT'
-              ? 'Order changed. Refreshing…'
-              : code === 'INVALID_TRANSITION'
-                ? 'Order is not in a valid state for this action. Refreshing…'
-                : 'Conflict. Refreshing…';
+            code === 'ORDER_TAKEN'
+              ? 'متأخر! هذا الطلب أخذه بطل آخر.'
+              : code === 'CONCURRENCY_CONFLICT'
+                ? 'Order changed. Refreshing…'
+                : code === 'INVALID_TRANSITION'
+                  ? 'Order is not in a valid state for this action. Refreshing…'
+                  : 'Conflict. Refreshing…';
           setToastMessage(msg);
           void queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+          void queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
           return { __handled409: true } as unknown;
         }
         throw err;
@@ -290,8 +398,26 @@ export default function CourierOrdersPage() {
     onSuccess: (data) => {
       if ((data as { __handled409?: boolean })?.__handled409) return;
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
       setFinishOrder(null);
       setFinishNotes('');
+    },
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: (orderId: string) => apiFetch<CourierOrder>(`/courier/orders/${orderId}/accept`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+    },
+    onError: (err: Error & { status?: number; code?: string }) => {
+      if (err?.status === 409 && err?.code === 'ORDER_TAKEN') {
+        setToastMessage('متأخر! هذا الطلب أخذه بطل آخر.');
+        queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+        queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+      } else {
+        setToastMessage(err?.message ?? 'فشل في استلام الطلب');
+      }
     },
   });
 
@@ -319,16 +445,45 @@ export default function CourierOrdersPage() {
   const completedOrders = allOrders.filter(isCompletedOrder);
   const displayOrders = activeTab === 'active' ? activeOrders : completedOrders;
 
+  const handleAccept = (order: CourierOrder) => {
+    if (!order.id) return;
+    acceptMutation.mutate(order.id);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-teal-600 text-white p-4 shadow">
         <Link to="/" className="text-sm text-teal-100 hover:text-white">
           ← رجوع
         </Link>
-        <h1 className="text-lg font-bold mt-1">طلباتي المعيّنة</h1>
+        <h1 className="text-lg font-bold mt-1">طلباتي والتوصيل</h1>
       </header>
 
       <main className="p-4 max-w-md mx-auto">
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">طلبات متاحة للاستلام</h2>
+          {availableLoading && availableOrders.length === 0 ? (
+            <p className="text-gray-500 text-sm py-2">جاري التحميل...</p>
+          ) : availableOrders.length === 0 ? (
+            <p className="text-gray-500 text-sm py-2">لا توجد طلبات متاحة حالياً. ستظهر هنا الطلبات الجاهزة أو قيد التحضير.</p>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500 mb-3">أول من يضغط «استلم» يحصل على الطلب ({availableOrders.length})</p>
+              <div className="space-y-3">
+                {availableOrders.map((o) => (
+                  <AvailableOrderCard
+                    key={o.id}
+                    order={o}
+                    onAccept={() => handleAccept(o)}
+                    isPending={acceptMutation.isPending}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">طلباتي المعيّنة</h2>
         <div className="flex gap-1 mb-4 p-1 bg-gray-200 rounded-lg">
           <button
             onClick={() => setActiveTab('active')}
@@ -407,7 +562,11 @@ export default function CourierOrdersPage() {
       )}
 
       {toastMessage && (
-        <div className="fixed bottom-4 left-4 right-4 mx-auto max-w-md bg-amber-800 text-white px-4 py-3 rounded-lg shadow-lg text-sm text-center z-50">
+        <div className={`fixed bottom-4 left-4 right-4 mx-auto max-w-md px-4 py-3 rounded-xl shadow-xl text-sm text-center z-50 font-medium ${
+          toastMessage.includes('READY') || toastMessage.includes('Grab it')
+            ? 'bg-emerald-600 text-white border-2 border-emerald-400 animate-pulse'
+            : 'bg-amber-800 text-white'
+        }`}>
           {toastMessage}
         </div>
       )}

@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { MockApiClient } from '@nmd/mock';
 import { Button } from '@nmd/ui';
 import { buildWhatsAppMessage, buildWhatsAppUrl, buildWhatsAppDeepLink, isValidWhatsAppPhone } from '@nmd/core';
 import { openWhatsAppOrderLink } from '../lib/whatsapp';
+import { setTrackingOrderId } from '../lib/order-tracking-storage';
 import { useAppStore } from '../store/app';
 import { MessageCircle, ArrowRight } from 'lucide-react';
 
@@ -28,12 +29,21 @@ export default function OrderSuccessPage() {
     retry: false,
   });
 
+  useEffect(() => {
+    if (orderId) setTrackingOrderId(orderId);
+  }, [orderId]);
+
   const { data: tenant, isLoading: tenantLoading, isError: tenantError } = useQuery({
     queryKey: ['tenant', tenantSlugOrId],
     queryFn: () => api.getTenant(tenantSlugOrId),
     enabled: !!tenantSlugOrId,
     retry: false,
   });
+
+  // Start tracking this order so the floating tracker appears when they browse the store
+  useEffect(() => {
+    if (orderId) setTrackingOrderId(orderId);
+  }, [orderId]);
 
   const { waUrl, deepLinkUrl } = useMemo(() => {
     if (!order || !tenant) return { waUrl: null as string | null, deepLinkUrl: null as string | null };

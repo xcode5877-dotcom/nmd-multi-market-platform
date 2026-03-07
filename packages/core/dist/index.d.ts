@@ -225,6 +225,8 @@ interface Product {
     /** Multi-image gallery; when saving, imageUrl = images[0].url if images has ≥1 item */
     images?: ProductImage[];
     optionGroups: OptionGroup[];
+    /** IDs of catalog option groups linked to this product (resolved to optionGroups when loading catalog) */
+    optionGroupIds?: string[];
     /** Auto-generated variants (cartesian product of option groups); stock/priceOverride per variant */
     variants?: ProductVariant[];
     stock?: number;
@@ -238,6 +240,10 @@ interface Product {
     createdAt?: string;
     /** Show in "مختارات" section on homepage */
     isFeatured?: boolean;
+    /** When true, product is hidden from storefront but kept in catalog for admins */
+    isArchived?: boolean;
+    /** Display order within category (lower = first). Storefront sorts by this then createdAt. */
+    sortOrder?: number;
 }
 
 interface SelectedOption {
@@ -490,9 +496,10 @@ declare const LAST_TENANT_KEY = "nmd.lastTenant";
 /**
  * Resolve effective operational status from tenant.
  * 1. If forceClosed is true (manual override), return 'closed'.
- * 2. If openTime/closeTime are used (simple daily window), compare current time in store TZ.
- * 3. If operationalStatus is set (manual override), use it.
- * 4. Else compute from businessHours using store timezone (Asia/Jerusalem).
+ * 2. If operationalStatus is 'open' or 'busy', use it (priority over time so dev/manual override works).
+ * 3. If openTime/closeTime are used (simple daily window), compare current time in store TZ (supports next-day close e.g. 03:00).
+ * 4. If operationalStatus is set (manual override), use it.
+ * 5. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
 declare function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): OperationalStatus;
 /**
@@ -508,10 +515,13 @@ declare function resolveTenantFromUrl(): string | null;
  * Persist last selected tenant for dev
  */
 declare function setLastTenant(slugOrId: string): void;
+/** Platform (mall/city) brand identity – used when no tenant is active. Do not allow tenant colors to persist on platform routes. */
+declare const PLATFORM_BRANDING: TenantBranding;
 /**
- * Convert tenant branding to CSS variables for runtime theming
+ * Convert tenant branding to CSS variables for runtime theming.
+ * If branding is null or undefined, reverts to PLATFORM_BRANDING so platform colors are applied immediately.
  */
-declare function tenantBrandingToCssVars(branding: TenantBranding): Record<string, string>;
+declare function tenantBrandingToCssVars(branding: TenantBranding | null | undefined): Record<string, string>;
 
 /**
  * Gregorian (ميلادي) date formatting only. Never Hijri.
@@ -574,10 +584,24 @@ declare function buildWhatsAppMessage(order: Order, tenant: Tenant): string;
  */
 declare function isValidWhatsAppPhone(phone: string | undefined | null): boolean;
 /**
- * Build WhatsApp URL with pre-filled message.
- * Phone must be digits only (with country code). No fallback.
+ * Build WhatsApp web URL (wa.me) with pre-filled message.
+ * Use for desktop; opens in browser. Phone must be digits only (with country code). No fallback.
  */
 declare function buildWhatsAppUrl(phone: string, message: string): string;
+/**
+ * Build WhatsApp native deep link (whatsapp://send) for mobile.
+ * Opens the WhatsApp app directly without a browser landing page; the current tab stays on your site.
+ * Phone must be digits only (with country code). No fallback.
+ */
+declare function buildWhatsAppDeepLink(phone: string, message: string): string;
+/**
+ * Build the "Merchant Control Section" text to append to the WhatsApp order message.
+ * Contains quick-action links so the merchant can update order status from WhatsApp.
+ * [ORDER_ID] is replaced with the given orderId.
+ * @param orderId - Order ID to inject into links
+ * @param baseUrl - Optional base URL (e.g. https://nmd.marketing/merchant). No trailing slash.
+ */
+declare function buildOrderActionLinksSection(orderId: string, baseUrl?: string): string;
 
 /** Re-export for addon placement (WHOLE/LEFT/RIGHT). */
 type Placement = PizzaPlacement;
@@ -628,4 +652,4 @@ declare const mockTenants: Record<string, Tenant>;
 declare const mockCategories: Record<string, Category[]>;
 declare const mockProducts: Record<string, Product[]>;
 
-export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };
+export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, PLATFORM_BRANDING, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildOrderActionLinksSection, buildWhatsAppDeepLink, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };

@@ -668,6 +668,13 @@ export class MockApiClient implements ApiClient {
     });
   }
 
+  /** Merchant marks order as handed to driver (sync point for courier "Start Delivery"). */
+  async markOrderHandedToDriver(tenantId: string, orderId: string): Promise<Order> {
+    return apiFetch<Order>(`/tenants/${tenantId}/orders/${orderId}/handed-to-driver`, {
+      method: 'POST',
+    });
+  }
+
   /** Market couriers */
   async getMarketCouriers(marketId: string): Promise<MarketCourier[]> {
     return apiFetch<MarketCourier[]>(`/markets/${marketId}/couriers`);

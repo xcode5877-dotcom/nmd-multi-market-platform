@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Button, Input, Select, DataTable, Drawer, ConfirmDialog, useToast } from '@nmd/ui';
+import { Card, Button, Input, Select, Drawer, ConfirmDialog, useToast } from '@nmd/ui';
+import { Pencil, Trash2, Package } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAdminData } from '../hooks/useAdminData';
 import type {
@@ -73,6 +74,125 @@ function StockBadge({ product }: { product: Product }) {
   return null;
 }
 
+function ProductCard({
+  product,
+  categoryName,
+  onToggle,
+  onEdit,
+  onDelete,
+  onPriceClick,
+  isQuickPriceActive,
+  quickPriceValue,
+  onQuickPriceChange,
+  onQuickPriceSave,
+  onQuickPriceCancel,
+}: {
+  product: Product;
+  categoryName: string;
+  onToggle: (p: Product) => void;
+  onEdit: (p: Product) => void;
+  onDelete: (p: Product) => void;
+  onPriceClick: (p: Product) => void;
+  isQuickPriceActive: boolean;
+  quickPriceValue: string;
+  onQuickPriceChange: (v: string) => void;
+  onQuickPriceSave: () => void;
+  onQuickPriceCancel: () => void;
+}) {
+  const imgUrl = product.images?.length
+    ? [...product.images].sort((a, b) => a.sortOrder - b.sortOrder)[0].url
+    : product.imageUrl;
+  const isAvailable = product.isAvailable ?? true;
+
+  return (
+    <Card className="overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full text-right" dir="rtl">
+      <div className="flex gap-3 p-4">
+        <div className="w-20 h-20 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
+          {imgUrl ? (
+            <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <Package className="w-8 h-8 text-slate-400" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-bold text-slate-900 truncate">{product.name}</h3>
+          <p className="text-sm text-slate-500 truncate">{categoryName}</p>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {isQuickPriceActive ? (
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={quickPriceValue}
+                  onChange={(e) => onQuickPriceChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') onQuickPriceSave();
+                    if (e.key === 'Escape') onQuickPriceCancel();
+                  }}
+                  className="w-20 px-2 py-1 rounded-lg border border-slate-200 text-lg font-bold text-primary"
+                  dir="ltr"
+                  autoFocus
+                />
+                <Button size="sm" variant="primary" onClick={onQuickPriceSave}>✓</Button>
+                <Button size="sm" variant="ghost" onClick={onQuickPriceCancel}>✕</Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onPriceClick(product)}
+                className="font-bold text-xl text-primary hover:underline focus:outline-none"
+                title="تعديل السعر"
+              >
+                ₪{formatMoney(product.basePrice)}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="px-4 pb-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEdit(product); }}
+            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+            title="تعديل"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(product); }}
+            className="p-2 rounded-lg hover:bg-red-50 text-red-600"
+            title="حذف"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer shrink-0">
+          <span className="text-xs font-medium text-slate-600">
+            {isAvailable ? 'ظاهر' : 'مخفي'}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isAvailable}
+            onClick={(e) => { e.preventDefault(); onToggle(product); }}
+            className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+              isAvailable ? 'bg-emerald-500' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-1 ${
+                isAvailable ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </label>
+      </div>
+    </Card>
+  );
+}
+
 export default function ProductsPage() {
   const { tenantId, tenantType = 'GENERAL' } = useAdminContext();
   const addToast = useToast().addToast;
@@ -125,6 +245,9 @@ export default function ProductsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [reorderExpanded, setReorderExpanded] = useState(false);
   const [draggedProductId, setDraggedProductId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [quickPriceProduct, setQuickPriceProduct] = useState<Product | null>(null);
+  const [quickPriceValue, setQuickPriceValue] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const productsByCategory = useMemo(() => {
@@ -137,6 +260,41 @@ export default function ProductsPage() {
     }
     return map;
   }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const sorted = [...products].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+    if (!categoryFilter) return sorted;
+    return sorted.filter((p) => (p.categoryId || '_') === categoryFilter);
+  }, [products, categoryFilter]);
+
+  const toggleAvailability = useCallback(
+    (p: Product) => {
+      const next = products.map((prod) =>
+        prod.id === p.id ? { ...prod, isAvailable: !prod.isAvailable } : prod
+      );
+      setProducts(next);
+      adminData.setProducts(next);
+      addToast(p.isAvailable ? 'تم إخفاء المنتج عن المتجر' : 'المنتج ظاهر الآن في المتجر', 'success');
+    },
+    [products, adminData, addToast]
+  );
+
+  const saveQuickPrice = useCallback(() => {
+    if (!quickPriceProduct || quickPriceValue === '') return;
+    const num = Number(quickPriceValue.replace(/,/g, '.'));
+    if (Number.isNaN(num) || num < 0) {
+      addToast('أدخل سعراً صالحاً', 'error');
+      return;
+    }
+    const next = products.map((prod) =>
+      prod.id === quickPriceProduct.id ? { ...prod, basePrice: num } : prod
+    );
+    setProducts(next);
+    adminData.setProducts(next);
+    setQuickPriceProduct(null);
+    setQuickPriceValue('');
+    addToast('تم تحديث السعر', 'success');
+  }, [quickPriceProduct, quickPriceValue, products, adminData, addToast]);
 
   const handleReorder = useCallback((categoryId: string, fromIndex: number, toIndex: number) => {
     const list = productsByCategory.get(categoryId) ?? [];
@@ -561,34 +719,6 @@ export default function ProductsPage() {
     });
   };
 
-  const rows: Record<string, React.ReactNode>[] = products.map((p) => ({
-    name: (
-      <div className="flex items-center gap-2">
-        {p.name}
-        {(p as Product & { isArchived?: boolean }).isArchived && (
-          <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600">أرشيف</span>
-        )}
-      </div>
-    ),
-    type: p.type,
-    price: formatMoney(p.basePrice),
-    stock: (
-      <div className="flex items-center gap-2">
-        <StockBadge product={p} />
-        {(p.inStock ?? true) && !p.isLastItems && p.quantity != null && (p.lowStockThreshold == null || p.quantity > p.lowStockThreshold) && (
-          <span className="text-gray-500 text-sm">{p.quantity}</span>
-        )}
-      </div>
-    ),
-    actions: (
-      <div onClick={(e) => e.stopPropagation()}>
-        <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
-          تعديل
-        </Button>
-      </div>
-    ),
-  }));
-
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -648,21 +778,75 @@ export default function ProductsPage() {
         </Card>
       )}
 
-      <Card>
-        {products.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">لا توجد منتجات</div>
+      {/* Category filter tabs — horizontal scroll */}
+      {products.length > 0 && (
+        <div className="mb-4 overflow-x-auto pb-2 -mx-1 px-1">
+          <div className="flex gap-2 min-w-max">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('')}
+              className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                !categoryFilter ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              الكل
+            </button>
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoryFilter(c.id)}
+                className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  categoryFilter === c.id ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Card className="shadow-sm border border-slate-100">
+        {filteredProducts.length === 0 ? (
+          <div className="p-12 sm:p-16 text-center" dir="rtl">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 text-slate-400 mb-4">
+              <Package className="w-8 h-8" />
+            </div>
+            <h3 className="font-semibold text-slate-900 text-lg mb-1">
+              {products.length === 0 ? 'لا توجد منتجات بعد' : 'لا منتجات في هذا التصنيف'}
+            </h3>
+            <p className="text-slate-500 text-sm max-w-sm mx-auto mb-6">
+              {products.length === 0
+                ? 'أضف منتجك الأول ليبقى في الكتالوج ويظهر في المتجر.'
+                : 'غيّر التصنيف من التبويبات أعلاه أو أضف منتجات لهذا التصنيف.'}
+            </p>
+            {products.length === 0 && (
+              <Button onClick={openAdd}>إضافة منتج</Button>
+            )}
+          </div>
         ) : (
-          <DataTable
-            columns={[
-              { key: 'name', label: 'الاسم' },
-              { key: 'type', label: 'النوع' },
-              { key: 'price', label: 'السعر' },
-              { key: 'stock', label: 'المخزون' },
-              { key: 'actions', label: 'إجراءات', className: 'w-24' },
-            ]}
-            rows={rows}
-            onRowClick={(_row, index) => openEdit(products[index])}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredProducts.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                categoryName={categories.find((c) => c.id === (p.categoryId || '_'))?.name ?? p.categoryId ?? '—'}
+                onToggle={toggleAvailability}
+                onEdit={openEdit}
+                onDelete={setDeleteConfirm}
+                onPriceClick={(prod) => {
+                  setQuickPriceProduct(prod);
+                  setQuickPriceValue(String(prod.basePrice));
+                }}
+                isQuickPriceActive={quickPriceProduct?.id === p.id}
+                quickPriceValue={quickPriceProduct?.id === p.id ? quickPriceValue : ''}
+                onQuickPriceChange={setQuickPriceValue}
+                onQuickPriceSave={saveQuickPrice}
+                onQuickPriceCancel={() => { setQuickPriceProduct(null); setQuickPriceValue(''); }}
+              />
+            ))}
+          </div>
         )}
       </Card>
       <Drawer

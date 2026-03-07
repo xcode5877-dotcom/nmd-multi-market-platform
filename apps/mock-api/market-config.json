@@ -3,9 +3,9 @@
     "dabburiyya": [
       {
         "id": "b1",
-        "imageUrl": "",
-        "title": "استشارة مجانية",
-        "linkTo": "lawyer-falan",
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772817639419-gz5a7v2p.webp",
+        "title": "حلي سهرتك",
+        "linkTo": "store-1772815941301",
         "active": true
       },
       {
@@ -55,6 +55,14 @@
         "type": "SLIDER",
         "storeIds": [
           "buffalo"
+        ]
+      },
+      {
+        "id": "s-1772817412117",
+        "title": "حلي ايامك",
+        "type": "SLIDER",
+        "storeIds": [
+          "store-1772815941301"
         ]
       }
     ],
