@@ -2,7 +2,10 @@
  * Status notification service.
  * - Customer: status-change messages (CONFIRMED, READY, COMPLETED) — simulation log or WhatsApp.
  * - Merchant: new-order "control panel" message with order details + action links, sent via whatsapp-service.
+ * - Admin PWA: Web Push so admin gets a system notification when app is in background (iOS wake-up).
  */
+
+import { getSubscriptionsByTenant, getSubscriptionsByPhone, sendPushNotification } from '../push-subscriptions.js';
 
 const WHATSAPP_SERVICE_URL = process.env.WHATSAPP_WEB_SERVICE_URL ?? process.env.WHATSAPP_SERVICE_URL ?? 'http://whatsapp-service:3000';
 const ORDER_ACTIONS_BASE = process.env.ORDER_ACTIONS_BASE_URL ?? 'https://nmd.marketing/merchant';
@@ -122,33 +125,30 @@ export async function sendMessage(phone: string, message: string, orderId?: stri
 }
 
 /**
- * Notify the merchant of a new order via WhatsApp (order details + action links).
- * Uses tenant.whatsappPhone or tenant.phone. Fire-and-forget; does not block checkout.
+ * Notify the merchant of a new order via Push only (no WhatsApp order summary).
+ * OTP / WhatsApp auth flow is unchanged and separate.
+ * Push leads merchant to dashboard to manage the order.
  */
 export function notifyMerchantNewOrder(
   order: OrderForNotification & { items?: unknown[]; total?: number; notes?: string; delivery?: unknown; fulfillmentType?: string },
   tenant: TenantForMerchantNotify
 ): void {
-  const phone = (tenant.whatsappPhone ?? tenant.phone ?? '').toString().replace(/\D/g, '').trim();
-  if (phone.length < 9) {
-    console.warn('[NotificationService] notifyMerchantNewOrder: no merchant phone for tenant', tenant.name ?? order.tenantId);
-    return;
+  const tenantId = (order as { tenantId?: string }).tenantId;
+  if (!tenantId) return;
+  const amount = (order as { total?: number }).total;
+  const amountStr = amount != null && !Number.isNaN(Number(amount)) ? formatMoney(Number(amount)) : '—';
+  const pushPayload = {
+    title: 'طلب جديد وصل! 🔔',
+    body: `طلب جديد بقيمة ${amountStr}! اضغط لمراجعة التفاصيل وتحضير الطلب.`,
+    tag: 'new-order-alarm',
+    renotify: true,
+  };
+  const subs = getSubscriptionsByTenant(tenantId);
+  for (const sub of subs) {
+    sendPushNotification(sub, pushPayload).catch((e) =>
+      console.error('[NotificationService] Merchant push failed:', e)
+    );
   }
-  const withCountry = phone.startsWith('0') ? '972' + phone.slice(1) : phone.length <= 10 ? '972' + phone : phone;
-  const message = buildMerchantOrderMessage(order as Parameters<typeof buildMerchantOrderMessage>[0], tenant.name);
-  const orderId = order.id != null ? String(order.id) : undefined;
-  (async () => {
-    try {
-      const result = await sendMessage(withCountry, message, orderId);
-      if (result.success) {
-        console.log('[NotificationService] Merchant notified for order', order.id);
-      } else {
-        console.error('[NotificationService] Merchant notify failed:', result.error);
-      }
-    } catch (e) {
-      console.error('[NotificationService] notifyMerchantNewOrder error:', e);
-    }
-  })();
 }
 
 const TEMPLATES: Record<string, (name: string, orderNumber: string, storeName: string) => string> = {
@@ -190,4 +190,62 @@ export function triggerStatusNotification(
   console.log('[NotificationService] To:', phone || '(no phone)');
   console.log('[NotificationService] Message:', message);
   console.log('[NotificationService] ---');
+}
+
+/** Arabic push messages for order status (customer app). CONFIRMED=processing, READY/COMPLETED=shipped, DELIVERED=delivered. */
+export const CUSTOMER_PUSH_MESSAGES: Record<string, { title: string; body: string }> = {
+  CONFIRMED: { title: 'تحديث الطلب', body: 'طلبك قيد التنفيذ الآن! 👨‍🍳' },
+  READY: { title: 'تحديث الطلب', body: 'طلبك في الطريق إليك! 🚚' },
+  COMPLETED: { title: 'تحديث الطلب', body: 'طلبك في الطريق إليك! 🚚' },
+  DELIVERED: { title: 'تم التوصيل', body: 'تم توصيل الطلب، بالهناء والشفاء! 🍽️' },
+};
+
+/**
+ * Send FCM to a single customer token (order status update). Mock: logs only; production would use Firebase Admin.
+ */
+export function sendFCMToCustomerToken(
+  fcmToken: string,
+  status: string,
+  orderId: string
+): void {
+  const msg = CUSTOMER_PUSH_MESSAGES[String(status).toUpperCase()];
+  if (!msg) return;
+  console.log('[NotificationService] FCM (mock) to token', fcmToken.slice(0, 20) + '...', 'orderId:', orderId, 'title:', msg.title, 'body:', msg.body);
+  // Production: Firebase Admin messaging.send({ token: fcmToken, notification: { title: msg.title, body: msg.body }, data: { orderId, status } })
+}
+
+/**
+ * Send a generic FCM notification to one token (e.g. broadcast). Mock: logs only.
+ */
+export function sendFCMToToken(token: string, title: string, body: string): void {
+  console.log('[NotificationService] FCM (mock) broadcast to token', token.slice(0, 20) + '...', 'title:', title, 'body:', body);
+  // Production: Firebase Admin messaging.send({ token, notification: { title, body } })
+}
+
+/**
+ * Send Web Push to the customer when order status changes. Uses customer phone to look up subscriptions.
+ * If no subscription, logs silently and does not throw (does not break order update).
+ */
+export function notifyCustomerOrderStatusPush(phone: string, status: string): void {
+  const msg = CUSTOMER_PUSH_MESSAGES[String(status).toUpperCase()];
+  if (!msg) return;
+  const normalizedPhone = String(phone ?? '').replace(/\D/g, '').trim();
+  if (!normalizedPhone) return;
+  const subs = getSubscriptionsByPhone(normalizedPhone);
+  if (subs.length === 0) {
+    console.log('[NotificationService] notifyCustomerOrderStatusPush: no subscription for phone ***' + normalizedPhone.slice(-4));
+    return;
+  }
+  console.log('[NotificationService] notifyCustomerOrderStatusPush: found ' + subs.length + ' subscription(s) for phone ***' + normalizedPhone.slice(-4));
+  const payload = {
+    title: msg.title,
+    body: msg.body,
+    tag: 'nmd-order-status',
+    renotify: true,
+  };
+  for (const sub of subs) {
+    sendPushNotification(sub, payload).catch((e) => {
+      console.warn('[NotificationService] Customer push failed for', normalizedPhone.slice(-4), e?.message ?? e);
+    });
+  }
 }

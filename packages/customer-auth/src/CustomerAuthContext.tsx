@@ -43,9 +43,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneNormalized }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string };
+      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string; whatsAppSent?: boolean };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
-      return { ok: true, devCode: data.devCode };
+      return { ok: true, devCode: data.devCode, whatsAppSent: data.whatsAppSent };
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' }; }
   }, []);
   const verify = useCallback(async (phone: string, code: string, name?: string) => {

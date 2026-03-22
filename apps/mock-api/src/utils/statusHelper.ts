@@ -16,6 +16,7 @@ interface DayHours {
 interface TenantLike {
   operationalStatus?: OperationalStatus;
   businessHours?: Partial<Record<DayKey, DayHours>>;
+  overrideStatus?: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
 }
 
 const STORE_TIMEZONE = 'Asia/Jerusalem';
@@ -38,6 +39,8 @@ function getNowInStoreTz(): { dayIdx: number; hour: number; minute: number } {
  * 2. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
 export function getOperationalStatus(tenant: TenantLike): OperationalStatus {
+  if (tenant.overrideStatus === 'FORCE_CLOSED') return 'closed';
+  if (tenant.overrideStatus === 'FORCE_OPEN') return 'open';
   if (tenant.operationalStatus) return tenant.operationalStatus;
   const hours = tenant.businessHours;
   if (!hours || Object.keys(hours).length === 0) return 'open';

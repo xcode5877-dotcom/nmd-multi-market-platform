@@ -6,10 +6,13 @@ import { Plus, Pencil, Trash2, GripVertical } from 'lucide-react';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
+type SectionType = 'SLIDER' | 'MARKET_GROUP';
+
+/** MARKET_GROUP sections can include any number of stores (no limit). Only these stores can be combined in one cart. */
 interface MarketSection {
   id: string;
   title: string;
-  type: 'SLIDER';
+  type: SectionType;
   storeIds: string[];
 }
 
@@ -25,6 +28,7 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<MarketSection | null>(null);
   const [formTitle, setFormTitle] = useState('');
+  const [formSectionType, setFormSectionType] = useState<SectionType>('SLIDER');
   const [formStoreIds, setFormStoreIds] = useState<Set<string>>(new Set());
 
   const { data: layout = [], isLoading } = useQuery({
@@ -35,6 +39,8 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
 
   const saveMutation = useMutation({
     mutationFn: async (newLayout: MarketSection[]) => {
+      if (!MOCK_API_URL) throw new Error('VITE_MOCK_API_URL غير معرّف — لا يمكن الحفظ');
+      if (!Array.isArray(newLayout)) throw new Error('صيغة البيانات خاطئة (يجب أن تكون مصفوفة)');
       return apiFetch<MarketSection[]>(`/markets/by-slug/${marketSlug}/layout`, {
         method: 'PUT',
         body: JSON.stringify(newLayout),
@@ -46,12 +52,17 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
       setEditModalOpen(false);
       setEditingSection(null);
     },
-    onError: (err: Error) => addToast(err?.message ?? 'فشل الحفظ', 'error'),
+    onError: (err: Error) => {
+      const msg = err?.message ?? 'فشل الحفظ';
+      console.error('[MarketLayoutTab] Save failed:', msg, { marketSlug, endpoint: `/markets/by-slug/${marketSlug}/layout` });
+      addToast(`فشل حفظ التخطيط: ${msg}`, 'error');
+    },
   });
 
   const openAdd = () => {
     setEditingSection(null);
     setFormTitle('');
+    setFormSectionType('SLIDER');
     setFormStoreIds(new Set());
     setEditModalOpen(true);
   };
@@ -59,6 +70,7 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
   const openEdit = (s: MarketSection) => {
     setEditingSection(s);
     setFormTitle(s.title);
+    setFormSectionType(s.type === 'MARKET_GROUP' ? 'MARKET_GROUP' : 'SLIDER');
     const slugs = s.storeIds.map((id) => tenants.find((t) => t.id === id || t.slug === id)?.slug ?? id);
     setFormStoreIds(new Set(slugs));
     setEditModalOpen(true);
@@ -82,7 +94,7 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
     const updated: MarketSection = {
       id: editingSection?.id ?? `s-${Date.now()}`,
       title: formTitle.trim(),
-      type: 'SLIDER',
+      type: formSectionType,
       storeIds,
     };
     const newLayout = editingSection
@@ -98,6 +110,17 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
 
   if (isLoading) {
     return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  }
+
+  if (!MOCK_API_URL) {
+    return (
+      <Card>
+        <div className="p-6 text-center text-amber-700 bg-amber-50 rounded-lg">
+          <p className="font-medium">لا يمكن تحميل أو حفظ التخطيط</p>
+          <p className="text-sm mt-1">VITE_MOCK_API_URL غير معرّف — تحقق من إعدادات البيئة.</p>
+        </div>
+      </Card>
+    );
   }
 
   return (
@@ -119,7 +142,12 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
             <div key={s.id} className="p-4 flex items-center gap-4">
               <GripVertical className="w-5 h-5 text-gray-400 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium">{s.title}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium">{s.title}</p>
+                  {s.type === 'MARKET_GROUP' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">مجموعة الطلب معاً</span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">
                   {s.storeIds.length} محل: {s.storeIds.map((id) => tenants.find((t) => t.id === id || t.slug === id)?.name ?? id).join(', ') || '—'}
                 </p>
@@ -145,6 +173,32 @@ export default function MarketLayoutTab({ marketSlug, tenants }: MarketLayoutTab
             onChange={(e) => setFormTitle(e.target.value)}
             placeholder="محلات مميزة"
           />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">نوع القسم</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sectionType"
+                  checked={formSectionType === 'SLIDER'}
+                  onChange={() => setFormSectionType('SLIDER')}
+                />
+                <span>عرض عادي (شريط أفقي)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sectionType"
+                  checked={formSectionType === 'MARKET_GROUP'}
+                  onChange={() => setFormSectionType('MARKET_GROUP')}
+                />
+                <span>مجموعة الطلب معاً</span>
+              </label>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {formSectionType === 'MARKET_GROUP' ? 'المحلات المختارة ستظهر في سلة واحدة معاً (+5 شيكل لكل محل إضافي)' : 'قسم عرض عادي في الصفحة الرئيسية'}
+            </p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">المحلات في هذا القسم</label>
             <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">

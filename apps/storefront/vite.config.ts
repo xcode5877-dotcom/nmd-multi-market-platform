@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  base: '/', // Production path: storefront at root (nmd.marketing/)
+  base: './', // Works for both web (nmd.marketing) and file:// (Android assets/public)
   plugins: [react()],
   resolve: {
     alias: {
@@ -13,6 +13,7 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: 'dist',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

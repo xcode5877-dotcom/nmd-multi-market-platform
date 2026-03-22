@@ -151,10 +151,11 @@ async function initClient() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
+        '--disable-gpu',
         '--no-proxy-server',
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       ],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
       handleSIGINT: false,
       protocolTimeout: 0,
     },
@@ -220,6 +221,18 @@ async function initClient() {
 
   client.options.puppeteer.waitForInitialPage = true;
   client.options.puppeteer.navigationTimeout = 0;
+
+  // Auto-cleanup: remove .wwebjs_auth/SingletonLock so Puppeteer does not lock up after a crash (TargetCloseError)
+  const wwebjsAuthLock = path.join(SESSION_PATH, '.wwebjs_auth', 'SingletonLock');
+  if (fs.existsSync(wwebjsAuthLock)) {
+    try {
+      fs.unlinkSync(wwebjsAuthLock);
+      console.log('[WhatsApp] Removed .wwebjs_auth/SingletonLock before initialize');
+    } catch (e) {
+      console.warn('[WhatsApp] Could not remove .wwebjs_auth/SingletonLock:', e.message);
+    }
+  }
+
   console.log('Puppeteer: Page initialization started...');
   await client.initialize();
   console.log('Puppeteer: Page loading...');

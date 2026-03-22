@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash: full-screen look, status bar matches primary background -->
+    <style name="Theme.NMDCustomer.Splash" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="android:windowBackground">@color/nmd_primary</item>
+        <item name="android:statusBarColor">@color/nmd_primary</item>
+        <item name="android:navigationBarColor">@color/nmd_primary</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
+    <!-- NMD Brand: primary #00A0A0 (teal), secondary #d4a574 (warm tan) -->
+    <style name="Theme.NMDCustomer" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/nmd_primary</item>
+        <item name="colorPrimaryVariant">@color/nmd_primary_dark</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSecondary">@color/nmd_secondary</item>
+        <item name="colorSecondaryVariant">@color/nmd_secondary_dark</item>
+        <item name="colorOnSecondary">@android:color/white</item>
+        <item name="android:statusBarColor">@color/nmd_primary_dark</item>
+        <item name="android:navigationBarColor">@color/nmd_surface</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

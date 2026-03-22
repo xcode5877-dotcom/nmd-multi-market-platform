@@ -14,7 +14,7 @@ interface CustomerAuthContextValue {
   customer: Customer | null;
   isLoading: boolean;
   checkPhone: (phone: string) => Promise<{ exists: boolean }>;
-  start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string }>;
+  start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }>;
   verify: (phone: string, code: string, name?: string) => Promise<{ ok: boolean; error?: string; customer?: Customer }>;
   me: () => Promise<Customer | null>;
   logout: () => void;
@@ -72,7 +72,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string }> => {
+  const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }> => {
     if (!API_BASE) return { ok: false, error: 'API غير متاح. حدّث VITE_MOCK_API_URL أو شغّل Mock API.' };
     const phoneNormalized = String(phone ?? '').trim().replace(/\D/g, '');
     if (!phoneNormalized || phoneNormalized.length < 9) return { ok: false, error: 'رقم الجوال غير صالح' };
@@ -82,9 +82,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneNormalized }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string };
+      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string; whatsAppSent?: boolean };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
-      return { ok: true, devCode: data.devCode };
+      return { ok: true, devCode: data.devCode, whatsAppSent: data.whatsAppSent };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
     }

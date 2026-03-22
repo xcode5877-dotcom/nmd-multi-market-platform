@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { formatMoney } from '@nmd/core';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
+import { DeliveryZoneMapPicker } from '../components/DeliveryZoneMapPicker';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
@@ -19,7 +20,16 @@ export default function DeliverySettingsPage() {
   const addToast = useToast().addToast;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
-  const [zoneForm, setZoneForm] = useState({ name: '', fee: 0, etaMinutes: 0, isActive: true, sortOrder: 0 });
+  const [zoneForm, setZoneForm] = useState({
+    name: '',
+    fee: 0,
+    etaMinutes: 0,
+    isActive: true,
+    sortOrder: 0,
+    centerLat: undefined as number | undefined,
+    centerLng: undefined as number | undefined,
+    radiusKm: 2,
+  });
 
   const canManageDelivery = isPlatformAdmin(currentUser?.role);
   const { data: deliverySettings, isLoading: settingsLoading } = useQuery({
@@ -58,41 +68,67 @@ export default function DeliverySettingsPage() {
     return (a.name ?? '').localeCompare(b.name ?? '');
   });
 
+  /** Default center for radius map when saved coordinates are null (forces map to render on iOS/Safari). */
+  const DEFAULT_RADIUS_MAP_CENTER = { lat: 32.70, lng: 35.37 };
+
   const handleAddZone = () => {
     setEditingZone(null);
-    setZoneForm({ name: '', fee: 0, etaMinutes: 0, isActive: true, sortOrder: sortedZones.length });
+    setZoneForm({
+      name: '',
+      fee: 0,
+      etaMinutes: 0,
+      isActive: true,
+      sortOrder: sortedZones.length,
+      centerLat: DEFAULT_RADIUS_MAP_CENTER.lat,
+      centerLng: DEFAULT_RADIUS_MAP_CENTER.lng,
+      radiusKm: 2,
+    });
     setModalOpen(true);
   };
 
   const handleEditZone = (z: DeliveryZone) => {
     setEditingZone(z);
+    const geo = z as DeliveryZone & { centerLat?: number; centerLng?: number; radiusKm?: number };
     setZoneForm({
       name: z.name,
       fee: z.fee,
       etaMinutes: z.etaMinutes ?? 0,
       isActive: z.isActive ?? true,
       sortOrder: z.sortOrder ?? 0,
+      centerLat: geo.centerLat ?? DEFAULT_RADIUS_MAP_CENTER.lat,
+      centerLng: geo.centerLng ?? DEFAULT_RADIUS_MAP_CENTER.lng,
+      radiusKm: geo.radiusKm ?? 2,
     });
     setModalOpen(true);
   };
 
   const handleSaveZone = async () => {
     if (!zoneForm.name.trim()) return;
+    const payload = {
+      name: zoneForm.name.trim(),
+      fee: zoneForm.fee,
+      etaMinutes: zoneForm.etaMinutes,
+      isActive: zoneForm.isActive,
+      sortOrder: zoneForm.sortOrder,
+      centerLat: zoneForm.centerLat,
+      centerLng: zoneForm.centerLng,
+      radiusKm: zoneForm.radiusKm,
+    };
     try {
       if (USE_API) {
         if (editingZone) {
-          await api.patchDeliveryZoneApi(tenantId, editingZone.id, zoneForm);
+          await api.patchDeliveryZoneApi(tenantId, editingZone.id, payload);
           addToast('تم تحديث المنطقة', 'success');
         } else {
-          await api.createDeliveryZoneApi(tenantId, zoneForm);
+          await api.createDeliveryZoneApi(tenantId, payload);
           addToast('تم إضافة المنطقة', 'success');
         }
       } else {
         if (editingZone) {
-          await api.updateDeliveryZoneApi(tenantId, editingZone.id, zoneForm);
+          await api.updateDeliveryZoneApi(tenantId, editingZone.id, payload);
           addToast('تم تحديث المنطقة', 'success');
         } else {
-          await api.createDeliveryZoneApi(tenantId, zoneForm);
+          await api.createDeliveryZoneApi(tenantId, payload);
           addToast('تم إضافة المنطقة', 'success');
         }
       }
@@ -274,6 +310,18 @@ export default function DeliverySettingsPage() {
               نشط
             </label>
           )}
+          <DeliveryZoneMapPicker
+            center={
+              zoneForm.centerLat != null && zoneForm.centerLng != null
+                ? { lat: zoneForm.centerLat, lng: zoneForm.centerLng }
+                : DEFAULT_RADIUS_MAP_CENTER
+            }
+            radiusKm={zoneForm.radiusKm}
+            onCenterChange={(lat, lng) => setZoneForm((f) => ({ ...f, centerLat: lat, centerLng: lng }))}
+            onRadiusChange={(km) => setZoneForm((f) => ({ ...f, radiusKm: km }))}
+            allZones={sortedZones}
+            editingZoneId={editingZone?.id}
+          />
         </div>
         <div className="mt-6 flex gap-2">
           <Button onClick={handleSaveZone}>حفظ</Button>

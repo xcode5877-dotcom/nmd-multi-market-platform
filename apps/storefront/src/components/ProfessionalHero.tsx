@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useTheme } from '@nmd/ui';
 import { useAppStore } from '../store/app';
@@ -25,6 +25,19 @@ function PhoneIcon({ className }: { className?: string }) {
 
 const SLIDE_CONTAINER =
   'w-full overflow-hidden rounded-t-2xl bg-gray-100 h-[220px] md:h-[320px] md:min-h-[320px]';
+
+const FALLBACK_TITLE = 'Now Market';
+
+function effectiveTitle(title: string | undefined | null): string {
+  const t = (title ?? '').trim();
+  if (!t) return FALLBACK_TITLE;
+  return t;
+}
+
+function withImageCacheBust(url: string, v: number): string {
+  if (!url) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}v=${v}`;
+}
 
 type HeroSlide = { type: 'hero'; hero: StorefrontHero };
 type BannerSlide = { type: 'banner'; banner: StorefrontBanner };
@@ -91,6 +104,7 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
 
   const slides = useMemo(() => buildSlides(heroProp ?? null, banners ?? []), [heroProp, banners]);
   const [idx, setIdx] = useState(0);
+  const imgCacheBust = useRef(Date.now()).current;
   useEffect(() => {
     if (slides.length <= 1) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % slides.length), 5000);
@@ -105,12 +119,11 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
     if (currentSlide.type === 'hero') {
       const h = currentSlide.hero;
       const imgUrl = h.imageUrl;
-      const showContent = h.title || h.subtitle;
       return (
         <div className={`relative ${SLIDE_CONTAINER}`}>
           {imgUrl ? (
             <img
-              src={imgUrl}
+              src={withImageCacheBust(imgUrl, imgCacheBust)}
               alt=""
               loading="lazy"
               decoding="async"
@@ -120,47 +133,38 @@ export function ProfessionalHero({ tenant, hero: heroProp, banners }: Profession
             <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5" />
           )}
           <div className="absolute inset-0 bg-black/40 z-[1]" />
-          {showContent && (
+          {(effectiveTitle(h.title) || effectiveTitle(h.subtitle)) && (
             <div className="absolute inset-0 z-[2] flex flex-col justify-center items-center text-center p-6">
-              {h.title && (
-                <h1 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
-                  {h.title}
-                </h1>
-              )}
-              {h.subtitle && (
-                <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
-                  {h.subtitle}
-                </p>
-              )}
+              <h1 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
+                {effectiveTitle(h.title)}
+              </h1>
+              <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
+                {effectiveTitle(h.subtitle)}
+              </p>
             </div>
           )}
         </div>
       );
     }
     const b = currentSlide.banner;
-    const showContent = b.title || b.subtitle;
     return (
       <div className={`relative ${SLIDE_CONTAINER}`}>
         <img
-          src={b.imageUrl}
-          alt={b.title ?? ''}
+          src={withImageCacheBust(b.imageUrl, imgCacheBust)}
+          alt={effectiveTitle(b.title)}
           loading="lazy"
           decoding="async"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-black/40 z-[1]" />
-        {showContent && (
+        {(effectiveTitle(b.title) || effectiveTitle(b.subtitle)) && (
           <div className="absolute inset-0 z-[2] flex flex-col justify-center items-center text-center p-6">
-            {b.title && (
-              <h2 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
-                {b.title}
-              </h2>
-            )}
-            {b.subtitle && (
-              <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
-                {b.subtitle}
-              </p>
-            )}
+            <h2 className="text-xl md:text-3xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.5)] max-w-[90%]">
+              {effectiveTitle(b.title)}
+            </h2>
+            <p className="mt-2 text-sm md:text-base text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[85%]">
+              {effectiveTitle(b.subtitle)}
+            </p>
           </div>
         )}
       </div>

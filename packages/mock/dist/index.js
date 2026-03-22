@@ -472,7 +472,23 @@ function seedStaff() {
 
 // src/mock-api-client.ts
 import { generateId as generateId2 } from "@nmd/core";
-var MOCK_API_URL = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK_API_URL || "";
+var MOCK_API_URL_RAW = typeof import.meta !== "undefined" && import.meta.env?.VITE_MOCK_API_URL || "";
+var PROD_API_BASE = "https://nmd.marketing/api";
+var MOCK_API_URL = (() => {
+  const s = typeof MOCK_API_URL_RAW === "string" ? MOCK_API_URL_RAW.trim().replace(/\/$/, "") : "";
+  if (s) return s;
+  const prod = typeof import.meta !== "undefined" && import.meta.env?.PROD;
+  return prod ? PROD_API_BASE : "";
+})();
+function apiBaseUrl() {
+  return MOCK_API_URL;
+}
+function buildAbsoluteUrl(path) {
+  const base = apiBaseUrl();
+  if (!base) return path;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return base + p;
+}
 var TOKEN_KEY = "nmd-access-token";
 function getAuthToken() {
   return typeof localStorage !== "undefined" ? localStorage.getItem("nmd-access-token") : null;
@@ -497,6 +513,8 @@ function getApiHeaders(path, method, init) {
     token = getCustomerToken() ?? getToken();
   } else if (method === "POST" && path === "/orders") {
     token = getCustomerToken();
+  } else if (path.startsWith("/coupons/validate")) {
+    token = getCustomerToken() ?? getToken();
   } else {
     token = getAuthToken() ?? getToken();
   }
@@ -545,6 +563,7 @@ function registryToTenant(r) {
     forceClosed: t.forceClosed ?? false,
     appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? "GENERAL",
+    marketId: r.marketId ?? null,
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
     branding: {
       logoUrl: r.logoUrl ?? "",
@@ -560,10 +579,12 @@ function registryToTenant(r) {
       collections: r.collections ?? []
     },
     operationalStatus: t.operationalStatus,
+    overrideStatus: t.overrideStatus,
     orderPolicy: t.orderPolicy,
     businessHours: t.businessHours,
     busyBannerEnabled: t.busyBannerEnabled,
-    busyBannerText: t.busyBannerText
+    busyBannerText: t.busyBannerText,
+    categoryId: r.categoryId
   };
 }
 function resolveTenant(idOrSlug) {
@@ -581,7 +602,7 @@ function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 async function publicFetch(path) {
-  const res = await fetch(`${MOCK_API_URL}${path}`, {
+  const res = await fetch(buildAbsoluteUrl(path), {
     method: "GET",
     headers: { "Content-Type": "application/json" }
   });
@@ -608,7 +629,8 @@ async function apiFetch(path, init) {
   if (!headers["Authorization"] && MOCK_API_URL && !isPublicRoute(method, path)) {
     console.warn(`[MockApiClient] Protected request to ${path} without token. Ensure you are logged in and token is in localStorage (key: ${TOKEN_KEY}).`);
   }
-  const res = await fetch(`${MOCK_API_URL}${path}`, {
+  const url = buildAbsoluteUrl(path);
+  const res = await fetch(url, {
     ...init,
     method,
     body,
@@ -642,7 +664,7 @@ async function uploadFiles(files) {
   if (token === null) {
     throw new Error("Upload blocked: No token found in localStorage");
   }
-  const res = await fetch(`${MOCK_API_URL}/upload?token=${encodeURIComponent(token)}`, {
+  const res = await fetch(`${buildAbsoluteUrl("/upload")}?token=${encodeURIComponent(token)}`, {
     method: "POST",
     body: form,
     headers: { Authorization: `Bearer ${token}` },
@@ -772,8 +794,15 @@ var MockApiClient = class {
       customerName: payload.customerName,
       customerPhone: payload.customerPhone,
       deliveryAddress: payload.deliveryAddress,
+      deliveryLocation: payload.deliveryLocation ?? payload.delivery?.deliveryLocation,
+      deliveryAddressSource: payload.deliveryAddressSource,
       delivery: payload.delivery
     };
+    if (payload.orderGroupId) order.orderGroupId = payload.orderGroupId;
+    const payloadWithCoupon = payload;
+    const orderPayload = order;
+    if (payloadWithCoupon.couponId) orderPayload.couponId = payloadWithCoupon.couponId;
+    if (payloadWithCoupon.couponDiscountAmount != null) orderPayload.couponDiscountAmount = payloadWithCoupon.couponDiscountAmount;
     if (this.useApi) {
       const created = await apiFetch("/orders", {
         method: "POST",
@@ -815,6 +844,50 @@ var MockApiClient = class {
     }
     await delay(80);
     return { orders: [], leads: [] };
+  }
+  /** Validate coupon; returns discount and coupon id if valid. Uses customer token when available. */
+  async validateCoupon(params) {
+    if (this.useApi) {
+      const q = new URLSearchParams();
+      q.set("code", params.code.trim());
+      if (params.tenantId) q.set("tenantId", params.tenantId);
+      if (params.cartStoreIds?.length) q.set("cartStoreIds", params.cartStoreIds.join(","));
+      q.set("subtotal", String(params.subtotal));
+      if (params.customerPhone) q.set("customerPhone", params.customerPhone);
+      const path = `/coupons/validate?${q.toString()}`;
+      try {
+        const data = await apiFetch(path);
+        return data.valid && data.coupon ? { valid: true, coupon: data.coupon } : { valid: false, error: data.error || "\u0627\u0644\u0643\u0648\u062F \u063A\u064A\u0631 \u0635\u062D\u064A\u062D" };
+      } catch (e) {
+        const err = e;
+        if (err?.message?.includes("401")) throw Object.assign(new Error("UNAUTHORIZED"), { status: 401 });
+        throw e;
+      }
+    }
+    await delay(80);
+    return { valid: false, error: "\u0627\u0644\u0643\u0648\u062F \u063A\u064A\u0631 \u0635\u062D\u064A\u062D" };
+  }
+  /** Customer rewards (winner coupons). Requires customer auth. */
+  async getCustomerRewards() {
+    if (this.useApi) {
+      return apiFetch("/customer/rewards");
+    }
+    await delay(80);
+    return [];
+  }
+  /** List coupons (platform admin). */
+  async getCoupons() {
+    if (this.useApi) {
+      return apiFetch("/coupons");
+    }
+    return [];
+  }
+  /** Create coupon (platform admin). */
+  async createCoupon(body) {
+    if (this.useApi) {
+      return apiFetch("/coupons", { method: "POST", body: JSON.stringify(body) });
+    }
+    throw new Error("API required");
   }
   async getCampaigns(tenantId) {
     if (this.useApi) {
@@ -886,6 +959,29 @@ var MockApiClient = class {
     }
     await delay(80);
     return listOptionItemsByGroup(tenantId, groupId);
+  }
+  /** Option templates (reusable library) for "Add from Templates" in product form. */
+  async getOptionTemplates(tenantId) {
+    if (this.useApi) {
+      try {
+        return await apiFetch(`/tenants/${tenantId}/option-templates`);
+      } catch {
+        return [];
+      }
+    }
+    return listOptionGroups(tenantId);
+  }
+  /** Save an option group to the templates library (and catalog). Used by Options generator. */
+  async addOptionTemplate(tenantId, group) {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/option-templates`, {
+        method: "POST",
+        body: JSON.stringify(group)
+      });
+      return;
+    }
+    const { upsertOptionGroup: upsertOptionGroup2 } = await import("./catalog-store-AOLIEKWR.js");
+    upsertOptionGroup2(tenantId, group);
   }
   // --- Admin/OS Control API (used by nmd-admin, admin) ---
   async getMe() {
@@ -1049,6 +1145,12 @@ var MockApiClient = class {
       method: "POST"
     });
   }
+  /** Merchant marks order as handed to driver (sync point for courier "Start Delivery"). */
+  async markOrderHandedToDriver(tenantId, orderId) {
+    return apiFetch(`/tenants/${tenantId}/orders/${orderId}/handed-to-driver`, {
+      method: "POST"
+    });
+  }
   /** Market couriers */
   async getMarketCouriers(marketId) {
     return apiFetch(`/markets/${marketId}/couriers`);
@@ -1101,6 +1203,41 @@ var MockApiClient = class {
     if (to) params.set("to", to);
     const q = params.toString() ? `?${params}` : "";
     return apiFetch(`/markets/${marketId}/finance/couriers${q}`);
+  }
+  /** Reports: daily summary (orders, revenue, cash flow). */
+  async getReportsDailySummary(marketId, from, to) {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const q = params.toString() ? `?${params}` : "";
+    return apiFetch(`/markets/${marketId}/reports/daily-summary${q}`);
+  }
+  /** Reports: merchant performance (per-store orders and sales). */
+  async getReportsMerchantPerformance(marketId, from, to) {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const q = params.toString() ? `?${params}` : "";
+    return apiFetch(`/markets/${marketId}/reports/merchant-performance${q}`);
+  }
+  /** Reports: driver leaderboard (ranked by delivery count). */
+  async getReportsDriverLeaderboard(marketId, from, to) {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const q = params.toString() ? `?${params}` : "";
+    return apiFetch(`/markets/${marketId}/reports/driver-leaderboard${q}`);
+  }
+  /** Reports: settlement log (driver Coba handover history). */
+  async getReportsSettlementLog(marketId) {
+    return apiFetch(`/markets/${marketId}/reports/settlement-log`);
+  }
+  /** Shift settlement: log driver handover (total collected). Admin only. */
+  async settleCourier(courierId, totalCollected) {
+    return apiFetch(`/admin/couriers/${encodeURIComponent(courierId)}/settle`, {
+      method: "POST",
+      body: JSON.stringify({ totalCollected })
+    });
   }
   /** All orders for a market (from tenants in that market). For market admin orders/dispatch views. */
   async getMarketOrders(marketId) {
@@ -1162,7 +1299,12 @@ var MockApiClient = class {
       return apiFetch(`/catalog/${tenantId}`);
     }
     const cat = getCatalog(tenantId);
-    return { ...cat };
+    const sortByOrder = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    return {
+      ...cat,
+      categories: [...cat.categories ?? []].sort(sortByOrder),
+      products: [...cat.products ?? []].sort(sortByOrder)
+    };
   }
   async setCatalogApi(tenantId, catalog) {
     if (this.useApi) {
@@ -1185,6 +1327,32 @@ var MockApiClient = class {
       optionItems: catalog.optionItems ?? []
     });
   }
+  async bulkSortCatalog(tenantId, entity, items) {
+    if (this.useApi) {
+      return apiFetch(`/bulk-sort`, {
+        method: "POST",
+        body: JSON.stringify({ entity, tenantId, items })
+      });
+    }
+    const cat = getCatalog(tenantId);
+    const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
+    if (entity === "categories") {
+      const categories = (cat.categories ?? []).map((c) => {
+        const so = orderMap.get(c.id);
+        return so !== void 0 ? { ...c, sortOrder: so } : c;
+      });
+      const { setCatalog: sc2 } = await import("./catalog-store-AOLIEKWR.js");
+      sc2(tenantId, { ...cat, categories });
+      return { ...getCatalog(tenantId) };
+    }
+    const products = (cat.products ?? []).map((p) => {
+      const so = orderMap.get(p.id);
+      return so !== void 0 ? { ...p, sortOrder: so } : p;
+    });
+    const { setCatalog: sc } = await import("./catalog-store-AOLIEKWR.js");
+    sc(tenantId, { ...cat, products });
+    return { ...getCatalog(tenantId) };
+  }
   async listOrdersByTenant(tenantId, options) {
     if (this.useApi) {
       const params = new URLSearchParams();
@@ -1197,6 +1365,25 @@ var MockApiClient = class {
     }
     const { listOrdersByTenant: lot } = await import("./orders-store-QOY4SZWQ.js");
     return lot(tenantId);
+  }
+  async getCategoryPolicies() {
+    if (this.useApi) {
+      return apiFetch("/category-policies");
+    }
+    return [
+      { id: "cat-sla-food", name: "\u0637\u0639\u0627\u0645 / \u062D\u0644\u0648\u064A\u0627\u062A", greenMs: 3 * 60 * 1e3, orangeMs: 5 * 60 * 1e3, redMs: 6 * 60 * 1e3, isUrgent: true },
+      { id: "cat-sla-general", name: "\u0639\u0627\u0645", greenMs: 10 * 60 * 1e3, orangeMs: 15 * 60 * 1e3, redMs: 20 * 60 * 1e3, isUrgent: false }
+    ];
+  }
+  async updateCategoryPolicy(id, payload) {
+    if (this.useApi) {
+      return apiFetch(`/category-policies/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) });
+    }
+    const policies = await this.getCategoryPolicies();
+    const idx = policies.findIndex((p) => p.id === id);
+    if (idx === -1) throw new Error("Category policy not found");
+    policies[idx] = { ...policies[idx], ...payload };
+    return policies[idx];
   }
   async getTenantDashboardStats(tenantId, options) {
     if (this.useApi) {
@@ -1257,6 +1444,11 @@ var MockApiClient = class {
     }
     const { updateOrderStatus: uos } = await import("./orders-store-QOY4SZWQ.js");
     return uos(orderId, status);
+  }
+  /** Hard delete order (SUPER_ADMIN only). Requires useApi. */
+  async hardDeleteOrder(orderId) {
+    if (!this.useApi) return;
+    await apiFetch(`/orders/${encodeURIComponent(orderId)}/hard-delete`, { method: "DELETE" });
   }
   async listCampaignsApi(tenantId) {
     if (this.useApi) {
@@ -1348,6 +1540,17 @@ var MockApiClient = class {
     if (zones.length === getDeliveryZones2(tenantId).length) return false;
     setDeliveryZones2(tenantId, zones);
     return true;
+  }
+  /** Sync current store's delivery zones to all other stores in the same market. Only when using API. */
+  async syncMarketDeliveryApi(marketId, sourceTenantId) {
+    if (this.useApi) {
+      const res = await apiFetch(`/markets/${marketId}/sync-delivery`, {
+        method: "POST",
+        body: JSON.stringify({ sourceTenantId })
+      });
+      return res;
+    }
+    return { synced: 0, tenantIds: [] };
   }
   /** Update homepage collections (admin-controlled sections). */
   async updateCollectionsApi(tenantId, collections) {

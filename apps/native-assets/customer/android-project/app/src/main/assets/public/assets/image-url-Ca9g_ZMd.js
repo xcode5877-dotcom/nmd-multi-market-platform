@@ -1,0 +1,1 @@
+const e="https://nmd.marketing/api";function s(r){if(!r||typeof r!="string")return"";const t=r.trim();return t?/^https?:\/\//i.test(t)?t:t.startsWith("/")&&e?`${e.replace(/\/$/,"")}${t}`:t:""}export{s as r};

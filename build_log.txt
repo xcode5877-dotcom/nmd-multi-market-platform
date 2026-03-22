@@ -1,0 +1,549 @@
+ Image nmd-multi-market-platform-web-gateway Building 
+ Image nmd-multi-market-platform-mock-api Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.23kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile.web
+#2 transferring dockerfile: 3.24kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/nginx:alpine
+#3 ...
+
+#4 [internal] load metadata for docker.io/library/node:20-alpine
+#4 DONE 0.4s
+
+#3 [internal] load metadata for docker.io/library/nginx:alpine
+#3 DONE 0.4s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 222B done
+#5 DONE 0.0s
+
+#6 [nmd-admin 1/8] FROM docker.io/library/node:20-alpine@sha256:b88333c42c23fbd91596ebd7fd10de239cedab9617de04142dde7315e3bc0afa
+#6 DONE 0.0s
+
+#7 [nmd-admin 2/8] WORKDIR /app
+#7 CACHED
+
+#8 [stage-4 1/7] FROM docker.io/library/nginx:alpine@sha256:1d13701a5f9f3fb01aaa88cef2344d65b6b5bf6b7d9fa4cf0dca557a8d7702ba
+#8 CACHED
+
+#9 [internal] load build context
+#9 ...
+
+#10 [nmd-admin 3/8] RUN corepack enable pnpm
+#10 DONE 0.6s
+
+#9 [internal] load build context
+#9 transferring context: 581.24MB 3.7s done
+#9 DONE 3.7s
+
+#11 [nmd-admin 4/8] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#11 ...
+
+#12 [stage-4 2/7] COPY nginx.conf /etc/nginx/conf.d/default.conf
+#12 DONE 0.2s
+
+#11 [nmd-admin 4/8] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+#11 DONE 0.2s
+
+#13 [nmd-admin 5/8] COPY packages ./packages
+#13 DONE 0.1s
+
+#14 [nmd-admin 6/8] COPY apps ./apps
+#14 DONE 1.2s
+
+#15 [nmd-admin 7/8] RUN pnpm install --frozen-lockfile
+#15 0.287 ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.14.2.tgz
+#15 2.153 Scope: all 12 workspace projects
+#15 2.265 Lockfile is up to date, resolution step is skipped
+#15 2.396 Progress: resolved 1, reused 0, downloaded 0, added 0
+#15 2.540 Packages: +678
+#15 2.540 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#15 2.757 
+#15 2.757    ╭───────────────────────────────────────────────────────────────────╮
+#15 2.757    │                                                                   │
+#15 2.757    │                Update available! 9.14.2 → 10.30.3.                │
+#15 2.757    │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v10.30.3   │
+#15 2.757    │         Run "corepack install -g pnpm@10.30.3" to update.         │
+#15 2.757    │                                                                   │
+#15 2.757    ╰───────────────────────────────────────────────────────────────────╯
+#15 2.757 
+#15 3.398 Progress: resolved 678, reused 0, downloaded 79, added 74
+#15 4.411 Progress: resolved 678, reused 0, downloaded 184, added 173
+#15 5.411 Progress: resolved 678, reused 0, downloaded 223, added 210
+#15 6.412 Progress: resolved 678, reused 0, downloaded 255, added 241
+#15 7.412 Progress: resolved 678, reused 0, downloaded 345, added 333
+#15 8.412 Progress: resolved 678, reused 0, downloaded 505, added 494
+#15 9.413 Progress: resolved 678, reused 0, downloaded 591, added 576
+#15 10.02 Progress: resolved 678, reused 0, downloaded 678, added 678, done
+#15 10.29 .../node_modules/@prisma/engines postinstall$ node scripts/postinstall.js
+#15 10.30 .../esbuild@0.27.3/node_modules/esbuild postinstall$ node install.js
+#15 10.31 .../node_modules/puppeteer postinstall$ node install.mjs
+#15 10.31 .../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+#15 10.32 .../esbuild@0.21.5/node_modules/esbuild postinstall$ node install.js
+#15 10.42 .../esbuild@0.27.3/node_modules/esbuild postinstall: Done
+#15 10.50 .../esbuild@0.21.5/node_modules/esbuild postinstall: Done
+#15 10.55 .../sharp@0.34.5/node_modules/sharp install: Done
+#15 10.59 .../node_modules/puppeteer postinstall: **INFO** Skipping Firefox download as instructed.
+#15 10.68 .../node_modules/@prisma/engines postinstall: prisma:warn Prisma failed to detect the libssl/openssl version to use, and may not work as expected. Defaulting to "openssl-1.1.x".
+#15 10.68 .../node_modules/@prisma/engines postinstall: Please manually install OpenSSL and try installing Prisma again.
+#15 11.74 .../node_modules/@prisma/engines postinstall: Done
+#15 19.19 .../node_modules/puppeteer postinstall: chrome-headless-shell (146.0.7680.31) downloaded to /root/.cache/puppeteer/chrome-headless-shell/linux-146.0.7680.31
+#15 21.52 .../node_modules/puppeteer postinstall: chrome (146.0.7680.31) downloaded to /root/.cache/puppeteer/chrome/linux-146.0.7680.31
+#15 21.53 .../node_modules/puppeteer postinstall: Done
+#15 21.55 .../prisma@5.22.0/node_modules/prisma preinstall$ node scripts/preinstall-entry.js
+#15 21.59 .../prisma@5.22.0/node_modules/prisma preinstall: Done
+#15 21.64 .../node_modules/@prisma/client postinstall$ node scripts/postinstall.js
+#15 22.16 .../node_modules/@prisma/client postinstall: prisma:warn Prisma failed to detect the libssl/openssl version to use, and may not work as expected. Defaulting to "openssl-1.1.x".
+#15 22.16 .../node_modules/@prisma/client postinstall: Please manually install OpenSSL and try installing Prisma again.
+#15 22.31 .../node_modules/@prisma/client postinstall: prisma:warn We could not find your Prisma schema in the default locations (see: https://pris.ly/d/prisma-schema-location).
+#15 22.31 .../node_modules/@prisma/client postinstall: If you have a Prisma schema file in a custom path, you will need to run
+#15 22.31 .../node_modules/@prisma/client postinstall: `prisma generate --schema=./path/to/your/schema.prisma` to generate Prisma Client.
+#15 22.31 .../node_modules/@prisma/client postinstall: If you do not have a Prisma schema file yet, you can ignore this message.
+#15 22.34 .../node_modules/@prisma/client postinstall: Done
+#15 22.52 
+#15 22.52 devDependencies:
+#15 22.52 + @eslint/js 9.39.3
+#15 22.52 + eslint 9.39.3
+#15 22.52 + eslint-plugin-react 7.37.5
+#15 22.52 + prettier 3.8.1
+#15 22.52 + typescript 5.9.3
+#15 22.52 + typescript-eslint 8.56.1
+#15 22.52 
+#15 22.54 apps/mock-api postinstall$ prisma generate
+#15 22.98 apps/mock-api postinstall: prisma:warn Prisma failed to detect the libssl/openssl version to use, and may not work as expected. Defaulting to "openssl-1.1.x".
+#15 22.98 apps/mock-api postinstall: Please manually install OpenSSL and try installing Prisma again.
+#15 23.14 apps/mock-api postinstall: Environment variables loaded from .env
+#15 23.14 apps/mock-api postinstall: Prisma schema loaded from prisma/schema.prisma
+#15 23.19 apps/mock-api postinstall: prisma:warn Prisma failed to detect the libssl/openssl version to use, and may not work as expected. Defaulting to "openssl-1.1.x".
+#15 23.19 apps/mock-api postinstall: Please manually install OpenSSL and try installing Prisma again.
+#15 24.13 apps/mock-api postinstall: ✔ Generated Prisma Client (v5.22.0) to ./../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client in 236ms
+#15 24.13 apps/mock-api postinstall: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#15 24.13 apps/mock-api postinstall: Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+#15 24.34 apps/mock-api postinstall: Done
+#15 24.38 Done in 22.7s
+#15 DONE 24.6s
+
+#16 [courier 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter courier exec -- vite build
+#16 1.563 
+#16 1.563 > @nmd/core@0.1.0 build /app/packages/core
+#16 1.563 > tsup
+#16 1.563 
+#16 2.601 CLI Building entry: src/index.ts
+#16 2.604 CLI Using tsconfig: tsconfig.json
+#16 2.604 CLI tsup v8.5.1
+#16 2.604 CLI Using tsup config: /app/packages/core/tsup.config.ts
+#16 2.642 CLI Target: es2022
+#16 2.656 CLI Cleaning output folder
+#16 2.666 ESM Build start
+#16 2.811 ESM dist/index.js     21.44 KB
+#16 2.813 ESM dist/index.js.map 43.90 KB
+#16 2.813 ESM ⚡️ Build success in 148ms
+#16 3.593 DTS Build start
+#16 ...
+
+#17 [merchant 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter admin exec -- vite build
+#17 1.512 
+#17 1.512 > @nmd/core@0.1.0 build /app/packages/core
+#17 1.512 > tsup
+#17 1.512 
+#17 2.634 CLI Building entry: src/index.ts
+#17 2.639 CLI Using tsconfig: tsconfig.json
+#17 2.640 CLI tsup v8.5.1
+#17 2.640 CLI Using tsup config: /app/packages/core/tsup.config.ts
+#17 2.663 CLI Target: es2022
+#17 2.674 CLI Cleaning output folder
+#17 2.683 ESM Build start
+#17 2.806 ESM dist/index.js     21.44 KB
+#17 2.806 ESM dist/index.js.map 43.90 KB
+#17 2.806 ESM ⚡️ Build success in 123ms
+#17 3.591 DTS Build start
+#17 ...
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 1.522 
+#18 1.522 > @nmd/core@0.1.0 build /app/packages/core
+#18 1.522 > tsup
+#18 1.522 
+#18 2.797 CLI Building entry: src/index.ts
+#18 2.807 CLI Using tsconfig: tsconfig.json
+#18 2.807 CLI tsup v8.5.1
+#18 2.807 CLI Using tsup config: /app/packages/core/tsup.config.ts
+#18 2.852 CLI Target: es2022
+#18 2.871 CLI Cleaning output folder
+#18 2.888 ESM Build start
+#18 3.072 ESM dist/index.js     21.44 KB
+#18 3.072 ESM dist/index.js.map 43.90 KB
+#18 3.072 ESM ⚡️ Build success in 182ms
+#18 3.836 DTS Build start
+#18 ...
+
+#19 [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker
+#19 1.526 
+#19 1.526 > @nmd/core@0.1.0 build /app/packages/core
+#19 1.526 > tsup
+#19 1.526 
+#19 2.769 CLI Building entry: src/index.ts
+#19 2.776 CLI Using tsconfig: tsconfig.json
+#19 2.776 CLI tsup v8.5.1
+#19 2.783 CLI Using tsup config: /app/packages/core/tsup.config.ts
+#19 2.816 CLI Target: es2022
+#19 2.829 CLI Cleaning output folder
+#19 2.829 ESM Build start
+#19 2.995 ESM dist/index.js     21.44 KB
+#19 2.995 ESM dist/index.js.map 43.90 KB
+#19 2.995 ESM ⚡️ Build success in 166ms
+#19 3.646 DTS Build start
+#19 ...
+
+#16 [courier 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter courier exec -- vite build
+#16 10.86 DTS ⚡️ Build success in 7271ms
+#16 10.86 DTS dist/index.d.ts 26.77 KB
+#16 12.04 
+#16 12.04 > @nmd/ui@0.1.0 build /app/packages/ui
+#16 12.04 > tsup src/index.tsx --format esm --dts --external react
+#16 12.04 
+#16 12.87 CLI Building entry: src/index.tsx
+#16 12.87 CLI Using tsconfig: tsconfig.json
+#16 12.88 CLI tsup v8.5.1
+#16 12.94 CLI Target: es2022
+#16 12.96 ESM Build start
+#16 13.22 ESM dist/index.js 29.65 KB
+#16 13.22 ESM ⚡️ Build success in 261ms
+#16 14.05 DTS Build start
+#16 ...
+
+#17 [merchant 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter admin exec -- vite build
+#17 12.05 DTS ⚡️ Build success in 8458ms
+#17 12.05 DTS dist/index.d.ts 26.77 KB
+#17 13.25 
+#17 13.25 > @nmd/ui@0.1.0 build /app/packages/ui
+#17 13.25 > tsup src/index.tsx --format esm --dts --external react
+#17 13.25 
+#17 14.45 CLI Building entry: src/index.tsx
+#17 14.45 CLI Using tsconfig: tsconfig.json
+#17 14.45 CLI tsup v8.5.1
+#17 14.49 CLI Target: es2022
+#17 14.49 ESM Build start
+#17 14.72 ESM dist/index.js 29.65 KB
+#17 14.72 ESM ⚡️ Build success in 237ms
+#17 15.44 DTS Build start
+#17 ...
+
+#19 [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker
+#19 11.49 DTS ⚡️ Build success in 7846ms
+#19 11.49 DTS dist/index.d.ts 26.77 KB
+#19 12.62 
+#19 12.62 > @nmd/ui@0.1.0 build /app/packages/ui
+#19 12.62 > tsup src/index.tsx --format esm --dts --external react
+#19 12.62 
+#19 13.54 CLI Building entry: src/index.tsx
+#19 13.54 CLI Using tsconfig: tsconfig.json
+#19 13.55 CLI tsup v8.5.1
+#19 13.56 CLI Target: es2022
+#19 13.56 ESM Build start
+#19 13.79 ESM dist/index.js 29.65 KB
+#19 13.79 ESM ⚡️ Build success in 229ms
+#19 14.62 DTS Build start
+#19 ...
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 12.01 DTS ⚡️ Build success in 8175ms
+#18 12.01 DTS dist/index.d.ts 26.77 KB
+#18 13.31 
+#18 13.31 > @nmd/ui@0.1.0 build /app/packages/ui
+#18 13.31 > tsup src/index.tsx --format esm --dts --external react
+#18 13.31 
+#18 14.40 CLI Building entry: src/index.tsx
+#18 14.40 CLI Using tsconfig: tsconfig.json
+#18 14.41 CLI tsup v8.5.1
+#18 14.43 CLI Target: es2022
+#18 14.43 ESM Build start
+#18 14.62 ESM dist/index.js 29.65 KB
+#18 14.63 ESM ⚡️ Build success in 195ms
+#18 15.36 DTS Build start
+#18 ...
+
+#19 [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker
+#19 27.09 DTS ⚡️ Build success in 12470ms
+#19 27.09 DTS dist/index.d.ts 7.68 KB
+#19 29.13 
+#19 29.13 > @nmd/mock@0.1.0 build /app/packages/mock
+#19 29.13 > tsup
+#19 29.13 
+#19 30.49 CLI Building entry: src/index.ts
+#19 30.49 CLI Using tsconfig: tsconfig.json
+#19 30.50 CLI tsup v8.5.1
+#19 30.50 CLI Using tsup config: /app/packages/mock/tsup.config.ts
+#19 30.54 CLI Target: es2022
+#19 30.55 CLI Cleaning output folder
+#19 30.56 ESM Build start
+#19 31.01 ESM dist/index.js                              50.91 KB
+#19 31.01 ESM dist/catalog-store-AOLIEKWR.js             519.00 B
+#19 31.01 ESM dist/delivery-store-PXP744OF.js            194.00 B
+#19 31.01 ESM dist/tenant-registry-O6KNRXNI.js           435.00 B
+#19 31.01 ESM dist/chunk-RILA36A3.js                     2.35 KB
+#19 31.01 ESM dist/chunk-JGIZAQTU.js                     4.78 KB
+#19 31.01 ESM dist/chunk-KIB727E7.js                     624.00 B
+#19 31.02 ESM dist/delivery-zones-store-CEW4CJD4.js      186.00 B
+#19 31.02 ESM dist/chunk-OW2PQW5D.js                     576.00 B
+#19 31.02 ESM dist/orders-store-QOY4SZWQ.js              338.00 B
+#19 31.02 ESM dist/chunk-3WXOPWUB.js                     1.33 KB
+#19 31.02 ESM dist/quick-start-templates-E632J24N.js     217.00 B
+#19 31.02 ESM dist/chunk-26C32PK3.js                     3.31 KB
+#19 31.02 ESM dist/index.js.map                          100.36 KB
+#19 31.02 ESM dist/catalog-store-AOLIEKWR.js.map         71.00 B
+#19 31.02 ESM dist/delivery-store-PXP744OF.js.map        71.00 B
+#19 31.02 ESM dist/tenant-registry-O6KNRXNI.js.map       71.00 B
+#19 31.02 ESM dist/chunk-RILA36A3.js.map                 4.25 KB
+#19 31.02 ESM dist/chunk-JGIZAQTU.js.map                 9.61 KB
+#19 31.02 ESM dist/chunk-KIB727E7.js.map                 1.24 KB
+#19 31.02 ESM dist/delivery-zones-store-CEW4CJD4.js.map  71.00 B
+#19 31.02 ESM dist/chunk-OW2PQW5D.js.map                 1.15 KB
+#19 31.02 ESM dist/orders-store-QOY4SZWQ.js.map          71.00 B
+#19 31.02 ESM dist/chunk-3WXOPWUB.js.map                 2.50 KB
+#19 31.02 ESM dist/quick-start-templates-E632J24N.js.map 71.00 B
+#19 31.02 ESM dist/chunk-26C32PK3.js.map                 4.33 KB
+#19 31.02 ESM ⚡️ Build success in 440ms
+#19 31.76 DTS Build start
+#19 ...
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 28.67 DTS ⚡️ Build success in 13300ms
+#18 28.67 DTS dist/index.d.ts 7.68 KB
+#18 30.71 
+#18 30.71 > @nmd/mock@0.1.0 build /app/packages/mock
+#18 30.71 > tsup
+#18 30.71 
+#18 31.53 CLI Building entry: src/index.ts
+#18 31.53 CLI Using tsconfig: tsconfig.json
+#18 31.53 CLI tsup v8.5.1
+#18 31.53 CLI Using tsup config: /app/packages/mock/tsup.config.ts
+#18 31.55 CLI Target: es2022
+#18 31.56 CLI Cleaning output folder
+#18 31.57 ESM Build start
+#18 31.98 ESM dist/index.js                              50.91 KB
+#18 31.98 ESM dist/catalog-store-AOLIEKWR.js             519.00 B
+#18 31.98 ESM dist/delivery-store-PXP744OF.js            194.00 B
+#18 31.98 ESM dist/tenant-registry-O6KNRXNI.js           435.00 B
+#18 31.98 ESM dist/chunk-RILA36A3.js                     2.35 KB
+#18 31.98 ESM dist/chunk-JGIZAQTU.js                     4.78 KB
+#18 31.98 ESM dist/chunk-KIB727E7.js                     624.00 B
+#18 31.98 ESM dist/delivery-zones-store-CEW4CJD4.js      186.00 B
+#18 31.98 ESM dist/chunk-OW2PQW5D.js                     576.00 B
+#18 31.98 ESM dist/orders-store-QOY4SZWQ.js              338.00 B
+#18 31.98 ESM dist/chunk-3WXOPWUB.js                     1.33 KB
+#18 31.98 ESM dist/quick-start-templates-E632J24N.js     217.00 B
+#18 31.98 ESM dist/chunk-26C32PK3.js                     3.31 KB
+#18 31.98 ESM dist/index.js.map                          100.36 KB
+#18 31.98 ESM dist/delivery-store-PXP744OF.js.map        71.00 B
+#18 31.98 ESM dist/tenant-registry-O6KNRXNI.js.map       71.00 B
+#18 31.99 ESM dist/catalog-store-AOLIEKWR.js.map         71.00 B
+#18 31.99 ESM dist/chunk-RILA36A3.js.map                 4.25 KB
+#18 31.99 ESM dist/chunk-JGIZAQTU.js.map                 9.61 KB
+#18 31.99 ESM dist/delivery-zones-store-CEW4CJD4.js.map  71.00 B
+#18 31.99 ESM dist/chunk-OW2PQW5D.js.map                 1.15 KB
+#18 31.99 ESM dist/chunk-KIB727E7.js.map                 1.24 KB
+#18 31.99 ESM dist/orders-store-QOY4SZWQ.js.map          71.00 B
+#18 31.99 ESM dist/chunk-3WXOPWUB.js.map                 2.50 KB
+#18 31.99 ESM dist/quick-start-templates-E632J24N.js.map 71.00 B
+#18 31.99 ESM dist/chunk-26C32PK3.js.map                 4.33 KB
+#18 31.99 ESM ⚡️ Build success in 417ms
+#18 32.96 DTS Build start
+#18 ...
+
+#17 [merchant 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter admin exec -- vite build
+#17 29.92 DTS ⚡️ Build success in 14484ms
+#17 29.92 DTS dist/index.d.ts 7.68 KB
+#17 31.49 
+#17 31.49 > @nmd/mock@0.1.0 build /app/packages/mock
+#17 31.49 > tsup
+#17 31.49 
+#17 32.80 CLI Building entry: src/index.ts
+#17 32.80 CLI Using tsconfig: tsconfig.json
+#17 32.80 CLI tsup v8.5.1
+#17 32.80 CLI Using tsup config: /app/packages/mock/tsup.config.ts
+#17 32.87 CLI Target: es2022
+#17 32.92 CLI Cleaning output folder
+#17 32.93 ESM Build start
+#17 33.35 ESM dist/index.js                              50.91 KB
+#17 33.35 ESM dist/catalog-store-AOLIEKWR.js             519.00 B
+#17 33.35 ESM dist/tenant-registry-O6KNRXNI.js           435.00 B
+#17 33.35 ESM dist/delivery-store-PXP744OF.js            194.00 B
+#17 33.35 ESM dist/chunk-RILA36A3.js                     2.35 KB
+#17 33.35 ESM dist/chunk-JGIZAQTU.js                     4.78 KB
+#17 33.35 ESM dist/chunk-KIB727E7.js                     624.00 B
+#17 33.35 ESM dist/delivery-zones-store-CEW4CJD4.js      186.00 B
+#17 33.35 ESM dist/chunk-OW2PQW5D.js                     576.00 B
+#17 33.35 ESM dist/orders-store-QOY4SZWQ.js              338.00 B
+#17 33.35 ESM dist/chunk-3WXOPWUB.js                     1.33 KB
+#17 33.35 ESM dist/quick-start-templates-E632J24N.js     217.00 B
+#17 33.35 ESM dist/chunk-26C32PK3.js                     3.31 KB
+#17 33.35 ESM dist/index.js.map                          100.36 KB
+#17 33.35 ESM dist/catalog-store-AOLIEKWR.js.map         71.00 B
+#17 33.35 ESM dist/tenant-registry-O6KNRXNI.js.map       71.00 B
+#17 33.36 ESM dist/delivery-store-PXP744OF.js.map        71.00 B
+#17 33.36 ESM dist/chunk-RILA36A3.js.map                 4.25 KB
+#17 33.36 ESM dist/chunk-JGIZAQTU.js.map                 9.61 KB
+#17 33.36 ESM dist/chunk-KIB727E7.js.map                 1.24 KB
+#17 33.36 ESM dist/delivery-zones-store-CEW4CJD4.js.map  71.00 B
+#17 33.36 ESM dist/chunk-OW2PQW5D.js.map                 1.15 KB
+#17 33.36 ESM dist/orders-store-QOY4SZWQ.js.map          71.00 B
+#17 33.36 ESM dist/chunk-3WXOPWUB.js.map                 2.50 KB
+#17 33.36 ESM dist/quick-start-templates-E632J24N.js.map 71.00 B
+#17 33.36 ESM dist/chunk-26C32PK3.js.map                 4.33 KB
+#17 33.36 ESM ⚡️ Build success in 425ms
+#17 34.18 DTS Build start
+#17 ...
+
+#16 [courier 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter courier exec -- vite build
+#16 27.16 DTS ⚡️ Build success in 13110ms
+#16 27.16 DTS dist/index.d.ts 7.68 KB
+#16 28.81 
+#16 28.81 > @nmd/mock@0.1.0 build /app/packages/mock
+#16 28.81 > tsup
+#16 28.81 
+#16 30.33 CLI Building entry: src/index.ts
+#16 30.34 CLI Using tsconfig: tsconfig.json
+#16 30.34 CLI tsup v8.5.1
+#16 30.34 CLI Using tsup config: /app/packages/mock/tsup.config.ts
+#16 30.38 CLI Target: es2022
+#16 30.40 CLI Cleaning output folder
+#16 30.41 ESM Build start
+#16 30.86 ESM dist/index.js                              50.91 KB
+#16 30.86 ESM dist/catalog-store-AOLIEKWR.js             519.00 B
+#16 30.86 ESM dist/delivery-store-PXP744OF.js            194.00 B
+#16 30.86 ESM dist/tenant-registry-O6KNRXNI.js           435.00 B
+#16 30.86 ESM dist/chunk-RILA36A3.js                     2.35 KB
+#16 30.86 ESM dist/chunk-JGIZAQTU.js                     4.78 KB
+#16 30.86 ESM dist/chunk-KIB727E7.js                     624.00 B
+#16 30.86 ESM dist/delivery-zones-store-CEW4CJD4.js      186.00 B
+#16 30.86 ESM dist/chunk-OW2PQW5D.js                     576.00 B
+#16 30.86 ESM dist/orders-store-QOY4SZWQ.js              338.00 B
+#16 30.86 ESM dist/chunk-3WXOPWUB.js                     1.33 KB
+#16 30.86 ESM dist/quick-start-templates-E632J24N.js     217.00 B
+#16 30.86 ESM dist/chunk-26C32PK3.js                     3.31 KB
+#16 30.86 ESM dist/index.js.map                          100.36 KB
+#16 30.86 ESM dist/catalog-store-AOLIEKWR.js.map         71.00 B
+#16 30.86 ESM dist/delivery-store-PXP744OF.js.map        71.00 B
+#16 30.86 ESM dist/tenant-registry-O6KNRXNI.js.map       71.00 B
+#16 30.86 ESM dist/chunk-RILA36A3.js.map                 4.25 KB
+#16 30.86 ESM dist/chunk-JGIZAQTU.js.map                 9.61 KB
+#16 30.86 ESM dist/chunk-KIB727E7.js.map                 1.24 KB
+#16 30.86 ESM dist/delivery-zones-store-CEW4CJD4.js.map  71.00 B
+#16 30.86 ESM dist/chunk-OW2PQW5D.js.map                 1.15 KB
+#16 30.86 ESM dist/orders-store-QOY4SZWQ.js.map          71.00 B
+#16 30.86 ESM dist/chunk-3WXOPWUB.js.map                 2.50 KB
+#16 30.86 ESM dist/quick-start-templates-E632J24N.js.map 71.00 B
+#16 30.86 ESM dist/chunk-26C32PK3.js.map                 4.33 KB
+#16 30.86 ESM ⚡️ Build success in 441ms
+#16 31.85 DTS Build start
+#16 40.28 DTS ⚡️ Build success in 8442ms
+#16 40.28 DTS dist/index.d.ts 22.08 KB
+#16 ...
+
+#19 [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker
+#19 40.83 DTS ⚡️ Build success in 9073ms
+#19 40.83 DTS dist/index.d.ts 22.08 KB
+#19 42.83 
+#19 42.83 > storefront@0.1.0 build:docker /app/apps/storefront
+#19 42.83 > vite build
+#19 42.83 
+#19 43.84 vite v5.4.21 building for production...
+#19 44.97 transforming...
+#19 ...
+
+#17 [merchant 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter admin exec -- vite build
+#17 43.36 DTS ⚡️ Build success in 9172ms
+#17 43.36 DTS dist/index.d.ts 22.08 KB
+#17 45.90 vite v5.4.21 building for production...
+#17 46.10 transforming...
+#17 ...
+
+#19 [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker
+#19 49.06 ✓ 96 modules transformed.
+#19 49.06 x Build failed in 5.18s
+#19 49.07 error during build:
+#19 49.07 [vite:esbuild] Transform failed with 1 error:
+#19 49.07 /app/apps/storefront/src/pages/MarketHomePage.tsx:454:100: ERROR: Cannot use "??" with "||" without parentheses
+#19 49.07 file: /app/apps/storefront/src/pages/MarketHomePage.tsx:454:100
+#19 49.07 
+#19 49.07 Cannot use "??" with "||" without parentheses
+#19 49.07 452|              >
+#19 49.07 453|                <div className="max-w-6xl mx-auto px-4">
+#19 49.07 454|                  <h2 className="text-lg font-bold text-gray-900 mb-1">{section.title || market?.name ?? 'مجموعة السوق'}</h2>
+#19 49.07    |                                                                                                      ^
+#19 49.07 455|                  <p className="text-sm text-gray-600 mb-3">يمكنك الطلب من هذه المتاجر معاً في سلة واحدة</p>
+#19 49.07 456|                  {loading ? (
+#19 49.07 
+#19 49.07     at failureErrorWithLog (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:1472:15)
+#19 49.07     at /app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:755:50
+#19 49.07     at responseCallbacks.<computed> (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:622:9)
+#19 49.07     at handleIncomingPacket (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:677:12)
+#19 49.07     at Socket.readFromStdout (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:600:7)
+#19 49.07     at Socket.emit (node:events:524:28)
+#19 49.07     at addChunk (node:internal/streams/readable:561:12)
+#19 49.07     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+#19 49.07     at Readable.push (node:internal/streams/readable:392:5)
+#19 49.07     at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
+#19 49.15 /app/apps/storefront:
+#19 49.15  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  storefront@0.1.0 build:docker: `vite build`
+#19 49.15 Exit status 1
+#19 ERROR: process "/bin/sh -c pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker" did not complete successfully: exit code: 1
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 41.76 DTS ⚡️ Build success in 8806ms
+#18 41.76 DTS dist/index.d.ts 22.08 KB
+#18 43.95 vite v5.4.21 building for production...
+#18 44.22 transforming...
+#18 ...
+
+#16 [courier 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter courier exec -- vite build
+#16 43.05 vite v5.4.21 building for production...
+#16 43.17 transforming...
+#16 CANCELED
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 ...
+
+#17 [merchant 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter admin exec -- vite build
+#17 CANCELED
+
+#18 [nmd-admin 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter nmd-admin exec -- vite build
+#18 CANCELED
+------
+ > [storefront 8/8] RUN pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker:
+49.07     at handleIncomingPacket (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:677:12)
+49.07     at Socket.readFromStdout (/app/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js:600:7)
+49.07     at Socket.emit (node:events:524:28)
+49.07     at addChunk (node:internal/streams/readable:561:12)
+49.07     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+49.07     at Readable.push (node:internal/streams/readable:392:5)
+49.07     at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
+49.15 /app/apps/storefront:
+49.15  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  storefront@0.1.0 build:docker: `vite build`
+49.15 Exit status 1
+------
+Dockerfile.web:14
+
+--------------------
+
+  13 |     ENV VITE_MOCK_API_URL=${VITE_PUBLIC_ORIGIN}/api
+
+  14 | >>> RUN pnpm --filter @nmd/core build && \
+
+  15 | >>>     pnpm --filter @nmd/ui build && \
+
+  16 | >>>     pnpm --filter @nmd/mock build && \
+
+  17 | >>>     pnpm --filter storefront run build:docker
+
+  18 |     
+
+--------------------
+
+failed to solve: process "/bin/sh -c pnpm --filter @nmd/core build &&     pnpm --filter @nmd/ui build &&     pnpm --filter @nmd/mock build &&     pnpm --filter storefront run build:docker" did not complete successfully: exit code: 1
+

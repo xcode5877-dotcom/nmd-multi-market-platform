@@ -1,0 +1,18 @@
+buildscript {
+    dependencies {
+        classpath 'com.google.gms:google-services:4.4.0'
+    }
+}
+plugins {
+    id 'com.android.application' version '8.2.0' apply false
+}
+
+subprojects {
+    project.configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin' && (details.requested.name == 'kotlin-stdlib-jdk7' || details.requested.name == 'kotlin-stdlib-jdk8')) {
+                details.useTarget "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+            }
+        }
+    }
+}

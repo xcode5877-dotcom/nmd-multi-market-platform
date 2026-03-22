@@ -18,7 +18,9 @@
     "build:superadmin": "pnpm --filter nmd-admin build",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "prepare:launch": "bash scripts/prepare-live-launch.sh",
+    "connectivity-check": "pnpm --filter mock-api run connectivity-check"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

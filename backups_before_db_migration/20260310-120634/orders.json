@@ -1,0 +1,1313 @@
+[
+  {
+    "id": "a194e17e-8b39-4588-85bd-a448495f3f27",
+    "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "c910f5d5-846b-4178-8a07-83ca1e51d096",
+        "productName": "بيتسا عائلية",
+        "categoryId": "15a1b5ad-bd38-4fb5-b948-7962f9755463",
+        "quantity": 1,
+        "basePrice": 60,
+        "selectedOptions": [
+          {
+            "optionGroupId": "ea13eb47-0d4c-442a-b16a-871d3d524abd",
+            "optionItemIds": [
+              "a73b444c-86f5-4e06-81f9-f1ff54771177",
+              "07ad62d3-28a4-482a-91f4-bcc52185d823"
+            ],
+            "optionPlacements": {
+              "a73b444c-86f5-4e06-81f9-f1ff54771177": "WHOLE",
+              "07ad62d3-28a4-482a-91f4-bcc52185d823": "RIGHT"
+            },
+            "sliceSelection": "WHOLE"
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "ea13eb47-0d4c-442a-b16a-871d3d524abd",
+            "name": "اضافاات",
+            "type": "CUSTOM",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "9097f4db-0221-4567-8483-7f3a2dd0cc08",
+                "name": "زيتون",
+                "sortOrder": 0,
+                "placement": "HALF"
+              },
+              {
+                "id": "ec436bf9-cc19-466f-83d0-27c7845cabfd",
+                "name": "زيتون اسود",
+                "sortOrder": 1,
+                "placement": "HALF"
+              },
+              {
+                "id": "aff00b65-0403-42eb-abcb-020be4d73771",
+                "name": "بصل",
+                "sortOrder": 2,
+                "placement": "HALF"
+              },
+              {
+                "id": "ea8ca896-6b91-4911-936b-d441ea367be0",
+                "name": "ذرة",
+                "sortOrder": 3,
+                "placement": "HALF"
+              },
+              {
+                "id": "17a0d6b3-2333-4a39-be7c-556cab25f203",
+                "name": "بندورة",
+                "sortOrder": 4,
+                "placement": "HALF"
+              },
+              {
+                "id": "bf3f4f10-dfc2-4b9b-b6fb-ac142a7451d1",
+                "name": "فلفل حلو",
+                "sortOrder": 5,
+                "placement": "HALF"
+              },
+              {
+                "id": "a73b444c-86f5-4e06-81f9-f1ff54771177",
+                "name": "فلفل حار",
+                "sortOrder": 6,
+                "placement": "HALF"
+              },
+              {
+                "id": "6be8d1a3-4b6a-4ae9-8171-caaeeaa964db",
+                "name": "فطر",
+                "sortOrder": 7,
+                "placement": "HALF"
+              },
+              {
+                "id": "f7b0f36c-6620-455d-a01d-282d144c0555",
+                "name": "تونة",
+                "sortOrder": 8,
+                "placement": "HALF"
+              },
+              {
+                "id": "07ad62d3-28a4-482a-91f4-bcc52185d823",
+                "name": "ببروني",
+                "sortOrder": 9,
+                "placement": "HALF"
+              },
+              {
+                "id": "4d511c25-9401-4c5e-90ed-41a7cd8ce232",
+                "name": "ثوم",
+                "sortOrder": 10,
+                "placement": "HALF"
+              }
+            ],
+            "allowHalfPlacement": true
+          }
+        ],
+        "totalPrice": 60,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772734099290-bvnbofpp.webp",
+        "id": "446c4b03-0048-4b9f-8929-66951789d079"
+      }
+    ],
+    "subtotal": 60,
+    "total": 75,
+    "currency": "ILS",
+    "createdAt": "2026-03-08T05:32:56.729Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e9cc9d8e-62db-4ca8-b2c9-2f932327686e",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "0bfa6fed-07f5-4546-aa5b-fd6a9afd4c28",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "prepTimeMin": 30,
+    "readyAt": "2026-03-08T06:02:56.729Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 60,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 75,
+        "commission": 7.5,
+        "gatewayFee": 0,
+        "netToMerchant": 67.5,
+        "netToMarket": 7.5
+      }
+    },
+    "merchantAmount": 60,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "fallbackTriggeredAt": "2026-03-08T08:06:41.040Z",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T13:23:33.686Z"
+    }
+  },
+  {
+    "id": "8143296c-f14a-46e3-bea4-cdb44840afdd",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4c38c94e-0526-4b82-b127-23e2b8a627ad",
+        "productName": "قشطوطة",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871518669-085vcwqe.webp",
+        "id": "515a42fc-fe9a-4403-a8ed-f3f9c9c63c25"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T13:15:31.808Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "e59d2038-1813-46de-89f1-eebcbdecf332",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 15,
+        "netToMarket": 20
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T13:16:17.842Z"
+    }
+  },
+  {
+    "id": "1c7a4536-b9d7-49d2-a084-59c98325b530",
+    "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "c910f5d5-846b-4178-8a07-83ca1e51d096",
+        "productName": "بيتسا عائلية",
+        "categoryId": "15a1b5ad-bd38-4fb5-b948-7962f9755463",
+        "quantity": 1,
+        "basePrice": 60,
+        "selectedOptions": [
+          {
+            "optionGroupId": "ea13eb47-0d4c-442a-b16a-871d3d524abd",
+            "optionItemIds": [
+              "ec436bf9-cc19-466f-83d0-27c7845cabfd",
+              "9097f4db-0221-4567-8483-7f3a2dd0cc08",
+              "bf3f4f10-dfc2-4b9b-b6fb-ac142a7451d1",
+              "aff00b65-0403-42eb-abcb-020be4d73771",
+              "f7b0f36c-6620-455d-a01d-282d144c0555"
+            ],
+            "optionPlacements": {
+              "ec436bf9-cc19-466f-83d0-27c7845cabfd": "WHOLE",
+              "9097f4db-0221-4567-8483-7f3a2dd0cc08": "WHOLE",
+              "bf3f4f10-dfc2-4b9b-b6fb-ac142a7451d1": "WHOLE",
+              "aff00b65-0403-42eb-abcb-020be4d73771": "WHOLE",
+              "f7b0f36c-6620-455d-a01d-282d144c0555": "WHOLE"
+            },
+            "sliceSelection": "WHOLE"
+          }
+        ],
+        "optionGroups": [
+          {
+            "id": "ea13eb47-0d4c-442a-b16a-871d3d524abd",
+            "name": "اضافاات",
+            "type": "CUSTOM",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": [
+              {
+                "id": "9097f4db-0221-4567-8483-7f3a2dd0cc08",
+                "name": "زيتون",
+                "sortOrder": 0,
+                "placement": "HALF"
+              },
+              {
+                "id": "ec436bf9-cc19-466f-83d0-27c7845cabfd",
+                "name": "زيتون اسود",
+                "sortOrder": 1,
+                "placement": "HALF"
+              },
+              {
+                "id": "aff00b65-0403-42eb-abcb-020be4d73771",
+                "name": "بصل",
+                "sortOrder": 2,
+                "placement": "HALF"
+              },
+              {
+                "id": "ea8ca896-6b91-4911-936b-d441ea367be0",
+                "name": "ذرة",
+                "sortOrder": 3,
+                "placement": "HALF"
+              },
+              {
+                "id": "17a0d6b3-2333-4a39-be7c-556cab25f203",
+                "name": "بندورة",
+                "sortOrder": 4,
+                "placement": "HALF"
+              },
+              {
+                "id": "bf3f4f10-dfc2-4b9b-b6fb-ac142a7451d1",
+                "name": "فلفل حلو",
+                "sortOrder": 5,
+                "placement": "HALF"
+              },
+              {
+                "id": "a73b444c-86f5-4e06-81f9-f1ff54771177",
+                "name": "فلفل حار",
+                "sortOrder": 6,
+                "placement": "HALF"
+              },
+              {
+                "id": "6be8d1a3-4b6a-4ae9-8171-caaeeaa964db",
+                "name": "فطر",
+                "sortOrder": 7,
+                "placement": "HALF"
+              },
+              {
+                "id": "f7b0f36c-6620-455d-a01d-282d144c0555",
+                "name": "تونة",
+                "sortOrder": 8,
+                "placement": "HALF"
+              },
+              {
+                "id": "07ad62d3-28a4-482a-91f4-bcc52185d823",
+                "name": "ببروني",
+                "sortOrder": 9,
+                "placement": "HALF"
+              },
+              {
+                "id": "4d511c25-9401-4c5e-90ed-41a7cd8ce232",
+                "name": "ثوم",
+                "sortOrder": 10,
+                "placement": "HALF"
+              }
+            ],
+            "allowHalfPlacement": true
+          }
+        ],
+        "totalPrice": 60,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772734099290-bvnbofpp.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "id": "422f236e-d963-4851-84b7-6da52cd85cb5"
+      }
+    ],
+    "subtotal": 60,
+    "total": 75,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T13:19:44.978Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e9cc9d8e-62db-4ca8-b2c9-2f932327686e",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "97d294c9-e361-4dad-b698-9a40bb6454f8",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "prepTimeMin": 30,
+    "readyAt": "2026-03-09T13:49:44.978Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 60,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 75,
+        "commission": 7.5,
+        "gatewayFee": 0,
+        "netToMerchant": 67.5,
+        "netToMarket": 7.5
+      }
+    },
+    "merchantAmount": 60,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "IN_PROGRESS",
+    "deliveryTimeline": {
+      "assignedAt": "2026-03-09T13:21:59.930Z",
+      "acknowledgedAt": "2026-03-09T13:22:47.927Z"
+    },
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T13:23:58.626Z"
+    },
+    "fallbackTriggeredAt": "2026-03-09T15:31:23.060Z"
+  },
+  {
+    "id": "e8190c54-f7e3-494e-b737-ee47edc43d49",
+    "tenantId": "1cc59722-3687-45a1-9121-e7a608fba225",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "a47157a1-e091-4242-bbbd-5545d5e6ee50",
+        "productName": "بيتسا صغير",
+        "categoryId": "15a1b5ad-bd38-4fb5-b948-7962f9755463",
+        "quantity": 1,
+        "basePrice": 25,
+        "selectedOptions": [],
+        "optionGroups": [
+          {
+            "id": "dc9108b1-95c5-4ea1-b0cb-6541a16fb88e",
+            "name": "اضافات",
+            "type": "CUSTOM",
+            "required": true,
+            "minSelected": 1,
+            "maxSelected": 1,
+            "selectionType": "single",
+            "items": []
+          }
+        ],
+        "totalPrice": 25,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772734525734-bbtvv9l2.webp",
+        "id": "61ae4f44-2566-4cf3-b30d-442e7a193cee"
+      }
+    ],
+    "subtotal": 25,
+    "total": 40,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T13:21:11.345Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e9cc9d8e-62db-4ca8-b2c9-2f932327686e",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "190d9996-0f7c-411d-9bcb-3cea43e91572",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "prepTimeMin": 30,
+    "readyAt": "2026-03-09T13:51:11.345Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 25,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 40,
+        "commission": 4,
+        "gatewayFee": 0,
+        "netToMerchant": 36,
+        "netToMarket": 4
+      }
+    },
+    "merchantAmount": 25,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T13:22:57.516Z"
+    },
+    "fallbackTriggeredAt": "2026-03-09T15:31:23.060Z"
+  },
+  {
+    "id": "e6145f43-fe6d-44d7-8884-7dc2529ed757",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "2b6506cd-c054-43e6-a95b-68fb6e930e66",
+        "productName": "قشطوطة فواكه",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871630045-hfx4qz2n.webp",
+        "id": "bc72baca-9b28-4f6a-afd2-26d45533caef"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T13:25:02.688Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e88cad83-01ba-4614-a675-40da9244b1bf",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "2c51dd03-e9ac-476b-94e5-daf7bef841d8",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T13:25:02.688Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 20,
+        "netToMarket": 30
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "DELIVERED",
+    "deliveryTimeline": {
+      "assignedAt": "2026-03-09T13:25:41.430Z",
+      "acknowledgedAt": "2026-03-09T13:25:52.251Z",
+      "handedToDriverAt": "2026-03-09T13:25:53.585Z",
+      "pickedUpAt": "2026-03-09T13:25:59.721Z",
+      "deliveredAt": "2026-03-09T13:26:05.022Z",
+      "durations": {
+        "totalMinutes": 0,
+        "assignedToAcknowledged": 0,
+        "acknowledgedToPickedUp": 0,
+        "pickedUpToDelivered": 0
+      }
+    },
+    "lastStatusNotification": {
+      "status": "READY",
+      "at": "2026-03-09T13:25:49.274Z"
+    },
+    "deliveredAt": "2026-03-09T13:26:05.022Z",
+    "fallbackTriggeredAt": "2026-03-09T13:39:02.143Z"
+  },
+  {
+    "id": "2b9d546f-3f12-4ffb-baa0-ae157c4dc3a5",
+    "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "1fa3216b-d811-4bae-a8ef-ddd7fd23c412",
+        "productName": "صفيحة لحمة",
+        "categoryId": "94f42e0b-25c3-406d-8a58-d02613b74358",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772759616200-uz2h5dno.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "149269b7-03bf-46f5-9480-78f22147bd58"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:27:49.287Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "538258f5-6d58-44c4-83ca-d7061c5a3749",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 3.5,
+        "gatewayFee": 0,
+        "netToMerchant": 31.5,
+        "netToMarket": 3.5
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T15:32:01.730Z"
+    }
+  },
+  {
+    "id": "5050c45b-3596-420e-8776-e69686290722",
+    "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "1fa3216b-d811-4bae-a8ef-ddd7fd23c412",
+        "productName": "صفيحة لحمة",
+        "categoryId": "94f42e0b-25c3-406d-8a58-d02613b74358",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772759616200-uz2h5dno.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "b04c5f7f-b566-478a-87ad-8d54395101bd"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:28:49.559Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "03cd5d91-0f40-44a6-b9e5-19364206c366",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 3.5,
+        "gatewayFee": 0,
+        "netToMerchant": 31.5,
+        "netToMarket": 3.5
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T15:31:58.039Z"
+    }
+  },
+  {
+    "id": "464b3bc4-f732-483f-b58d-7eb2fdac182c",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4c38c94e-0526-4b82-b127-23e2b8a627ad",
+        "productName": "قشطوطة",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871518669-085vcwqe.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "db0f513f-d28b-4fbc-93b6-83a043643e47"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:29:31.831Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "a8cccc32-671e-424c-8856-ab0f27dc2de7",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 15,
+        "netToMarket": 20
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T15:32:16.572Z"
+    }
+  },
+  {
+    "id": "1fbe4fe6-e3d5-4657-a3c2-87f821370d66",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "COMPLETED",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4c38c94e-0526-4b82-b127-23e2b8a627ad",
+        "productName": "قشطوطة",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871518669-085vcwqe.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "b2319be9-18ed-46d7-8472-08ae6b3e370b"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:30:50.524Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "fc58ab24-09e8-4b20-abb1-8ffbf9a493b9",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 15,
+        "netToMarket": 20
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T15:32:15.770Z"
+    }
+  },
+  {
+    "id": "8622f214-4f72-4bbb-a086-2cbba685aa50",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "PENDING",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "2b6506cd-c054-43e6-a95b-68fb6e930e66",
+        "productName": "قشطوطة فواكه",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871630045-hfx4qz2n.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "2db3d804-0831-4da1-a0d0-697d8ccbe133"
+      }
+    ],
+    "subtotal": 35,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:49:20.596Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "f669a890-cf15-4a9b-9c20-f67db8f2b781",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 15,
+        "netToMarket": 20
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "4127fa5f-fe2b-42d4-82a1-194cbbd6da5c",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "PENDING",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4c38c94e-0526-4b82-b127-23e2b8a627ad",
+        "productName": "قشطوطة",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871518669-085vcwqe.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "adfdfe91-426d-47d6-b381-e2eaf373e9b7"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:49:35.098Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e88cad83-01ba-4614-a675-40da9244b1bf",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "48041742-9a6e-4b2b-8795-6dab6069032a",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T15:49:35.098Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 20,
+        "netToMarket": 30
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "IN_PROGRESS",
+    "deliveryTimeline": {
+      "assignedAt": "2026-03-09T15:50:13.077Z",
+      "acknowledgedAt": "2026-03-09T15:50:20.382Z"
+    }
+  },
+  {
+    "id": "a1a6784c-e8d1-4f6e-96e7-126ab0b8ca56",
+    "tenantId": "2f663230-f9b3-463c-b8ab-eb55a5474b95",
+    "status": "PENDING",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4c38c94e-0526-4b82-b127-23e2b8a627ad",
+        "productName": "قشطوطة",
+        "categoryId": "3f72a4ff-f5e3-428a-adca-467321eb9e83",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772871518669-085vcwqe.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "33d0ed66-2b4a-4a29-9d2a-df5c164a2297"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T15:51:06.983Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "e88cad83-01ba-4614-a675-40da9244b1bf",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "295abf14-74b2-45c0-8116-e4b074be2824",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T15:51:06.983Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 15,
+        "gatewayFee": 0,
+        "netToMerchant": 20,
+        "netToMarket": 30
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "fallbackTriggeredAt": "2026-03-09T16:26:51.402Z"
+  },
+  {
+    "id": "f9de98c8-28b0-4a91-8c12-8c3eeca50c0d",
+    "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "1fa3216b-d811-4bae-a8ef-ddd7fd23c412",
+        "productName": "صفيحة لحمة",
+        "categoryId": "94f42e0b-25c3-406d-8a58-d02613b74358",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772759616200-uz2h5dno.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "a3a190f8-451b-4072-b2f0-b3d326f7a609"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T16:24:27.267Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "c600b900-1a26-4c31-8f3d-0f9cdb19ab0f",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "b0f9ab3a-eca2-4af0-9c5d-c87805494fa5",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T16:24:27.267Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 5,
+        "gatewayFee": 0,
+        "netToMerchant": 45,
+        "netToMarket": 5
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "READY",
+      "at": "2026-03-09T16:29:16.917Z"
+    },
+    "courierId": "courier-50971b77-4811-49e8-825b-78bd84041782",
+    "deliveryStatus": "DELIVERED",
+    "deliveryTimeline": {
+      "assignedAt": "2026-03-09T16:52:51.313Z",
+      "handedToDriverAt": "2026-03-09T16:53:07.238Z",
+      "acknowledgedAt": "2026-03-09T16:53:17.875Z",
+      "pickedUpAt": "2026-03-09T16:53:19.190Z",
+      "deliveredAt": "2026-03-09T16:53:21.019Z",
+      "durations": {
+        "totalMinutes": 0,
+        "assignedToAcknowledged": 0,
+        "acknowledgedToPickedUp": 0,
+        "pickedUpToDelivered": 0
+      }
+    },
+    "deliveredAt": "2026-03-09T16:53:21.019Z"
+  },
+  {
+    "id": "1267e025-418a-4226-a47a-ae4da557333d",
+    "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
+    "status": "PENDING",
+    "fulfillmentType": "PICKUP",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4e406eb4-05fd-4281-96bc-11443246f69c",
+        "productName": "صفيحة لحمة",
+        "categoryId": "fba36c55-c38e-451b-b73b-7ce91a3ba575",
+        "quantity": 1,
+        "basePrice": 20,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 20,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772732742491-32fnt29n.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "5123e007-6e96-46b5-9404-9dd52b7b4f9b"
+      }
+    ],
+    "subtotal": 20,
+    "total": 20,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T21:58:43.398Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "delivery": {
+      "method": "PICKUP"
+    },
+    "orderGroupId": "2dfba27d-f800-4073-9519-64fbb59249e6",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 20,
+        "deliveryFee": 5
+      },
+      "financials": {
+        "gross": 20,
+        "commission": 2,
+        "gatewayFee": 0,
+        "netToMerchant": 18,
+        "netToMarket": 2
+      }
+    },
+    "merchantAmount": 20,
+    "platformDeliveryFee": 5,
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "c47d4901-0473-4469-9060-fb184bc9e691",
+    "tenantId": "6d59233f-5edd-463b-b379-2697e5b6df34",
+    "status": "PREPARING",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "4e406eb4-05fd-4281-96bc-11443246f69c",
+        "productName": "صفيحة لحمة",
+        "categoryId": "fba36c55-c38e-451b-b73b-7ce91a3ba575",
+        "quantity": 1,
+        "basePrice": 20,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 20,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772732742491-32fnt29n.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "9355d31e-5a93-4885-abbf-cea4f0eea49c"
+      }
+    ],
+    "subtotal": 20,
+    "total": 35,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T22:10:14.878Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "cf7ccc8d-46c6-4bd1-9a79-2184ab34e795",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "98118044-67bb-4d87-83fb-61b6a7a0eaf9",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "prepTimeMin": 30,
+    "readyAt": "2026-03-09T22:40:14.878Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 20,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 35,
+        "commission": 3.5,
+        "gatewayFee": 0,
+        "netToMerchant": 31.5,
+        "netToMarket": 3.5
+      }
+    },
+    "merchantAmount": 20,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT"
+  },
+  {
+    "id": "d08ece9a-f10f-47ea-9f53-5f66b27f76a8",
+    "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "1fa3216b-d811-4bae-a8ef-ddd7fd23c412",
+        "productName": "صفيحة لحمة",
+        "categoryId": "94f42e0b-25c3-406d-8a58-d02613b74358",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772759616200-uz2h5dno.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "2ace6903-6aa6-4a97-992b-6499b0d90670"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T22:21:51.509Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "c600b900-1a26-4c31-8f3d-0f9cdb19ab0f",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "17aa60fb-6a99-49fc-a1c3-3c23bccee1e5",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T22:21:51.509Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 5,
+        "gatewayFee": 0,
+        "netToMerchant": 45,
+        "netToMarket": 5
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T22:23:07.829Z"
+    }
+  },
+  {
+    "id": "5f3d3839-bfca-4721-b989-67c4fc249d9f",
+    "tenantId": "f6e493da-e69f-4bbc-877b-8842a1dfb72e",
+    "status": "COMPLETED",
+    "fulfillmentType": "DELIVERY",
+    "paymentMethod": "CASH",
+    "items": [
+      {
+        "productId": "80b5f675-f851-49d1-9c87-ff66eef0c93d",
+        "productName": "صفيحة دجاج",
+        "categoryId": "94f42e0b-25c3-406d-8a58-d02613b74358",
+        "quantity": 1,
+        "basePrice": 35,
+        "selectedOptions": [],
+        "optionGroups": [],
+        "totalPrice": 35,
+        "imageUrl": "https://nmd.marketing/api/uploads/1772759638103-u5bz8v2p.webp",
+        "quantityStep": 1,
+        "unitName": "حبة",
+        "isWeightBased": false,
+        "id": "5fd07b73-3fc2-4cac-bc34-e2a112c7df0f"
+      }
+    ],
+    "subtotal": 35,
+    "total": 50,
+    "currency": "ILS",
+    "createdAt": "2026-03-09T22:22:44.389Z",
+    "customerName": "فواز عزايزة",
+    "customerPhone": "0546111668",
+    "deliveryAddress": "دبورية - تواصل معي بالواتساب لتحديد الموقع",
+    "delivery": {
+      "method": "DELIVERY",
+      "zoneId": "c600b900-1a26-4c31-8f3d-0f9cdb19ab0f",
+      "zoneName": "دبوريه ",
+      "fee": 15,
+      "addressText": "دبورية - تواصل معي بالواتساب لتحديد الموقع"
+    },
+    "orderGroupId": "dfa26d20-51f3-4b6d-aa25-a853731c913c",
+    "marketId": "market-dabburiyya",
+    "customerId": "customer-3bf4ba86-362f-43fd-aa0a-a89ba8c61f56",
+    "deliveryAssignmentMode": "MARKET",
+    "readyAt": "2026-03-09T22:22:44.389Z",
+    "payment": {
+      "method": "CASH",
+      "provider": "NMD",
+      "status": "PENDING",
+      "currency": "ILS",
+      "breakdown": {
+        "itemsTotal": 35,
+        "deliveryFee": 15
+      },
+      "financials": {
+        "gross": 50,
+        "commission": 5,
+        "gatewayFee": 0,
+        "netToMerchant": 45,
+        "netToMarket": 5
+      }
+    },
+    "merchantAmount": 35,
+    "platformDeliveryFee": 15,
+    "orderType": "PRODUCT",
+    "lastStatusNotification": {
+      "status": "COMPLETED",
+      "at": "2026-03-09T22:23:10.592Z"
+    }
+  }
+]

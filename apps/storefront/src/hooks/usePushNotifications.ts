@@ -10,7 +10,8 @@ export interface UsePushNotificationsResult {
   isSupported: boolean;
   isSubscribed: boolean;
   error: string | null;
-  requestAndSubscribe: () => Promise<boolean>;
+  /** Pass customer phone so backend saves subscription under phone key. */
+  requestAndSubscribe: (customerPhone: string) => Promise<boolean>;
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -37,7 +38,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
     'PushManager' in window &&
     'Notification' in window;
 
-  const requestAndSubscribe = useCallback(async (): Promise<boolean> => {
+  const requestAndSubscribe = useCallback(async (customerPhone: string): Promise<boolean> => {
     setError(null);
     if (!isSupported) {
       setError('التنبيهات غير مدعومة في هذا المتصفح');
@@ -53,12 +54,30 @@ export function usePushNotifications(): UsePushNotificationsResult {
       setError('سجّل الدخول أولاً لتفعيل التنبيهات');
       return false;
     }
+    const phone = String(customerPhone ?? '').trim();
+    if (!phone) {
+      setError('رقم الجوال مطلوب لتفعيل التنبيهات');
+      return false;
+    }
 
     try {
+      // If already denied, show clear instructions to enable from settings
+      if (Notification.permission === 'denied') {
+        setPermission('denied');
+        setError(
+          'التنبيهات معطّلة. يرجى تفعيلها من إعدادات المتصفح: الإعدادات → التطبيقات → هذا الموقع → الإشعارات'
+        );
+        return false;
+      }
+
       const perm = await Notification.requestPermission();
       setPermission(perm);
       if (perm !== 'granted') {
-        setError(perm === 'denied' ? 'تم رفض التنبيهات' : 'لم يتم اختيار إذن التنبيهات');
+        setError(
+          perm === 'denied'
+            ? 'تم رفض التنبيهات. فعّلها من إعدادات المتصفح: الإعدادات → التطبيقات → هذا الموقع → الإشعارات'
+            : 'لم يتم اختيار إذن التنبيهات'
+        );
         return false;
       }
 
@@ -66,26 +85,17 @@ export function usePushNotifications(): UsePushNotificationsResult {
       if (!keyRes.ok) throw new Error('Failed to get push key');
       const { publicKey } = (await keyRes.json()) as { publicKey?: string };
       if (!publicKey) throw new Error('No public key');
-      alert('1. Public Key Received');
-
-      if (typeof window !== 'undefined') {
-        alert('Checking: ' + (window.isSecureContext ? 'Secure' : 'NOT Secure'));
-        alert('SW: ' + ('serviceWorker' in navigator ? 'Yes' : 'No'));
-        alert('Push: ' + ('PushManager' in window ? 'Yes' : 'No'));
-      }
 
       const reg = await navigator.serviceWorker.ready;
-      let sub: PushSubscription;
-      alert('2. Starting PushManager Subscribe');
-      try {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
-      } catch (subscribeErr) {
-        console.error('[Push] pushManager.subscribe failed:', subscribeErr);
-        throw subscribeErr;
-      }
+      reg.update(); // Force SW update so push subscription uses latest worker
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      });
+
+      const payload = { subscription: sub.toJSON(), phone };
+      console.log('[Push] Sending to backend – phone:', phone, 'subscription:', payload.subscription);
 
       const res = await fetch(`${API_BASE}/customer/push-subscription`, {
         method: 'POST',
@@ -93,7 +103,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ subscription: sub.toJSON() }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const errBody = await res.text();
@@ -104,7 +114,6 @@ export function usePushNotifications(): UsePushNotificationsResult {
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'فشل تفعيل التنبيهات';
-      alert('3. Error: ' + (e instanceof Error ? e.message : String(e)));
       setError(msg);
       return false;
     }

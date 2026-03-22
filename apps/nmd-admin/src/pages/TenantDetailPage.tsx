@@ -1,11 +1,12 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input } from '@nmd/ui';
+import { useAuth } from '../contexts/AuthContext';
+import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input, ConfirmDialog } from '@nmd/ui';
 import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
 import { formatPrice, formatDateGregorian } from '@nmd/core';
-import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2 } from 'lucide-react';
+import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign } from 'lucide-react';
 import { apiFetch } from '../api';
 
 const api = new MockApiClient();
@@ -14,12 +15,27 @@ const MIN_PASSWORD_LENGTH = 6;
 const ADMIN_PORT = 5176;
 const STOREFRONT_PORT = 5173;
 
+function isSuperAdmin(role: string | undefined): boolean {
+  return role === 'SUPER_ADMIN';
+}
+
+/** Only SUPER_ADMIN and MARKET_ADMIN can delete a store. TENANT_ADMIN (merchant) must never see or use delete. */
+function canDeleteStore(role: string | undefined): boolean {
+  if (role === 'TENANT_ADMIN') return false;
+  return role === 'SUPER_ADMIN' || role === 'MARKET_ADMIN';
+}
+
 export default function TenantDetailPage() {
   const params = useParams<{ id?: string; tenantId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const id = params.tenantId ?? params.id;
+  const superAdmin = isSuperAdmin(user?.role);
+  const showDeleteStore = canDeleteStore(user?.role);
+  const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string } | null>(null);
+  const [orderHardDeleting, setOrderHardDeleting] = useState(false);
   const openResetFromState = (location.state as { openResetPassword?: boolean })?.openResetPassword ?? false;
   const queryClient = useQueryClient();
   const { data: tenantFromApi, isLoading } = useQuery({
@@ -42,6 +58,11 @@ export default function TenantDetailPage() {
     queryKey: ['users'],
     queryFn: () => api.listUsers(),
     enabled: USE_API && !marketId,
+  });
+  const { data: categoryPolicies = [] } = useQuery({
+    queryKey: ['category-policies'],
+    queryFn: () => api.getCategoryPolicies(),
+    enabled: USE_API,
   });
   const { data: tenantAdminFromApi } = useQuery({
     queryKey: ['tenant-admin', id],
@@ -75,6 +96,21 @@ export default function TenantDetailPage() {
     },
     onError: (err) => addToast(err instanceof Error ? err.message : 'فشل', 'error'),
   });
+
+  const handleHardDeleteOrder = async () => {
+    if (!orderDeleteTarget?.id || !USE_API) return;
+    setOrderHardDeleting(true);
+    try {
+      await api.hardDeleteOrder(orderDeleteTarget.id);
+      queryClient.invalidateQueries({ queryKey: ['orders', id] });
+      setOrderDeleteTarget(null);
+      addToast('تم حذف الطلب نهائياً', 'success');
+    } catch {
+      addToast('فشل حذف الطلب', 'error');
+    } finally {
+      setOrderHardDeleting(false);
+    }
+  };
   const applyTemplateMutation = useMutation({
     mutationFn: () => api.applyTemplateApi(id!, 'clothing'),
     onSuccess: () => {
@@ -123,18 +159,43 @@ export default function TenantDetailPage() {
   const currentOpenTime = (tenant as { openTime?: string })?.openTime ?? '08:00';
   const currentCloseTime = (tenant as { closeTime?: string })?.closeTime ?? '17:00';
   const currentForceClosed = (tenant as { forceClosed?: boolean })?.forceClosed ?? false;
+  const currentCategoryId = (tenant as { categoryId?: string })?.categoryId ?? '';
+  const currentEnabled = (tenant as { enabled?: boolean })?.enabled ?? true;
+  const currentLocation = (tenant as { location?: { lat: number; lng: number } })?.location;
+  const currentDeliveryRadiusKm = (tenant as { deliveryRadiusKm?: number })?.deliveryRadiusKm;
+  const currentFinancialConfig = (tenant as { financialConfig?: { commissionType: string; commissionValue: number; deliveryFeeModel: string } })?.financialConfig;
   const [nameLocal, setNameLocal] = useState(currentName);
   const [aboutLocal, setAboutLocal] = useState(currentAbout);
   const [storeTypeLocal, setStoreTypeLocal] = useState<'RESTAURANT' | 'PROFESSIONAL'>(currentStoreType);
   const [openTimeLocal, setOpenTimeLocal] = useState(currentOpenTime);
   const [closeTimeLocal, setCloseTimeLocal] = useState(currentCloseTime);
   const [forceClosedLocal, setForceClosedLocal] = useState(currentForceClosed);
+  const [categoryIdLocal, setCategoryIdLocal] = useState(currentCategoryId);
+  const [enabledLocal, setEnabledLocal] = useState(currentEnabled);
+  const [latLocal, setLatLocal] = useState(currentLocation?.lat ?? '');
+  const [lngLocal, setLngLocal] = useState(currentLocation?.lng ?? '');
+  const [deliveryRadiusKmLocal, setDeliveryRadiusKmLocal] = useState(currentDeliveryRadiusKm ?? '');
+  const [commissionTypeLocal, setCommissionTypeLocal] = useState(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
+  const [commissionValueLocal, setCommissionValueLocal] = useState(currentFinancialConfig?.commissionValue ?? 10);
+  const [deliveryFeeModelLocal, setDeliveryFeeModelLocal] = useState(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
   useEffect(() => { setNameLocal(currentName); }, [currentName]);
   useEffect(() => { setAboutLocal(currentAbout); }, [currentAbout]);
   useEffect(() => { setStoreTypeLocal(currentStoreType); }, [currentStoreType]);
   useEffect(() => { setOpenTimeLocal(currentOpenTime); }, [currentOpenTime]);
   useEffect(() => { setCloseTimeLocal(currentCloseTime); }, [currentCloseTime]);
   useEffect(() => { setForceClosedLocal(currentForceClosed); }, [currentForceClosed]);
+  useEffect(() => { setCategoryIdLocal(currentCategoryId); }, [currentCategoryId]);
+  useEffect(() => { setEnabledLocal(currentEnabled); }, [currentEnabled]);
+  useEffect(() => {
+    setLatLocal(currentLocation?.lat != null ? String(currentLocation.lat) : '');
+    setLngLocal(currentLocation?.lng != null ? String(currentLocation.lng) : '');
+  }, [currentLocation?.lat, currentLocation?.lng]);
+  useEffect(() => { setDeliveryRadiusKmLocal(currentDeliveryRadiusKm != null ? String(currentDeliveryRadiusKm) : ''); }, [currentDeliveryRadiusKm]);
+  useEffect(() => {
+    setCommissionTypeLocal(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
+    setCommissionValueLocal(currentFinancialConfig?.commissionValue ?? 10);
+    setDeliveryFeeModelLocal(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
+  }, [currentFinancialConfig?.commissionType, currentFinancialConfig?.commissionValue, currentFinancialConfig?.deliveryFeeModel]);
 
   const saveStorefrontMutation = useMutation({
     mutationFn: (payload: { name: string; about: string }) =>
@@ -154,6 +215,54 @@ export default function TenantDetailPage() {
     },
     onError: (err) => addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error'),
   });
+  const saveCategoryMutation = useMutation({
+    mutationFn: (payload: { categoryId: string }) =>
+      apiFetch(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-registry', id] });
+      addToast('تم تحديث تصنيف SLA', 'success');
+    },
+    onError: (err) => addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error'),
+  });
+
+  const storeManagementPayload = () => {
+    const lat = latLocal === '' ? undefined : Number(latLocal);
+    const lng = lngLocal === '' ? undefined : Number(lngLocal);
+    const location =
+      typeof lat === 'number' && !Number.isNaN(lat) && typeof lng === 'number' && !Number.isNaN(lng)
+        ? { lat, lng }
+        : latLocal === '' && lngLocal === ''
+          ? null
+          : undefined;
+    const deliveryRadiusKm = deliveryRadiusKmLocal === '' ? undefined : Number(deliveryRadiusKmLocal);
+    const payload: Record<string, unknown> = {
+      enabled: enabledLocal,
+      deliveryRadiusKm: typeof deliveryRadiusKm === 'number' && !Number.isNaN(deliveryRadiusKm) ? deliveryRadiusKm : undefined,
+      financialConfig: {
+        commissionType: commissionTypeLocal as 'PERCENTAGE' | 'FIXED',
+        commissionValue: Number(commissionValueLocal) || 0,
+        deliveryFeeModel: deliveryFeeModelLocal as 'MARKET' | 'TENANT',
+      },
+    };
+    if (location !== undefined) payload.location = location;
+    return payload;
+  };
+  const saveStoreManagementMutation = useMutation({
+    mutationFn: () => apiFetch(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(storeManagementPayload()) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-registry', id] });
+      addToast('تم حفظ إعدادات المتجر', 'success');
+    },
+    onError: (err) => addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error'),
+  });
+  const storeManagementHasChanges =
+    enabledLocal !== currentEnabled ||
+    (currentLocation?.lat != null ? String(currentLocation.lat) : '') !== latLocal ||
+    (currentLocation?.lng != null ? String(currentLocation.lng) : '') !== lngLocal ||
+    (currentDeliveryRadiusKm != null ? String(currentDeliveryRadiusKm) : '') !== deliveryRadiusKmLocal ||
+    (currentFinancialConfig?.commissionType ?? 'PERCENTAGE') !== commissionTypeLocal ||
+    (currentFinancialConfig?.commissionValue ?? 10) !== commissionValueLocal ||
+    (currentFinancialConfig?.deliveryFeeModel ?? 'TENANT') !== deliveryFeeModelLocal;
 
   const storefrontHasChanges = nameLocal !== currentName || aboutLocal !== currentAbout;
   const generalHasChanges =
@@ -264,6 +373,7 @@ export default function TenantDetailPage() {
       <Tabs value={tab} onChange={setTab}>
         <TabsList>
           <TabsTrigger value="basic">المعلومات الأساسية</TabsTrigger>
+          <TabsTrigger value="store">إدارة المتجر</TabsTrigger>
           <TabsTrigger value="products">المنتجات</TabsTrigger>
           <TabsTrigger value="orders">الطلبات</TabsTrigger>
           <TabsTrigger value="settings">الإعدادات</TabsTrigger>
@@ -326,6 +436,158 @@ export default function TenantDetailPage() {
           </div>
         </TabsContent>
 
+        {/* Store Management: delivery radius, location, status, commission */}
+        <TabsContent value="store">
+          <div className="space-y-6">
+            <Card className="p-6 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                <Truck className="w-5 h-5" />
+                نصف قطر التوصيل (كم)
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                أقصى مسافة توصيل من موقع المتجر. يساعد في حل مشكلة «خارج النطاق» عند عدم وجود مناطق توصيل أو عند استخدام موقع المتجر كاحتياطي.
+              </p>
+              <div className="max-w-xs">
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={deliveryRadiusKmLocal}
+                  onChange={(e) => setDeliveryRadiusKmLocal(e.target.value)}
+                  placeholder="مثال: 5"
+                  className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">اتركه فارغاً لعدم استخدام نطاق افتراضي من موقع المتجر</p>
+              </div>
+            </Card>
+            <Card className="p-6 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                <MapPin className="w-5 h-5" />
+                موقع المتجر (إحداثيات)
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                خط العرض وخط الطول لموقع المتجر. يُستخدم لحساب المسافة وتحديد «خارج النطاق» عند وجود نصف قطر التوصيل.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <div className="min-w-[140px]">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">خط العرض (Latitude)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={latLocal}
+                    onChange={(e) => setLatLocal(e.target.value)}
+                    placeholder="32.5"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div className="min-w-[140px]">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">خط الطول (Longitude)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={lngLocal}
+                    onChange={(e) => setLngLocal(e.target.value)}
+                    placeholder="35.2"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+              {typeof navigator !== 'undefined' && navigator.geolocation && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 gap-2"
+                  onClick={() => {
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setLatLocal(String(pos.coords.latitude));
+                        setLngLocal(String(pos.coords.longitude));
+                        addToast('تم تعيين موقعك الحالي', 'success');
+                      },
+                      () => addToast('لم يتم الحصول على الموقع', 'error')
+                    );
+                  }}
+                >
+                  <MapPin className="w-4 h-4" />
+                  استخدام موقعي الحالي
+                </Button>
+              )}
+              <p className="text-xs text-gray-400 mt-2">يمكنك الحصول على الإحداثيات من خرائط جوجل (انقر بزر الماوس الأيمن على الموقع → الإحداثيات)</p>
+            </Card>
+            <Card className="p-6 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">حالة المتجر</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                تفعيل أو إيقاف المتجر. عند الإيقاف لا يظهر المتجر في الواجهة ولا يقبل طلبات.
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enabledLocal}
+                  onChange={(e) => setEnabledLocal(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <span className="font-medium text-gray-900">المتجر مفعّل (يظهر ويقبل الطلبات)</span>
+              </label>
+            </Card>
+            <Card className="p-6 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                <DollarSign className="w-5 h-5" />
+                العمولة / الرسوم
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                إعدادات مالية خاصة بالمتجر (إن وُجدت). لا تؤثر على واجهة العميل مباشرة.
+              </p>
+              <div className="grid gap-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">نوع العمولة</label>
+                  <select
+                    value={commissionTypeLocal}
+                    onChange={(e) => setCommissionTypeLocal(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="PERCENTAGE">نسبة مئوية</option>
+                    <option value="FIXED">مبلغ ثابت</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">قيمة العمولة</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={commissionTypeLocal === 'PERCENTAGE' ? 1 : 0.01}
+                    value={commissionValueLocal}
+                    onChange={(e) => setCommissionValueLocal(Number(e.target.value) || 0)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">نموذج رسوم التوصيل</label>
+                  <select
+                    value={deliveryFeeModelLocal}
+                    onChange={(e) => setDeliveryFeeModelLocal(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="TENANT">المستأجر</option>
+                    <option value="MARKET">السوق</option>
+                  </select>
+                </div>
+              </div>
+            </Card>
+            {USE_API && (
+              <Button
+                onClick={() => saveStoreManagementMutation.mutate()}
+                disabled={saveStoreManagementMutation.isPending || !storeManagementHasChanges}
+              >
+                {saveStoreManagementMutation.isPending ? 'جاري الحفظ...' : 'حفظ إعدادات المتجر'}
+              </Button>
+            )}
+            {!USE_API && (
+              <p className="text-sm text-gray-500">تفعيل الواجهة البرمجية (VITE_MOCK_API_URL) لحفظ التغييرات.</p>
+            )}
+          </div>
+        </TabsContent>
+
         {/* Products: catalog summary */}
         <TabsContent value="products">
           <div className="space-y-6">
@@ -368,6 +630,7 @@ export default function TenantDetailPage() {
                         <th className="text-start py-2">الحالة</th>
                         {isRestaurant && <th className="text-start py-2">جاهز في</th>}
                         {USE_API && isRestaurant && <th className="text-start py-2">إجراء</th>}
+                        {superAdmin && USE_API && <th className="text-start py-2 w-10" aria-label="حذف نهائي" />}
                       </tr>
                     </thead>
                     <tbody>
@@ -403,6 +666,18 @@ export default function TenantDetailPage() {
                                 )}
                               </td>
                             )}
+                            {superAdmin && USE_API && (
+                              <td className="py-2">
+                                <button
+                                  type="button"
+                                  className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                                  onClick={() => setOrderDeleteTarget({ id: idStr })}
+                                  aria-label="حذف الطلب نهائياً"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -411,6 +686,17 @@ export default function TenantDetailPage() {
                 </div>
               )}
             </Card>
+            <ConfirmDialog
+              open={!!orderDeleteTarget}
+              onClose={() => setOrderDeleteTarget(null)}
+              onConfirm={handleHardDeleteOrder}
+              title="حذف الطلب نهائياً"
+              message={orderDeleteTarget ? 'هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.' : ''}
+              confirmLabel="حذف نهائياً"
+              variant="danger"
+              loading={orderHardDeleting}
+              closeOnConfirm={false}
+            />
           </div>
         </TabsContent>
 
@@ -504,6 +790,34 @@ export default function TenantDetailPage() {
             {!USE_API && (
               <p className="text-sm text-gray-500">تفعيل الواجهة البرمجية (VITE_MOCK_API_URL) لحفظ التغييرات.</p>
             )}
+            {USE_API && categoryPolicies.length > 0 && (
+              <Card className="p-6 bg-white">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">تصنيف SLA (لوحة الطلبات وتطبيق السائق)</h2>
+                <p className="text-sm text-gray-500 mb-3">
+                  يحدد عتبات الأخضر / البرتقالي / الأحمر لانتظار الطلب (حسب السياسة المعرّفة في إعدادات النظام).
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={categoryIdLocal}
+                    onChange={(e) => setCategoryIdLocal(e.target.value)}
+                    className="h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary min-w-[200px]"
+                  >
+                    <option value="">— اختر التصنيف —</option>
+                    {categoryPolicies.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={saveCategoryMutation.isPending || categoryIdLocal === currentCategoryId}
+                    onClick={() => saveCategoryMutation.mutate({ categoryId: categoryIdLocal })}
+                  >
+                    {saveCategoryMutation.isPending ? 'جاري...' : 'حفظ التصنيف'}
+                  </Button>
+                </div>
+              </Card>
+            )}
             <Card className="p-6 bg-white">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">إعدادات إضافية</h2>
               <div className="flex flex-wrap gap-3">
@@ -515,46 +829,50 @@ export default function TenantDetailPage() {
                 </Link>
               </div>
             </Card>
-            <Card className="p-6 bg-white border-red-200">
-              <h2 className="text-lg font-semibold text-red-700 mb-2">منطقة الخطر</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                حذف المتجر نهائياً مع كل بياناته (الطلبات، المنتجات، الإعدادات). لا يمكن التراجع عن هذا الإجراء.
-              </p>
-              {USE_API ? (
-                <Button
-                  variant="outline"
-                  className="border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700 gap-2"
-                  onClick={() => setDeleteStoreModalOpen(true)}
-                  disabled={deleteStoreMutation.isPending}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {deleteStoreMutation.isPending ? 'جاري الحذف...' : 'حذف المتجر'}
-                </Button>
-              ) : (
-                <p className="text-sm text-gray-500">تفعيل الواجهة البرمجية (VITE_MOCK_API_URL) لتفعيل حذف المتجر.</p>
-              )}
-            </Card>
+            {showDeleteStore && (
+              <Card className="p-6 bg-white border-red-200">
+                <h2 className="text-lg font-semibold text-red-700 mb-2">منطقة الخطر</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  حذف المتجر نهائياً مع كل بياناته (الطلبات، المنتجات، الإعدادات). لا يمكن التراجع عن هذا الإجراء.
+                </p>
+                {USE_API ? (
+                  <Button
+                    variant="outline"
+                    className="border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700 gap-2"
+                    onClick={() => setDeleteStoreModalOpen(true)}
+                    disabled={deleteStoreMutation.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {deleteStoreMutation.isPending ? 'جاري الحذف...' : 'حذف المتجر'}
+                  </Button>
+                ) : (
+                  <p className="text-sm text-gray-500">تفعيل الواجهة البرمجية (VITE_MOCK_API_URL) لتفعيل حذف المتجر.</p>
+                )}
+              </Card>
+            )}
           </div>
         </TabsContent>
       </Tabs>
 
-      <Modal open={deleteStoreModalOpen} onClose={() => !deleteStoreMutation.isPending && setDeleteStoreModalOpen(false)} title="حذف المتجر" size="sm">
-        <p className="text-sm text-gray-700 mb-6">
-          سيتم حذف المتجر وجميع بياناته نهائياً (الطلبات، المنتجات، الإعدادات). لا يمكن التراجع عن هذا الإجراء.
-        </p>
-        <div className="flex gap-3 justify-end">
-          <Button variant="outline" onClick={() => setDeleteStoreModalOpen(false)} disabled={deleteStoreMutation.isPending}>
-            إلغاء
-          </Button>
-          <Button
-            className="bg-red-600 hover:bg-red-700 text-white"
-            onClick={() => deleteStoreMutation.mutate()}
-            disabled={deleteStoreMutation.isPending}
-          >
-            {deleteStoreMutation.isPending ? 'جاري الحذف...' : 'حذف نهائياً'}
-          </Button>
-        </div>
-      </Modal>
+      {showDeleteStore && (
+        <Modal open={deleteStoreModalOpen} onClose={() => !deleteStoreMutation.isPending && setDeleteStoreModalOpen(false)} title="حذف المتجر" size="sm">
+          <p className="text-sm text-gray-700 mb-6">
+            سيتم حذف المتجر وجميع بياناته نهائياً (الطلبات، المنتجات، الإعدادات). لا يمكن التراجع عن هذا الإجراء.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setDeleteStoreModalOpen(false)} disabled={deleteStoreMutation.isPending}>
+              إلغاء
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deleteStoreMutation.mutate()}
+              disabled={deleteStoreMutation.isPending}
+            >
+              {deleteStoreMutation.isPending ? 'جاري الحذف...' : 'حذف نهائياً'}
+            </Button>
+          </div>
+        </Modal>
+      )}
 
       <Modal open={resetPasswordOpen} onClose={() => setResetPasswordOpen(false)} title="إعادة تعيين كلمة المرور" size="sm">
         <p className="text-sm text-gray-500 mb-4">

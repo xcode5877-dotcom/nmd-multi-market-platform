@@ -35,7 +35,10 @@ var DeliveryZoneSchema = z2.object({
   fee: z2.number(),
   etaMinutes: z2.number().optional(),
   isActive: z2.boolean().default(true),
-  sortOrder: z2.number().optional()
+  sortOrder: z2.number().optional(),
+  centerLat: z2.number().optional(),
+  centerLng: z2.number().optional(),
+  radiusKm: z2.number().optional()
 });
 var DeliverySettingsSchema = z2.object({
   tenantId: z2.string(),
@@ -110,6 +113,9 @@ function parseTimeHHmm(s) {
   return { h, m };
 }
 function getOperationalStatus(tenant) {
+  const override = tenant.overrideStatus;
+  if (override === "FORCE_CLOSED") return "closed";
+  if (override === "FORCE_OPEN") return "open";
   if (tenant.forceClosed === true) return "closed";
   if (tenant.operationalStatus === "open" || tenant.operationalStatus === "busy") return tenant.operationalStatus;
   const hasSimpleHours = tenant.openTime !== void 0 || tenant.closeTime !== void 0;
@@ -192,6 +198,11 @@ function tenantBrandingToCssVars(branding) {
 }
 
 // src/utils/money.ts
+function roundMoney(amount) {
+  const n = Number(amount);
+  if (Number.isNaN(n) || !Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
 function formatMoney(amount, opts = {}) {
   const {
     currency = "ILS",
@@ -255,8 +266,8 @@ function generateId() {
 // src/utils/placements.ts
 var PLACEMENT_LABELS_AR = {
   WHOLE: "\u0643\u0627\u0645\u0644",
-  LEFT: "\u064A\u0633\u0627\u0631",
-  RIGHT: "\u064A\u0645\u064A\u0646"
+  LEFT: "\u0646\u0635\u0641 \u062B\u0627\u0646\u064A",
+  RIGHT: "\u0646\u0635\u0641 \u0623\u0648\u0644"
 };
 var PLACEMENT_OPTIONS_AR = [
   { value: "WHOLE", label: PLACEMENT_LABELS_AR.WHOLE },
@@ -270,6 +281,19 @@ function formatPlacementAr(p) {
 function formatAddonNameWithPlacement(name, p) {
   const label = formatPlacementAr(p);
   return label ? `${name} (${label})` : name;
+}
+function formatHalfAndHalfOptionDisplay(ids, placements, getOptionName) {
+  if (ids.length !== 2) {
+    return ids.map((id) => formatAddonNameWithPlacement(getOptionName(id) ?? id, placements[id])).filter(Boolean).join("\u060C ");
+  }
+  const leftId = ids.find((id) => placements[id] === "LEFT");
+  const rightId = ids.find((id) => placements[id] === "RIGHT");
+  if (leftId != null && rightId != null) {
+    const leftName = getOptionName(leftId) ?? leftId;
+    const rightName = getOptionName(rightId) ?? rightId;
+    return `\u0646\u0635\u0641 ${rightName} / \u0646\u0635\u0641 ${leftName}`;
+  }
+  return ids.map((id) => formatAddonNameWithPlacement(getOptionName(id) ?? id, placements[id])).filter(Boolean).join("\u060C ");
 }
 
 // src/utils/whatsapp.ts
@@ -314,11 +338,8 @@ function buildWhatsAppMessage(order, tenant) {
       const g = optionGroups.find((x) => x.id === s.optionGroupId);
       const ids = "optionItemIds" in s ? s.optionItemIds : [];
       const placements = "optionPlacements" in s ? s.optionPlacements ?? {} : {};
-      return ids.map((id) => {
-        const optName = g?.items?.find((i) => i.id === id)?.name;
-        if (!optName) return "";
-        return formatAddonNameWithPlacement(optName, placements[id]);
-      }).filter(Boolean).join("\u060C ");
+      const getOptionName = (id) => g?.items?.find((i) => i.id === id)?.name;
+      return formatHalfAndHalfOptionDisplay(ids, placements, getOptionName);
     }).filter(Boolean).join(" | ");
     lines.push(`\u2022 ${name} x${qty}${optParts ? ` (${optParts})` : ""}${price ? `: ${price}` : ""}`);
   }
@@ -366,6 +387,16 @@ function buildOrderActionLinksSection(orderId, baseUrl = DEFAULT_ORDER_ACTIONS_B
     `\u{1F69A} \u062A\u0645 \u0627\u0644\u0625\u0631\u0633\u0627\u0644: ${base}/order-actions/${id}/shipped`
   ];
   return lines.join("\n");
+}
+
+// src/utils/location-utils.ts
+function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 // src/utils/option-groups.ts
@@ -564,12 +595,14 @@ export {
   formatDateGregorian,
   formatDateISO,
   formatDateTimeGregorian,
+  formatHalfAndHalfOptionDisplay,
   formatMoney,
   formatPlacementAr,
   formatPrice,
   formatTimeGregorian,
   generateId,
   getOperationalStatus,
+  haversineDistanceKm,
   isStoreOpen,
   isValidWhatsAppPhone,
   mockCategories,
@@ -578,6 +611,7 @@ export {
   parseSubdomainTenant,
   resolveTenantFromUrl,
   resolveTenantId,
+  roundMoney,
   setLastTenant,
   tenantBrandingToCssVars
 };

@@ -48,8 +48,16 @@ export default function MarketsPage() {
   });
 
   const isRootAdmin = me?.role === 'ROOT_ADMIN';
+  const isSuperAdmin = me?.role === 'SUPER_ADMIN';
   const emergency = useEmergencyMode();
-  const canEdit = !isRootAdmin || (emergency?.enabled ?? false);
+  /** Global canEdit for "Add market" (ROOT only): emergency or SUPER_ADMIN. */
+  const canEditGlobal =
+    isSuperAdmin || (isRootAdmin && (emergency?.enabled ?? false));
+  /** Per-market: SUPER_ADMIN or ROOT with emergency or MARKET_ADMIN for own market. */
+  const canEditForMarket = (market: Market) =>
+    isSuperAdmin ||
+    (isRootAdmin && (emergency?.enabled ?? false)) ||
+    (me?.role === 'MARKET_ADMIN' && me?.marketId === market.id);
 
   const { data: marketsData = [], isLoading: marketsLoading } = useQuery({
     queryKey: ['markets', me?.id],
@@ -136,8 +144,8 @@ export default function MarketsPage() {
         <h1 className="text-2xl font-bold text-gray-900">الأسواق</h1>
         {isRootAdmin && (
           <Button
-          disabled={!canEdit}
-          title={!canEdit ? 'فعّل وضع الطوارئ مع سبب للتعديل' : undefined}
+          disabled={!canEditGlobal}
+          title={!canEditGlobal ? 'فعّل وضع الطوارئ مع سبب للتعديل' : undefined}
           onClick={() => {
             setCreating(true);
             setForm({ name: '', slug: '', primaryColor: '#D97706', isActive: true });
@@ -156,7 +164,7 @@ export default function MarketsPage() {
         </div>
       )}
 
-      {creating && isRootAdmin && canEdit && (
+      {creating && isRootAdmin && canEditGlobal && (
         <Card className="p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">إنشاء سوق</h2>
           <div className="grid gap-4 max-w-md">
@@ -213,7 +221,7 @@ export default function MarketsPage() {
             key={m.id}
             market={m}
             isRootAdmin={isRootAdmin}
-            canEdit={canEdit}
+            canEdit={canEditForMarket(m)}
             onNavigate={() => navigate(`/markets/${m.id}`)}
             onAddAdmin={(e) => {
               e.stopPropagation();

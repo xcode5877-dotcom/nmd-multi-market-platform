@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "457325133463",
+    "project_id": "now-market-59841",
+    "storage_bucket": "now-market-59841.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:457325133463:android:1125ab3831d4a337b0f3d2",
+        "android_client_info": {
+          "package_name": "com.nmd.customer.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVasrjeARlkwCtAL0zM2WcZ11s77IIbb8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

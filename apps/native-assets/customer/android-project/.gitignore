@@ -1,0 +1,22 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local config (uncomment if you don't commit google-services.json)
+# app/google-services.json
+
+# IDE
+.idea/
+*.iml
+*.iws
+.DS_Store
+
+# Keystore (never commit)
+*.jks
+*.keystore

@@ -56,6 +56,9 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast = true 
       setError(startResult.error ?? 'حدث خطأ');
       return;
     }
+    if (startResult.whatsAppSent === false) {
+      addToast('تم إنشاء الرمز لكن لم يتم إرساله عبر واتساب. تحقق من التطبيق أو جرّب لاحقاً.', 'info');
+    }
     if (startResult.devCode) {
       if (showOtpInToast) addToast(`رمز التحقق (تجريبي): ${startResult.devCode}`, 'info');
       if (typeof console !== 'undefined' && console.log) console.log('[OTP] رمز التحقق (للتجربة):', startResult.devCode);

@@ -1,11 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { Outlet, NavLink, useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck } from 'lucide-react';
+import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck, Bell, BellOff, Volume2, LayoutGrid, Trophy, Tag, AlertCircle, DollarSign, Send } from 'lucide-react';
+import StoreStatusToggle from '../components/StoreStatusToggle';
 import { setEmergencyHeaders, TOKEN_KEY } from '../api';
 import { MockApiClient } from '@nmd/mock';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../contexts/NativeBridgeContext';
+import { MarketOrderAlarmProvider, useMarketOrderAlarm } from '../contexts/MarketOrderAlarmContext';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
@@ -17,11 +20,59 @@ function parseMarketAndTenantFromPath(pathname: string): { marketId?: string; te
   return {};
 }
 
+/** Simplified dashboard summary for native app: Today's Sales, Active Stores, Urgent Alerts. */
+function AdminNativeDashboardSummary() {
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.getMe(), enabled: !!MOCK_API_URL });
+  const alarm = useMarketOrderAlarm();
+  const pendingCount = alarm?.pendingCount ?? 0;
+  const hasAlerts = (alarm?.hasPendingAlarm ?? false) && !alarm?.muted;
+
+  return (
+    <div className="p-4 space-y-4">
+      <h1 className="text-lg font-bold text-gray-900">لوحة التحكم</h1>
+      <div className="grid grid-cols-1 gap-3">
+        <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+            <DollarSign className="w-4 h-4" />
+            مبيعات اليوم
+          </div>
+          <p className="text-xl font-semibold text-gray-900">—</p>
+          <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض الأسواق</NavLink>
+        </div>
+        <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+            <Store className="w-4 h-4" />
+            متاجر نشطة
+          </div>
+          <p className="text-xl font-semibold text-gray-900">—</p>
+          <NavLink to="/tenants" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض المتاجر</NavLink>
+        </div>
+        <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+            <AlertCircle className="w-4 h-4" />
+            تنبيهات عاجلة
+          </div>
+          <p className={`text-xl font-semibold ${hasAlerts ? 'text-amber-600' : 'text-gray-900'}`}>
+            {hasAlerts ? `${pendingCount} طلب بانتظار الموافقة` : 'لا يوجد'}
+          </p>
+          {hasAlerts && (
+            <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض الطلبات</NavLink>
+          )}
+        </div>
+      </div>
+      {me && (
+        <p className="text-xs text-gray-400 truncate" title={me.email}>{me.email}</p>
+      )}
+    </div>
+  );
+}
+
 export default function AdminLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const emergency = useEmergencyMode();
+  const { isNativeApp } = useNativeBridge();
 
   /** Ultimate Auth Sync: Admin logout — remove only nmd-access-token, then redirect. Do not clear nmd-customer-token (storefront). */
   const handleLogout = () => {
@@ -35,7 +86,13 @@ export default function AdminLayout() {
     queryFn: () => api.getMe(),
     enabled: !!MOCK_API_URL && !!auth.token,
   });
-  const isRootAdmin = me?.role === 'ROOT_ADMIN';
+  const { data: tenantForStatus } = useQuery({
+    queryKey: ['tenant-by-id', me?.tenantId],
+    queryFn: () => api.getTenantById(me!.tenantId!),
+    enabled: !!MOCK_API_URL && !!me?.tenantId && me?.role === 'TENANT_ADMIN',
+  });
+  /** ROOT_ADMIN and SUPER_ADMIN see full root nav (Markets, Tenants, Pillars, Contests, etc.) */
+  const isRootAdmin = me?.role === 'ROOT_ADMIN' || me?.role === 'SUPER_ADMIN';
   const isMarketAdmin = me?.role === 'MARKET_ADMIN';
   const isTenantAdmin = me?.role === 'TENANT_ADMIN';
   const marketId = me?.marketId;
@@ -63,6 +120,10 @@ export default function AdminLayout() {
     { to: '/markets', icon: Store, label: 'Markets', end: true },
     { to: '/tenants', icon: Building2, label: 'Global Tenants', end: true },
     { to: '/categories', icon: FolderTree, label: 'إدارة التصنيفات', end: true },
+    { to: '/pillars', icon: LayoutGrid, label: 'الأعمدة والتصنيفات', end: true },
+    { to: '/contests', icon: Trophy, label: 'المسابقات', end: true },
+    { to: '/coupons', icon: Tag, label: 'أكواد الخصم', end: true },
+    { to: '/push-notifications', icon: Send, label: 'إشعارات Push', end: true },
     { to: '/customers', icon: Users, label: 'المشتركون', end: true },
     { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
     { to: '/settings', icon: Settings, label: 'Settings', end: false },
@@ -91,14 +152,66 @@ export default function AdminLayout() {
   const tenantParam = searchParams.get('tenant')?.trim();
   const appendTenant = (path: string) => (tenantParam ? `${path}${path.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(tenantParam)}` : path);
 
+  const isIndex = location.pathname === '/' || location.pathname === '';
+
+  const nativeNavItems = [
+    { to: '/', end: true, label: 'الرئيسية', icon: LayoutDashboard },
+    { to: '/markets', end: true, label: 'الأسواق', icon: Store },
+    { to: '/tenants', end: true, label: 'المتاجر', icon: Building2 },
+    { to: '/settings', end: false, label: 'الإعدادات', icon: Settings },
+  ];
+
+  if (isNativeApp) {
+    return (
+      <MarketOrderAlarmProvider marketId={marketIdFromUrl}>
+        <div className="min-h-screen flex flex-col bg-[#F8FAFC] pb-24">
+          <main className="flex-1 overflow-auto">
+            {isIndex ? <AdminNativeDashboardSummary /> : <div className="p-6"><Outlet /></div>}
+          </main>
+          <nav
+            className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-[#1E293B] border-t border-[#0F172A]/50 py-2 text-white"
+            role="navigation"
+            aria-label="القائمة الرئيسية"
+          >
+            {nativeNavItems.map(({ to, end, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={appendTenant(to)}
+                end={end}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 px-2 py-1 min-w-0 flex-1 text-[10px] rounded-lg transition-colors ${isActive ? 'bg-[#7C3AED] text-white' : 'text-gray-400 hover:text-white'}`
+                }
+              >
+                <Icon className="w-5 h-5 shrink-0" aria-hidden />
+                <span className="truncate w-full text-center">{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      </MarketOrderAlarmProvider>
+    );
+  }
+
   return (
+    <MarketOrderAlarmProvider marketId={marketIdFromUrl}>
     <div className="min-h-screen flex">
       <aside className="w-56 bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col">
         <div className="p-4 border-b border-[#0F172A]/50">
           <h1 className="font-bold text-lg text-white">NMD OS Control</h1>
+          <MarketOrderAlarmBell />
           {MOCK_API_URL && auth.user && (
             <div className="mt-3">
               <p className="text-xs text-gray-400 truncate" title={auth.user.email}>{auth.user.email}</p>
+            </div>
+          )}
+          {isTenantAdmin && me?.tenantId && (
+            <div className="mt-3">
+              <StoreStatusToggle
+                tenantId={me.tenantId}
+                currentStatus={(tenantForStatus as { operationalStatus?: 'open' | 'closed' | 'busy' })?.operationalStatus ?? 'open'}
+                emphasizeClosed
+                variant="full"
+              />
             </div>
           )}
           {MOCK_API_URL && isRootAdmin && (
@@ -159,6 +272,53 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </main>
+    </div>
+    </MarketOrderAlarmProvider>
+  );
+}
+
+function MarketOrderAlarmBell() {
+  const alarm = useMarketOrderAlarm();
+  if (!alarm) return null;
+  const { hasPendingAlarm, pendingCount, muted, setMuted, testSound, audioBlocked, enableSoundAlerts } = alarm;
+  return (
+    <div className="flex items-center gap-1 mt-2">
+      {audioBlocked && hasPendingAlarm && !muted && (
+        <button
+          type="button"
+          onClick={enableSoundAlerts}
+          className="px-2 py-1 rounded text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors whitespace-nowrap"
+          title="المتصفح منع التشغيل التلقائي — انقر لتفعيل التنبيه الصوتي"
+        >
+          تفعيل التنبيه الصوتي
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setMuted(!muted)}
+        className={`relative p-1.5 rounded-lg transition-colors ${
+          hasPendingAlarm ? 'text-amber-400 hover:bg-amber-500/20' : 'text-gray-400 hover:bg-[#334155]'
+        } ${muted ? 'opacity-60' : ''}`}
+        title={muted ? 'تفعيل التنبيه' : hasPendingAlarm ? `${pendingCount} طلب بانتظار الموافقة` : 'تنبيه الطلبات'}
+      >
+        {muted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+        {hasPendingAlarm && !muted && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 items-center justify-center text-[9px] font-bold text-white">
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={testSound}
+        className="p-1.5 rounded-lg text-gray-400 hover:bg-[#334155] transition-colors"
+        title="تجربة الصوت"
+      >
+        <Volume2 className="w-4 h-4" />
+      </button>
     </div>
   );
 }

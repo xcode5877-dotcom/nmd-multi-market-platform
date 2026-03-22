@@ -7,7 +7,7 @@ import { buildWhatsAppMessage, buildWhatsAppUrl, buildWhatsAppDeepLink, isValidW
 import { openWhatsAppOrderLink } from '../lib/whatsapp';
 import { setTrackingOrderId } from '../lib/order-tracking-storage';
 import { useAppStore } from '../store/app';
-import { MessageCircle, ArrowRight } from 'lucide-react';
+import { MessageCircle, ArrowRight, Activity } from 'lucide-react';
 
 const api = new MockApiClient();
 
@@ -96,7 +96,7 @@ export default function OrderSuccessPage() {
         <div className="w-20 h-20 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto mb-6 ring-4 ring-emerald-500/20">
           <span className="text-3xl font-bold">✓</span>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">تم استلام طلبك</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">تم إرسال طلبك بنجاح</h1>
         <p className="text-gray-600 mb-6">شكراً لثقتك. سنتواصل معك قريباً.</p>
         <div className="inline-block px-8 py-4 rounded-2xl bg-primary/10 border border-primary/20">
           <p className="text-xs text-gray-500 mb-1">رقم الطلب</p>
@@ -107,13 +107,20 @@ export default function OrderSuccessPage() {
       </div>
 
       <div className="space-y-3">
+        <Button
+          onClick={() => navigate(tenantSlugOrId ? `/${tenantSlugOrId}/my-activity` : '/my-activity')}
+          className="w-full gap-2 justify-center py-3 text-base font-medium rounded-xl border-2 border-primary/30 bg-primary/5 hover:bg-primary/10"
+        >
+          <Activity className="w-5 h-5" />
+          عرض نشاطي
+        </Button>
         {(waUrl || deepLinkUrl) && (
           <Button
             className="w-full gap-2 justify-center bg-[#25D366] hover:bg-[#20bd5a] text-white py-3 text-base font-medium rounded-xl"
             onClick={handleWhatsApp}
           >
             <MessageCircle className="w-5 h-5" />
-            فتح واتساب
+            فتح واتساب (اختياري)
           </Button>
         )}
         <Button

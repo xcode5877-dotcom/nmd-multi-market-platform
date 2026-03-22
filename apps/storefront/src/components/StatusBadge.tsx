@@ -1,5 +1,5 @@
 import { getOperationalStatus } from '@nmd/core';
-import type { OperationalStatus } from '@nmd/core';
+import type { OperationalStatus, OverrideStatus } from '@nmd/core';
 
 /** Full tenant shape from API so status uses is_open (forceClosed) + operating_hours (openTime/closeTime/businessHours). */
 interface TenantLike {
@@ -8,6 +8,7 @@ interface TenantLike {
   openTime?: string;
   closeTime?: string;
   forceClosed?: boolean;
+  overrideStatus?: OverrideStatus;
 }
 
 const STATUS_CONFIG: Record<OperationalStatus, { label: string; className: string; dotClass: string; pulse?: boolean }> = {
@@ -16,9 +17,12 @@ const STATUS_CONFIG: Record<OperationalStatus, { label: string; className: strin
   closed: { label: 'مغلق', className: 'bg-red-500/90 text-white', dotClass: 'bg-red-400', pulse: false },
 };
 
+const ADMIN_CLOSED_CONFIG = { label: 'مغلق مؤقتاً من الإدارة', className: 'bg-red-600/95 text-white', dotClass: 'bg-red-400', pulse: false };
+
 export function StatusBadge({ tenant, variant = 'default' }: { tenant: TenantLike; variant?: 'default' | 'header' | 'hero' }) {
   const status = getOperationalStatus(tenant);
-  const config = STATUS_CONFIG[status];
+  const isAdminClosed = tenant.overrideStatus === 'FORCE_CLOSED';
+  const config = isAdminClosed ? ADMIN_CLOSED_CONFIG : STATUS_CONFIG[status];
   const pulseClass = config.pulse && (variant === 'header' || variant === 'hero') ? 'animate-pulse' : '';
 
   if (variant === 'header') {

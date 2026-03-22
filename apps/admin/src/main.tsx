@@ -8,10 +8,42 @@ import './index.css';
 
 initMock();
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// Reload on chunk load failure (e.g. after deploy when index.html points to new hashed chunks but browser cached old refs)
+const CHUNK_LOAD_RETRY_KEY = 'chunk-load-retry';
+const MAX_CHUNK_RETRIES = 3;
+function isChunkLoadError(message: string | undefined): boolean {
+  if (!message) return false;
+  return (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Importing a module script failed') ||
+    message.includes('Loading chunk') ||
+    message.includes('Loading CSS chunk')
+  );
+}
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = event.reason?.message ?? event.reason?.toString?.() ?? '';
+  if (!isChunkLoadError(msg)) return;
+  const retries = parseInt(sessionStorage.getItem(CHUNK_LOAD_RETRY_KEY) || '0', 10);
+  if (retries < MAX_CHUNK_RETRIES) {
+    sessionStorage.setItem(CHUNK_LOAD_RETRY_KEY, String(retries + 1));
+    window.location.reload();
+  }
+  event.preventDefault();
+});
+window.addEventListener('error', (event) => {
+  const msg = event.message ?? '';
+  if (!isChunkLoadError(msg)) return;
+  const retries = parseInt(sessionStorage.getItem(CHUNK_LOAD_RETRY_KEY) || '0', 10);
+  if (retries < MAX_CHUNK_RETRIES) {
+    sessionStorage.setItem(CHUNK_LOAD_RETRY_KEY, String(retries + 1));
+    window.location.reload();
+  }
+});
+
+if ('serviceWorker' in navigator && import.meta.env.PROD && window.isSecureContext) {
   window.addEventListener('load', () => {
-    const base = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '') || '';
-    navigator.serviceWorker.register(`${base}/sw.js`).catch(() => {});
+    const swUrl = new URL('/sw.js', window.location.origin).href;
+    navigator.serviceWorker.register(swUrl, { scope: '/' }).catch(() => {});
   });
 }
 

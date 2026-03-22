@@ -23,7 +23,7 @@ export function RedirectMarketAdminToTenants({ children }: { children: ReactNode
   return <>{children}</>;
 }
 
-/** Renders children for ROOT_ADMIN only; redirects MARKET_ADMIN to their market, TENANT_ADMIN to /tenant. Used for /audit, etc. */
+/** Renders children for platform admin (ROOT_ADMIN, SUPER_ADMIN); redirects MARKET_ADMIN to their market, TENANT_ADMIN to /tenant. Used for /audit, /contests, etc. */
 export function RootOnlyRoute({ children }: { children: ReactNode }) {
   const { data: me, isLoading } = useQuery({
     queryKey: ['me'],

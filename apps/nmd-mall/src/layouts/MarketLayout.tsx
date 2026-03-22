@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { User } from 'lucide-react';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
-
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL ?? 'http://localhost:5173';
 const DEFAULT_TENANT_SLUG = 'daburiyya';
@@ -82,7 +81,7 @@ export default function MarketLayout() {
           </nav>
         </div>
       </header>
-      <main className="flex-1 pb-20 md:pb-0">
+      <main className="flex-1 pb-0 md:pb-0">
         <Outlet />
       </main>
       <Link

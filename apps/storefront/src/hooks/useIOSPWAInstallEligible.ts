@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
 
-export const PWA_INSTALL_DISMISS_KEY = 'nmd-pwa-install-dismissed';
-/** After user closes the banner, show it again after this many hours (persistent reminder). */
-const DISMISS_HOURS = 24;
-
 /** Detect iOS (iPhone / iPad). */
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -37,32 +33,13 @@ export function isStandalone(): boolean {
   return false;
 }
 
-/** Compute eligibility synchronously for immediate show on first paint (client-only). */
-function getEligibleSync(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (isStandalone()) return false;
-  if (!isIOS() || !isSafari()) return false;
-  try {
-    const raw = localStorage.getItem(PWA_INSTALL_DISMISS_KEY);
-    if (raw) {
-      const ts = parseInt(raw, 10);
-      if (!Number.isNaN(ts) && Date.now() - ts < DISMISS_HOURS * 60 * 60 * 1000)
-        return false;
-    }
-  } catch {
-    // ignore
-  }
-  return true;
-}
-
 /**
- * Whether to show the iOS PWA install banner (Install Guide Banner).
- * Show when: iOS Safari, NOT in standalone (app not installed), and either
- * never dismissed or dismissed more than 24 hours ago.
- * Auto-shows immediately on page load for every visit (including deep links).
+ * Whether to show the iOS PWA install banner (Install Guide Sheet).
+ * Show when: iOS Safari and NOT in standalone (app not installed).
+ * Only hide when isStandalone() === true. No dismiss persistence — prompt reappears every visit/refresh.
  */
 export function useIOSPWAInstallEligible(): boolean {
-  const [eligible, setEligible] = useState(() => getEligibleSync());
+  const [eligible, setEligible] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -73,18 +50,6 @@ export function useIOSPWAInstallEligible(): boolean {
     if (!isIOS() || !isSafari()) {
       setEligible(false);
       return;
-    }
-    try {
-      const raw = localStorage.getItem(PWA_INSTALL_DISMISS_KEY);
-      if (raw) {
-        const ts = parseInt(raw, 10);
-        if (!Number.isNaN(ts) && Date.now() - ts < DISMISS_HOURS * 60 * 60 * 1000) {
-          setEligible(false);
-          return;
-        }
-      }
-    } catch {
-      // ignore
     }
     setEligible(true);
   }, []);

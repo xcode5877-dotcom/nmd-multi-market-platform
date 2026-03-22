@@ -6,3 +6,8 @@ dist
 .DS_Store
 apps/*/dist
 packages/*/dist
+# Persisted data: never bake into image; only use mounted volume at runtime
+apps/mock-api/data.json
+apps/mock-api/orders.json
+apps/mock-api/market-config.json
+apps/mock-api/push-subscriptions.json

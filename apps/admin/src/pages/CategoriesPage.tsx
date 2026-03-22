@@ -1,12 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Button, Input, Modal, ConfirmDialog, Select } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { useAdminData } from '../hooks/useAdminData';
+import { MockApiClient } from '@nmd/mock';
 import type { Category } from '@nmd/core';
 import { generateId } from '@nmd/core';
+import { GripVertical } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+const api = new MockApiClient();
 
 export default function CategoriesPage() {
   const { tenantId } = useAdminContext();
+  const queryClient = useQueryClient();
   const adminData = useAdminData(tenantId);
   const [categories, setCategories] = useState<Category[]>(() => adminData.getCategories());
   const prevLoading = useRef(true);
@@ -22,6 +28,50 @@ export default function CategoriesPage() {
   const [form, setForm] = useState({ name: '', slug: '', parentId: null as string | null });
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [reorderMode, setReorderMode] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  const bulkSortMutation = useMutation({
+    mutationFn: (items: { id: string; sortOrder: number }[]) =>
+      api.bulkSortCatalog(tenantId!, 'categories', items),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+      setCategories((data.categories ?? []) as Category[]);
+    },
+  });
+
+  const handleCategoryDragEnd = useCallback(() => {
+    setDragId(null);
+    setDropIndex(null);
+  }, []);
+
+  const handleCategoryDrop = useCallback(
+    (e: React.DragEvent, targetIndex: number) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain');
+      if (!id || !tenantId) return;
+      const main = categories
+        .filter((c) => !c.parentId || c.parentId === '')
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const fromIndex = main.findIndex((c) => c.id === id);
+      if (fromIndex === -1) return;
+      const reordered = [...main];
+      const [removed] = reordered.splice(fromIndex, 1);
+      reordered.splice(targetIndex, 0, removed);
+      const items = reordered.map((c, i) => ({ id: c.id, sortOrder: i }));
+      const allCategories = categories.map((c) => {
+        const idx = reordered.findIndex((r) => r.id === c.id);
+        if (idx >= 0) return { ...c, sortOrder: idx };
+        return c;
+      });
+      setCategories(allCategories);
+      bulkSortMutation.mutate(items);
+      setDragId(null);
+      setDropIndex(null);
+    },
+    [categories, tenantId, bulkSortMutation]
+  );
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -87,24 +137,62 @@ export default function CategoriesPage() {
     setModalOpen(true);
   };
 
+  const sortedMain = mainCategories.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">التصنيفات</h1>
-        <Button onClick={() => openAdd()}>
-          إضافة تصنيف
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setReorderMode((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium ${
+              reorderMode ? 'bg-primary/10 border-primary text-primary' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <GripVertical className="w-4 h-4" />
+            {reorderMode ? 'إنهاء الترتيب' : 'وضع الترتيب'}
+          </button>
+          <Button onClick={() => openAdd()}>
+            إضافة تصنيف
+          </Button>
+        </div>
       </div>
       <Card>
         <div className="divide-y divide-gray-200">
-          {mainCategories.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((cat) => {
+          {sortedMain.map((cat, index) => {
             const subs = getSubcategories(cat.id);
             const hasSubs = subs.length > 0;
             const isExpanded = expandedIds.has(cat.id);
+            const isDragOver = reorderMode && dropIndex === index;
             return (
-              <div key={cat.id} className="rtl">
+              <div
+                key={cat.id}
+                className={`rtl ${isDragOver ? 'bg-primary/5' : ''}`}
+                draggable={reorderMode}
+                onDragStart={(e) => {
+                  if (!reorderMode) return;
+                  setDragId(cat.id);
+                  e.dataTransfer.setData('text/plain', cat.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={handleCategoryDragEnd}
+                onDragOver={(e) => {
+                  if (!reorderMode || !dragId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropIndex(index);
+                }}
+                onDrop={(e) => reorderMode && handleCategoryDrop(e, index)}
+              >
                 <div className="flex items-center justify-between p-4 gap-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {reorderMode && (
+                      <span className="cursor-grab active:cursor-grabbing text-gray-400 flex-shrink-0" aria-hidden>
+                        <GripVertical className="w-5 h-5" />
+                      </span>
+                    )}
                     {hasSubs ? (
                       <button
                         type="button"
@@ -185,7 +273,7 @@ export default function CategoriesPage() {
       <ConfirmDialog
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => deleteConfirm && remove(deleteConfirm.id)}
+        onConfirm={() => { if (deleteConfirm) remove(deleteConfirm.id); }}
         title="حذف التصنيف"
         message={`هل أنت متأكد من حذف "${deleteConfirm?.name}"؟`}
         confirmLabel="حذف"

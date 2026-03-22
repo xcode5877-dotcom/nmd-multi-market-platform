@@ -42,7 +42,8 @@ export function isOrderEligibleForMarketDispatch(order: OrderRecord, tenants: Re
   const mode = order.deliveryAssignmentMode ?? 'TENANT';
 
   if (mode !== 'MARKET') return false;
-  if (order.fulfillmentType === 'PICKUP') return false;
+  if (order.fulfillmentType === 'PICKUP' || order.fulfillmentType === 'IN_STORE') return false;
+  if (order.fulfillmentType !== 'DELIVERY') return false;
   if (['OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELED'].includes(order.status ?? '')) return false;
 
   if (tenantType === 'RESTAURANT') {
@@ -70,7 +71,7 @@ export async function evaluateFallback(marketId: string, repos: Repos): Promise<
   const updated = orders.map((o) => {
     if (!o.tenantId || !tenantIds.has(o.tenantId)) return o;
     if (o.deliveryAssignmentMode === 'MARKET' || o.fallbackTriggeredAt) return o;
-    if (o.fulfillmentType === 'PICKUP') return o;
+    if (o.fulfillmentType === 'PICKUP' || o.fulfillmentType === 'IN_STORE') return o;
     const tenant = getTenant(tenants, o.tenantId);
     if (!tenant?.allowMarketCourierFallback) return o;
 
@@ -120,6 +121,7 @@ export async function getDispatchQueue(marketId: string, repos: Repos): Promise<
 
   return orders
     .filter((o) => o.tenantId && tenantIds.has(o.tenantId))
+    .filter((o) => o.fulfillmentType === 'DELIVERY')
     .filter((o) => isOrderEligibleForMarketDispatch(o, tenants))
     .filter((o) => !o.courierId)
     .filter((o) => !activeJobOrderIds.has(o.id ?? ''))

@@ -185,6 +185,7 @@ export default function MarketDispatchPage() {
     refetchInterval: 8000,
   });
 
+  // Only delivery orders (require a courier). Excludes PICKUP / IN_STORE (استلام من المتجر).
   const allDeliveryOrders = (allMarketOrders as OrderRow[]).filter(
     (o) => o.fulfillmentType === 'DELIVERY' && o.status !== 'CANCELED'
   );
@@ -322,15 +323,14 @@ export default function MarketDispatchPage() {
     return arr;
   }, [filteredStats, statsSortBy, statsSortDir]);
 
+  /** All active market couriers for Assign Driver dropdown (Global Market Drivers). Super Admin can pick any driver; list available first. */
   const getAssignableCouriers = (order: OrderRow) => {
+    const activeCouriers = couriersList.filter((c) => c.isActive !== false);
     const currentCourierId = order.courierId;
-    if (currentCourierId) {
-      const current = couriersList.find((c) => c.id === currentCourierId);
-      if (current && !availableCouriers.some((c) => c.id === currentCourierId)) {
-        return [current, ...availableCouriers.filter((c) => c.id !== currentCourierId)];
-      }
-    }
-    return availableCouriers;
+    const current = currentCourierId ? activeCouriers.find((c) => c.id === currentCourierId) : null;
+    const rest = current ? activeCouriers.filter((c) => c.id !== currentCourierId) : activeCouriers;
+    const availableFirst = [...rest.filter((c) => c.isAvailable !== false), ...rest.filter((c) => c.isAvailable === false)];
+    return current ? [current, ...availableFirst] : availableFirst;
   };
 
   const copyPhone = (phone: string) => {
@@ -505,7 +505,7 @@ export default function MarketDispatchPage() {
         </thead>
         <tbody>
           {orders.map((o) => {
-            const isMarket = o.deliveryAssignmentMode === 'MARKET';
+            const isMarket = o.deliveryAssignmentMode === 'MARKET' || (o.fulfillmentType === 'DELIVERY' && !o.courierId);
             const canAssign = isMarket && !o.courierId;
             const courier = o.courierId ? couriersList.find((c) => c.id === o.courierId) : null;
             const status = o.status ?? '';

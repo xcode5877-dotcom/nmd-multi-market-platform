@@ -40,10 +40,10 @@ export function CollectionSlider({
   return (
     <section className="mb-10">
       <div className="flex justify-between items-end mb-4">
-        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
         <Link
           to={viewAllHref}
-          className="text-sm font-medium text-primary hover:underline shrink-0"
+          className="text-xs font-medium text-primary hover:underline shrink-0"
         >
           {viewAllLabel}
         </Link>

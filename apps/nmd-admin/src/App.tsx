@@ -4,6 +4,7 @@ import { tenantRouteElements } from './tenant-portal/routes';
 import { ThemeProvider, ToastProvider } from '@nmd/ui';
 import { EmergencyModeProvider } from './contexts/EmergencyModeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NativeBridgeProvider } from './contexts/NativeBridgeContext';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -23,15 +24,22 @@ const ModulesPage = lazy(() => import('./pages/ModulesPage'));
 const ApiIntegrationsPage = lazy(() => import('./pages/ApiIntegrationsPage'));
 const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage'));
 const PaymentsSettingsPage = lazy(() => import('./pages/PaymentsSettingsPage'));
+const CategoryPoliciesPage = lazy(() => import('./pages/CategoryPoliciesPage'));
+const HomeLayoutPage = lazy(() => import('./pages/HomeLayoutPage'));
 const SystemTemplatesPage = lazy(() => import('./pages/SystemTemplatesPage'));
 const MonitoringPage = lazy(() => import('./pages/MonitoringPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const MarketDispatchPage = lazy(() => import('./pages/MarketDispatchPage'));
 const MarketFinancePage = lazy(() => import('./pages/MarketFinancePage'));
+const MarketReportsPage = lazy(() => import('./pages/MarketReportsPage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
+const PillarCategoryManagerPage = lazy(() => import('./pages/PillarCategoryManagerPage'));
 const LeadsPage = lazy(() => import('./pages/LeadsPage'));
 const CustomersPage = lazy(() => import('./pages/CustomersPage'));
+const ContestsPage = lazy(() => import('./pages/ContestsPage').then((m) => ({ default: m.ContestsPageWithGuard })));
+const CouponsPage = lazy(() => import('./pages/CouponsPage'));
+const PushNotificationsPage = lazy(() => import('./pages/PushNotificationsPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const LOADING = <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -63,11 +71,13 @@ function Content() {
         <Route path="markets/:id/orders" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/dispatch" element={<MarketRouteGuard><MarketDispatchPage /></MarketRouteGuard>} />
         <Route path="markets/:id/finance" element={<MarketRouteGuard><MarketFinancePage /></MarketRouteGuard>} />
+        <Route path="markets/:id/reports" element={<MarketRouteGuard><MarketReportsPage /></MarketRouteGuard>} />
         <Route path="markets/:id/banners" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
         <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
         <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
+        <Route path="pillars" element={<RootOnlyRoute><PillarCategoryManagerPage /></RootOnlyRoute>} />
         <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />
         <Route path="tenants/:id/settings/delivery" element={<RootOnlyRoute><TenantDeliverySettingsPage /></RootOnlyRoute>} />
         <Route path="markets/:id/tenants/:tenantId" element={<MarketRouteGuard><TenantDetailPage /></MarketRouteGuard>} />
@@ -77,11 +87,16 @@ function Content() {
         <Route path="api" element={<RootOnlyRoute><ApiIntegrationsPage /></RootOnlyRoute>} />
         <Route path="settings" element={<RootOnlyRoute><SystemSettingsPage /></RootOnlyRoute>} />
         <Route path="settings/payments" element={<RootOnlyRoute><PaymentsSettingsPage /></RootOnlyRoute>} />
+        <Route path="settings/category-policies" element={<RootOnlyRoute><CategoryPoliciesPage /></RootOnlyRoute>} />
+        <Route path="settings/home-layout" element={<RootOnlyRoute><HomeLayoutPage /></RootOnlyRoute>} />
         <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
         <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
         <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
         <Route path="leads" element={<LeadsPage />} />
         <Route path="customers" element={<CustomersPage />} />
+        <Route path="contests" element={<ContestsPage />} />
+        <Route path="coupons" element={<RootOnlyRoute><CouponsPage /></RootOnlyRoute>} />
+        <Route path="push-notifications" element={<RootOnlyRoute><PushNotificationsPage /></RootOnlyRoute>} />
         <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
           {tenantRouteElements}
           <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />
@@ -112,11 +127,13 @@ export default function App() {
     <ThemeProvider branding={NMD_THEME} dir="rtl">
       <AuthProvider>
         <EmergencyModeProvider>
-          <ToastProvider>
-            <Suspense fallback={LOADING}>
-              <Content />
-            </Suspense>
-          </ToastProvider>
+          <NativeBridgeProvider>
+            <ToastProvider>
+              <Suspense fallback={LOADING}>
+                <Content />
+              </Suspense>
+            </ToastProvider>
+          </NativeBridgeProvider>
         </EmergencyModeProvider>
       </AuthProvider>
     </ThemeProvider>

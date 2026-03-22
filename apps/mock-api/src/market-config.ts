@@ -16,10 +16,12 @@ export interface MarketBanner {
   active: boolean;
 }
 
+export type MarketSectionType = 'SLIDER' | 'MARKET_GROUP';
+
 export interface MarketSection {
   id: string;
   title: string;
-  type: 'SLIDER';
+  type: MarketSectionType;
   /** Tenant IDs or slugs. Order preserved. */
   storeIds: string[];
 }
@@ -103,7 +105,7 @@ function save(store: MarketConfigStore): void {
     const dir = dirname(CONFIG_FILE);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(CONFIG_FILE, JSON.stringify(store, null, 2), 'utf-8');
-    // Synchronous write: admin UI changes are on disk immediately (persistent volume)
+    cache = null; // Invalidate so next GET reads from disk; ensures storefront sees new banners immediately
   } catch (err) {
     console.error('[market-config] Failed to persist:', err);
   }
@@ -120,8 +122,16 @@ export function getBannersForMarket(marketSlug: string): MarketBanner[] {
   return getStore().banners[marketSlug] ?? DEFAULT_BANNERS;
 }
 
+function normalizeSection(s: MarketSection & { type?: string }): MarketSection {
+  return {
+    ...s,
+    type: s.type === 'MARKET_GROUP' ? 'MARKET_GROUP' : 'SLIDER',
+  };
+}
+
 export function getLayoutForMarket(marketSlug: string): MarketSection[] {
-  return getStore().layout[marketSlug] ?? DEFAULT_LAYOUT;
+  const raw = getStore().layout[marketSlug] ?? DEFAULT_LAYOUT;
+  return raw.map((s) => normalizeSection(s as MarketSection & { type?: string }));
 }
 
 export function setBannersForMarket(marketSlug: string, banners: MarketBanner[]): void {

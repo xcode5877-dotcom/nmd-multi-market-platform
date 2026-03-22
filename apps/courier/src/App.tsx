@@ -1,10 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NativeBridgeProvider } from './contexts/NativeBridgeContext';
 import { getApiBaseUrl } from './api';
 import LoginPage from './pages/LoginPage';
 import CourierDashboard from './pages/CourierDashboard';
 import CourierOrdersPage from './pages/CourierOrdersPage';
 import CourierRoutePage from './pages/CourierRoutePage';
+import CourierProfilePage from './pages/CourierProfilePage';
+import CourierNativeLayout from './components/CourierNativeLayout';
 
 function CourierGuard({ children }: { children: React.ReactNode }) {
   const { authStatus } = useAuth();
@@ -17,14 +20,19 @@ function CourierGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<CourierGuard><CourierDashboard /></CourierGuard>} />
-        <Route path="/orders" element={<CourierGuard><CourierOrdersPage /></CourierGuard>} />
-        <Route path="/route" element={<CourierGuard><CourierRoutePage /></CourierGuard>} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </AuthProvider>
+    <NativeBridgeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<CourierGuard><CourierNativeLayout /></CourierGuard>}>
+            <Route index element={<CourierDashboard />} />
+            <Route path="orders" element={<CourierOrdersPage />} />
+            <Route path="route" element={<CourierRoutePage />} />
+            <Route path="profile" element={<CourierProfilePage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </AuthProvider>
+    </NativeBridgeProvider>
   );
 }

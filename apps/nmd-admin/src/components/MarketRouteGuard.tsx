@@ -25,7 +25,7 @@ export function MarketRouteGuard({ children }: { children: ReactNode }) {
   if (isLoading || !me) return <div className="p-8 text-gray-500">جاري التحميل...</div>;
 
   if (me.role === 'TENANT_ADMIN') return <Navigate to="/tenant" replace />;
-  if (me.role === 'ROOT_ADMIN') return <>{children}</>;
+  if (me.role === 'ROOT_ADMIN' || me.role === 'SUPER_ADMIN') return <>{children}</>;
   if (me.role === 'MARKET_ADMIN' && me.marketId && routeMarketId !== me.marketId) {
     return <ForbiddenPage />;
   }

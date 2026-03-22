@@ -1,0 +1,30 @@
+---
+description: Mobile-first and native-feel UI/UX for merchant and super-admin apps
+globs: "apps/nmd-admin/**/*.{ts,tsx,css,html}", "apps/admin/**/*.{ts,tsx,css,html}"
+alwaysApply: false
+---
+
+# Merchant & Super Admin: Mobile-First, Native-Feel
+
+## Context
+
+These apps run inside **WebView** native wrappers (Android/iOS in `apps/native-assets/`). The experience must feel native and work well on small screens.
+
+## Requirements
+
+1. **Viewport:** Fixed; no zoom (meta viewport and/or CSS to prevent pinch-zoom where appropriate).
+2. **Horizontal scroll:** Disabled — use `overflow-x-hidden` or layout that doesn’t rely on horizontal scrolling.
+3. **Navbar:** Stabilized (fixed/sticky) so it doesn’t jump; consistent height and safe areas.
+4. **Touch targets:** Buttons and links large enough for touch (min ~44px).
+5. **Consistency:** Use existing `@nmd/ui` components (Drawer, Modal, Button, DataTable) and the same layout/section patterns as the rest of the app.
+
+## When Changing UI
+
+- Prefer responsive, single-column layouts on small viewports.
+- Avoid wide tables without wrapping or horizontal scroll; use cards or stacked rows on mobile if needed.
+- Test that modals/drawers don’t cause viewport or scroll issues inside the WebView.
+- Keep new features aligned with the design system (borders, spacing, RTL where used).
+
+## Reference
+
+See `docs/ARCHITECTURE-SUMMARY.md` (sections 0 and 5) for app roles and deployment.

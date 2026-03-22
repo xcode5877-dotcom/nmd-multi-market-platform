@@ -55,10 +55,24 @@ export interface RegistryTenant {
   closeTime?: string;
   /** Manual override: when true, store shows as CLOSED regardless of schedule. */
   forceClosed?: boolean;
+  /** Super-admin remote override: AUTO (default/undefined) follows schedule; FORCE_OPEN/FORCE_CLOSED bypass everything. */
+  overrideStatus?: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
   /** Appointment duration in minutes. For PROFESSIONAL booking */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores */
   bookingEnabled?: boolean;
+  /** SLA category policy id (platform-admin configured). */
+  categoryId?: string;
+}
+
+/** Central SLA policy per category (green/orange/red thresholds in ms). */
+export interface CategoryPolicy {
+  id: string;
+  name: string;
+  greenMs: number;
+  orangeMs: number;
+  redMs: number;
+  isUrgent: boolean;
 }
 
 /** Market-scoped courier (from GET/POST/PATCH/DELETE /markets/:marketId/couriers) */

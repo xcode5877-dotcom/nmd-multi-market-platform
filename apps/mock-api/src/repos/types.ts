@@ -51,6 +51,8 @@ export interface OrdersRepo {
   setAll(orders: OrderRecord[]): Promise<void>;
   /** Append one order with payment (atomic in db mode). */
   addOrderWithPayment(order: OrderRecord, payment: { method: string; status: string; amount: number; currency?: string }): Promise<void>;
+  /** Hard delete order by id (and cascade: payment, etc.). SUPER_ADMIN only. */
+  deleteById(id: string): Promise<void>;
 }
 
 export interface PaymentsRepo {

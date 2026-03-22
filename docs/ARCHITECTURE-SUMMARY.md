@@ -4,6 +4,44 @@ This document gives a full architectural and functional overview so downstream a
 
 ---
 
+## 0. Project Structure & Roles
+
+### Monorepo (pnpm)
+- **Root:** `pnpm` monorepo; shared lockfile and workspace.
+- **Packages:** Shared logic in `packages/` — `@nmd/core` (types, utils, tenant/cart/order), `@nmd/ui` (components, theme, Drawer, Modal, DataTable), `@nmd/mock` (MockApiClient, tenant registry, orders store).
+- **Apps:** `apps/` — each app is a separate deployable; they consume packages and may call the same backend.
+
+### Backend
+- **Node.js API** (mock or real): `apps/mock-api`. Handles orders, markets, tenants, customer auth, FCM, uploads. Repos abstract storage (JSON vs Postgres via Prisma).
+
+### Global Identity
+- **Phone-based OTP** for customers (`nmd-customer-token`).
+- **Admin/Super Admin:** JWT in `nmd-access-token`. Users (Merchants, Market Admins, Super Admins) are recognized across markets/stores with a **unified session**.
+
+### App Roles
+| App | Path / Purpose |
+|-----|----------------|
+| **Super Admin** | `apps/nmd-admin`. Controls all markets (e.g. Dabburiyya, Iksal), tenants, orders; has "View Details" Drawer for order products/prices. |
+| **Merchant** | `apps/admin`. Dashboard for **store owners**; manage their orders in real time. |
+| **Storefront** | Customer-facing web app for browsing and ordering. |
+| **Courier** | Courier-facing app for delivery assignments and status. |
+
+### Mobile Infrastructure (Android / iOS)
+- **Tech:** WebView-based native wrappers in `apps/native-assets/`.
+- **Android:** `apps/native-assets/merchant/android-project` — configured with FCM, Native Bridge (FCM token to web), viewport fixed, no zoom, `overflow-x-hidden`, stabilized navbar for native feel.
+- **iOS:** WebView wrapper logic in `apps/native-assets/` (e.g. courier/ios or merchant) for Xcode/Swift deployment.
+- **FCM:** Firebase Cloud Messaging for push; device token sent from native to web via bridge and stored on server for push delivery.
+- **Real-time:** Order Alarm (e.g. `OrderAlarmContext`) — sound (bell) and toasts when new orders arrive.
+
+### UI/UX Consistency (Merchant & Super Admin)
+- **Mobile-first, native-feel:** Viewport fixed (no zoom), horizontal scroll disabled (`overflow-x-hidden`), navbar stabilized.
+- New UI changes in merchant and super-admin apps must respect these constraints so the WebView experience feels native.
+
+### Deployment
+- **Docker Compose:** Services include `web-gateway` (Nginx), `postgres`, `whatsapp-service`, `mock-api`. Volumes for data, uploads, WhatsApp session.
+
+---
+
 ## 1. Core Features
 
 ### Global Identity (NMD ID)
@@ -22,7 +60,8 @@ This document gives a full architectural and functional overview so downstream a
 - **WhatsApp service** (`apps/whatsapp-service`): Node + Puppeteer/WhatsApp Web. Exposes:
   - `POST /send-otp` — sends OTP message to a phone (body: `phone`, `code`). Requires `x-api-key` header.
   - `POST /send-message`, `GET /health` (connection state, battery).
-- **mock-api** calls the gateway on `POST /customer/auth/start`: reads `WHATSAPP_GATEWAY_URL` and `WA_API_KEY`, sends `x-api-key` and OTP to gateway. If gateway fails, auth still succeeds (dev fallback).
+- **mock-api** calls the gateway on `POST /customer/auth/start`: reads `WHATSAPP_GATEWAY_URL` and `WA_API_KEY`, sends `x-api-key` and OTP to gateway (with one retry after 2s). If gateway fails, auth still succeeds (dev fallback).
+- **OTP delayed?** Check server logs for `[customer/auth/start] WhatsApp send-otp`; call `GET /customer/auth/otp-gateway-health` to see if gateway is reachable and ready; check the WhatsApp provider’s status page for outages.
 - **Docker:** `WA_API_KEY` must be set for both mock-api and whatsapp-service; gateway rejects requests without matching key. WhatsApp service can persist logs to Postgres (`whatsapp_logs`) and uses `DATABASE_URL`.
 
 ### Order Flow

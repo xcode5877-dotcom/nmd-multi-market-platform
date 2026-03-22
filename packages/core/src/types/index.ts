@@ -1,3 +1,4 @@
+export * from './market';
 export * from './tenant';
 export * from './template';
 export * from './staff';

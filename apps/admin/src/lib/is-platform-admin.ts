@@ -5,3 +5,8 @@
 export function isPlatformAdmin(role: string | undefined): boolean {
   return role === 'ROOT_ADMIN' || role === 'SUPER_ADMIN';
 }
+
+/** Strictly Super Admin (hard delete orders, etc.). Must match backend. */
+export function isSuperAdmin(role: string | undefined): boolean {
+  return role === 'SUPER_ADMIN';
+}

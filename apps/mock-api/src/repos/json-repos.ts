@@ -71,6 +71,10 @@ export function createJsonOrdersRepo(): OrdersRepo {
       const orders = getOrders() as OrderRecord[];
       setOrders([...orders, { ...order, orderType: (order.orderType as string) ?? 'PRODUCT' }]);
     },
+    async deleteById(id: string) {
+      const orders = (getOrders() as OrderRecord[]).filter((o) => String(o.id) !== id);
+      setOrders(orders);
+    },
   };
 }
 

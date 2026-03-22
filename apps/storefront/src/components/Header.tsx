@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ShoppingCart, Search, User, Menu, X, Store, Bell } from 'lucide-react';
+import { Link, useParams, useLocation, useNavigate } from 'react-router-dom';
+import { ShoppingCart, Search, User, Menu, X, Store, Bell, ArrowLeft } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient, getTenantListForMallAsync } from '@nmd/mock';
 import { TenantSwitcher, useLayoutStyle, layoutHeaderClass } from '@nmd/ui';
@@ -29,7 +29,10 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
   const [returnMarketSlug, setReturnMarketSlug] = useState<string | null>(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(RETURN_MARKET_KEY) : null
   );
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { tenantSlug } = useParams<{ tenantSlug?: string }>();
+  const isGlobalCartOrCheckout = pathname.endsWith('/cart') || pathname.endsWith('/checkout');
 
   useEffect(() => {
     const slug = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(RETURN_MARKET_KEY) : null;
@@ -47,12 +50,17 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
     staleTime: 0,
   });
   const storeType = useAppStore((s) => s.storeType);
-  const { customer } = useCustomerAuth();
+  const { customer, logout } = useCustomerAuth();
   const { openAuthModal } = useGlobalAuthModal();
 
   const handleLogout = () => {
-    localStorage.removeItem('nmd-customer-token');
-    window.location.reload();
+    if (!navigator.userAgent.includes('NMDCustomerApp')) {
+      localStorage.removeItem('nmd-customer-token');
+      window.location.reload();
+      return;
+    }
+    logout();
+    navigate('/');
   };
 
   const { data: catalog } = useQuery({
@@ -61,7 +69,7 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
     enabled: !!tenantKey && USE_API,
   });
   const mainCategories = useMemo(() => {
-    const cats = catalog?.categories ?? [];
+    const cats = (catalog?.categories ?? []).slice().sort((a: { sortOrder?: number }, b: { sortOrder?: number }) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     return cats.filter((c: { parentId?: string | null }) => !c.parentId || c.parentId === '');
   }, [catalog?.categories]);
 
@@ -72,8 +80,13 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
   const showCart = !isMarketplace && storeType !== 'PROFESSIONAL';
   const basePath = isMarketplace && marketSlugProp ? `/${marketSlugProp}` : (tenant?.slug ? `/${tenant.slug}` : '/');
   const slugOrId = tenant?.slug ?? tenantSlug ?? tenantId;
-  const centerLabel = isMarketplace ? (marketNameProp ?? 'السوق') : (tenant?.name ?? tenantName ?? 'Store');
-  const centerLogoUrl = isMarketplace ? undefined : tenant?.branding?.logoUrl;
+  // Global cart/checkout: single market identity — no store logo, title "سلة التسوق"
+  const centerLabel = isGlobalCartOrCheckout
+    ? 'سلة التسوق'
+    : isMarketplace
+      ? (marketNameProp ?? 'السوق')
+      : (tenant?.name ?? tenantName ?? 'Store');
+  const centerLogoUrl = isGlobalCartOrCheckout ? undefined : isMarketplace ? undefined : tenant?.branding?.logoUrl;
 
   const { data: tenantsData } = useQuery({
     queryKey: ['tenants-mall'],
@@ -90,19 +103,20 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
     : layoutHeaderClass(layoutStyle);
 
   return (
-    <header className={`sticky top-0 z-40 ${headerBarClass} pt-[env(safe-area-inset-top)]`}>
+    <header data-storefront-header className={`sticky top-0 z-[60] ${headerBarClass} pt-[env(safe-area-inset-top)] isolate`}>
       {/* Row: [Menu + Search + User + Cart] | Logo (center) | Back to Market (store only, left) */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3 min-w-0">
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 order-1">
-          <div className="flex items-center w-10 h-10 shrink-0 justify-center">
+          <div className="flex items-center w-10 h-10 shrink-0 justify-center pointer-events-none">
             <button
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
-              className="p-2 rounded-lg hover:bg-black/5 transition-colors"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-lg hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer touch-manipulation pointer-events-auto"
+              style={{ touchAction: 'manipulation' }}
               aria-label="القائمة"
               aria-expanded={menuOpen}
             >
-              <Menu className="w-6 h-6 text-gray-700" />
+              <Menu className="w-6 h-6 text-gray-700 pointer-events-none" aria-hidden />
             </button>
           </div>
           <button
@@ -122,7 +136,7 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
             <User className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
           </button>
           {showCart && (
-            <Link to={`${basePath}/cart`} className="relative p-2 rounded-lg hover:bg-black/5 transition-colors" aria-label={`السلة ${count} منتج`}>
+            <Link to={`${basePath}/cart`} className="relative p-2 rounded-lg hover:bg-black/5 transition-colors" aria-label={`سلة التسوق ${count} منتج`}>
               <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
               {count > 0 && (
                 <span className="absolute top-0.5 end-0.5 bg-primary text-white text-[10px] min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
@@ -140,16 +154,28 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
         </div>
 
         <Link to={basePath} className="flex items-center justify-center min-w-0 flex-1 mx-2 order-2 overflow-hidden" onClick={() => setMenuOpen(false)}>
-          <span className="flex items-center justify-center max-h-[48px] w-full min-w-0">
+          <span className="flex items-center justify-center w-full min-w-0">
             {centerLogoUrl ? (
-              <img src={centerLogoUrl} alt={centerLabel} loading="lazy" decoding="async" className="max-h-[48px] w-auto max-w-[180px] object-contain" />
+              <span className="flex shrink-0 w-12 h-12 rounded-full border border-gray-100 overflow-hidden bg-white">
+                <img src={centerLogoUrl} alt={centerLabel} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+              </span>
             ) : (
               <span className="font-bold text-base sm:text-lg text-primary truncate max-w-[140px] sm:max-w-[220px]">{centerLabel}</span>
             )}
           </span>
         </Link>
 
-        <div className="flex items-center justify-end shrink-0 order-3 min-w-0">
+        <div className="flex items-center justify-end gap-2 shrink-0 order-3 min-w-0">
+          {pathname !== '/' && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/20 backdrop-blur-md border border-white/10 hover:bg-white/30 active:scale-95 transition-all"
+              aria-label="رجوع"
+            >
+              <ArrowLeft className="w-5 h-5 text-primary" />
+            </button>
+          )}
           {!isMarketplace && (returnMarketSlug || DEFAULT_MARKET_SLUG) && (
             <Link
               to={`/${returnMarketSlug ?? DEFAULT_MARKET_SLUG}`}
@@ -179,15 +205,20 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
         </div>
       )}
 
-      {/* Side menu: Categories + Login/Register or Logout */}
+      {/* Side menu: Categories + Login/Register or Logout — z-index above header so overlay is on top */}
       {menuOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/30 pt-[calc(4rem+env(safe-area-inset-top))]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <div className="fixed top-0 end-0 z-50 w-full max-w-[280px] h-full bg-white shadow-xl pt-[env(safe-area-inset-top)] flex flex-col" role="dialog" aria-label="القائمة">
+          <div
+            className="fixed inset-0 z-[65] bg-black/30 pt-[calc(4rem+env(safe-area-inset-top))] cursor-pointer touch-manipulation"
+            style={{ touchAction: 'manipulation' }}
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="fixed top-0 end-0 z-[70] w-full max-w-[280px] h-full bg-white shadow-xl pt-[env(safe-area-inset-top)] flex flex-col touch-manipulation" style={{ touchAction: 'manipulation' }} role="dialog" aria-label="القائمة">
             <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100">
               <span className="text-sm font-semibold text-gray-700">القائمة</span>
-              <button type="button" onClick={() => setMenuOpen(false)} className="p-2 rounded-lg hover:bg-gray-100" aria-label="إغلاق">
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setMenuOpen(false)} className="min-w-[44px] min-h-[44px] p-2 rounded-lg hover:bg-gray-100 cursor-pointer touch-manipulation" style={{ touchAction: 'manipulation' }} aria-label="إغلاق">
+                <X className="w-5 h-5 pointer-events-none" aria-hidden />
               </button>
             </div>
             <nav className="flex-1 overflow-auto py-2">
@@ -239,7 +270,7 @@ export function Header({ variant = 'store', marketName: marketNameProp, marketSl
               {customer && (
                 <div className="border-t border-gray-100 pt-2 mt-2">
                   <Link
-                    to={isMarketplace ? `/my-activity` : `/${tenant?.slug ?? tenantSlugOrId}/my-activity`}
+                    to={isMarketplace ? `/my-activity` : `/${tenant?.slug ?? tenantSlug ?? ''}/my-activity`}
                     onClick={() => setMenuOpen(false)}
                     className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
                   >

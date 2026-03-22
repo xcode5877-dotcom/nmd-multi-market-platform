@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { StorefrontHero, StorefrontBanner } from '@nmd/core';
 import { useAppStore } from '../store/app';
@@ -37,13 +37,31 @@ const SLIDE_CONTAINER =
 const CTA_CLASS =
   'mt-2 md:mt-3 px-3 py-2 md:px-4 rounded-lg text-sm font-medium bg-white text-gray-900 hover:bg-gray-100 transition-colors';
 
+/** Legacy placeholder to treat as empty — Admin-set content takes priority. */
+const LEGACY_PLACEHOLDER = 'اكتشف أفضل المنتجات لدينا';
+
+/** Fallback when no hero/banners from API. Use Now Market only when API title is empty. */
+const FALLBACK_TITLE = 'Now Market';
+
 const DEFAULT_HERO: StorefrontHero = {
-  title: 'مرحباً بك',
-  subtitle: 'اكتشف أفضل المنتجات لدينا',
+  title: FALLBACK_TITLE,
+  subtitle: FALLBACK_TITLE,
   ctaText: 'تسوق الآن',
   ctaLink: '#',
   ctaHref: '#',
 };
+
+function effectiveTitle(title: string | undefined | null): string {
+  const t = (title ?? '').trim();
+  if (!t || t === LEGACY_PLACEHOLDER) return FALLBACK_TITLE;
+  return t;
+}
+
+function effectiveSubtitle(subtitle: string | undefined | null): string {
+  const s = (subtitle ?? '').trim();
+  if (!s || s === LEGACY_PLACEHOLDER) return FALLBACK_TITLE;
+  return s;
+}
 
 function buildSlides(hero: StorefrontHero | null | undefined, banners: StorefrontBanner[] | null | undefined): Slide[] {
   const slides: Slide[] = [];
@@ -70,11 +88,17 @@ function formatCountdown(expiresAt: string, now: number): string | null {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function withImageCacheBust(url: string, v: number): string {
+  if (!url) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}v=${v}`;
+}
+
 export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
   const navigate = useNavigate();
   const tenantId = useAppStore((s) => s.tenantId);
   const heroTitleStyle = useHeroTitleStyle();
   const slides = useMemo(() => buildSlides(hero ?? null, banners ?? []), [hero, banners]);
+  const imgCacheBust = useRef(Date.now()).current;
   const [idx, setIdx] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
@@ -102,7 +126,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
         return (
           <div className={`relative ${SLIDE_CONTAINER}`}>
             <img
-              src={h.imageUrl}
+              src={withImageCacheBust(h.imageUrl, imgCacheBust)}
               alt=""
               loading="lazy"
               decoding="async"
@@ -111,8 +135,8 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
             />
             <div className="absolute inset-x-0 bottom-0 h-2/3 z-10 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
             <div className="absolute inset-0 z-10 flex flex-col justify-end items-end text-end p-4 md:p-6 pb-4 md:pb-6">
-              <h1 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{h.title}</h1>
-              {h.subtitle && <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{h.subtitle}</p>}
+              <h1 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{effectiveTitle(h.title)}</h1>
+              <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{effectiveSubtitle(h.subtitle)}</p>
               {h.ctaText && ctaLink && (
                 <button
                   type="button"
@@ -135,8 +159,8 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
       }
       return (
         <div className={`${SLIDE_CONTAINER} flex flex-col justify-center p-4 md:p-8 bg-gradient-to-b from-primary/5 to-transparent`}>
-          <h1 className="font-bold text-gray-900 mb-2 text-base md:text-2xl" style={heroTitleStyle}>{h.title}</h1>
-          <p className="text-sm md:text-base text-gray-600 mb-4">{h.subtitle}</p>
+          <h1 className="font-bold text-gray-900 mb-2 text-base md:text-2xl" style={heroTitleStyle}>{effectiveTitle(h.title)}</h1>
+          <p className="text-sm md:text-base text-gray-600 mb-4">{effectiveSubtitle(h.subtitle)}</p>
           {h.ctaText && ctaLink && (
             <button
               type="button"
@@ -163,7 +187,7 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
     const content = (
       <div className={`relative ${SLIDE_CONTAINER}`}>
         <img
-          src={b.imageUrl}
+          src={withImageCacheBust(b.imageUrl, imgCacheBust)}
           alt={b.title ?? ''}
           loading="lazy"
           decoding="async"
@@ -177,12 +201,12 @@ export function TopHeroCarousel({ hero, banners }: TopHeroCarouselProps) {
             </span>
           </div>
         )}
-        {(b.title || b.subtitle || b.ctaText) && (
+        {(effectiveTitle(b.title) || effectiveSubtitle(b.subtitle) || b.ctaText) && (
           <>
             <div className="absolute inset-x-0 bottom-0 h-2/3 z-10 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
             <div className="absolute inset-0 z-10 flex flex-col justify-end items-end text-end p-4 md:p-6 pb-4 md:pb-6">
-              {b.title && <h2 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{b.title}</h2>}
-              {b.subtitle && <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{b.subtitle}</p>}
+              <h2 className="font-bold text-white max-w-[90%] text-base md:text-2xl [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]" style={heroTitleStyle}>{effectiveTitle(b.title)}</h2>
+              <p className="text-sm md:text-base mt-1 text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] max-w-[90%]">{effectiveSubtitle(b.subtitle)}</p>
               {b.ctaText && href && (
                 <button
                   type="button"

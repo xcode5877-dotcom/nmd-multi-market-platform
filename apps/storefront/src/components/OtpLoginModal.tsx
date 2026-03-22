@@ -6,7 +6,8 @@ const OTP_RESEND_COOLDOWN_SEC = 60;
 
 /**
  * Global Identity (NMD ID): single phone → Send Code → 6-digit OTP → Verify.
- * Resend is disabled for 60s after sending. Session (nmd-customer-token) is shared across Market, Store, Pro.
+ * - Phone is validated (Israel 05x) BEFORE calling API to avoid wasting gateway/OTP calls.
+ * - Resend button with 60s countdown; use "إعادة إرسال الرمز" if code doesn't arrive (check WhatsApp, then retry).
  */
 interface OtpLoginModalProps {
   open: boolean;
@@ -24,7 +25,7 @@ type AuthMode = 'LOGIN' | 'SIGNUP';
 type Step = 'phone' | 'code' | 'profile';
 
 export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast: _showOtpInToast }: OtpLoginModalProps) {
-  const { checkPhone, start, verify, updateProfile } = useCustomerAuth();
+  const { checkPhone, checkOtpGatewayHealth, start, verify, updateProfile } = useCustomerAuth();
   const { addToast } = useToast();
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [step, setStep] = useState<Step>('phone');
@@ -48,6 +49,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast: _showO
       setError('أدخل رقم الجوال');
       return;
     }
+    // Validate before any API call to avoid wasting WhatsApp gateway usage on invalid numbers
     if (!isValidIsraelPhone(phoneTrimmed)) {
       setError('رقم الجوال بصيغة إسرائيلية (05x-xxxxxxx)');
       return;
@@ -69,9 +71,17 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast: _showO
     setLoading(false);
     if (!startResult.ok) {
       setError(startResult.error ?? 'حدث خطأ');
+      const health = await checkOtpGatewayHealth();
+      if (health.gatewayConfigured && (!health.gatewayReachable || !health.ready)) {
+        addToast('خدمة التحقق مؤقتاً غير متاحة. جرّب لاحقاً أو تواصل مع الدعم.', 'info');
+      }
       return;
     }
-    addToast('تم إرسال الرمز إلى جوالك', 'info');
+    if (startResult.whatsAppSent === false) {
+      addToast('عذراً، خدمة الواتساب غير متاحة حالياً، جرب لاحقاً', 'info');
+    } else {
+      addToast('تم إرسال الرمز إلى جوالك', 'info');
+    }
     setStep('code');
     setCode('');
     setResendCountdown(OTP_RESEND_COOLDOWN_SEC);
@@ -153,7 +163,7 @@ export function OtpLoginModal({ open, onClose, onSuccess, showOtpInToast: _showO
   const modalTitle = mode === 'SIGNUP' ? 'إنشاء حساب جديد' : 'تسجيل الدخول';
 
   return (
-    <Modal open={open} onClose={handleClose} title={modalTitle} size="sm">
+    <Modal open={open} onClose={handleClose} title={modalTitle} size="sm" zIndex={100000}>
       <div className="space-y-4" dir="rtl">
         {step === 'phone' && (
           <>

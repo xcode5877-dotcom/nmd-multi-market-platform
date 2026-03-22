@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
 import { Package, List, MapPin, LogOut, Trophy, Award } from 'lucide-react';
 
@@ -14,6 +15,7 @@ type CourierStats = {
 
 export default function CourierDashboard() {
   const { user, logout } = useAuth();
+  const { isNativeApp } = useNativeBridge();
 
   const { data: stats } = useQuery({
     queryKey: ['courier-stats'],
@@ -35,21 +37,23 @@ export default function CourierDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-teal-600 text-white p-4 shadow">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-lg font-bold">مرحباً، {user.courier.name}</h1>
-            <p className="text-sm text-teal-100">{user.market.name}</p>
+      {!isNativeApp && (
+        <header className="bg-teal-600 text-white p-4 shadow">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-lg font-bold">مرحباً، {user.courier.name}</h1>
+              <p className="text-sm text-teal-100">{user.market.name}</p>
+            </div>
+            <button
+              onClick={logout}
+              className="p-2 rounded-lg hover:bg-teal-700 transition-colors"
+              aria-label="تسجيل الخروج"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={logout}
-            className="p-2 rounded-lg hover:bg-teal-700 transition-colors"
-            aria-label="تسجيل الخروج"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="p-4 max-w-md mx-auto space-y-4">
         <Link

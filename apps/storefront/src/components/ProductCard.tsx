@@ -6,6 +6,7 @@ import { applyCampaign, formatMoney } from '@nmd/core';
 import { useToast } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
+import { resolveImageUrl } from '../lib/image-url';
 
 const NEW_DAYS = 14;
 
@@ -50,8 +51,11 @@ function ProductCardInner({
 }) {
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
   const tenantSlug = useAppStore((s) => s.tenantSlug) ?? tenantId;
+  const tenantName = useAppStore((s) => s.tenantName);
+  const marketId = useAppStore((s) => s.marketId);
   const storeType = useAppStore((s) => s.storeType);
   const addItem = useCartStore((s) => s.addItem);
+  const getTenantIdsInCart = useCartStore((s) => s.getTenantIdsInCart);
   const addToast = useToast().addToast;
   const navigate = useNavigate();
   const isProfessional = storeType === 'PROFESSIONAL';
@@ -67,28 +71,47 @@ function ProductCardInner({
   const { discount } = applyCampaign(product.basePrice, campaigns, product.id, product.categoryId);
   const hasDiscount = discount > 0;
   const needsOptions = hasVariants(product);
+  const isAvailable = product.isAvailable !== false;
   const inStock = product.inStock ?? true;
+  const canAddToCart = isAvailable && inStock;
 
   const handleAddClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!inStock) return;
+    if (!canAddToCart) return;
     if (needsOptions) {
       navigate(`/${tenantSlug}/p/${product.id}`);
       return;
     }
+    const tenantIds = getTenantIdsInCart();
+    const cartStoreId = tenantIds.length > 0 ? tenantIds[0] : null;
+    if (cartStoreId != null && tenantId !== cartStoreId) {
+      addToast('يمكنك الطلب من متجر واحد فقط في كل مرة. افرغ السلة أو أكمل طلبك الحالي.', 'error');
+      return;
+    }
     const finalPrice = product.basePrice - discount;
-    addItem(tenantId, {
-      productId: product.id,
-      productName: product.name,
-      categoryId: product.categoryId,
-      quantity: 1,
-      basePrice: product.basePrice,
-      selectedOptions: [],
-      optionGroups: product.optionGroups ?? [],
-      totalPrice: finalPrice,
-      imageUrl: product.images?.[0]?.url ?? product.imageUrl,
-    });
+    const isWeightBased =
+      (product as { isWeightBased?: boolean }).isWeightBased === true ||
+      ((product as { quantityStep?: number }).quantityStep ?? 1) < 1;
+    addItem(
+      tenantId,
+      {
+        productId: product.id,
+        productName: product.name,
+        categoryId: product.categoryId,
+        quantity: 1,
+        basePrice: product.basePrice,
+        selectedOptions: [],
+        optionGroups: product.optionGroups ?? [],
+        totalPrice: finalPrice,
+        imageUrl: product.images?.[0]?.url ?? product.imageUrl,
+        quantityStep: isWeightBased ? (product as { quantityStep?: number }).quantityStep ?? 1 : 1,
+        unitName: isWeightBased ? (product as { unitName?: string }).unitName ?? 'حبة' : 'حبة',
+        isWeightBased,
+      },
+      marketId ?? undefined,
+      tenantName ?? undefined
+    );
     addToast('انضاف للسلة', 'success');
     setIsBouncing(true);
     if (bounceTimeoutRef.current) clearTimeout(bounceTimeoutRef.current);
@@ -96,14 +119,15 @@ function ProductCardInner({
       setIsBouncing(false);
       bounceTimeoutRef.current = null;
     }, 250);
-  }, [inStock, needsOptions, product, discount, navigate, addItem, tenantId, addToast]);
+  }, [canAddToCart, needsOptions, product, discount, navigate, addItem, tenantId, tenantName, marketId, getTenantIdsInCart, addToast, tenantSlug]);
 
-  const imageUrl = product.images?.[0]?.url ?? product.imageUrl ?? 'https://placehold.co/400x400?text=No+Image';
+  const rawImage = product.images?.[0]?.url ?? product.imageUrl;
+  const imageUrl = rawImage ? resolveImageUrl(rawImage) : 'https://placehold.co/400x400?text=No+Image';
 
   return (
     <Link to={`/${tenantSlug}/p/${product.id}`} className="block h-full group">
       <article
-        className="bg-white rounded-xl border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-[380px] md:h-[420px] overflow-hidden relative"
+        className="bg-white rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-[380px] md:h-[420px] overflow-hidden relative"
         dir="rtl"
       >
         {/* Image - lazy load with blur placeholder */}
@@ -120,25 +144,26 @@ function ProductCardInner({
             loading="lazy"
             decoding="async"
             onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${!imageLoaded ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}
+            className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${!imageLoaded ? 'opacity-0 scale-105' : 'opacity-100 scale-100'} ${!isAvailable ? 'opacity-60' : ''}`}
           />
           {/* Badges */}
           <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">
-            {isNew && <span className="bg-primary/90 text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">جديد</span>}
-            {hasDiscount && <span className="bg-red-500 text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">خصم</span>}
-            {!inStock && <span className="bg-gray-200/90 text-gray-700 text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">نفد</span>}
+            {isNew && <span className="bg-primary/90 text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">جديد</span>}
+            {hasDiscount && <span className="bg-red-500 text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">خصم</span>}
+            {!isAvailable && <span className="bg-gray-200/90 text-gray-700 text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">غير متوفر الآن</span>}
+            {isAvailable && !inStock && <span className="bg-gray-200/90 text-gray-700 text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">نفد</span>}
           </div>
         </div>
 
         {/* Info - Compact, high-end layout */}
         <div className="p-3 flex flex-col flex-1 min-h-0 justify-between gap-1">
-          <div className="space-y-0.5">
-            <h3 className="text-base font-semibold text-gray-900 line-clamp-2 leading-tight">
+          <div className="space-y-0.5 min-h-0">
+            <h3 className="text-base font-bold text-gray-900 line-clamp-2 leading-tight">
               {product.name}
             </h3>
-            {hasVariants(product) && (
-              <p className="text-sm text-gray-600 leading-tight">خيارات متعددة</p>
-            )}
+            {product.description?.trim() ? (
+              <p className="text-sm text-gray-600 leading-tight line-clamp-1">{product.description.trim()}</p>
+            ) : null}
           </div>
 
           <div className="flex items-end justify-between mt-2">
@@ -151,8 +176,8 @@ function ProductCardInner({
             ) : (
               <button
                 onClick={handleAddClick}
-                disabled={!inStock}
-                className={`w-8 h-8 md:w-9 md:h-9 rounded-lg flex items-center justify-center transition-all ${
+                disabled={!canAddToCart}
+                className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all ${
                   isBouncing ? 'bg-primary text-white' : 'bg-gray-900 text-white hover:bg-primary shadow-sm'
                 } disabled:opacity-30`}
               >

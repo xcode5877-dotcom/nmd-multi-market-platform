@@ -1,11 +1,19 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, useToast } from '@nmd/ui';
+import { Card, Button, useToast, ConfirmDialog } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { formatPrice, formatDateTimeGregorian } from '@nmd/core';
 import { useTenant } from '../contexts/TenantContext';
+import { useAuth } from '../../contexts/AuthContext';
+import StoreStatusToggle from '../../components/StoreStatusToggle';
+import { Trash2 } from 'lucide-react';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+
+function isSuperAdmin(role: string | undefined): boolean {
+  return role === 'SUPER_ADMIN';
+}
 
 interface OrderExt {
   id: string;
@@ -22,7 +30,11 @@ interface OrderExt {
 export default function TenantOrdersPage() {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const { tenantId, tenant } = useTenant();
+  const superAdmin = isSuperAdmin(user?.role);
+  const [deleteTarget, setDeleteTarget] = useState<OrderExt | null>(null);
+  const [hardDeleting, setHardDeleting] = useState(false);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['orders', tenantId],
@@ -64,6 +76,21 @@ export default function TenantOrdersPage() {
     onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
   });
 
+  const handleHardDelete = async () => {
+    if (!deleteTarget || !MOCK_API_URL) return;
+    setHardDeleting(true);
+    try {
+      await api.hardDeleteOrder(deleteTarget.id);
+      queryClient.invalidateQueries({ queryKey: ['orders', tenantId] });
+      setDeleteTarget(null);
+      addToast('تم حذف الطلب نهائياً', 'success');
+    } catch {
+      addToast('فشل حذف الطلب', 'error');
+    } finally {
+      setHardDeleting(false);
+    }
+  };
+
   const tenantType = (tenant as { tenantType?: string })?.tenantType ?? 'SHOP';
   const isRestaurant = tenantType === 'RESTAURANT';
   const allowFallback = (tenant as { allowMarketCourierFallback?: boolean })?.allowMarketCourierFallback ?? false;
@@ -80,9 +107,21 @@ export default function TenantOrdersPage() {
     );
   }
 
+  const operationalStatus = (tenant as { operationalStatus?: 'open' | 'closed' | 'busy' })?.operationalStatus ?? 'open';
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">الطلبات</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">الطلبات</h1>
+        {tenantId && (
+          <StoreStatusToggle
+            tenantId={tenantId}
+            currentStatus={operationalStatus}
+            emphasizeClosed
+            variant="full"
+          />
+        )}
+      </div>
       {allowFallback && (
         <p className="text-sm text-amber-600 mb-4">⚠️ تفعيل الانتقال لتوصيل السوق عند التأخر</p>
       )}
@@ -102,6 +141,7 @@ export default function TenantOrdersPage() {
                   <th className="px-4 py-2 text-start font-medium text-gray-700">الحالة</th>
                   {isRestaurant && <th className="px-4 py-2 text-start font-medium text-gray-700">جاهز في</th>}
                   <th className="px-4 py-2 text-start font-medium text-gray-700">إجراء</th>
+                  {superAdmin && <th className="px-4 py-2 text-start font-medium text-gray-700 w-10" aria-label="حذف نهائي" />}
                 </tr>
               </thead>
               <tbody>
@@ -150,6 +190,20 @@ export default function TenantOrdersPage() {
                           </Button>
                         )}
                       </td>
+                      {superAdmin && (
+                        <td className="px-4 py-2">
+                          {!isLead && (
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                              onClick={() => setDeleteTarget(o as OrderExt)}
+                              aria-label="حذف الطلب نهائياً"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -158,6 +212,17 @@ export default function TenantOrdersPage() {
           </div>
         )}
       </Card>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleHardDelete}
+        title="حذف الطلب نهائياً"
+        message={deleteTarget ? 'هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.' : ''}
+        confirmLabel="حذف نهائياً"
+        variant="danger"
+        loading={hardDeleting}
+        closeOnConfirm={false}
+      />
     </div>
   );
 }

@@ -5,14 +5,25 @@ import {
   deleteOptionGroup,
   upsertOptionItem,
   deleteOptionItem,
+  MockApiClient,
 } from '@nmd/mock';
 import type { OptionGroup, OptionItem } from '@nmd/core';
 import { filterOptionGroupsForTenant, generateId, formatMoney } from '@nmd/core';
 import { Card, Button, Input, Modal } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const api = new MockApiClient();
 
 export default function OptionsPage() {
   const { tenantId, tenantType } = useAdminContext();
+  const queryClient = useQueryClient();
+  const { data: catalog } = useQuery({
+    queryKey: ['catalog', tenantId],
+    queryFn: () => api.getCatalogApi(tenantId),
+    enabled: !!tenantId && USE_API,
+  });
   const [allGroups, setAllGroups] = useState<OptionGroup[]>([]);
   const groupsForTenant = allGroups.filter(
     (g) =>
@@ -30,17 +41,28 @@ export default function OptionsPage() {
     minSelected: 0,
     maxSelected: 1,
     selectionType: 'single' as 'single' | 'multi',
+    allowHalfPlacement: false,
   });
   const [itemForm, setItemForm] = useState<{ id?: string; name: string; priceDelta: number; enabled: boolean; defaultSelected: boolean }>({ name: '', priceDelta: 0, enabled: true, defaultSelected: false });
   const editingItemId = itemForm.id;
 
-  const refresh = () => setAllGroups(listOptionGroups(tenantId));
+  const refresh = () => {
+    if (USE_API) {
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+    } else {
+      setAllGroups(listOptionGroups(tenantId));
+    }
+  };
 
   useEffect(() => {
-    refresh();
-  }, [tenantId]);
+    if (USE_API && catalog) {
+      setAllGroups((catalog.optionGroups ?? []) as OptionGroup[]);
+    } else if (!USE_API) {
+      setAllGroups(listOptionGroups(tenantId));
+    }
+  }, [USE_API, tenantId, catalog]);
 
-  const handleSaveGroup = () => {
+  const handleSaveGroup = async () => {
     if (!groupForm.name.trim()) return;
     const g: OptionGroup = {
       id: selected?.id ?? generateId(),
@@ -50,22 +72,38 @@ export default function OptionsPage() {
       minSelected: groupForm.minSelected,
       maxSelected: groupForm.maxSelected,
       selectionType: groupForm.selectionType,
+      allowHalfPlacement: groupForm.allowHalfPlacement,
       items: selected?.items ?? [],
     };
-    upsertOptionGroup(tenantId, g);
+    if (USE_API) {
+      const current = (catalog?.optionGroups ?? []) as OptionGroup[];
+      const idx = current.findIndex((x) => x.id === g.id);
+      const next = idx >= 0 ? current.map((x, i) => (i === idx ? { ...g, tenantId } : x)) : [...current, { ...g, tenantId }];
+      await api.setCatalogApi(tenantId, { ...catalog!, optionGroups: next });
+      await api.addOptionTemplate(tenantId, g);
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+    } else {
+      upsertOptionGroup(tenantId, g);
+    }
     refresh();
     setSelected(g);
     setGroupModalOpen(false);
-    setGroupForm({ name: '', required: false, minSelected: 0, maxSelected: 1, selectionType: 'single' });
+    setGroupForm({ name: '', required: false, minSelected: 0, maxSelected: 1, selectionType: 'single', allowHalfPlacement: false });
   };
 
-  const handleDeleteGroup = (id: string) => {
-    deleteOptionGroup(tenantId, id);
+  const handleDeleteGroup = async (id: string) => {
+    if (USE_API && catalog) {
+      const next = ((catalog.optionGroups ?? []) as OptionGroup[]).filter((x) => x.id !== id);
+      await api.setCatalogApi(tenantId, { ...catalog, optionGroups: next });
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+    } else {
+      deleteOptionGroup(tenantId, id);
+    }
     if (selected?.id === id) setSelected(null);
     refresh();
   };
 
-  const handleSaveItem = () => {
+  const handleSaveItem = async () => {
     if (!selected || !itemForm.name.trim()) return;
     const item: OptionItem = {
       id: editingItemId ?? generateId(),
@@ -76,16 +114,42 @@ export default function OptionsPage() {
       enabled: itemForm.enabled,
       defaultSelected: itemForm.defaultSelected,
     };
-    upsertOptionItem(tenantId, selected.id, item);
+    if (USE_API && catalog) {
+      const groups = (catalog.optionGroups ?? []) as OptionGroup[];
+      const next = groups.map((gr) => {
+        if (gr.id !== selected.id) return gr;
+        const items = gr.items ?? [];
+        const iIdx = items.findIndex((x) => x.id === item.id);
+        const newItems = iIdx >= 0 ? items.map((x, i) => (i === iIdx ? item : x)) : [...items, item];
+        return { ...gr, items: newItems };
+      });
+      await api.setCatalogApi(tenantId, { ...catalog, optionGroups: next });
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+      setSelected(next.find((g) => g.id === selected.id) ?? selected);
+    } else {
+      upsertOptionItem(tenantId, selected.id, item);
+      setSelected(listOptionGroups(tenantId).find((g) => g.id === selected.id) ?? selected);
+    }
     refresh();
-    setSelected(listOptionGroups(tenantId).find((g) => g.id === selected.id) ?? selected);
+    setItemModalOpen(false);
+    setItemForm({ name: '', priceDelta: 0, enabled: true, defaultSelected: false });
   };
 
-  const handleDeleteItem = (itemId: string) => {
+  const handleDeleteItem = async (itemId: string) => {
     if (!selected) return;
-    deleteOptionItem(tenantId, selected.id, itemId);
+    if (USE_API && catalog) {
+      const groups = (catalog.optionGroups ?? []) as OptionGroup[];
+      const next = groups.map((gr) =>
+        gr.id === selected.id ? { ...gr, items: (gr.items ?? []).filter((i) => i.id !== itemId) } : gr
+      );
+      await api.setCatalogApi(tenantId, { ...catalog, optionGroups: next });
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+      setSelected(next.find((g) => g.id === selected.id) ?? null);
+    } else {
+      deleteOptionItem(tenantId, selected.id, itemId);
+      setSelected(listOptionGroups(tenantId).find((g) => g.id === selected.id) ?? null);
+    }
     refresh();
-    setSelected(listOptionGroups(tenantId).find((g) => g.id === selected.id) ?? null);
   };
 
   const hintText = (g: OptionGroup) =>
@@ -98,7 +162,7 @@ export default function OptionsPage() {
       <div className="w-72 flex-shrink-0">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-xl font-bold text-gray-900">مجموعات الخيارات</h1>
-          <Button size="sm" onClick={() => { setSelected(null); setGroupForm({ name: '', required: false, minSelected: 0, maxSelected: 1, selectionType: 'single' }); setGroupModalOpen(true); }}>
+          <Button size="sm" onClick={() => { setSelected(null); setGroupForm({ name: '', required: false, minSelected: 0, maxSelected: 1, selectionType: 'single', allowHalfPlacement: false }); setGroupModalOpen(true); }}>
             إضافة
           </Button>
         </div>
@@ -123,7 +187,7 @@ export default function OptionsPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold">{selected.name}</h2>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setGroupForm({ name: selected.name, required: selected.required, minSelected: selected.minSelected, maxSelected: selected.maxSelected, selectionType: selected.selectionType }); setGroupModalOpen(true); }}>
+                <Button variant="outline" size="sm" onClick={() => { setGroupForm({ name: selected.name, required: selected.required, minSelected: selected.minSelected, maxSelected: selected.maxSelected, selectionType: selected.selectionType, allowHalfPlacement: selected.allowHalfPlacement ?? false }); setGroupModalOpen(true); }}>
                   تعديل المجموعة
                 </Button>
                 <Button size="sm" onClick={() => { setItemForm({ name: '', priceDelta: 0, enabled: true, defaultSelected: false }); setItemModalOpen(true); }}>
@@ -172,6 +236,10 @@ export default function OptionsPage() {
           </div>
           <Input label="الحد الأدنى" type="number" value={groupForm.minSelected} onChange={(e) => setGroupForm((f) => ({ ...f, minSelected: +e.target.value }))} />
           <Input label="الحد الأقصى" type="number" value={groupForm.maxSelected} onChange={(e) => setGroupForm((f) => ({ ...f, maxSelected: +e.target.value }))} />
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={groupForm.allowHalfPlacement} onChange={(e) => setGroupForm((f) => ({ ...f, allowHalfPlacement: e.target.checked }))} className="rounded border-gray-300" />
+            <span className="text-sm text-gray-700">السماح بنصف ونصف</span>
+          </label>
         </div>
         <div className="mt-6 flex gap-2">
           <Button onClick={handleSaveGroup}>حفظ</Button>

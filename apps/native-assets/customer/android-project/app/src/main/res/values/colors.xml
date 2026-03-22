@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NMD Brand colors (matches storefront CSS vars color-primary, color-secondary) -->
+    <color name="nmd_primary">#00A0A0</color>
+    <color name="nmd_primary_dark">#008080</color>
+    <color name="nmd_secondary">#D4A574</color>
+    <color name="nmd_secondary_dark">#B8956A</color>
+    <color name="nmd_background">#FAFAFA</color>
+    <color name="nmd_surface">#FFFFFF</color>
+    <color name="nmd_bottom_bar_bg">#FFFFFF</color>
+    <color name="nmd_bottom_bar_selected">#00A0A0</color>
+    <color name="nmd_bottom_bar_unselected">#757575</color>
+</resources>

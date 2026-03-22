@@ -44,28 +44,30 @@ export function Drawer({ open, onClose, title, children, side = 'end', contentCl
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex"
+          className="fixed inset-0 z-[9999] flex"
           style={{ justifyContent: fromStart ? 'flex-start' : 'flex-end' }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'drawer-title' : undefined}
         >
+          {/* Full-screen backdrop: dims everything including sidebar and navbar */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 z-[9998] bg-black/50"
+            aria-hidden
           />
           <motion.div
             initial={{ x: xOffset }}
             animate={{ x: 0 }}
             exit={{ x: xOffset }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`relative w-full max-w-sm bg-white shadow-2xl h-full overflow-hidden flex flex-col ${contentClassName ?? ''}`.trim()}
+            className={`relative z-[9999] w-full max-w-full md:max-w-md bg-white shadow-2xl max-h-screen h-full flex flex-col ${contentClassName ?? ''}`.trim()}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
               {title && (
                 <h2 id="drawer-title" className="text-lg font-semibold">
                   {title}
@@ -75,7 +77,7 @@ export function Drawer({ open, onClose, title, children, side = 'end', contentCl
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <div className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">{children}</div>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 py-4 pb-20">{children}</div>
           </motion.div>
         </div>
       )}

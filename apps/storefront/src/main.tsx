@@ -1,10 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
 import { initMock } from '@nmd/mock';
 import App from './App';
 import './index.css';
+
+const isFileProtocol = typeof window !== 'undefined' && window.location?.protocol === 'file:';
+const Router = isFileProtocol ? HashRouter : BrowserRouter;
+
+const isApp = typeof navigator !== 'undefined' && navigator.userAgent.includes('NMDCustomerApp');
+const isNativeAndroidApp = typeof navigator !== 'undefined' && navigator.userAgent.includes('NMD-Android-App');
+if (isApp) document.body.classList.add('is-app');
+if (isNativeAndroidApp) document.body.classList.add('is-native-app');
 
 /** Catch script/chunk load failures (e.g. after deploy) and reload to get new assets */
 window.addEventListener('error', (e: ErrorEvent | Event) => {
@@ -16,7 +24,10 @@ window.addEventListener('error', (e: ErrorEvent | Event) => {
   ];
   const isChunkError = chunkErrorMsgs.some((msg) => message.includes(msg));
   if (isChunkError || e.target instanceof HTMLScriptElement) {
-    window.location.reload();
+    if (!navigator.userAgent.includes('NMDCustomerApp')) {
+      window.location.reload();
+    }
+    // In app: no reload to avoid WebView flicker; user can retry or restart
   }
 }, true);
 
@@ -26,8 +37,11 @@ function hideSplash() {
   const s = document.getElementById('splash');
   if (s) {
     s.style.opacity = '0';
-    setTimeout(() => { s.style.display = 'none'; }, 300);
+    setTimeout(() => { s.style.display = 'none'; }, 400);
   }
+}
+if (isApp) {
+  hideSplash();
 }
 
 const queryClient = new QueryClient({
@@ -40,17 +54,18 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <Router>
         <App />
-      </BrowserRouter>
+      </Router>
     </QueryClientProvider>
   </React.StrictMode>
 );
-setTimeout(hideSplash, 100);
+if (!isApp) setTimeout(hideSplash, 4000);
 
-/* Service Worker disabled for development — load site directly without SW to verify design changes. */
-// if ('serviceWorker' in navigator && import.meta.env.PROD) {
-//   window.addEventListener('load', () => {
-//     navigator.serviceWorker.register('/sw.js').catch(() => {});
-//   });
-// }
+/* Service Worker: required for Web Push on Chrome (Android) and Safari (iOS 16.4+). */
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext && import.meta.env.PROD) {
+  window.addEventListener('load', function () {
+    var swUrl = new URL('sw.js', window.location.origin).href;
+    navigator.serviceWorker.register(swUrl, { scope: '/' }).catch(function () {});
+  });
+}

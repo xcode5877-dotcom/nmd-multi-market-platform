@@ -1,0 +1,73 @@
+---
+description: NMD Multi-Market Platform — full project history and architecture (Master Prompt)
+alwaysApply: true
+---
+
+# System Context: NMD Multi-Market Platform (Complete History & Architecture)
+
+هذا الملف يوفّر خلفية المشروع الكاملة من اللحظة الأولى حتى الآن. يُطبَّق تلقائياً في المحادثات.
+
+---
+
+## 1. Core Concept
+
+A **multi-tenant market platform** where a **Super Admin** manages multiple **Markets** (e.g. Dabburiyya, Iksal). Each market contains multiple **Stores/Merchants**.
+
+---
+
+## 2. Technical Architecture (Monorepo)
+
+- **Tooling:** pnpm workspaces.
+
+**Packages:**
+- **@nmd/core:** Shared business logic, types, and API clients.
+- **@nmd/ui:** Shared React components (Tailwind-based): Drawer, Modal, Button, DataTable, etc.
+
+**Apps:**
+- **apps/nmd-admin:** Super Admin dashboard (markets, tenants, orders, View Details drawer).
+- **apps/admin:** Merchant dashboard (WebView app for store owners).
+- **apps/storefront:** Customer ordering website.
+- **apps/courier:** Courier app for delivery.
+
+---
+
+## 3. Global Identity & Authentication
+
+- **Method:** Phone-based OTP (no passwords).
+- **Unified session:** Global `nmd-access-token`. A user logged in as a merchant for one store is recognized across the entire platform. Authentication is unified across all sub-paths.
+- **Customer token:** `nmd-customer-token` (distinct; used in storefront for customer orders).
+
+---
+
+## 4. Merchant Mobile App (Android/iOS WebView)
+
+- **Native wrapper:** `apps/native-assets/`. Android: Java-based WebView.
+- **Native Bridge:** Custom JS bridge (NativeBridge) captures the **FCM Token** from the device and sends it to the web app for push notification registration.
+- **Order Alarm:** Persistent notification (bell sound + toasts) in OrderAlarmContext when new orders arrive.
+- **UI/UX constraints:** Mobile-first. **Fixed viewport** (no pinch-zoom), **overflow-x-hidden** on layouts, **stable navbars** so the app feels native.
+
+---
+
+## 5. Features Implemented to Date
+
+- **Super Admin:** Market management, tenant creation. Orders table has an **Actions** column with **View Details** (eye icon) opening a **Drawer** with order summary, customer, products/quantities/prices, totals, and store.
+- **Merchant app:** UI cleanup (no debug buttons), automatic FCM registration, order management with sound alerts.
+- **Backend:** Mock API server, PostgreSQL option, WhatsApp service for confirmations.
+
+---
+
+## 6. Infrastructure
+
+- **Dockerized:** `docker compose`. Services: **web-gateway** (Nginx), **postgres**, **mock-api**, **whatsapp-service**.
+- **Networking:** Nginx routes by URL (e.g. `/market-admin/`, `/merchant/`).
+
+---
+
+## Guidelines for Cursor
+
+1. **Mobile-first:** No horizontal scrolls; fixed viewport; stable navbars in merchant/admin WebView apps.
+2. **UI consistency:** Use **@nmd/ui** components (Drawer, Modal, Button, etc.).
+3. **Auth:** Any change to the auth flow must respect the **global OTP system** and unified session.
+4. **Native Bridge:** UI or script changes must not break **Native Bridge** communication (FCM token, etc.).
+5. **Reference:** See `docs/ARCHITECTURE-SUMMARY.md` for detailed data storage, routes, and env.
+6. **Now Market UI/UX:** See `docs/NOW-MARKET-SOURCE-OF-TRUTH.md` for the definitive design system, Lucky Wheel spec, header layout, and product page standards. Use as Source of Truth for UI refinement.

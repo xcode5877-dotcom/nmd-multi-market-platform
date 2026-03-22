@@ -117,6 +117,8 @@ async function seed() {
         openTime: t.openTime != null ? String(t.openTime) : null,
         closeTime: t.closeTime != null ? String(t.closeTime) : null,
         phone: t.phone != null ? String(t.phone) : null,
+        pillarId: t.pillarId != null ? String(t.pillarId) : null,
+        subCategoryId: t.subCategoryId != null ? String(t.subCategoryId) : null,
       },
       update: {
         slug: String(t.slug ?? id),
@@ -157,6 +159,8 @@ async function seed() {
         openTime: t.openTime != null ? String(t.openTime) : null,
         closeTime: t.closeTime != null ? String(t.closeTime) : null,
         phone: t.phone != null ? String(t.phone) : null,
+        pillarId: t.pillarId != null ? String(t.pillarId) : null,
+        subCategoryId: t.subCategoryId != null ? String(t.subCategoryId) : null,
       },
     });
   }
@@ -315,7 +319,7 @@ async function seed() {
   const catalogData = data.catalog ?? {};
   for (const [tenantId, cat] of Object.entries(catalogData)) {
     const cats = (cat.categories ?? []) as { id?: string; name?: string; slug?: string; description?: string; imageUrl?: string; sortOrder?: number; parentId?: string | null; isVisible?: boolean }[];
-    const prods = (cat.products ?? []) as { id?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; createdAt?: string; isFeatured?: boolean }[];
+    const prods = (cat.products ?? []) as { id?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; inStock?: boolean; createdAt?: string; isFeatured?: boolean; isArchived?: boolean; sortOrder?: number }[];
     const grps = (cat.optionGroups ?? []) as { id?: string; name?: string; type?: string; required?: boolean; minSelected?: number; maxSelected?: number; selectionType?: string; scope?: string; scopeId?: string; allowHalfPlacement?: boolean; items?: unknown[] }[];
     for (const c of cats) {
       if (c.id) {
@@ -367,6 +371,8 @@ async function seed() {
             isAvailable: typeof p.inStock === 'boolean' ? p.inStock : (p.isAvailable ?? true),
             createdAt: p.createdAt ?? null,
             isFeatured: p.isFeatured ?? null,
+            isArchived: typeof p.isArchived === 'boolean' ? p.isArchived : null,
+            sortOrder: typeof p.sortOrder === 'number' ? p.sortOrder : null,
           },
           update: {
             tenantId,
@@ -385,6 +391,8 @@ async function seed() {
             isAvailable: typeof p.inStock === 'boolean' ? p.inStock : (p.isAvailable ?? true),
             createdAt: p.createdAt ?? null,
             isFeatured: p.isFeatured ?? null,
+            isArchived: typeof p.isArchived === 'boolean' ? p.isArchived : null,
+            sortOrder: typeof p.sortOrder === 'number' ? p.sortOrder : null,
           },
         });
       }

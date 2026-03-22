@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, PageHeader, EmptyState, Button } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrderAlarm } from '../contexts/OrderAlarmContext';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
 import { createAdminData } from '../store/admin-data';
 import { getDeliverySettings, getTenantById, listOrdersByTenant, listCampaigns } from '@nmd/mock';
@@ -13,13 +14,19 @@ import { Check, Circle, Copy, ExternalLink, AlertCircle, ChevronDown, ChevronUp 
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const MOCK_API_URL = (import.meta.env.VITE_MOCK_API_URL ?? '').replace(/\/$/, '');
 /** Set VITE_STOREFRONT_URL for "عرض المتجر" link. Production: e.g. https://nmd.marketing. No hardcoded localhost. */
 const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL ?? '').replace(/\/$/, '');
+const TOKEN_KEY = 'nmd-access-token';
 
 export default function DashboardPage() {
   const { tenantId } = useAdminContext();
   const { user } = useAuth();
+  const orderAlarm = useOrderAlarm();
   const [readinessPanelCollapsed, setReadinessPanelCollapsed] = useState(false);
+  const [testPushLoading, setTestPushLoading] = useState(false);
+  const [testPushResult, setTestPushResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [registerPushLoading, setRegisterPushLoading] = useState(false);
   const adminData = createAdminData(tenantId);
 
   const catalogQuery = useQuery({
@@ -205,6 +212,78 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
+        {USE_API && MOCK_API_URL && (
+          <Card className="shadow-sm border border-slate-100">
+            <div className="p-4">
+              <h2 className="font-semibold text-gray-900 mb-3">اختبار التنبيه (Push)</h2>
+              <p className="text-sm text-gray-500 mb-2">إرسال تنبيه تجريبي للتأكد من الاستلام على هذا الجهاز.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={testPushLoading}
+                  onClick={async () => {
+                    setTestPushResult(null);
+                    setTestPushLoading(true);
+                    try {
+                      const token = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+                      const res = await fetch(`${MOCK_API_URL}/merchant/push-test`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                      });
+                      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; sent?: number; error?: string };
+                      if (res.ok && data.ok) {
+                        setTestPushResult({ ok: true, message: data.sent ? `تم الإرسال إلى ${data.sent} جهاز` : 'تم الإرسال' });
+                      } else {
+                        setTestPushResult({ ok: false, message: data.error ?? `خطأ ${res.status}` });
+                      }
+                    } catch (e) {
+                      setTestPushResult({ ok: false, message: e instanceof Error ? e.message : 'فشل الطلب' });
+                    } finally {
+                      setTestPushLoading(false);
+                    }
+                  }}
+                >
+                  {testPushLoading ? 'جاري الإرسال...' : 'Test Push'}
+                </Button>
+                {orderAlarm && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={registerPushLoading}
+                    onClick={async () => {
+                      setRegisterPushLoading(true);
+                      setTestPushResult(null);
+                      try {
+                        await orderAlarm.registerForPush();
+                        if (!orderAlarm.pushError) {
+                          setTestPushResult({ ok: true, message: 'تم تفعيل التنبيه على هذا الجهاز' });
+                        }
+                      } finally {
+                        setRegisterPushLoading(false);
+                      }
+                    }}
+                  >
+                    {registerPushLoading ? 'جاري التفعيل...' : 'تفعيل التنبيه يدوياً'}
+                  </Button>
+                )}
+              </div>
+              {testPushResult && (
+                <p className={`mt-2 text-sm ${testPushResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {testPushResult.message}
+                </p>
+              )}
+              {orderAlarm?.pushError && (
+                <p className="mt-2 text-sm text-red-600" role="alert">
+                  {orderAlarm.pushError}
+                </p>
+              )}
+            </div>
+          </Card>
+        )}
         <Card className="shadow-sm border border-slate-100">
           <div className="p-4">
             <h2 className="font-semibold text-gray-900 mb-3">معاينة الجوال</h2>

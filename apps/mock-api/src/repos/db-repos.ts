@@ -7,11 +7,12 @@ import type { DeliveryZoneRecord } from '../store.js';
 
 const prisma = new PrismaClient();
 
-function marketToDomain(m: { id: string; name: string; slug: string; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null }): Market {
+function marketToDomain(m: { id: string; name: string; slug: string; imageUrl: string | null; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null }): Market {
   return {
     id: m.id,
     name: m.name,
     slug: m.slug,
+    imageUrl: m.imageUrl ?? undefined,
     branding: m.branding ? (JSON.parse(m.branding) as Market['branding']) : undefined,
     isActive: m.isActive,
     sortOrder: m.sortOrder ?? undefined,
@@ -32,6 +33,8 @@ function tenantToDomain(t: {
   about: string | null; officeHours: string | null; openTime: string | null; closeTime: string | null; forceClosed: boolean | null;
   phone: string | null; storeType: string | null; appointmentDuration: number | null;
   collections: string | null;
+  addressLine?: string | null; location?: string | null; deliveryRadiusKm?: number | null;
+  pillarId?: string | null; subCategoryId?: string | null;
 }): RegistryTenant {
   return {
     id: t.id,
@@ -76,6 +79,11 @@ function tenantToDomain(t: {
     phone: t.phone ?? undefined,
     storeType: (t.storeType as RegistryTenant['storeType']) ?? undefined,
     appointmentDuration: t.appointmentDuration ?? undefined,
+    addressLine: t.addressLine ?? undefined,
+    location: t.location ? (JSON.parse(t.location) as { lat: number; lng: number }) : undefined,
+    deliveryRadiusKm: t.deliveryRadiusKm ?? undefined,
+    pillarId: t.pillarId ?? undefined,
+    subCategoryId: t.subCategoryId ?? undefined,
   };
 }
 
@@ -140,6 +148,7 @@ export function createDbMarketsRepo(): MarketsRepo {
             id: m.id,
             name: m.name,
             slug: m.slug,
+            imageUrl: m.imageUrl ?? null,
             branding: m.branding ? JSON.stringify(m.branding) : null,
             isActive: m.isActive ?? true,
             sortOrder: m.sortOrder ?? null,
@@ -204,6 +213,11 @@ export function createDbTenantsRepo(): TenantsRepo {
             storeType: t.storeType ?? null,
             appointmentDuration: t.appointmentDuration ?? null,
             collections: (t as RegistryTenant).collections ? JSON.stringify((t as RegistryTenant).collections) : null,
+            addressLine: (t as RegistryTenant).addressLine ?? null,
+            location: (t as RegistryTenant).location ? JSON.stringify((t as RegistryTenant).location) : null,
+            deliveryRadiusKm: (t as RegistryTenant).deliveryRadiusKm ?? null,
+            pillarId: (t as RegistryTenant).pillarId ?? null,
+            subCategoryId: (t as RegistryTenant).subCategoryId ?? null,
           })),
         });
       }
@@ -224,6 +238,7 @@ export function createDbUsersRepo(): UsersRepo {
         courierId: u.courierId ?? undefined,
         password: u.password ?? undefined,
         mustChangePassword: u.mustChangePassword ?? undefined,
+        fcmToken: u.fcmToken ?? undefined,
       }));
     },
     async setAll(users: User[]) {
@@ -239,6 +254,7 @@ export function createDbUsersRepo(): UsersRepo {
             courierId: u.courierId ?? null,
             password: u.password ?? null,
             mustChangePassword: u.mustChangePassword ?? null,
+            fcmToken: (u as User & { fcmToken?: string }).fcmToken ?? null,
           })),
         });
       }
@@ -358,6 +374,9 @@ export function createDbOrdersRepo(): OrdersRepo {
           },
         }),
       ]);
+    },
+    async deleteById(id: string) {
+      await prisma.order.delete({ where: { id } });
     },
   };
 }

@@ -4,13 +4,15 @@ import { Button } from './Button';
 export interface ConfirmDialogProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   title?: string;
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'warning' | 'default';
   loading?: boolean;
+  /** When false, dialog does not close after onConfirm (caller closes via onClose when done). Default true. */
+  closeOnConfirm?: boolean;
 }
 
 export function ConfirmDialog({
@@ -23,10 +25,14 @@ export function ConfirmDialog({
   cancelLabel = 'إلغاء',
   variant = 'danger',
   loading = false,
+  closeOnConfirm = true,
 }: ConfirmDialogProps) {
-  const handleConfirm = () => {
-    onConfirm();
-    if (!loading) onClose();
+  const handleConfirm = async () => {
+    const result = onConfirm();
+    if (result instanceof Promise) {
+      await result.catch(() => {});
+    }
+    if (closeOnConfirm && !loading) onClose();
   };
 
   const confirmClass =

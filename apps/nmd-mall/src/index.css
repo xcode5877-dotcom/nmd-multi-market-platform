@@ -17,6 +17,7 @@
   --color-secondary: var(--color-accent-teal);
   --radius: 8px;
   --font: "Cairo", system-ui, sans-serif;
+  --bottom-nav-height: 0px; /* Bottom nav permanently removed on mobile */
 }
 
 html {
@@ -44,4 +45,27 @@ body {
 
 .nmd-btn-active:active {
   transform: scale(0.97);
+}
+
+/* Permanent removal of bottom navigation on mobile */
+@media (max-width: 768px) {
+  .bottom-nav,
+  .mobile-nav,
+  .bottom-navigation,
+  nav[class*="bottom"],
+  div[class*="bottom-nav"],
+  #bottom-navigation {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+  body,
+  #root,
+  .__next,
+  .app-container {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+  }
 }

@@ -9,7 +9,7 @@ const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 export interface TenantContextValue {
   me: { id: string; email: string; role: string; tenantId?: string; marketId?: string } | null;
   tenantId: string | null;
-  tenant: { id: string; slug?: string; name?: string } | null;
+  tenant: { id: string; slug?: string; name?: string; operationalStatus?: 'open' | 'closed' | 'busy' } | null;
   isLoading: boolean;
 }
 
@@ -39,7 +39,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const value: TenantContextValue = {
     me: me ?? null,
     tenantId,
-    tenant: tenant ? { id: tenant.id, slug: tenant.slug, name: tenant.name } : null,
+    tenant: tenant
+      ? {
+          id: tenant.id,
+          slug: (tenant as { slug?: string }).slug,
+          name: tenant.name,
+          operationalStatus: (tenant as { operationalStatus?: 'open' | 'closed' | 'busy' }).operationalStatus,
+        }
+      : null,
     isLoading: meLoading || tenantLoading,
   };
 

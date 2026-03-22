@@ -3,6 +3,7 @@ import { getToken, getApiBaseUrl } from '../api';
 
 export type CourierEvent =
   | { type: 'connected'; courierId: string }
+  | { type: 'order_available'; orderId?: string }
   | { type: 'order_assigned'; orderId?: string; tenantId?: string }
   | { type: 'order_unassigned'; orderId?: string }
   | { type: 'order_ready'; orderId?: string };
@@ -21,6 +22,9 @@ export function useCourierEvents(onEvent: (event: CourierEvent) => void) {
     eventSource.onmessage = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data) as CourierEvent;
+        if (data.type === 'order_available' && data.orderId) {
+          console.log('New order available for market drivers:', data.orderId);
+        }
         onEventRef.current(data);
       } catch {
         // ignore

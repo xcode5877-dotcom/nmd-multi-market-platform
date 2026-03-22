@@ -1,19 +1,117 @@
+/* Prevent WebView transparent flash before React loads; keep bar stable. No extra scroll. */
+html,
+body {
+  background-color: #ffffff;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --color-primary: #00A0A0;
-  --color-secondary: #d4a574;
-  --radius: 8px;
+  --color-primary: #0f766e;
+  --color-secondary: #fff5f2;
+  --radius: 24px;
   --font: "Cairo", system-ui, sans-serif;
+  --global-header-height: 56px;
   --cart-bar-height: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   --professional-bar-height: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  --bottom-nav-height: 64px;
+  --nmd-app-bar-height: 0px;
 }
 
 body {
   font-family: var(--font);
-  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+}
+
+/* Native app: no footer, no extra bottom spacing, main uses min-height without causing scroll */
+body.is-app .footer,
+body.is-app footer,
+body.is-app .why-us-section,
+body.is-app .extra-padding {
+  display: none !important;
+}
+
+body.is-app #root {
+  min-height: 100vh;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+body.is-app main {
+  min-height: 0;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Strip any leftover footer/spacing in app so content isn't pushed down */
+body.is-app [class*="footer"],
+body.is-app [class*="extra-padding"] {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* ========== NMD-Android-App only: native wrapper UI (User-Agent contains NMD-Android-App) ========== */
+/* Hide global header; native app uses its own bottom bar only */
+body.is-native-app [data-global-header] {
+  display: none !important;
+}
+
+/* Remove top padding (no web header); add bottom padding so content is not cut off by native bottom bar (60px) */
+body.is-native-app main {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Hide any PWA/Download App install banners when in native Android app */
+body.is-native-app [data-install-banner],
+body.is-native-app .install-banner {
+  display: none !important;
+}
+
+/* Android app: editorial headers (tracking-tight) for premium feel */
+body.is-native-app h1,
+body.is-native-app h2,
+body.is-native-app h3 {
+  letter-spacing: -0.025em;
+}
+
+/* Smooth scrolling in WebView for a less clunky feel */
+body.is-native-app {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* When opened inside the native app WebView: body gets class nmd-native-app and --nmd-app-bar-height: 100px.
+   Fixed bottom elements (cart bar, checkout footer, bottom nav) use this so they are not covered by the app bar. */
+body.nmd-native-app .fixed.bottom-0,
+body.nmd-native-app [class*='fixed'][class*='bottom-0'] {
+  bottom: var(--nmd-app-bar-height, 100px) !important;
+}
+
+/* Mobile (non-app): fixed bottom buttons sit above browser UI; use class .fixed-bottom-buttons where needed */
+@media (max-width: 768px) {
+  .fixed-bottom-buttons {
+    bottom: 70px !important;
+  }
+}
+
+/* Remove 300ms tap delay on iOS for header and mobile menu touch targets */
+[data-storefront-header] button,
+[data-storefront-header] a {
+  touch-action: manipulation;
 }
 
 /* Chip toggle: 160ms transition (transform + opacity + colors) */
@@ -22,13 +120,64 @@ body {
     background-color 160ms, border-color 160ms, box-shadow 160ms;
 }
 
+/* Soft glow for "Open" (مفتوح) status dot */
+@keyframes open-dot-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+  50% { opacity: 0.9; box-shadow: 0 0 8px 2px rgba(52, 211, 153, 0.5); }
+}
+.animate-open-dot {
+  animation: open-dot-glow 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-open-dot {
+    animation: none;
+  }
+}
+
 /* Chip animations - disabled when user prefers reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-chip-activate,
-  .animate-chip-pulse {
+  .animate-chip-pulse,
+  .category-tab-active {
     animation: none !important;
   }
   .chip-transition {
     transition: none !important;
   }
 }
+
+/* Back button: ensure visibility on mobile (white header) */
+.back-btn-header {
+  display: flex !important;
+  z-index: 999 !important;
+}
+
+/* Zero-gap: header and bottom nav edge-to-edge, full width, zero horizontal padding */
+[data-global-header],
+[data-android-header],
+.now-market-tab-bar {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Lucky Wheel: Spin button pulse animation */
+@keyframes spin-btn-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.7); }
+  70% { box-shadow: 0 0 0 15px rgba(20, 184, 166, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0); }
+}
+.animate-spin-btn-pulse {
+  animation: spin-btn-pulse 2s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-btn-pulse {
+    animation: none;
+  }
+}
+
+/* Now Market: bottom tab bar shown on PWA/Web-Mobile only (not in native app) */
+

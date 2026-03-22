@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
 import { MapPin } from 'lucide-react';
 
 export default function CourierRoutePage() {
   const { user } = useAuth();
+  const { isNativeApp } = useNativeBridge();
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['courier-orders'],
@@ -19,12 +21,14 @@ export default function CourierRoutePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-teal-600 text-white p-4 shadow">
-        <Link to="/" className="text-sm text-teal-100 hover:text-white">
-          ← رجوع
-        </Link>
-        <h1 className="text-lg font-bold mt-1">مسار التوصيل</h1>
-      </header>
+      {!isNativeApp && (
+        <header className="bg-teal-600 text-white p-4 shadow">
+          <Link to="/" className="text-sm text-teal-100 hover:text-white">
+            ← رجوع
+          </Link>
+          <h1 className="text-lg font-bold mt-1">مسار التوصيل</h1>
+        </header>
+      )}
 
       <main className="p-4 max-w-md mx-auto">
         {isLoading ? (

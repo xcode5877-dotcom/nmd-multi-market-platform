@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
 import { useCourierEvents } from '../hooks/useCourierEvents';
 import { useElapsedTimer } from '../hooks/useElapsedTimer';
-import { Package, Clock, CheckCircle2, MapPin, Phone } from 'lucide-react';
+import { useLiveLocationBroadcaster } from '../hooks/useLiveLocationBroadcaster';
+import { Package, Clock, CheckCircle2, MapPin, Phone, MessageCircle } from 'lucide-react';
+import { OrderRouteMap } from '../components/OrderRouteMap';
 
 function mapsUrl(location?: { lat: number; lng: number } | null, address?: string): string {
   if (location?.lat != null && location?.lng != null) {
@@ -22,6 +25,9 @@ function whatsappUrl(phone: string): string {
 
 const CURRENCY_SYMBOL: Record<string, string> = { ILS: '₪', SAR: 'ر.س', USD: '$' };
 
+/** SLA policy from platform admin (green/orange/red in ms). */
+export type CategoryPolicy = { id: string; name: string; greenMs: number; orangeMs: number; redMs: number; isUrgent: boolean };
+
 export type CourierOrder = {
   id?: string;
   tenantId?: string;
@@ -35,9 +41,13 @@ export type CourierOrder = {
   paymentMethod?: 'CASH' | 'CARD';
   amountToCollect?: number;
   cashChangeFor?: number;
-  tenant?: { name?: string; phone?: string; address?: string; location?: { lat: number; lng: number } };
+  tenant?: { name?: string; phone?: string; address?: string; location?: { lat: number; lng: number }; categoryId?: string };
   customer?: { name?: string; phone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryZoneName?: string };
   deliveryZoneName?: string;
+  deliveryLocation?: { lat: number; lng: number };
+  courierLocation?: { lat: number; lng: number };
+  deliveryAddressSource?: 'gps' | 'manual';
+  delivery?: { deliveryAddressSource?: 'gps' | 'manual' };
   deliveryTimeline?: {
     assignedAt?: string;
     acknowledgedAt?: string;
@@ -133,10 +143,12 @@ function AvailableOrderCard({
   order,
   onAccept,
   isPending,
+  thumbFriendly,
 }: {
   order: CourierOrder;
   onAccept: () => void;
   isPending: boolean;
+  thumbFriendly?: boolean;
 }) {
   const tenant = order.tenant ?? { name: '', phone: undefined, address: undefined };
   const customer = order.customer ?? { name: order.customerName ?? '', deliveryAddress: (order as { deliveryAddress?: string }).deliveryAddress ?? '' };
@@ -165,7 +177,7 @@ function AvailableOrderCard({
         type="button"
         onClick={onAccept}
         disabled={isPending}
-        className="mt-3 w-full py-2.5 px-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+        className={`mt-3 w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors ${thumbFriendly ? 'min-h-[48px] py-4 text-base' : 'py-2.5 px-3 text-sm'}`}
       >
         {isPending ? 'جاري الاستلام...' : 'استلم الطلب'}
       </button>
@@ -173,24 +185,39 @@ function AvailableOrderCard({
   );
 }
 
+const DEFAULT_SLA = { greenMs: 0, orangeMs: 3 * 60 * 1000, redMs: 5 * 60 * 1000 };
+
+function getSlaState(elapsedMs: number, policy: { greenMs: number; orangeMs: number; redMs: number }): 'green' | 'orange' | 'red' {
+  if (elapsedMs < policy.orangeMs) return 'green';
+  if (elapsedMs < policy.redMs) return 'orange';
+  return 'red';
+}
+
 function OrderCard({
   order,
   allowedAction,
   onAction,
   isPending,
+  categoryPolicies = [],
 }: {
   order: CourierOrder;
   allowedAction: string | null;
   onAction: (order: CourierOrder, action: string) => void;
   isPending: boolean;
+  categoryPolicies?: CategoryPolicy[];
 }) {
   const step = getUxStep(order);
   const tl = order.deliveryTimeline ?? {};
   const timerStart = tl.acknowledgedAt ?? tl.assignedAt;
   const elapsed = useElapsedTimer(timerStart);
+  const policy = (order.tenant?.categoryId ? categoryPolicies.find((p) => p.id === order.tenant!.categoryId) : null) ?? categoryPolicies[0];
+  const slaPolicy = policy ? { greenMs: policy.greenMs, orangeMs: policy.orangeMs, redMs: policy.redMs } : DEFAULT_SLA;
+  const elapsedMs = timerStart ? Date.now() - new Date(timerStart).getTime() : 0;
+  const slaState = getSlaState(elapsedMs, slaPolicy);
 
   const tenant = order.tenant ?? { name: '', phone: undefined, address: undefined, location: undefined };
-  const customer = order.customer ?? { name: order.customerName ?? '', phone: order.customerPhone ?? '', deliveryAddress: (order as { deliveryAddress?: string }).deliveryAddress ?? '', deliveryLocation: undefined };
+  const customerLocation = order.deliveryLocation ?? order.customer?.deliveryLocation ?? (order as { deliveryLocation?: { lat: number; lng: number } }).deliveryLocation;
+  const customer = order.customer ?? { name: order.customerName ?? '', phone: order.customerPhone ?? '', deliveryAddress: (order as { deliveryAddress?: string }).deliveryAddress ?? '', deliveryLocation: customerLocation };
   const pickupAddr = tenant.address ?? tenant.name ?? '';
   const dropoffAddr = customer.deliveryAddress ?? '';
   const curr = order.currency ?? 'ILS';
@@ -236,12 +263,25 @@ function OrderCard({
           <p className="text-xs font-medium text-green-800 mb-1">توصيل</p>
           <p className="text-sm font-medium text-gray-900">{customer.name || '—'}</p>
           {customer.phone && (
-            <div className="flex gap-2 mt-0.5">
-              <a href={`tel:${customer.phone}`} className="text-xs text-teal-600 hover:underline">اتصال</a>
-              <a href={whatsappUrl(customer.phone)} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:underline">واتساب</a>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <a
+                href={whatsappUrl(customer.phone)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white text-sm font-semibold shadow-md"
+              >
+                <MessageCircle className="w-4 h-4" />
+                واتساب — طلب الموقع الحي
+              </a>
+              <a href={`tel:${customer.phone}`} className="inline-flex items-center gap-1 text-sm text-teal-600 hover:underline">
+                <Phone className="w-3.5 h-3.5" /> اتصال
+              </a>
             </div>
           )}
           <div className="mt-1">
+            {(order.deliveryAddressSource === 'gps' || (order.delivery as { deliveryAddressSource?: string })?.deliveryAddressSource === 'gps') && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-medium border border-emerald-200 mb-1">GPS Verified</span>
+            )}
             {order.deliveryZoneName || (customer as { deliveryZoneName?: string }).deliveryZoneName ? (
               <>
                 <p className="font-bold text-base text-gray-900">{order.deliveryZoneName ?? (customer as { deliveryZoneName?: string }).deliveryZoneName}</p>
@@ -251,9 +291,29 @@ function OrderCard({
               dropoffAddr && <p className="text-sm text-gray-700">{dropoffAddr}</p>
             )}
           </div>
-          <a href={mapsUrl(customer.deliveryLocation, dropoffAddr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline mt-1">
-            <MapPin className="w-3.5 h-3.5" /> خرائط
-          </a>
+          <div className="mt-2 space-y-1">
+            <a
+              href={mapsUrl(customerLocation ?? customer.deliveryLocation, dropoffAddr)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold shadow-md"
+            >
+              <MapPin className="w-4 h-4" />
+              التنقل للعميل
+            </a>
+            <p className="text-xs">
+              <a href={mapsUrl(customerLocation ?? customer.deliveryLocation, dropoffAddr)} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">
+                فتح في خرائط Google
+              </a>
+            </p>
+          </div>
+        </div>
+        <div className="mt-2">
+          <OrderRouteMap
+            storeLocation={tenant.location}
+            customerLocation={customerLocation ?? customer.deliveryLocation}
+            collapsible
+          />
         </div>
         <div className="rounded-lg bg-gray-50 border border-gray-200 p-2.5">
           <p className="text-xs font-medium text-gray-700 mb-1">الدفع</p>
@@ -286,7 +346,11 @@ function OrderCard({
       </div>
 
       {timerStart && step !== 'DELIVERED' && (
-        <div className="mt-2 flex items-center gap-1.5 text-sm text-teal-700 font-medium">
+        <div className={`mt-2 flex items-center gap-1.5 text-sm font-medium rounded-lg px-2 py-1 ${
+          slaState === 'red' ? 'bg-red-100 text-red-800 border border-red-200 animate-pulse' :
+          slaState === 'orange' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+          'bg-green-50 text-green-800 border border-green-200'
+        }`}>
           <Clock className="w-4 h-4" />
           {elapsed}
         </div>
@@ -325,20 +389,44 @@ function OrderCard({
 
 export default function CourierOrdersPage() {
   const { user } = useAuth();
+  const { isNativeApp } = useNativeBridge();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
   const [finishOrder, setFinishOrder] = useState<CourierOrder | null>(null);
   const [finishNotes, setFinishNotes] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const dingRef = useRef<HTMLAudioElement | null>(null);
+  const playDing = useCallback(() => {
+    try {
+      let audio = dingRef.current;
+      if (!audio) {
+        audio = new Audio('/alarm.mp3');
+        dingRef.current = audio;
+      }
+      audio.volume = 0.8;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useCourierEvents((event) => {
     if (event.type === 'order_assigned' || event.type === 'order_unassigned') {
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
       queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+      if (event.type === 'order_assigned') playDing();
+    }
+    if (event.type === 'order_available' && event.orderId) {
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
+      setToastMessage(`طلب جديد في السوق #${event.orderId.slice(0, 8)} — يمكنك قبوله الآن`);
+      playDing();
     }
     if (event.type === 'order_ready' && event.orderId) {
       queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
       setToastMessage(`Order #${event.orderId.slice(0, 8)} is READY for pickup! Grab it now! 🚀`);
+      playDing();
     }
   });
 
@@ -355,11 +443,25 @@ export default function CourierOrdersPage() {
     refetchInterval: 6000,
   });
 
+  const { data: categoryPolicies = [] } = useQuery({
+    queryKey: ['category-policies'],
+    queryFn: () => apiFetch<CategoryPolicy[]>('/category-policies'),
+    enabled: !!user,
+  });
+
   const { data: availableOrders = [], isLoading: availableLoading } = useQuery({
     queryKey: ['courier-orders-available'],
     queryFn: () => apiFetch<CourierOrder[]>('/courier/orders/available'),
     enabled: !!user,
     refetchInterval: 4000,
+  });
+
+  const pickedUpOrderIds = orders
+    .filter((o) => (o.deliveryStatus ?? '') === 'PICKED_UP' && o.id)
+    .map((o) => o.id!);
+  useLiveLocationBroadcaster({
+    orderIds: pickedUpOrderIds,
+    enabled: !!user && pickedUpOrderIds.length > 0,
   });
 
   const statusMutation = useMutation({
@@ -452,12 +554,14 @@ export default function CourierOrdersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-teal-600 text-white p-4 shadow">
-        <Link to="/" className="text-sm text-teal-100 hover:text-white">
-          ← رجوع
-        </Link>
-        <h1 className="text-lg font-bold mt-1">طلباتي والتوصيل</h1>
-      </header>
+      {!isNativeApp && (
+        <header className="bg-teal-600 text-white p-4 shadow">
+          <Link to="/" className="text-sm text-teal-100 hover:text-white">
+            ← رجوع
+          </Link>
+          <h1 className="text-lg font-bold mt-1">طلباتي والتوصيل</h1>
+        </header>
+      )}
 
       <main className="p-4 max-w-md mx-auto">
         <section className="mb-6">
@@ -476,6 +580,7 @@ export default function CourierOrdersPage() {
                     order={o}
                     onAccept={() => handleAccept(o)}
                     isPending={acceptMutation.isPending}
+                    thumbFriendly={isNativeApp}
                   />
                 ))}
               </div>
@@ -524,6 +629,7 @@ export default function CourierOrdersPage() {
                 allowedAction={getAllowedCourierAction(o)}
                 onAction={handleOrderAction}
                 isPending={statusMutation.isPending}
+                categoryPolicies={categoryPolicies}
               />
             ))}
           </div>

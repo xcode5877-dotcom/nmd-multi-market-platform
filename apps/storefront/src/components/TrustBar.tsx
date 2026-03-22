@@ -12,8 +12,8 @@ export function TrustBar() {
       <div className="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-center gap-6 md:gap-10 text-sm text-gray-600">
         {TRUST_ITEMS.map(({ icon: Icon, label }) => (
           <div key={label} className="flex items-center gap-2">
-            <Icon className="w-4 h-4 text-primary" />
-            <span>{label}</span>
+            <Icon className="w-4 h-4 shrink-0" style={{ color: '#0f766e' }} />
+            <span className="text-gray-700">{label}</span>
           </div>
         ))}
       </div>

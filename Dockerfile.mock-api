@@ -3,6 +3,10 @@ FROM node:20-alpine
 # Prisma/OpenSSL: Alpine has /bin/sh for RUN; openssl + libc6-compat for @prisma/client
 RUN apk add --no-cache openssl ca-certificates libc6-compat
 
+# UTF-8 for Arabic and other non-ASCII (avoids ????? in Admin/Storefront)
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 WORKDIR /app
 
 RUN corepack enable pnpm
@@ -21,6 +25,9 @@ RUN pnpm install --frozen-lockfile && \
     pnpm --filter mock-api exec -- prisma generate && \
     pnpm --filter mock-api build
 
+# Verify dist exists so we fail the build instead of crashing at runtime
+RUN test -f /app/apps/mock-api/dist/index.js || (echo "ERROR: dist/index.js not found after build" && exit 1)
+
 WORKDIR /app/apps/mock-api
 
 # Uploads dir for volume mount; ensure it exists and is writable by container user
@@ -38,4 +45,5 @@ EXPOSE 5190
 
 RUN chmod +x /app/apps/mock-api/docker-entrypoint.sh
 ENTRYPOINT ["/app/apps/mock-api/docker-entrypoint.sh"]
-CMD ["node", "dist/index.js"]
+# Use absolute path so we never depend on CWD (avoids MODULE_NOT_FOUND if entrypoint changes dir)
+CMD ["node", "/app/apps/mock-api/dist/index.js"]

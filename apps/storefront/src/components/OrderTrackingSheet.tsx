@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone } from 'lucide-react';
+import { TrackingMapDrawer } from './TrackingMapDrawer';
 
 export interface PublicOrderForTracking {
   id: string;
@@ -10,13 +11,15 @@ export interface PublicOrderForTracking {
   fulfillmentType?: string;
   createdAt?: string;
   assignedDriver?: { name: string; phone: string };
+  deliveryLocation?: { lat: number; lng: number };
+  courierLocation?: { lat: number; lng: number };
   [key: string]: unknown;
 }
 
 const STEPS_DELIVERY = [
   { key: 'received', label: 'تم استلام الطلب', icon: '🛒', statuses: ['PENDING', 'CONFIRMED'] },
   { key: 'preparing', label: 'جاري التحضير', icon: '🔥', statuses: ['PREPARING'] },
-  { key: 'transit', label: 'في الطريق إليك', icon: '🚀', statuses: ['READY', 'OUT_FOR_DELIVERY'] },
+  { key: 'transit', label: 'مع السائق', icon: '🚀', statuses: ['READY', 'OUT_FOR_DELIVERY'] },
   { key: 'delivered', label: 'تم التسليم', icon: '✅', statuses: ['DELIVERED', 'COMPLETED'] },
 ] as const;
 
@@ -184,6 +187,15 @@ export function OrderTrackingSheet({ open, onClose, order }: OrderTrackingSheetP
                         )}
                       </div>
                     </motion.div>
+                  )}
+
+                  {/* Map drawer — delivery only, when location available */}
+                  {isDelivery && (
+                    <TrackingMapDrawer
+                      deliveryLocation={order.deliveryLocation}
+                      courierLocation={order.courierLocation}
+                      isLive={stepIndex >= 2 && !!order.assignedDriver}
+                    />
                   )}
 
                   {/* Order summary */}

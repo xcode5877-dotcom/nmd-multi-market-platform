@@ -1,22 +1,20 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAdminContext } from '../context/AdminContext';
+import { useOrderAlarm } from '../contexts/OrderAlarmContext';
 import { listOrdersByTenant, updateOrderStatus } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import type { Order } from '@nmd/core';
 import { Card, PageHeader, Button } from '@nmd/ui';
 import { formatPrice } from '@nmd/core';
-import { Phone, Truck, Clock } from 'lucide-react';
+import { Phone, Truck, Clock, FileText } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
 const api = new MockApiClient();
 
-/** SLA: READY without courier — 3m = warning, 5m = panic */
-const READY_WARNING_MS = 3 * 60 * 1000;
-const READY_PANIC_MS = 5 * 60 * 1000;
-
-/** Active board: only orders that are not finished (hide COMPLETED & CANCELLED) */
-const ACTIVE_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'] as const;
+/** Fallback SLA when no category policy (e.g. 3m warning, 5m panic) */
+const DEFAULT_SLA = { greenMs: 0, orangeMs: 3 * 60 * 1000, redMs: 5 * 60 * 1000 };
 
 function formatTimeAgo(date: string | Date): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -44,6 +42,14 @@ function getMerchantShare(order: Order & { merchantAmount?: number; subtotal?: n
   return order.merchantAmount ?? order.subtotal ?? (order.items ?? []).reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
 }
 
+/** Manual status buttons for merchants (always visible on board cards). */
+/** "تم التسليم" only via next-action button (e.g. after READY for pickup), not always visible. */
+const MANUAL_STATUS_BUTTONS: { status: Order['status']; label: string }[] = [
+  { status: 'CONFIRMED', label: 'تم التواصل' },
+  { status: 'PREPARING', label: 'قيد التحضير' },
+  { status: 'READY', label: 'جاهز' },
+];
+
 /** Next step for the magic button. PICKUP READY → handover to COMPLETED (no courier). */
 function getBoardAction(order: Order & { fulfillmentType?: string }): { label: string; nextStatus: Order['status']; variant: 'orange' | 'blue' | 'green' } | null {
   const status = order.status;
@@ -68,6 +74,8 @@ type OrderWithDriver = Order & {
   deliveryStatus?: string;
   deliveryTimeline?: { handedToDriverAt?: string };
   fulfillmentType?: string;
+  deliveryAddressSource?: 'gps' | 'manual';
+  delivery?: { deliveryAddressSource?: 'gps' | 'manual' };
   assignedDriver?: { name: string; phone?: string };
 };
 
@@ -88,7 +96,32 @@ function getReadyWaitingMs(order: OrderWithDriver): number | null {
 export default function OrdersBoardPage() {
   const { tenantId } = useAdminContext();
   const queryClient = useQueryClient();
-  const [now, setNow] = useState(Date.now());
+  const navigate = useNavigate();
+  const orderAlarm = useOrderAlarm();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (orderAlarm?.hasPendingAlarm && orderAlarm?.stopSound) {
+      orderAlarm.stopSound();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount (e.g. when opening from push notification)
+  }, []);
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant-by-id', tenantId],
+    queryFn: () => api.getTenant(tenantId!),
+    enabled: !!tenantId && USE_API,
+  });
+  const { data: categoryPolicies = [] } = useQuery({
+    queryKey: ['category-policies'],
+    queryFn: () => api.getCategoryPolicies(),
+    enabled: USE_API,
+  });
+  const slaPolicy = useMemo(() => {
+    const categoryId = tenant?.categoryId;
+    const policy = categoryPolicies.find((p) => p.id === categoryId) ?? categoryPolicies[0];
+    if (!policy) return DEFAULT_SLA;
+    return { greenMs: policy.greenMs, orangeMs: policy.orangeMs, redMs: policy.redMs };
+  }, [tenant?.categoryId, categoryPolicies]);
   const { data: allOrders, refetch } = useQuery({
     queryKey: ['orders-board', tenantId],
     queryFn: () => (USE_API ? api.listOrdersByTenant(tenantId) : Promise.resolve(listOrdersByTenant(tenantId))),
@@ -102,7 +135,7 @@ export default function OrdersBoardPage() {
       return ord.status === 'READY' && (ord as { fulfillmentType?: string }).fulfillmentType !== 'PICKUP' && !isWithDriver(ord);
     });
     if (!hasReadyWaiting) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const t = setInterval(() => setTick((c) => c + 1), 1000);
     return () => clearInterval(t);
   }, [allOrders]);
 
@@ -159,7 +192,7 @@ export default function OrdersBoardPage() {
               <h2 className="text-sm font-semibold text-slate-600 mb-3">قيد التحضير</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {preparing.map((o) => (
-                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} now={now} />
+                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} onViewDetails={() => navigate('/orders', { state: { highlightOrderId: o.id } })} slaPolicy={slaPolicy} />
                 ))}
               </div>
             </section>
@@ -169,7 +202,7 @@ export default function OrdersBoardPage() {
               <h2 className="text-sm font-semibold text-slate-600 mb-3">جاهز للاستلام من المحل</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {readyForPickup.map((o) => (
-                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} now={now} />
+                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} onViewDetails={() => navigate('/orders', { state: { highlightOrderId: o.id } })} slaPolicy={slaPolicy} />
                 ))}
               </div>
             </section>
@@ -179,7 +212,7 @@ export default function OrdersBoardPage() {
               <h2 className="text-sm font-semibold text-slate-600 mb-3">في انتظار السائق</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {waitingDriver.map((o) => (
-                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} now={now} />
+                  <BoardOrderCard key={o.id} order={o} onAdvance={handleAdvance} onViewDetails={() => navigate('/orders', { state: { highlightOrderId: o.id } })} slaPolicy={slaPolicy} />
                 ))}
               </div>
             </section>
@@ -193,8 +226,9 @@ export default function OrdersBoardPage() {
                     key={o.id}
                     order={o}
                     onAdvance={handleAdvance}
+                    onViewDetails={() => navigate('/orders', { state: { highlightOrderId: o.id } })}
                     onHandedToDriver={USE_API ? (order) => api.markOrderHandedToDriver(tenantId!, order.id).then(() => queryClient.invalidateQueries({ queryKey: ['orders-board', tenantId] })) : undefined}
-                    now={now}
+                    slaPolicy={slaPolicy}
                   />
                 ))}
               </div>
@@ -206,24 +240,28 @@ export default function OrdersBoardPage() {
   );
 }
 
+type SlaPolicy = { greenMs: number; orangeMs: number; redMs: number };
+
 function BoardOrderCard({
   order,
   onAdvance,
+  onViewDetails,
   onHandedToDriver,
-  now,
+  slaPolicy = DEFAULT_SLA,
 }: {
   order: OrderWithDriver;
   onAdvance: (order: Order, nextStatus: Order['status']) => void;
+  onViewDetails: () => void;
   onHandedToDriver?: (order: Order) => void | Promise<unknown>;
-  now: number;
+  slaPolicy?: SlaPolicy;
 }) {
   const action = getBoardAction(order);
   const merchantShare = getMerchantShare(order);
   const itemsCount = order.items?.length ?? 0;
   const assignedDriver = order.assignedDriver;
   const waitingMs = getReadyWaitingMs(order);
-  const isWarning = waitingMs != null && waitingMs >= READY_WARNING_MS && waitingMs < READY_PANIC_MS;
-  const isPanic = waitingMs != null && waitingMs >= READY_PANIC_MS;
+  const isWarning = waitingMs != null && waitingMs >= slaPolicy.orangeMs && waitingMs < slaPolicy.redMs;
+  const isPanic = waitingMs != null && waitingMs >= slaPolicy.redMs;
   const isWithDriverSection = isWithDriver(order);
   const deliveryStatus = order.deliveryStatus;
   const handedAt = order.deliveryTimeline?.handedToDriverAt;
@@ -259,7 +297,14 @@ function BoardOrderCard({
           <span className="text-sm text-slate-500">{formatTimeAgo(order.createdAt)}</span>
         </div>
       </div>
-      <div className="font-bold text-lg text-slate-900">{order.customerName || '—'}</div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold text-lg text-slate-900">{order.customerName || '—'}</span>
+        {!isPickup && (order.deliveryAddressSource === 'gps' || order.delivery?.deliveryAddressSource === 'gps') && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-xs font-medium border border-emerald-200">
+            GPS Verified
+          </span>
+        )}
+      </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-600">{itemsCount} {itemsCount === 1 ? 'صنف' : 'صنوف'}</span>
         <span className="font-bold text-emerald-600">{formatPrice(merchantShare)}</span>
@@ -330,6 +375,26 @@ function BoardOrderCard({
           <span className="text-sm font-medium text-violet-800">جاهز للاستلام من المحل</span>
         </div>
       )}
+
+      {/* Manual status buttons + Details */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        {MANUAL_STATUS_BUTTONS.map(({ status, label }) => (
+          <Button
+            key={status}
+            variant={order.status === status ? 'primary' : 'outline'}
+            size="sm"
+            className="text-xs h-8 px-2.5 rounded-lg shrink-0"
+            onClick={() => onAdvance(order, status)}
+            disabled={order.status === status}
+          >
+            {label}
+          </Button>
+        ))}
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5 py-2 text-sm font-medium min-w-[7rem]" onClick={(e) => { e.stopPropagation(); onViewDetails(); }}>
+          <FileText className="w-4 h-4 shrink-0" />
+          التفاصيل
+        </Button>
+      </div>
 
       {action && (
         <Button

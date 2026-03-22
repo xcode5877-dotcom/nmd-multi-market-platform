@@ -74,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = (await res.json()) as { accessToken: string };
     setToken(data.accessToken);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nmd-fcm-sync-request', { detail: { token: data.accessToken } }));
+    }
   }, [setToken]);
 
   useEffect(() => {

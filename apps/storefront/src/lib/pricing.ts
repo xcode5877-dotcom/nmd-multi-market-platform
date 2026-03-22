@@ -1,5 +1,5 @@
 import type { CartItem, Campaign, OptionItem } from '@nmd/core';
-import { applyCampaign } from '@nmd/core';
+import { applyCampaign, roundMoney } from '@nmd/core';
 
 export interface PricedCartItem {
   item: CartItem;
@@ -53,14 +53,20 @@ export function priceCartItem(item: CartItem, campaigns: Campaign[]): PricedCart
   };
 }
 
-/** Compute total for cart items with campaigns. */
+/** Compute total for cart items with campaigns. Uses decimal quantities and rounds to 2 decimals. */
 export function priceCart(
   items: CartItem[],
   campaigns: Campaign[]
 ): { priced: PricedCartItem[]; subtotal: number; discountTotal: number; total: number } {
   const priced = items.map((i) => priceCartItem(i, campaigns));
-  const subtotal = priced.reduce((s, p) => s + p.priceBeforeDiscount * p.item.quantity, 0);
-  const discountTotal = priced.reduce((s, p) => s + p.campaignDiscount * p.item.quantity, 0);
-  const total = priced.reduce((s, p) => s + p.finalPrice * p.item.quantity, 0);
+  const subtotal = roundMoney(
+    priced.reduce((s, p) => s + p.priceBeforeDiscount * p.item.quantity, 0)
+  );
+  const discountTotal = roundMoney(
+    priced.reduce((s, p) => s + p.campaignDiscount * p.item.quantity, 0)
+  );
+  const total = roundMoney(
+    priced.reduce((s, p) => s + p.finalPrice * p.item.quantity, 0)
+  );
   return { priced, subtotal, discountTotal, total };
 }

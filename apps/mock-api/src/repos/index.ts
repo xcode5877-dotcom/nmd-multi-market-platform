@@ -24,10 +24,11 @@ import {
   createDbPaymentsRepo,
 } from './db-repos.js';
 
-const STORAGE_DRIVER = (process.env.STORAGE_DRIVER ?? 'json').toLowerCase();
+// FORCED to PostgreSQL. No env check — avoids any startup or runtime reverting to json (0 stores).
+const driver = 'db' as const;
 
 export function createRepos(): Repos {
-  if (STORAGE_DRIVER === 'db') {
+  if (driver === 'db') {
     return {
       markets: createDbMarketsRepo(),
       tenants: createDbTenantsRepo(),
@@ -41,6 +42,7 @@ export function createRepos(): Repos {
       payments: createDbPaymentsRepo(),
     };
   }
+  // Fallback only if driver were ever changed; in practice driver is always 'db'.
   return {
     markets: createJsonMarketsRepo(),
     tenants: createJsonTenantsRepo(),

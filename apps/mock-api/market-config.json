@@ -3,77 +3,38 @@
     "dabburiyya": [
       {
         "id": "b1",
-        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772817639419-gz5a7v2p.webp",
-        "title": "حلي سهرتك",
-        "linkTo": "store-1772815941301",
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1773217190152-619617qq.webp",
+        "title": "اناقتك من اختيارك",
+        "linkTo": "ms-brands",
         "active": true
       },
       {
         "id": "b2",
-        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772732984073-dftkg6hw.webp",
+        "imageUrl": "https://placehold.co/1200x514/0f766e/ffffff?text=توصيل+سريع",
         "title": "اطلب من محلاتك المفضلة",
-        "linkTo": "-",
+        "linkTo": "buffalo",
         "active": true
       }
     ],
     "iksal": [
       {
-        "id": "b-1772447249385",
-        "imageUrl": "",
-        "title": "استشارة مجانية",
-        "linkTo": "",
+        "id": "b1",
+        "imageUrl": "https://placehold.co/1200x514/4f46e5/ffffff?text=سوق+إكسال",
+        "title": "مرحباً بكم في سوق إكسال",
+        "linkTo": "buffalo",
         "active": true
       }
     ]
   },
   "layout": {
-    "dabburiyya": [
-      {
-        "id": "featured",
-        "title": "سحور رمصان",
-        "type": "SLIDER",
-        "storeIds": [
-          "buffalo",
-          "بيتسا-اشرف",
-          "shaghaf",
-          "rianbow-land"
-        ]
-      },
-      {
-        "id": "restaurants",
-        "title": "أفضل المطاعم",
-        "type": "SLIDER",
-        "storeIds": [
-          "buffalo",
-          "بيتسا-اشرف",
-          "buffalo-28"
-        ]
-      },
-      {
-        "id": "new",
-        "title": "جديد في دبورية",
-        "type": "SLIDER",
-        "storeIds": [
-          "buffalo"
-        ]
-      },
-      {
-        "id": "s-1772817412117",
-        "title": "حلي ايامك",
-        "type": "SLIDER",
-        "storeIds": [
-          "store-1772815941301"
-        ]
-      }
-    ],
+    "dabburiyya": [],
     "iksal": [
       {
         "id": "featured",
         "title": "محلات مميزة",
         "type": "SLIDER",
         "storeIds": [
-          "buffalo",
-          "مكتب-المحامي-يوسف-حسام-دراوشة"
+          "buffalo"
         ]
       }
     ]

@@ -5,15 +5,19 @@ import { ChevronDown, Package, Truck, MessageCircle, ShieldCheck } from 'lucide-
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import type { Product, OptionGroup, OptionItem, SelectedOption, PizzaSelectedOption, ProductVariant } from '@nmd/core';
-import { applyCampaign, formatMoney, filterOptionGroupsForTenant } from '@nmd/core';
-import { Button, Skeleton, useToast } from '@nmd/ui';
+import { applyCampaign, formatMoney, filterOptionGroupsForTenant, roundMoney } from '@nmd/core';
+import { Skeleton, useToast, Modal } from '@nmd/ui';
 import { ImageFullscreenViewer } from '../components/ImageFullscreenViewer';
 import { PizzaAddonsSelector } from '../components/PizzaAddonsSelector';
 import { ProductPageSkeleton } from '../components/skeletons';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
+import { useBottomNav } from '../contexts/BottomNavContext';
 
 const api = new MockApiClient();
+
+const TEAL = '#0f766e';
 
 /** Flexible Arabic labels for delivery and store policy (restaurants and stores) */
 const DELIVERY_LABEL = 'توصيل سريع ومباشر | يتم التنسيق فور تأكيد الطلب';
@@ -89,8 +93,21 @@ function calculatePrice(
   let total = product.basePrice;
   for (const sel of selected) {
     const ids = 'optionItemIds' in sel ? sel.optionItemIds : [];
+    const placements = 'optionPlacements' in sel ? (sel.optionPlacements ?? {}) : {};
     const group = product.optionGroups.find((g) => g.id === sel.optionGroupId);
     if (!group) continue;
+    if (group.allowHalfPlacement && ids.length === 2) {
+      const leftId = ids.find((id) => placements[id] === 'LEFT');
+      const rightId = ids.find((id) => placements[id] === 'RIGHT');
+      if (leftId != null && rightId != null) {
+        const item1 = group.items.find((i) => i.id === leftId);
+        const item2 = group.items.find((i) => i.id === rightId);
+        const d1 = item1?.priceDelta ?? item1?.priceModifier ?? 0;
+        const d2 = item2?.priceDelta ?? item2?.priceModifier ?? 0;
+        total += (d1 + d2) / 2;
+        continue;
+      }
+    }
     for (const itemId of ids) {
       const item = group.items.find((i) => i.id === itemId);
       if (item) total += item.priceDelta ?? item.priceModifier ?? 0;
@@ -136,19 +153,21 @@ function AccordionSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-gray-200 last:border-b-0">
+    <div className="border-b border-gray-100 last:border-b-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between py-4 text-start text-gray-900 font-medium"
+        className="w-full flex items-center justify-between py-4 text-start font-medium transition-colors"
+        style={{ color: '#0a0a0a' }}
       >
         {title}
         <ChevronDown
-          className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className="w-5 h-5 transition-transform duration-200"
+          style={{ color: TEAL }}
         />
       </button>
       {open && (
-        <div className="pb-4 text-gray-600 text-sm leading-relaxed">
+        <div className="pb-4 text-sm leading-relaxed" style={{ color: '#0a0a0a' }}>
           {children}
         </div>
       )}
@@ -159,11 +178,15 @@ function AccordionSection({
 export default function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
   const tenantId = useAppStore((s) => s.tenantId) ?? 'default';
+  const tenantName = useAppStore((s) => s.tenantName);
+  const marketId = useAppStore((s) => s.marketId);
   const tenantType = useAppStore((s) => s.tenantType) ?? 'GENERAL';
   const storeType = useAppStore((s) => s.storeType);
   const isProfessional = storeType === 'PROFESSIONAL';
   const addToast = useToast().addToast;
   const addItem = useCartStore((s) => s.addItem);
+  const getTenantIdsInCart = useCartStore((s) => s.getTenantIdsInCart);
+  const [differentMarketModalOpen, setDifferentMarketModalOpen] = useState(false);
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', tenantId, productId],
@@ -178,7 +201,20 @@ export default function ProductPage() {
   });
 
   const [selected, setSelected] = useState<SelectedOption[] | PizzaSelectedOption[]>([]);
-  const [quantity, setQuantity] = useState(1);
+  const isWeightBasedProduct =
+    (product && (product as { isWeightBased?: boolean }).isWeightBased === true) ||
+    ((product && (product as { quantityStep?: number }).quantityStep) ?? 1) < 1;
+  const quantityStep = isWeightBasedProduct
+    ? ((product && (product as { quantityStep?: number }).quantityStep) ?? 1)
+    : 1;
+  const unitName = isWeightBasedProduct
+    ? ((product && (product as { unitName?: string }).unitName) ?? 'حبة')
+    : 'حبة';
+  const showUnitLabel =
+    isWeightBasedProduct &&
+    !['حبة', 'pcs'].includes((unitName ?? '').trim().toLowerCase());
+  const minQuantity = quantityStep > 0 ? quantityStep : 1;
+  const [quantity, setQuantity] = useState(minQuantity);
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
   const [mainImageLoaded, setMainImageLoaded] = useState(false);
@@ -186,13 +222,11 @@ export default function ProductPage() {
   const [addButtonBouncing, setAddButtonBouncing] = useState(false);
   useEffect(() => setMainImageLoaded(false), [mainImageIndex]);
 
-  const addonGroups = useMemo(
-    () =>
-      (product?.optionGroups ?? []).filter(
-        (g) => g.allowHalfPlacement || (g.items ?? []).some((i) => i.placement === 'HALF')
-      ),
-    [product?.optionGroups]
-  );
+  const variantGroups = useMemo(() => {
+    const groups = (product?.optionGroups ?? []).filter((g) => (g.items?.length ?? 0) > 0);
+    return filterOptionGroupsForTenant(tenantType, groups);
+  }, [product?.optionGroups, tenantType]);
+
   const [addonCartEntries, setAddonCartEntries] = useState<
     { optionGroupId: string; optionItemIds: string[]; optionPlacements: Record<string, 'WHOLE' | 'LEFT' | 'RIGHT'> }[]
   >([]);
@@ -200,10 +234,6 @@ export default function ProductPage() {
   const images = useMemo(() => (product ? getProductImages(product) : []), [product]);
   const mainImageUrl = images[mainImageIndex] ?? 'https://placehold.co/400x500?text=No+Image';
   const hasImages = images.length > 0;
-  const variantGroups = useMemo(() => {
-    const groups = (product?.optionGroups ?? []).filter((g) => (g.items?.length ?? 0) > 0);
-    return filterOptionGroupsForTenant(tenantType, groups);
-  }, [product?.optionGroups, tenantType]);
   const hasVariants = variantGroups.length > 0;
   const hasVariantSystem = (product?.variants?.length ?? 0) > 0;
 
@@ -213,6 +243,12 @@ export default function ProductPage() {
 
   const nonAddonGroups = useMemo(
     () => variantGroups.filter((g) => !groupHasHalfOptions(g)),
+    [variantGroups, groupHasHalfOptions]
+  );
+
+  /** All add-on groups (half placement or CUSTOM multi-select). Rendered together in one PizzaAddonsSelector. */
+  const addonGroups = useMemo(
+    () => variantGroups.filter((g) => groupHasHalfOptions(g)),
     [variantGroups, groupHasHalfOptions]
   );
 
@@ -299,19 +335,20 @@ export default function ProductPage() {
     () => (product && hasVariantSystem ? findMatchingVariant(product, effectiveSelected) : null),
     [product, effectiveSelected, hasVariantSystem]
   );
+  const isAvailable = product?.isAvailable !== false;
   const inStock = useMemo(() => {
     if (!product) return true;
     if (matchingVariant != null) return matchingVariant.stock > 0;
     return product.inStock ?? true;
   }, [product, matchingVariant]);
-  const canAdd = inStock && selectionValid && !isAdding;
+  const canAdd = isAvailable && inStock && selectionValid && !isAdding;
 
   const unitPrice = useMemo(() => {
     if (!product) return 0;
     if (matchingVariant?.priceOverride != null) return matchingVariant.priceOverride;
     return calculatePrice(product, effectiveSelected);
   }, [product, matchingVariant, effectiveSelected]);
-  const totalPrice = unitPrice * quantity;
+  const totalPrice = roundMoney(unitPrice * quantity);
   const { discount } = product
     ? applyCampaign(totalPrice, campaigns ?? [], product.id, product.categoryId)
     : { discount: 0 };
@@ -349,6 +386,13 @@ export default function ProductPage() {
 
   const handleAddToCart = useCallback(async () => {
     if (!product || !canAdd) return;
+    if (product.isAvailable === false) return;
+    const tenantIds = getTenantIdsInCart();
+    const cartStoreId = tenantIds.length > 0 ? tenantIds[0] : null;
+    if (cartStoreId != null && tenantId !== cartStoreId) {
+      setDifferentMarketModalOpen(true);
+      return;
+    }
     if (!selectionValid) {
       if (requiresSizeColorValidation) {
         addToast('اختاري المقاس/اللون', 'error');
@@ -359,31 +403,39 @@ export default function ProductPage() {
     }
     setIsAdding(true);
     try {
-      addItem(tenantId, {
-        productId: product.id,
-        productName: product.name,
-        categoryId: product.categoryId,
-        quantity,
-        basePrice: product.basePrice,
-        selectedOptions: effectiveSelected,
-        optionGroups: product.optionGroups,
-        totalPrice,
-        imageUrl: product.images?.[0]?.url ?? product.imageUrl,
-      });
+      addItem(
+        tenantId,
+        {
+          productId: product.id,
+          productName: product.name,
+          categoryId: product.categoryId,
+          quantity,
+          basePrice: product.basePrice,
+          selectedOptions: effectiveSelected,
+          optionGroups: product.optionGroups,
+          totalPrice,
+          imageUrl: product.images?.[0]?.url ?? product.imageUrl,
+          quantityStep,
+          unitName,
+          isWeightBased: isWeightBasedProduct,
+        },
+        marketId ?? undefined,
+        tenantName ?? undefined
+      );
       addToast('انضاف للسلة', 'success');
       setAddButtonBouncing(true);
       setTimeout(() => setAddButtonBouncing(false), 250);
     } finally {
       setIsAdding(false);
     }
-  }, [product, canAdd, selectionValid, requiresSizeColorValidation, missingRequiredGroup, addToast, addItem, tenantId, effectiveSelected, quantity, totalPrice]);
+  }, [product, canAdd, selectionValid, requiresSizeColorValidation, missingRequiredGroup, addToast, addItem, tenantId, tenantName, marketId, getTenantIdsInCart, effectiveSelected, quantity, totalPrice]);
 
   if (isLoading || !product) {
     return <ProductPageSkeleton />;
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4" dir="rtl">
+    <div className="max-w-5xl mx-auto p-4 pb-[120px] md:pb-4 bg-[#ffffff] min-h-screen w-full" dir="rtl" style={{ margin: 0 }}>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -401,7 +453,7 @@ export default function ProductPage() {
             aria-label="عرض الصورة بحجم كامل"
           >
             {!hasImages ? (
-              <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+              <div className="w-full h-full flex flex-col items-center justify-center" style={{ color: '#0a0a0a' }}>
                 <Package className="w-16 h-16 mb-2" strokeWidth={1} />
                 <span className="text-sm">لا توجد صورة</span>
               </div>
@@ -428,7 +480,7 @@ export default function ProductPage() {
             )}
             {!inStock && (
               <div className="absolute top-3 start-3">
-                <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-200/95 text-gray-700">
+                <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/95" style={{ color: '#0a0a0a' }}>
                   نفد
                 </span>
               </div>
@@ -439,7 +491,7 @@ export default function ProductPage() {
                 product.quantity <= product.lowStockThreshold)) &&
               inStock && (
                 <div className="absolute top-3 start-3">
-                  <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-amber-100/95 text-amber-800">
+                  <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/95" style={{ color: TEAL }}>
                     آخر {product.lastItemsCount ?? product.quantity ?? 0}
                   </span>
                 </div>
@@ -452,9 +504,8 @@ export default function ProductPage() {
                   key={i}
                   type="button"
                   onClick={() => setMainImageIndex(i)}
-                  className={`flex-shrink-0 w-16 h-20 rounded-xl overflow-hidden border-2 transition-colors ${
-                    mainImageIndex === i ? 'border-primary' : 'border-transparent hover:border-gray-300'
-                  }`}
+                  className="flex-shrink-0 w-16 h-20 rounded-full overflow-hidden border-2 transition-colors"
+                    style={{ borderColor: mainImageIndex === i ? TEAL : 'transparent' }}
                 >
                   <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
                 </button>
@@ -465,53 +516,59 @@ export default function ProductPage() {
 
         {/* Product Info */}
         <div className="space-y-4">
-          <h1 className="text-xl font-medium text-gray-900 line-clamp-2">{product.name}</h1>
-          <p className="text-lg font-semibold text-gray-900">
+          <h1 className="text-2xl font-semibold line-clamp-2" style={{ color: '#0a0a0a' }}>{product.name}</h1>
+          <p className="text-xl font-bold" style={{ color: '#0a0a0a' }}>
             {discount > 0 ? (
               <>
-                <span className="line-through text-gray-400 text-base me-1">{formatMoney(totalPrice)}</span>
+                <span className="line-through opacity-60 text-base me-1">{formatMoney(totalPrice)}</span>
                 {formatMoney(finalPrice)}
               </>
             ) : (
               formatMoney(finalPrice)
             )}
           </p>
-          {hasVariants && (
-            <p className="text-xs text-gray-500">متوفر بعدة خيارات</p>
-          )}
 
-          {/* Variants - non-addon groups (Size, etc.) */}
+          {/* Product Description — line-clamp-1, above options */}
+          <div className="pt-2">
+            <h3 className="text-sm font-semibold mb-1.5" style={{ color: '#0a0a0a' }}>{isProfessional ? 'تفاصيل الخدمة' : 'وصف المنتج'}</h3>
+            <p className="text-sm leading-relaxed line-clamp-1" style={{ color: '#0a0a0a' }}>
+              {product.description || 'لا يوجد وصف متاح حالياً.'}
+            </p>
+          </div>
+
+          {/* All option groups: vertical stack. Non-addon (size/color) first, then ALL add-on groups together. */}
           {nonAddonGroups.map((group) => (
-            <VariantSelector
-              key={group.id}
-              group={group}
-              product={product}
-              value={selected.find((s) => {
-                if (product.type === 'PIZZA' && 'sliceSelection' in s)
-                  return s.optionGroupId === group.id && (s as PizzaSelectedOption).sliceSelection === 'WHOLE';
-                return s.optionGroupId === group.id;
-              })}
-              onChange={(ids, _placements) =>
-                handleOptionChange(
-                  group.id,
-                  ids,
-                  product.type === 'PIZZA' ? 'WHOLE' : undefined
-                )
-              }
-            />
+            <div key={group.id} className="space-y-2">
+              <VariantSelector
+                group={group}
+                product={product}
+                value={selected.find((s) => {
+                  if (product.type === 'PIZZA' && 'sliceSelection' in s)
+                    return s.optionGroupId === group.id && (s as PizzaSelectedOption).sliceSelection === 'WHOLE';
+                  return s.optionGroupId === group.id;
+                })}
+                onChange={(ids, _placements) =>
+                  handleOptionChange(
+                    group.id,
+                    ids,
+                    product.type === 'PIZZA' ? 'WHOLE' : undefined
+                  )
+                }
+              />
+            </div>
           ))}
-          {/* Variants - add-on groups (pizza toppings with placement) */}
           {addonGroups.length > 0 && (
-            <PizzaAddonsSelector
-              key={productId}
-              optionGroups={addonGroups}
-              product={product}
-              onChange={setAddonCartEntries}
-            />
+            <div className="space-y-2 mb-6">
+              <PizzaAddonsSelector
+                optionGroups={addonGroups}
+                product={product}
+                onChange={(entries) => setAddonCartEntries(entries)}
+              />
+            </div>
           )}
 
           {!isProfessional && !selectionValid && (
-            <p className="text-sm text-amber-600">
+            <p className="text-sm" style={{ color: TEAL }}>
               {requiresSizeColorValidation
                 ? 'اختاري المقاس/اللون'
                 : missingRequiredGroup
@@ -520,79 +577,126 @@ export default function ProductPage() {
             </p>
           )}
 
-          {/* Quantity + Add (RESTAURANT) or Contact message (PROFESSIONAL) */}
+          {/* Desktop: Quantity + Add inline; Mobile uses fixed bar below */}
           {isProfessional ? (
-            <div className="pt-4 p-4 rounded-xl bg-primary/5 border border-primary/20" dir="rtl">
-              <p className="text-sm font-medium text-gray-700 mb-1">للحصول على هذه الخدمة</p>
-              <p className="text-sm text-gray-600">تواصل معنا عبر الأزرار أدناه</p>
+            <div className="pt-4 p-4 rounded-full bg-white" style={{ border: `1px solid ${TEAL}33` }} dir="rtl">
+              <p className="text-sm font-medium mb-1" style={{ color: '#0a0a0a' }}>للحصول على هذه الخدمة</p>
+              <p className="text-sm" style={{ color: '#0a0a0a' }}>تواصل معنا عبر الأزرار أدناه</p>
             </div>
           ) : (
-            <div className="flex items-center gap-3 pt-2">
-              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="w-10 h-10 flex items-center justify-center border-e border-gray-200 hover:bg-gray-50"
-                >
-                  −
-                </button>
-                <span className="w-10 text-center text-sm font-medium">{quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  className="w-10 h-10 flex items-center justify-center border-s border-gray-200 hover:bg-gray-50"
-                >
-                  +
-                </button>
+            <div className="hidden md:flex items-center gap-3 pt-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs" style={{ color: '#0a0a0a' }}>الكمية المطلوبة</span>
+                <div className="flex items-center rounded-full bg-white h-12 overflow-hidden shadow-sm" style={{ border: `1px solid rgba(15,118,110,0.2)` }}>
+                  <button
+                    type="button"
+                    disabled={!isAvailable}
+                    onClick={() =>
+                      isAvailable &&
+                      setQuantity((q) => {
+                        const next = isWeightBasedProduct
+                          ? roundMoney(Math.max(minQuantity, q - quantityStep))
+                          : Math.max(1, Math.round(q) - 1);
+                        return next < minQuantity ? minQuantity : next;
+                      })
+                    }
+                    className={`w-10 h-12 flex items-center justify-center ${isAvailable ? 'hover:bg-gray-50' : 'opacity-50 cursor-not-allowed'}`}
+                    style={{ color: TEAL }}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min={minQuantity}
+                    step={quantityStep}
+                    value={isWeightBasedProduct ? quantity : Math.round(quantity)}
+                    onChange={(e) => {
+                      if (!isAvailable) return;
+                      const v = parseFloat(e.target.value);
+                      if (Number.isNaN(v) || v < minQuantity) return;
+                      setQuantity(isWeightBasedProduct ? roundMoney(v) : Math.max(1, Math.round(v)));
+                    }}
+                    disabled={!isAvailable}
+                    className={`w-14 h-12 text-center text-sm font-medium border-0 bg-transparent p-0 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!isAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    style={{ color: TEAL }}
+                    aria-label="الكمية المطلوبة"
+                  />
+                  {showUnitLabel && <span className="pr-2 text-sm leading-none" style={{ color: TEAL }}>{unitName}</span>}
+                  <button
+                    type="button"
+                    disabled={!isAvailable}
+                    onClick={() =>
+                      isAvailable &&
+                      setQuantity((q) =>
+                        isWeightBasedProduct ? roundMoney(q + quantityStep) : Math.round(q) + 1
+                      )
+                    }
+                    className={`w-10 h-12 flex items-center justify-center ${isAvailable ? 'hover:bg-gray-50' : 'opacity-50 cursor-not-allowed'}`}
+                    style={{ color: TEAL }}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <Button
+              <button
+                type="button"
                 onClick={handleAddToCart}
                 disabled={!canAdd}
-                className={`flex-1 ${addButtonBouncing ? 'animate-bounce-subtle' : ''}`}
+                className={`flex-1 h-12 rounded-full flex items-center justify-center font-semibold text-white transition-all ${addButtonBouncing ? 'animate-bounce-subtle' : ''} ${!canAdd ? 'opacity-50 cursor-not-allowed' : ''}`}
+                style={{ backgroundColor: TEAL }}
               >
-                {isAdding ? 'جاري الإضافة...' : 'أضف للسلة'}
-              </Button>
-            </div>
-          )}
-
-          {/* Trust layer (e-commerce only) */}
-          {!isProfessional && (
-            <div className="mt-4 flex flex-col gap-2" dir="rtl">
-              <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <Truck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-                <span>{DELIVERY_LABEL}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <MessageCircle className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-                <span>{STORE_POLICY_LABEL}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <ShieldCheck className="w-4 h-4 flex-shrink-0 text-neutral-400" strokeWidth={1.5} />
-                <span>دفع آمن 100٪</span>
-              </div>
+                {!isAvailable ? 'غير متوفر الآن' : isAdding ? 'جاري الإضافة...' : 'أضف للسلة'}
+              </button>
             </div>
           )}
 
           {/* Accordion */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <AccordionSection title={isProfessional ? "تفاصيل الخدمة" : "وصف المنتج"} defaultOpen>
-              <p className={`text-gray-600 text-sm leading-relaxed ${product.description ? 'whitespace-pre-line' : 'text-neutral-400 italic'}`}>
-                {product.description || 'لا يوجد وصف متاح حالياً.'}
-              </p>
-            </AccordionSection>
+          <div className="mt-6 pt-6 border-t border-gray-100">
             {!isProfessional && (
               <>
                 <AccordionSection title="التوصيل">
                   {DELIVERY_LABEL}
                 </AccordionSection>
                 <AccordionSection title="سياسة المتجر وضمان الجودة">
-                  {STORE_POLICY_LABEL}
+                  <div className="space-y-2 text-sm leading-relaxed">
+                    <p>{STORE_POLICY_LABEL}</p>
+                    <p className="flex items-center gap-2 mt-2">
+                      <Truck className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} style={{ color: TEAL }} />
+                      <span>توصيل سريع</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} style={{ color: TEAL }} />
+                      <span>نضمن لكم أفضل جودة</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} style={{ color: TEAL }} />
+                      <span>دفع آمن 100٪</span>
+                    </p>
+                  </div>
                 </AccordionSection>
               </>
             )}
           </div>
         </div>
       </motion.div>
+
+      {/* Fixed action bar: Quantity (pill) + Add to Cart + View Cart when items exist (mobile only) */}
+      {!isProfessional && (
+        <ProductPageFixedBar
+          quantity={quantity}
+          setQuantity={setQuantity}
+          minQuantity={minQuantity}
+          quantityStep={quantityStep}
+          isWeightBasedProduct={isWeightBasedProduct}
+          showUnitLabel={showUnitLabel}
+          unitName={unitName}
+          isAvailable={isAvailable}
+          canAdd={canAdd}
+          isAdding={isAdding}
+          addButtonBouncing={addButtonBouncing}
+          handleAddToCart={handleAddToCart}
+        />
+      )}
 
       {fullscreenOpen && hasImages && (
         <ImageFullscreenViewer
@@ -602,6 +706,10 @@ export default function ProductPage() {
           productName={product.name}
         />
       )}
+
+      <Modal open={differentMarketModalOpen} onClose={() => setDifferentMarketModalOpen(false)} title="مجموعة طلب مختلفة" size="sm">
+        <p className="text-[#0a0a0a]">لا يمكن الجمع بين متاجر من مجموعات طلب مختلفة. يمكنك الطلب معاً فقط من متاجر في نفس مجموعة الطلب المشترك (من قسم التخطيط في لوحة السوق). أكمّل طلبك الحالي أو افرغ السلة ثم أضف من هذا المتجر.</p>
+      </Modal>
     </div>
   );
 }
@@ -617,6 +725,140 @@ function getOptionStockFromVariants(
     v.optionValues.some((ov) => ov.groupId === groupId && ov.optionId === optionId)
   );
   return relevant.reduce((sum, v) => sum + v.stock, 0);
+}
+
+/** Fixed bar: Quantity pill + Add to Cart. When cart has items, includes View Cart link. Positioned above bottom nav and CartBar. */
+function ProductPageFixedBar(props: {
+  quantity: number;
+  setQuantity: React.Dispatch<React.SetStateAction<number>>;
+  minQuantity: number;
+  quantityStep: number;
+  isWeightBasedProduct: boolean;
+  showUnitLabel: boolean;
+  unitName: string;
+  isAvailable: boolean;
+  canAdd: boolean;
+  isAdding: boolean;
+  addButtonBouncing: boolean;
+  handleAddToCart: () => void;
+}) {
+  const {
+    quantity,
+    setQuantity,
+    minQuantity,
+    quantityStep,
+    isWeightBasedProduct,
+    showUnitLabel,
+    unitName,
+    isAvailable,
+    canAdd,
+    isAdding,
+    addButtonBouncing,
+    handleAddToCart,
+  } = props;
+  const { visible: bottomNavVisible, height: bottomNavHeight } = useBottomNav();
+  const tenantSlug = useAppStore((s) => s.tenantSlug ?? s.tenantId ?? '');
+  const carts = useCartStore((s) => s.carts);
+  const tenantIds = Object.keys(carts).filter((id) => (carts[id]?.length ?? 0) > 0);
+  const cartCount = tenantIds.reduce((sum, tid) => sum + (carts[tid] ?? []).reduce((s, i) => s + i.quantity, 0), 0);
+  const firstTenantInCart = tenantIds[0];
+  const cartPath = tenantSlug ? `/${tenantSlug}/cart` : firstTenantInCart ? `/${firstTenantInCart}/cart` : '/';
+
+  const cartBarHeight = 88; // ~5.5rem
+  const bottomOffset = bottomNavVisible
+    ? cartCount > 0
+      ? `calc(${bottomNavHeight}px + ${cartBarHeight}px + env(safe-area-inset-bottom, 0px))`
+      : `calc(${bottomNavHeight}px + env(safe-area-inset-bottom, 0px))`
+    : cartCount > 0
+      ? `calc(${cartBarHeight}px + env(safe-area-inset-bottom, 0px))`
+      : 'env(safe-area-inset-bottom, 0px)';
+
+  return (
+    <div
+      className="md:hidden fixed left-0 right-0 z-[9998] bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+      style={{
+        bottom: bottomOffset,
+        paddingTop: 12,
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 16,
+        paddingRight: 16,
+      }}
+      dir="rtl"
+    >
+      <div className="flex flex-col gap-3 items-center w-full">
+        <div className="flex items-center gap-3 w-full max-w-[340px] mx-auto">
+          <div className="flex items-center rounded-full bg-white h-11 overflow-hidden shadow-sm flex-1 shrink-0" style={{ border: '1px solid rgba(15,118,110,0.25)' }}>
+            <button
+              type="button"
+              disabled={!isAvailable}
+              onClick={() =>
+                isAvailable &&
+                setQuantity((q) => {
+                  const next = isWeightBasedProduct
+                    ? roundMoney(Math.max(minQuantity, q - quantityStep))
+                    : Math.max(1, Math.round(q) - 1);
+                  return next < minQuantity ? minQuantity : next;
+                })
+              }
+              className={`w-11 h-11 flex items-center justify-center text-lg font-medium ${isAvailable ? 'hover:bg-gray-50' : 'opacity-50 cursor-not-allowed'}`}
+              style={{ color: TEAL }}
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={minQuantity}
+              step={quantityStep}
+              value={isWeightBasedProduct ? quantity : Math.round(quantity)}
+              onChange={(e) => {
+                if (!isAvailable) return;
+                const v = parseFloat(e.target.value);
+                if (Number.isNaN(v) || v < minQuantity) return;
+                setQuantity(isWeightBasedProduct ? roundMoney(v) : Math.max(1, Math.round(v)));
+              }}
+              disabled={!isAvailable}
+              className="w-14 h-11 text-center text-sm font-medium border-0 bg-transparent p-0 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              style={{ color: TEAL }}
+              aria-label="الكمية"
+            />
+            {showUnitLabel && <span className="pe-2 text-xs" style={{ color: TEAL }}>{unitName}</span>}
+            <button
+              type="button"
+              disabled={!isAvailable}
+              onClick={() =>
+                isAvailable &&
+                setQuantity((q) =>
+                  isWeightBasedProduct ? roundMoney(q + quantityStep) : Math.round(q) + 1
+                )
+              }
+              className={`w-11 h-11 flex items-center justify-center text-lg font-medium ${isAvailable ? 'hover:bg-gray-50' : 'opacity-50 cursor-not-allowed'}`}
+              style={{ color: TEAL }}
+            >
+              +
+            </button>
+          </div>
+          {cartCount > 0 && (
+            <Link
+              to={cartPath}
+              className="h-11 px-5 rounded-full font-semibold text-sm shrink-0 flex items-center justify-center border-2 transition-colors"
+              style={{ borderColor: TEAL, color: TEAL }}
+            >
+              عرض السلة
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={!canAdd}
+            className={`flex-1 min-w-0 h-11 rounded-full flex items-center justify-center font-semibold text-white transition-all shrink-0 ${addButtonBouncing ? 'animate-bounce-subtle' : ''} ${!canAdd ? 'opacity-50 cursor-not-allowed' : ''}`}
+            style={{ backgroundColor: TEAL }}
+          >
+            {!isAvailable ? 'غير متوفر' : isAdding ? 'جاري...' : 'أضف للسلة'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function VariantSelector({
@@ -653,7 +895,7 @@ function VariantSelector({
   if (group.selectionType === 'multi' && !isColor) {
     return (
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium" style={{ color: '#0a0a0a' }}>
           {group.name}
           {group.required && <span className="text-red-500 me-1">*</span>}
         </label>
@@ -674,11 +916,12 @@ function VariantSelector({
                 type="button"
                 onClick={() => !disabled && toggle(item.id)}
                 disabled={disabled}
-                className={`chip-transition rounded-full px-3 py-1.5 text-sm font-medium ${
-                  isSelected
-                    ? 'bg-primary text-white border border-primary shadow-sm'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`chip-transition rounded-full px-4 py-2 text-sm font-medium ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                style={{
+                  backgroundColor: isSelected ? TEAL : '#ffffff',
+                  color: isSelected ? '#ffffff' : '#0a0a0a',
+                  border: isSelected ? 'none' : '1px solid rgba(15,118,110,0.2)',
+                }}
               >
                 {item.name}
                 {priceStr}
@@ -693,7 +936,7 @@ function VariantSelector({
   if (isColor) {
     return (
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium" style={{ color: '#0a0a0a' }}>
           {group.name}
           {group.required && <span className="text-red-500 me-1">*</span>}
         </label>
@@ -712,10 +955,14 @@ function VariantSelector({
                 onClick={() => !disabled && toggle(item.id)}
                 disabled={disabled}
                 title={item.name}
-                className={`w-9 h-9 rounded-full border-2 transition-all duration-200 flex items-center justify-center text-xs font-medium shrink-0 ${
-                  disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-gray-400'
-                } ${isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200'}`}
-                style={hex ? { backgroundColor: hex } : { backgroundColor: '#e5e7eb' }}
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium shrink-0 transition-all duration-200 ${
+                  disabled ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                style={{
+                  backgroundColor: hex ?? '#f0f0f0',
+                  border: isSelected ? `2px solid ${TEAL}` : '2px solid transparent',
+                  boxShadow: isSelected ? `0 0 0 2px ${TEAL}` : undefined,
+                }}
               >
                 {!hex && item.name.charAt(0).toUpperCase()}
               </button>
@@ -728,7 +975,7 @@ function VariantSelector({
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-sm font-medium" style={{ color: '#0a0a0a' }}>
         {group.name}
         {group.required && <span className="text-red-500 me-1">*</span>}
       </label>
@@ -745,9 +992,12 @@ function VariantSelector({
               type="button"
               onClick={() => !disabled && toggle(item.id)}
               disabled={disabled}
-              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors min-w-[2.5rem] ${
-                isSelected ? 'bg-primary text-white border-primary' : 'border-gray-200 hover:border-primary'
-              } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`px-4 py-2 rounded-full text-sm font-medium min-w-[2.5rem] transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              style={{
+                backgroundColor: isSelected ? TEAL : '#ffffff',
+                color: isSelected ? '#ffffff' : '#0a0a0a',
+                border: isSelected ? 'none' : '1px solid rgba(15,118,110,0.2)',
+              }}
             >
               {item.name}
               {((item.priceDelta ?? item.priceModifier ?? 0) > 0) &&

@@ -64,6 +64,9 @@ export type TenantStoreType = 'CLOTHING' | 'FOOD' | 'GENERAL';
 /** Manual override for store operational status */
 export type OperationalStatus = 'open' | 'closed' | 'busy';
 
+/** Super-admin remote override: AUTO follows schedule, FORCE_OPEN/FORCE_CLOSED bypass everything */
+export type OverrideStatus = 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
+
 /** When to accept orders: always, or only when status is open */
 export type OrderPolicy = 'accept_always' | 'accept_only_when_open';
 
@@ -105,6 +108,8 @@ export interface Tenant {
   businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE';
   /** Market category for filtering in mall/market UI */
   marketCategory?: MarketCategory;
+  /** Market group id when store participates in combined orders (same marketId = one cart). */
+  marketId?: string | null;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
   paymentCapabilities?: { cash: boolean; card: boolean };
   /** Manual override: open | closed | busy. If set, overrides businessHours. */
@@ -125,8 +130,14 @@ export interface Tenant {
   closeTime?: string;
   /** Manual override: when true, store displays as CLOSED regardless of openTime/closeTime. */
   forceClosed?: boolean;
+  /** Super-admin remote override: AUTO (default) follows schedule; FORCE_OPEN/FORCE_CLOSED bypass everything. */
+  overrideStatus?: OverrideStatus;
   /** Appointment duration in minutes. For PROFESSIONAL booking. */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */
   bookingEnabled?: boolean;
+  /** SLA category policy id (platform-admin configured). Used for order-ready timers. */
+  categoryId?: string;
+  /** When true, merchant sees "وحدة البيع" and "قفزة الكمية" in product form (e.g. weight-based businesses). */
+  supportsWeightSelling?: boolean;
 }

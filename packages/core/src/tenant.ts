@@ -63,13 +63,18 @@ function parseTimeHHmm(s: string | undefined): { h: number; m: number } {
 
 /**
  * Resolve effective operational status from tenant.
- * 1. If forceClosed is true (manual override), return 'closed'.
+ * 0. If overrideStatus is FORCE_CLOSED, return 'closed' (super-admin remote override).
+ *    If overrideStatus is FORCE_OPEN, return 'open' (super-admin remote override).
+ * 1. If forceClosed is true (merchant manual override), return 'closed'.
  * 2. If operationalStatus is 'open' or 'busy', use it (priority over time so dev/manual override works).
  * 3. If openTime/closeTime are used (simple daily window), compare current time in store TZ (supports next-day close e.g. 03:00).
  * 4. If operationalStatus is set (manual override), use it.
  * 5. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
-export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): OperationalStatus {
+export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed' | 'overrideStatus'>): OperationalStatus {
+  const override = (tenant as { overrideStatus?: string }).overrideStatus;
+  if (override === 'FORCE_CLOSED') return 'closed';
+  if (override === 'FORCE_OPEN') return 'open';
   if ((tenant as { forceClosed?: boolean }).forceClosed === true) return 'closed';
   if (tenant.operationalStatus === 'open' || tenant.operationalStatus === 'busy') return tenant.operationalStatus;
   const hasSimpleHours = (tenant as { openTime?: string }).openTime !== undefined || (tenant as { closeTime?: string }).closeTime !== undefined;
@@ -109,7 +114,7 @@ export function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 
  * Whether the store is open (accepting orders from schedule + override).
  * For order blocking, also check orderPolicy.
  */
-export function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): boolean {
+export function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed' | 'overrideStatus'>): boolean {
   return getOperationalStatus(tenant) === 'open';
 }
 
@@ -142,13 +147,13 @@ const LAYOUT_STYLES: Record<TenantBranding['layoutStyle'], { header: string; car
   spacious: { header: 'strong', card: 'strong', section: 'spacious', button: 'pill', badge: 'strong' },
 };
 
-/** Platform (mall/city) brand identity – used when no tenant is active. Do not allow tenant colors to persist on platform routes. */
+/** Platform (mall/city) brand identity – Now Market. Official logo colors, high-end native app design. */
 export const PLATFORM_BRANDING: TenantBranding = {
   logoUrl: '',
   primaryColor: '#0f766e',
   secondaryColor: '#f0fdfa',
   fontFamily: '"Cairo", system-ui, sans-serif',
-  radiusScale: 1,
+  radiusScale: 1.5,
   layoutStyle: 'default',
 };
 

@@ -9,9 +9,11 @@ export interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /** Use for stacking above other modals (e.g. 100000 above contest popup at 99999). */
+  zIndex?: number;
 }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', zIndex }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     if (open) {
@@ -31,6 +33,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={zIndex !== undefined ? { zIndex } : undefined}
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'modal-title' : undefined}
@@ -41,16 +44,17 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="absolute inset-0 bg-black/50"
+            aria-hidden="true"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className={`relative w-full ${sizes[size]} bg-white rounded-[var(--radius)] shadow-xl`}
+            className={`relative flex flex-col w-full max-h-[90vh] ${sizes[size]} bg-white rounded-[var(--radius)] shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between flex-shrink-0 p-4 border-b border-gray-200">
               {title && (
                 <h2 id="modal-title" className="text-lg font-semibold">
                   {title}
@@ -60,7 +64,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <div className="p-4">{children}</div>
+            <div className="p-4 overflow-y-auto min-h-0">{children}</div>
           </motion.div>
         </div>
       )}

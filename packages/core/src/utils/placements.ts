@@ -3,11 +3,11 @@ import type { PizzaPlacement } from '../types/cart.js';
 /** Re-export for addon placement (WHOLE/LEFT/RIGHT). */
 export type Placement = PizzaPlacement;
 
-/** Arabic labels for addon placement. Single source of truth. */
+/** Arabic labels for addon placement. Single source of truth. Half & Half: "First Half" / "Second Half". */
 export const PLACEMENT_LABELS_AR = {
   WHOLE: 'كامل',
-  LEFT: 'يسار',
-  RIGHT: 'يمين',
+  LEFT: 'نصف ثاني',
+  RIGHT: 'نصف أول',
 } as const;
 
 /** Options for placement selector (value + Arabic label). */
@@ -27,4 +27,23 @@ export function formatPlacementAr(p?: Placement | null): string | undefined {
 export function formatAddonNameWithPlacement(name: string, p?: Placement | null): string {
   const label = formatPlacementAr(p);
   return label ? `${name} (${label})` : name;
+}
+
+/** Format a single option group selection for display. When two options with LEFT and RIGHT (half & half), returns "نصف X / نصف Y". */
+export function formatHalfAndHalfOptionDisplay(
+  ids: string[],
+  placements: Record<string, Placement>,
+  getOptionName: (id: string) => string | undefined
+): string {
+  if (ids.length !== 2) {
+    return ids.map((id) => formatAddonNameWithPlacement(getOptionName(id) ?? id, placements[id])).filter(Boolean).join('، ');
+  }
+  const leftId = ids.find((id) => placements[id] === 'LEFT');
+  const rightId = ids.find((id) => placements[id] === 'RIGHT');
+  if (leftId != null && rightId != null) {
+    const leftName = getOptionName(leftId) ?? leftId;
+    const rightName = getOptionName(rightId) ?? rightId;
+    return `نصف ${rightName} / نصف ${leftName}`;
+  }
+  return ids.map((id) => formatAddonNameWithPlacement(getOptionName(id) ?? id, placements[id])).filter(Boolean).join('، ');
 }

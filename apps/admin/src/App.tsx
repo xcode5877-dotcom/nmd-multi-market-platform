@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider, ToastProvider, LayoutShell } from '@nmd/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import { MockApiClient } from '@nmd/mock';
 import type { Tenant } from '@nmd/core';
 import { AdminProvider } from './context/AdminContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { OrderAlarmProvider } from './contexts/OrderAlarmContext';
 import { getInitialTenant } from './store/admin-tenant';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
@@ -39,6 +40,39 @@ function getPathnameFromWindow(): string {
   if (full === MERCHANT_BASENAME || full === `${MERCHANT_BASENAME}/`) return '/';
   if (full.startsWith(`${MERCHANT_BASENAME}/`)) return full.slice(MERCHANT_BASENAME.length) || '/';
   return full || '/';
+}
+
+class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error('[ErrorBoundary] Uncaught error:', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+          <h1 className="text-xl font-semibold text-red-700 mb-2">حدث خطأ في التطبيق</h1>
+          <p className="text-sm text-gray-700 mb-3">
+            {this.state.error.message || 'Unknown error'}
+          </p>
+          <p className="text-xs text-gray-500 max-w-lg">
+            حاول إعادة فتح التطبيق أو إبلاغ فريق الدعم بهذه الرسالة.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -131,35 +165,39 @@ function AdminApp() {
   }
 
   return (
-    <ThemeProvider branding={tenant.branding} dir="rtl">
-      <LayoutShell layoutStyle={tenant.branding.layoutStyle}>
-        <ToastProvider>
-          <AdminProvider value={{ tenantId: tenant.id, tenantType: tenant.type ?? 'GENERAL' }}>
-            <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-              <Routes>
-                <Route path="/" element={<AdminLayout />}>
-                  <Route index element={<DashboardPage />} />
-                  <Route path="leads" element={<LeadsPage />} />
-                  <Route path="orders" element={<OrdersPage />} />
-                  <Route path="orders/board" element={<OrdersBoardPage />} />
-                  <Route path="catalog/categories" element={<CategoriesPage />} />
-                  <Route path="catalog/products" element={<ProductsPage />} />
-                  <Route path="catalog/options" element={<OptionsPage />} />
-                  <Route path="campaigns" element={<CampaignsPage />} />
-                  <Route path="campaigns/new" element={<CampaignEditPage />} />
-                  <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
-                  <Route path="settings/delivery" element={<DeliverySettingsPage />} />
-                  <Route path="settings/store" element={<StoreSettingsPage />} />
-                  <Route path="settings/staff" element={<StaffPage />} />
-                  <Route path="branding" element={<BrandingPage />} />
-                  <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
-                </Route>
-              </Routes>
-            </Suspense>
-          </AdminProvider>
-        </ToastProvider>
-      </LayoutShell>
-    </ThemeProvider>
+    <RootErrorBoundary>
+      <ThemeProvider branding={tenant.branding} dir="rtl">
+        <LayoutShell layoutStyle={tenant.branding.layoutStyle}>
+          <ToastProvider>
+            <AdminProvider value={{ tenantId: tenant.id, tenantType: tenant.type ?? 'GENERAL' }}>
+              <OrderAlarmProvider>
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+                <Routes>
+                  <Route path="/" element={<AdminLayout />}>
+                    <Route index element={<DashboardPage />} />
+                    <Route path="leads" element={<LeadsPage />} />
+                    <Route path="orders" element={<OrdersPage />} />
+                    <Route path="orders/board" element={<OrdersBoardPage />} />
+                    <Route path="catalog/categories" element={<CategoriesPage />} />
+                    <Route path="catalog/products" element={<ProductsPage />} />
+                    <Route path="catalog/options" element={<OptionsPage />} />
+                    <Route path="campaigns" element={<CampaignsPage />} />
+                    <Route path="campaigns/new" element={<CampaignEditPage />} />
+                    <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
+                    <Route path="settings/delivery" element={<DeliverySettingsPage />} />
+                    <Route path="settings/store" element={<StoreSettingsPage />} />
+                    <Route path="settings/staff" element={<StaffPage />} />
+                    <Route path="branding" element={<BrandingPage />} />
+                    <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
+                  </Route>
+                </Routes>
+              </Suspense>
+              </OrderAlarmProvider>
+            </AdminProvider>
+          </ToastProvider>
+        </LayoutShell>
+      </ThemeProvider>
+    </RootErrorBoundary>
   );
 }
 
@@ -193,6 +231,7 @@ function AdminAppLegacy() {
       <LayoutShell layoutStyle={tenant.branding.layoutStyle}>
         <ToastProvider>
           <AdminProvider value={{ tenantId: tenant.id, tenantType: tenant.type ?? 'GENERAL' }}>
+            <OrderAlarmProvider>
             <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
               <Routes>
                 <Route path="/" element={<AdminLayout />}>
@@ -214,6 +253,7 @@ function AdminAppLegacy() {
                 </Route>
               </Routes>
             </Suspense>
+            </OrderAlarmProvider>
           </AdminProvider>
         </ToastProvider>
       </LayoutShell>

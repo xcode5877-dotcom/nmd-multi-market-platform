@@ -140,21 +140,25 @@ interface ModalProps {
     title?: string;
     children: React.ReactNode;
     size?: 'sm' | 'md' | 'lg';
+    /** Use for stacking above other modals (e.g. 100000 above contest popup at 99999). */
+    zIndex?: number;
 }
-declare function Modal({ open, onClose, title, children, size }: ModalProps): react_jsx_runtime.JSX.Element;
+declare function Modal({ open, onClose, title, children, size, zIndex }: ModalProps): react_jsx_runtime.JSX.Element;
 
 interface ConfirmDialogProps {
     open: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     title?: string;
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
     variant?: 'danger' | 'warning' | 'default';
     loading?: boolean;
+    /** When false, dialog does not close after onConfirm (caller closes via onClose when done). Default true. */
+    closeOnConfirm?: boolean;
 }
-declare function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, cancelLabel, variant, loading, }: ConfirmDialogProps): react_jsx_runtime.JSX.Element;
+declare function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, cancelLabel, variant, loading, closeOnConfirm, }: ConfirmDialogProps): react_jsx_runtime.JSX.Element;
 
 interface DrawerProps {
     open: boolean;
@@ -162,8 +166,10 @@ interface DrawerProps {
     title?: string;
     children: React.ReactNode;
     side?: 'start' | 'end';
+    /** Applied to the drawer panel (e.g. w-full max-w-full md:max-w-sm for full width on mobile) */
+    contentClassName?: string;
 }
-declare function Drawer({ open, onClose, title, children, side }: DrawerProps): react_jsx_runtime.JSX.Element;
+declare function Drawer({ open, onClose, title, children, side, contentClassName }: DrawerProps): react_jsx_runtime.JSX.Element;
 
 interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
     variant?: 'text' | 'circular' | 'rectangular';
@@ -204,4 +210,22 @@ interface TenantSwitcherProps {
  */
 declare function TenantSwitcher({ tenants, currentTenant, onSelect, className, visible }: TenantSwitcherProps): react_jsx_runtime.JSX.Element | null;
 
-export { Badge, Button, Card, ConfirmDialog, DataTable, Drawer, EmptyState, FiltersBar, InlineBadge, Input, LayoutShell, Modal, PageHeader, Select, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, TenantSwitcher, ThemeProvider, ToastProvider, layoutBadgeClass, layoutButtonClass, layoutCardClass, layoutHeaderClass, layoutSectionClass, useLayoutStyle, useTheme, useToast };
+/** Whole: 100% filled circle */
+declare function WholeCircleIcon({ className }: {
+    className?: string;
+}): react_jsx_runtime.JSX.Element;
+/** Left half: circle with only the LEFT 50% filled (النصف الأيسر) */
+declare function LeftHalfCircleIcon({ className }: {
+    className?: string;
+}): react_jsx_runtime.JSX.Element;
+/** Right half: circle with only the RIGHT 50% filled (النصف الأيمن) */
+declare function RightHalfCircleIcon({ className }: {
+    className?: string;
+}): react_jsx_runtime.JSX.Element;
+type Placement = 'WHOLE' | 'LEFT' | 'RIGHT';
+declare function PlacementIcon({ placement, className }: {
+    placement: Placement;
+    className?: string;
+}): ReactNode;
+
+export { Badge, Button, Card, ConfirmDialog, DataTable, Drawer, EmptyState, FiltersBar, InlineBadge, Input, LayoutShell, LeftHalfCircleIcon, Modal, PageHeader, type Placement, PlacementIcon, RightHalfCircleIcon, Select, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, TenantSwitcher, ThemeProvider, ToastProvider, WholeCircleIcon, layoutBadgeClass, layoutButtonClass, layoutCardClass, layoutHeaderClass, layoutSectionClass, useLayoutStyle, useTheme, useToast };

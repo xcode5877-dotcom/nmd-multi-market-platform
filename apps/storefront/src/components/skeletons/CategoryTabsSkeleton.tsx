@@ -9,7 +9,10 @@ interface CategoryTabsSkeletonProps {
 
 function CategoryTabsSkeletonInner({ count = 5, variant = 'both' }: CategoryTabsSkeletonProps) {
   const pills = Array.from({ length: count }, (_, i) => (
-    <Skeleton key={i} className="h-9 w-20 rounded-full flex-shrink-0" />
+    <div key={i} className="shrink-0 flex flex-col items-center gap-2">
+      <Skeleton className="h-14 w-14 rounded-full flex-shrink-0" />
+      <Skeleton className="h-3 w-12 rounded" />
+    </div>
   ));
 
   return (

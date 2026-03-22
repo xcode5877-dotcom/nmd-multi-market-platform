@@ -1,0 +1,69 @@
+{
+  "banners": {
+    "dabburiyya": [
+      {
+        "id": "b1",
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772817639419-gz5a7v2p.webp",
+        "title": "حلي سهرتك",
+        "linkTo": "store-1772815941301",
+        "active": true
+      },
+      {
+        "id": "b2",
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1772968741925-zvny2m9x.webp",
+        "title": "استشارة مجانية",
+        "linkTo": "jamal-az",
+        "active": true
+      }
+    ],
+    "iksal": [
+      {
+        "id": "b-1772447249385",
+        "imageUrl": "",
+        "title": "استشارة مجانية",
+        "linkTo": "",
+        "active": true
+      }
+    ]
+  },
+  "layout": {
+    "dabburiyya": [
+      {
+        "id": "featured",
+        "title": "سحور رمضان",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo",
+          "بيتسا-اشرف",
+          "shaghaf",
+          "rianbow-land",
+          "buffalo-28",
+          "caramela-sandwitch"
+        ]
+      },
+      {
+        "id": "s-1772817412117",
+        "title": "حلي ايامك",
+        "type": "SLIDER",
+        "storeIds": [
+          "store-1772815941301",
+          "lava-cafe",
+          "caramela-coffe",
+          "panda-coffe",
+          "blue-bar"
+        ]
+      }
+    ],
+    "iksal": [
+      {
+        "id": "featured",
+        "title": "محلات مميزة",
+        "type": "SLIDER",
+        "storeIds": [
+          "buffalo",
+          "مكتب-المحامي-يوسف-حسام-دراوشة"
+        ]
+      }
+    ]
+  }
+}

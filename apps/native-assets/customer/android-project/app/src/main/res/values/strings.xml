@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NMD Customer</string>
+    <string name="splash_logo_content_description">NMD Logo</string>
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_categories">العروض</string>
+    <string name="nav_orders">طلباتي</string>
+    <string name="nav_profile">حسابي</string>
+    <!-- Official domain; web-gateway serves storefront and /api proxies to mock-api. -->
+    <string name="web_base_url">https://nmd.marketing</string>
+    <string name="press_again_to_exit">اضغط مرة أخرى للخروج</string>
+    <string name="notification_channel_name">Notifications</string>
+    <string name="notification_channel_description">Order updates and promotions</string>
+</resources>

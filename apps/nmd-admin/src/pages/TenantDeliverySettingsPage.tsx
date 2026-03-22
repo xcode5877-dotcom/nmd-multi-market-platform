@@ -17,11 +17,8 @@ const TENANT_TYPES = [
   { value: 'SERVICE', label: 'خدمة' },
 ];
 
-const DELIVERY_MODES = [
-  { value: 'TENANT', label: 'توصيل المستأجر (سائقون خاصون)' },
-  { value: 'MARKET', label: 'توصيل السوق (سائقون السوق)' },
-  { value: 'PICKUP_ONLY', label: 'استلام فقط' },
-];
+/** All stores use market drivers only. No store-specific driver option. */
+const DELIVERY_MODE_MARKET_ONLY = 'MARKET';
 
 export default function TenantDeliverySettingsPage() {
   const params = useParams<{ id: string; tenantId: string }>();
@@ -33,8 +30,7 @@ export default function TenantDeliverySettingsPage() {
   const { addToast } = useToast();
   const [form, setForm] = useState({
     tenantType: 'SHOP',
-    deliveryProviderMode: 'TENANT',
-    allowMarketCourierFallback: true,
+    deliveryProviderMode: DELIVERY_MODE_MARKET_ONLY as 'MARKET',
     defaultPrepTimeMin: 30,
   });
 
@@ -48,8 +44,7 @@ export default function TenantDeliverySettingsPage() {
     if (tenant) {
       setForm({
         tenantType: (tenant as { tenantType?: string }).tenantType ?? 'SHOP',
-        deliveryProviderMode: (tenant as { deliveryProviderMode?: string }).deliveryProviderMode ?? 'TENANT',
-        allowMarketCourierFallback: (tenant as { allowMarketCourierFallback?: boolean }).allowMarketCourierFallback ?? true,
+        deliveryProviderMode: DELIVERY_MODE_MARKET_ONLY as 'MARKET',
         defaultPrepTimeMin: (tenant as { defaultPrepTimeMin?: number }).defaultPrepTimeMin ?? 30,
       });
     }
@@ -59,8 +54,7 @@ export default function TenantDeliverySettingsPage() {
     mutationFn: () =>
       api.patchTenantDeliverySettings(tenantId!, {
         tenantType: form.tenantType,
-        deliveryProviderMode: form.deliveryProviderMode,
-        allowMarketCourierFallback: form.allowMarketCourierFallback,
+        deliveryProviderMode: DELIVERY_MODE_MARKET_ONLY,
         defaultPrepTimeMin: form.defaultPrepTimeMin,
       }),
     onSuccess: () => {
@@ -176,23 +170,9 @@ export default function TenantDeliverySettingsPage() {
             value={form.tenantType}
             onChange={(e) => setForm((f) => ({ ...f, tenantType: e.target.value }))}
           />
-          <Select
-            label="وضع التوصيل"
-            options={DELIVERY_MODES}
-            value={form.deliveryProviderMode}
-            onChange={(e) => setForm((f) => ({ ...f, deliveryProviderMode: e.target.value }))}
-          />
-          {form.deliveryProviderMode === 'TENANT' && (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.allowMarketCourierFallback}
-                onChange={(e) => setForm((f) => ({ ...f, allowMarketCourierFallback: e.target.checked }))}
-                className="rounded border-gray-300"
-              />
-              <span className="text-sm">السماح بالانتقال لتوصيل السوق عند التأخر</span>
-            </label>
-          )}
+          <div className="text-sm text-gray-600">
+            <span className="font-medium">التوصيل:</span> سائقون السوق فقط (لا يوجد خيار سائقين خاصين بالمحل).
+          </div>
           {form.tenantType === 'RESTAURANT' && (
             <Input
               label="وقت التحضير الافتراضي (دقيقة)"

@@ -8,17 +8,23 @@ import { getTenantSlugOrId, persistTenant } from './lib/tenant';
 import { useAppStore } from './store/app';
 import { CustomerAuthProvider } from './contexts/CustomerAuthContext';
 import { GlobalAuthModalProvider } from './contexts/GlobalAuthModalContext';
+import { WinnerCouponProvider } from './contexts/WinnerCouponContext';
 import { MerchantAuthProvider } from './contexts/MerchantAuthContext';
+import { NativeBridgeProvider, useNativeBridge } from './contexts/NativeBridgeContext';
+import { CustomerNotificationProvider } from './contexts/CustomerNotificationContext';
 import { TenantBroadcastListener } from './components/TenantBroadcastListener';
 import { InstallBanner } from './components/InstallBanner';
 import { OrderTrackingWidget } from './components/OrderTrackingWidget';
+import { ContestPopUp } from './components/ContestPopUp';
+import WinnerCouponReminder from './components/WinnerCouponReminder';
+import RootLayout from './layouts/RootLayout';
 
 /** True when route is mall/city (platform), not a tenant store (/:slug). Forces platform brand colors. */
 function isPlatformRoute(pathname: string): boolean {
   const p = pathname.startsWith('/') ? pathname.slice(1) : pathname;
   const first = p.split('/').filter(Boolean)[0] ?? '';
   if (!first) return true; // "/"
-  if (first === 'order' || first === 'merchant' || first === 'my-activity') return true;
+  if (first === 'order' || first === 'merchant' || first === 'my-activity' || first === 'my-account' || first === 'lucky-wheel') return true;
   if (first === 'daburiyya' || first === 'dabburiyya' || first === 'iksal') return true;
   if (first === 'p') return true; // /p/:productId
   return false;
@@ -30,6 +36,7 @@ const MarketLayout = lazy(() => import('./layouts/MarketLayout'));
 const MarketsPickerPage = lazy(() => import('./pages/MarketsPickerPage'));
 const MarketHomePage = lazy(() => import('./pages/MarketHomePage'));
 const MarketStoresPage = lazy(() => import('./pages/MarketStoresPage'));
+const MarketSectionPage = lazy(() => import('./pages/MarketSectionPage'));
 const LegacyProductRedirect = lazy(() => import('./pages/LegacyProductRedirect'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
@@ -41,6 +48,8 @@ const OrderSuccessPage = lazy(() => import('./pages/OrderSuccessPage'));
 const OrderPrintPage = lazy(() => import('./pages/OrderPrintPage'));
 const LegacyOrderSuccessRedirect = lazy(() => import('./pages/LegacyOrderSuccessRedirect'));
 const MyActivityPage = lazy(() => import('./pages/MyActivityPage'));
+const MyAccountPage = lazy(() => import('./pages/MyAccountPage'));
+const LuckyWheelPage = lazy(() => import('./pages/LuckyWheelPage'));
 const MerchantDashboardPage = lazy(() => import('./pages/MerchantDashboardPage'));
 
 const api = new MockApiClient();
@@ -67,7 +76,8 @@ function TenantGate() {
       const businessType = (tenant as { businessType?: string }).businessType;
       const useProfessionalLayout = storeType === 'PROFESSIONAL' || businessType === 'SERVICE';
       const effectiveStoreType = useProfessionalLayout ? 'PROFESSIONAL' : storeType;
-      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL', effectiveStoreType);
+      const marketId = (tenant as { marketId?: string }).marketId ?? null;
+      setTenant(tenant.id, tenant.slug, tenant.name, tenant.type ?? 'GENERAL', effectiveStoreType, marketId);
       persistTenant(tenant.slug);
     }
   }, [tenant, setTenant]);
@@ -101,6 +111,7 @@ function TenantGate() {
                 <Route path="cart" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
                 <Route path="my-activity" element={<MyActivityPage />} />
+                <Route path="my-account" element={<MyAccountPage />} />
                 <Route path="order/:orderId/success" element={<OrderSuccessPage />} />
               </Route>
             </Routes>
@@ -119,44 +130,69 @@ function PlatformThemeGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** When running inside the native app (UA NMD-Native-App), register for push (order status). */
+function NativePushRegistration() {
+  const { isNativeApp } = useNativeBridge();
+  useEffect(() => {
+    if (!isNativeApp) return;
+    const fn = (window as unknown as { __NMD_NATIVE_REGISTER_PUSH__?: () => void }).__NMD_NATIVE_REGISTER_PUSH__;
+    if (typeof fn === 'function') fn();
+  }, [isNativeApp]);
+  return null;
+}
+
 function AppContent() {
   return (
     <ToastProvider>
       <CustomerAuthProvider>
+        <CustomerNotificationProvider>
+        <WinnerCouponProvider>
         <MerchantAuthProvider>
         <GlobalAuthModalProvider>
           <PlatformThemeGate>
           <Suspense fallback={<PageSkeleton />}>
+            <NativePushRegistration />
             <TenantBroadcastListener />
             <InstallBanner />
             <OrderTrackingWidget />
+            <ContestPopUp />
+            <WinnerCouponReminder />
             <Routes>
-              <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
-              <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
-              <Route path="/merchant/dashboard" element={<MerchantDashboardPage />} />
-              <Route path="/" element={<LandingLayout />}>
-                <Route index element={<MarketsPickerPage />} />
-                <Route path="my-activity" element={<MyActivityPage />} />
+              <Route element={<RootLayout />}>
+                <Route path="/order/:orderId/print" element={<OrderPrintPage />} />
+                <Route path="/order/:orderId/success" element={<LegacyOrderSuccessRedirect />} />
+                <Route path="/merchant/dashboard" element={<MerchantDashboardPage />} />
+                <Route path="/" element={<LandingLayout />}>
+                  <Route index element={<MarketsPickerPage />} />
+                  <Route path="lucky-wheel" element={<LuckyWheelPage />} />
+                  <Route path="my-activity" element={<MyActivityPage />} />
+                  <Route path="my-account" element={<MyAccountPage />} />
+                </Route>
+                <Route path="/daburiyya" element={<MarketLayout />}>
+                  <Route index element={<MarketHomePage />} />
+                  <Route path="stores" element={<MarketStoresPage />} />
+                  <Route path="section/:pillarType" element={<MarketSectionPage />} />
+                </Route>
+                <Route path="/dabburiyya" element={<MarketLayout />}>
+                  <Route index element={<MarketHomePage />} />
+                  <Route path="stores" element={<MarketStoresPage />} />
+                  <Route path="section/:pillarType" element={<MarketSectionPage />} />
+                </Route>
+                <Route path="/iksal" element={<MarketLayout />}>
+                  <Route index element={<MarketHomePage />} />
+                  <Route path="stores" element={<MarketStoresPage />} />
+                  <Route path="section/:pillarType" element={<MarketSectionPage />} />
+                </Route>
+                <Route path="/p/:productId" element={<LegacyProductRedirect />} />
+                <Route path="/:tenantSlug/*" element={<TenantGate />} />
               </Route>
-              <Route path="/daburiyya" element={<MarketLayout />}>
-                <Route index element={<MarketHomePage />} />
-                <Route path="stores" element={<MarketStoresPage />} />
-              </Route>
-              <Route path="/dabburiyya" element={<MarketLayout />}>
-                <Route index element={<MarketHomePage />} />
-                <Route path="stores" element={<MarketStoresPage />} />
-              </Route>
-              <Route path="/iksal" element={<MarketLayout />}>
-                <Route index element={<MarketHomePage />} />
-                <Route path="stores" element={<MarketStoresPage />} />
-              </Route>
-              <Route path="/p/:productId" element={<LegacyProductRedirect />} />
-              <Route path="/:tenantSlug/*" element={<TenantGate />} />
             </Routes>
           </Suspense>
           </PlatformThemeGate>
         </GlobalAuthModalProvider>
         </MerchantAuthProvider>
+        </WinnerCouponProvider>
+        </CustomerNotificationProvider>
       </CustomerAuthProvider>
     </ToastProvider>
   );
@@ -175,6 +211,23 @@ function PageSkeleton() {
   );
 }
 
+/** Prevent "Add to Home Screen" banner from covering the bottom nav (PWA install prompt). */
+function PreventInstallBanner() {
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  return null;
+}
+
 export default function App() {
-  return <AppContent />;
+  return (
+    <NativeBridgeProvider>
+      <PreventInstallBanner />
+      <AppContent />
+    </NativeBridgeProvider>
+  );
 }

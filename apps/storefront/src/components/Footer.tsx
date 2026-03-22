@@ -7,14 +7,14 @@ export function Footer() {
   const base = tenantSlug ? `/${tenantSlug}` : '';
   const quickLinks: { label: string; to: string; external?: boolean }[] = [
     { label: 'الرئيسية', to: base || '/' },
-    { label: 'السلة', to: tenantSlug ? `/${tenantSlug}/cart` : '/cart' },
+    { label: 'سلة التسوق', to: tenantSlug ? `/${tenantSlug}/cart` : '/cart' },
     { label: 'تواصل', to: '#', external: true },
     { label: 'سياسة الخصوصية', to: '#', external: true },
   ];
 
   return (
     <footer
-      className="mt-auto border-t border-neutral-200 bg-white"
+      className="footer mt-auto border-t border-neutral-200 bg-white"
       dir="rtl"
       role="contentinfo"
     >

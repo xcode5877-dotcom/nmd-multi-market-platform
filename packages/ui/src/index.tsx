@@ -17,3 +17,5 @@ export { Drawer } from './Drawer';
 export { Skeleton } from './Skeleton';
 export { ToastProvider, useToast } from './Toast';
 export { TenantSwitcher } from './TenantSwitcher';
+export { WholeCircleIcon, LeftHalfCircleIcon, RightHalfCircleIcon, PlacementIcon } from './PlacementIcons';
+export type { Placement } from './PlacementIcons';

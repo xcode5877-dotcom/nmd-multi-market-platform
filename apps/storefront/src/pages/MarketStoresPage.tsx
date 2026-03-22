@@ -1,22 +1,14 @@
 import { useLocation, Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Skeleton } from '@nmd/ui';
-import { useState, useEffect } from 'react';
-import { Store, Search, ArrowRight, UtensilsCrossed, Shirt, Leaf, Flame, Tag, ShoppingBag, LayoutGrid } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Store, Search, ArrowRight } from 'lucide-react';
 import { getTenantListForMallAsync } from '@nmd/mock';
-import { StoreCard } from '../components/StoreCard';
+import { PillarNav } from '../components/PillarNav';
 import { onTenantUpdate } from '../lib/tenant-broadcast';
+import { resolveImageUrl } from '../lib/image-url';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
-
-interface GlobalCategory {
-  id: string;
-  title: string;
-  icon: string;
-  isProfessional: boolean;
-  sortOrder: number;
-  legacyCode?: string;
-}
 
 interface Market {
   id: string;
@@ -33,6 +25,9 @@ interface MarketTenant {
   branding: { logoUrl?: string; primaryColor?: string };
   isActive: boolean;
   marketCategory: string;
+  marketId?: string | null;
+  enabled?: boolean;
+  isListedInMarket?: boolean;
   operationalStatus?: 'open' | 'closed' | 'busy';
   businessHours?: Record<string, unknown>;
   openTime?: string;
@@ -40,71 +35,17 @@ interface MarketTenant {
   forceClosed?: boolean;
 }
 
-const FEATURED_TENANT_SLUGS: string[] = ['buffalo'];
-const SPONSORED_TENANT_SLUGS: string[] = [];
-
-const FALLBACK_CATEGORIES: GlobalCategory[] = [
-  { id: 'ALL', title: 'الكل', icon: '📋', isProfessional: false, sortOrder: -1 },
-  { id: 'cat-food', title: 'طعام', icon: '🍕', isProfessional: false, sortOrder: 0, legacyCode: 'FOOD' },
-  { id: 'cat-clothing', title: 'ملابس', icon: '🛍', isProfessional: false, sortOrder: 1, legacyCode: 'CLOTHING' },
-  { id: 'cat-groceries', title: 'خضار', icon: '🥬', isProfessional: false, sortOrder: 2, legacyCode: 'GROCERIES' },
-  { id: 'cat-butcher', title: 'ملحمة', icon: '🥩', isProfessional: false, sortOrder: 3, legacyCode: 'BUTCHER' },
-  { id: 'cat-offers', title: 'عروض', icon: '📦', isProfessional: false, sortOrder: 4, legacyCode: 'OFFERS' },
-];
-
-const CATEGORY_LABEL_MAP: Record<string, string> = {
-  FOOD: 'طعام',
-  CLOTHING: 'ملابس',
-  GROCERIES: 'خضار',
-  BUTCHER: 'ملحمة',
-  OFFERS: 'عروض',
-  GENERAL: 'عام',
-};
-
-function getCategoryLabel(cats: GlobalCategory[], marketCategory: string): string {
-  const cat = cats.find((c) => c.legacyCode === marketCategory || c.id === marketCategory);
-  return cat?.title ?? CATEGORY_LABEL_MAP[marketCategory ?? 'GENERAL'] ?? marketCategory ?? 'عام';
-}
-
-const CATEGORY_LUCIDE: Record<string, any> = {
-  'FOOD': UtensilsCrossed,
-  'cat-food': UtensilsCrossed,
-  'CLOTHING': Shirt,
-  'cat-clothing': Shirt,
-  'GROCERIES': Leaf,
-  'cat-groceries': Leaf,
-  'BUTCHER': Flame,
-  'cat-butcher': Flame,
-  'OFFERS': Tag,
-  'cat-offers': Tag,
-  'GENERAL': ShoppingBag,
-  'ALL': LayoutGrid
-};
-
-function CategoryIcon({ category }: { category: GlobalCategory }) {
-  const icon = category?.icon?.trim();
-  const useLucide = !icon || icon === '?' || icon.length > 2;
-  const IconComponent = CATEGORY_LUCIDE[category.legacyCode ?? ''] ?? CATEGORY_LUCIDE[category.id] ?? ShoppingBag;
-  if (useLucide) return <IconComponent className="w-4 h-4 shrink-0" />;
-  return <span className="text-base leading-none">{icon}</span>;
-}
-
-function getStoreBadge(slug: string): 'featured' | 'sponsored' | undefined {
-  if (SPONSORED_TENANT_SLUGS.includes(slug)) return 'sponsored';
-  if (FEATURED_TENANT_SLUGS.includes(slug)) return 'featured';
-  return undefined;
-}
-
 export default function MarketStoresPage() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
-  const categoryParam = searchParams.get('category')?.trim() || '';
+  const idsParam = searchParams.get('ids')?.trim() || '';
+  const titleParam = searchParams.get('title')?.trim() || '';
+  const filterIds = idsParam ? idsParam.split(',').map((s) => s.trim()).filter(Boolean) : null;
   const marketSlug = pathname.split('/').filter(Boolean)[0] ?? '';
   const [market, setMarket] = useState<Market | null>(null);
   const [tenants, setTenants] = useState<MarketTenant[]>([]);
-  const [categories, setCategories] = useState<GlobalCategory[]>([]);
+  const [pillars, setPillars] = useState<Array<{ id: string; name: string; nameAr?: string; slug: string; icon?: string; sortOrder: number }>>([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<string>(categoryParam || 'ALL');
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -119,23 +60,20 @@ export default function MarketStoresPage() {
   }, []);
 
   useEffect(() => {
-    if (!categoryParam) return;
-    const match = categories.find((c) => c.id === categoryParam || c.legacyCode === categoryParam);
-    if (match) setActiveCategory(match.id);
-  }, [categoryParam, categories]);
+    const title = titleParam || 'كل المحلات';
+    const marketName = market?.name ?? '';
+    document.title = marketName ? `${title} — ${marketName}` : title;
+    return () => {
+      document.title = '';
+    };
+  }, [titleParam, market?.name]);
 
   useEffect(() => {
-    if (!MOCK_API_URL) {
-      setCategories(FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL'));
-    } else {
-      fetch(`${MOCK_API_URL}/global-categories?_t=${Date.now()}`)
-        .then((r) => (r.ok ? r.json() : []))
-        .then((list) => {
-          const arr = Array.isArray(list) ? list : [];
-          setCategories(arr.length > 0 ? arr : FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL'));
-        })
-        .catch(() => setCategories(FALLBACK_CATEGORIES.filter((c) => c.id !== 'ALL')));
-    }
+    if (!MOCK_API_URL) return;
+    fetch(`${MOCK_API_URL}/pillars?_t=${Date.now()}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => setPillars(Array.isArray(list) ? list : []))
+      .catch(() => setPillars([]));
   }, []);
 
   useEffect(() => {
@@ -155,31 +93,36 @@ export default function MarketStoresPage() {
         isActive: true,
       });
       getTenantListForMallAsync(slug).then((list) => {
-        if (!cancelled)
-          setTenants(
-            (list ?? []).map((t) => {
-              const os = (t as { operationalStatus?: string }).operationalStatus;
-              const status = os === 'open' || os === 'closed' || os === 'busy' ? os : undefined;
-              const bh = (t as { businessHours?: Record<string, unknown> }).businessHours;
-              const openTime = (t as { openTime?: string }).openTime;
-              const closeTime = (t as { closeTime?: string }).closeTime;
-              const forceClosed = (t as { forceClosed?: boolean }).forceClosed;
-              return {
-                id: t.id,
-                slug: t.slug,
-                name: t.name,
-                type: (t as { type?: string }).type ?? 'GENERAL',
-                branding: t.branding ?? {},
-                isActive: true,
-                marketCategory: (t as { marketCategory?: string }).marketCategory ?? 'GENERAL',
-                operationalStatus: status,
-                businessHours: bh,
-                openTime,
-                closeTime,
-                forceClosed,
-              };
-            })
-          );
+        if (!cancelled) {
+          const mapped = (list ?? []).map((t) => {
+            const os = (t as { operationalStatus?: string }).operationalStatus;
+            const status: 'open' | 'busy' | 'closed' | undefined = os === 'open' || os === 'closed' || os === 'busy' ? os : undefined;
+            const bh = (t as { businessHours?: Record<string, unknown> }).businessHours;
+            const openTime = (t as { openTime?: string }).openTime;
+            const closeTime = (t as { closeTime?: string }).closeTime;
+            const forceClosed = (t as { forceClosed?: boolean }).forceClosed;
+            const enabled = (t as { enabled?: boolean }).enabled !== false;
+            const isListedInMarket = (t as { isListedInMarket?: boolean }).isListedInMarket !== false;
+            return {
+              id: t.id,
+              slug: t.slug,
+              name: t.name,
+              type: (t as { type?: string }).type ?? 'GENERAL',
+              branding: t.branding ?? {},
+              isActive: true,
+              marketCategory: (t as { marketCategory?: string }).marketCategory ?? 'GENERAL',
+              marketId: (t as { marketId?: string | null }).marketId ?? undefined,
+              enabled,
+              isListedInMarket,
+              operationalStatus: status,
+              businessHours: bh,
+              openTime,
+              closeTime,
+              forceClosed,
+            };
+          });
+          setTenants(mapped.filter((t) => t.enabled !== false && t.isListedInMarket !== false));
+        }
       }).catch(() => {}).finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -195,9 +138,37 @@ export default function MarketStoresPage() {
           return;
         }
         setMarket(m);
-        const tenantsRes = await fetch(`${MOCK_API_URL}/markets/${m.id}/tenants?_t=${Date.now()}`);
+        const marketId = (m as { id?: string }).id;
+        const tenantsRes = marketId
+          ? await fetch(`${MOCK_API_URL}/markets/${marketId}/tenants?_t=${Date.now()}`)
+          : await fetch(`${MOCK_API_URL}/storefront/tenants?_t=${Date.now()}`);
         const list = await tenantsRes.json();
-        if (!cancelled) setTenants(list ?? []);
+        const raw = Array.isArray(list) ? list : [];
+        const mapped: MarketTenant[] = raw.map((t: Record<string, unknown>) => {
+          const os = t.operationalStatus as string | undefined;
+          const status: 'open' | 'busy' | 'closed' | undefined = os === 'open' || os === 'closed' || os === 'busy' ? os : undefined;
+          const enabled = ((t.enabled as boolean) ?? (t.isActive as boolean) ?? true) !== false;
+          const isListedInMarket = (t.isListedInMarket as boolean) !== false;
+          return {
+            id: String(t.id ?? ''),
+            slug: String(t.slug ?? ''),
+            name: String(t.name ?? ''),
+            type: (t.type === 'CLOTHING' || t.type === 'FOOD') ? t.type : 'GENERAL',
+            branding: (t.branding as Record<string, unknown>) ?? {},
+            isActive: t.isActive !== false,
+            marketCategory: (t.marketCategory as string) ?? 'GENERAL',
+            marketId: (t.marketId as string | null | undefined) ?? undefined,
+            enabled,
+            isListedInMarket,
+            operationalStatus: status,
+            businessHours: t.businessHours as Record<string, unknown> | undefined,
+            openTime: t.openTime as string | undefined,
+            closeTime: t.closeTime as string | undefined,
+            forceClosed: t.forceClosed as boolean | undefined,
+          };
+        });
+        const visibleOnly = mapped.filter((t) => t.enabled !== false && t.isListedInMarket !== false);
+        if (!cancelled) setTenants(visibleOnly);
       })
       .catch(() => {
         if (!cancelled) {
@@ -213,19 +184,26 @@ export default function MarketStoresPage() {
     };
   }, [marketSlug, refreshKey]);
 
-  const tenantMatchesCategory = (t: MarketTenant, catId: string): boolean => {
-    if (catId === 'ALL') return true;
-    const cat = categories.find((c) => c.id === catId);
-    const mc = t.marketCategory ?? 'GENERAL';
-    if (cat?.legacyCode && mc === cat.legacyCode) return true;
-    return mc === catId;
-  };
+  const pageTitle = titleParam || 'كل المحلات';
 
-  const filteredTenants = tenants.filter((t) => {
-    const matchesSearch = !search.trim() || t.name.toLowerCase().includes(search.toLowerCase().trim());
-    const matchesCat = activeCategory === 'ALL' || tenantMatchesCategory(t, activeCategory);
-    return matchesSearch && matchesCat;
-  });
+  const visibleTenants = useMemo(
+    () => tenants.filter((t) => t.enabled !== false && t.isListedInMarket !== false),
+    [tenants]
+  );
+  const tenantsInScope = useMemo(
+    () =>
+      filterIds && filterIds.length > 0
+        ? visibleTenants.filter((t) => filterIds.some((id) => id === t.id || id === t.slug))
+        : visibleTenants,
+    [visibleTenants, filterIds]
+  );
+  const filteredTenants = useMemo(
+    () =>
+      tenantsInScope.filter((t) =>
+        !search.trim() || t.name.toLowerCase().includes(search.toLowerCase().trim())
+      ),
+    [tenantsInScope, search]
+  );
 
   if (!loading && !market) {
     return (
@@ -244,110 +222,117 @@ export default function MarketStoresPage() {
   const marketHomePath = slug ? `/${marketSlug}` : '/';
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9]" dir="rtl">
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+    <div className="min-h-screen bg-[#f8fafc] relative overflow-hidden" dir="rtl">
+      {/* Background mesh: fixed blurred circles */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -top-40 -end-20 w-[320px] h-[320px] rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute top-1/2 -start-32 w-[280px] h-[280px] rounded-full bg-secondary/5 blur-3xl" />
+        <div className="absolute -bottom-32 end-1/3 w-[240px] h-[240px] rounded-full bg-primary/5 blur-3xl" />
+      </div>
+
+      <div className="sticky top-0 z-30 px-5 py-3 bg-white/80 border-b border-gray-200/80 backdrop-blur-md shadow-sm">
+        <div className="max-w-6xl mx-auto flex items-center gap-3">
           <Link
             to={marketHomePath}
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-primary font-medium text-sm mb-4"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200/80 text-gray-700 hover:border-primary/30 hover:text-primary transition-all shrink-0"
           >
-            <ArrowRight className="w-4 h-4" />
-            العودة إلى {market?.name ?? 'السوق'}
+            <ArrowRight className="w-5 h-5" />
+            <span className="text-sm font-medium">السوق</span>
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">كل المحلات</h1>
-          <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="ابحث باسم المحل..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full ps-4 pe-12 py-3 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm"
-            />
-          </div>
-        </div>
-        <div className="px-4 pb-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex gap-2 min-w-max items-center">
-            <motion.button
-              type="button"
-              onClick={() => setActiveCategory('ALL')}
-              whileTap={{ scale: 0.97 }}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
-                activeCategory === 'ALL'
-                  ? 'bg-primary text-white border-primary'
-                  : 'bg-white text-gray-700 border-gray-200 hover:border-primary/50'
-              }`}
-            >
-              الكل
-            </motion.button>
-            {categories.map((c) => (
-              <motion.button
-                key={c.id}
-                type="button"
-                onClick={() => setActiveCategory(c.id)}
-                whileTap={{ scale: 0.97 }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all shrink-0 border ${
-                  activeCategory === c.id
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-primary/50'
-                }`}
-              >
-                <CategoryIcon category={c} />
-                {c.title}
-              </motion.button>
-            ))}
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900 truncate flex-1 text-center">
+            {pageTitle}
+          </h1>
+          <div className="w-[72px] shrink-0" aria-hidden />
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      {/* PillarNav: same circular glass style as Home */}
+      <motion.section
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="px-5 py-6 relative"
+      >
+        <div className="max-w-6xl mx-auto">
+          <PillarNav marketSlug={marketSlug} pillars={pillars.length > 0 ? pillars : null} />
+        </div>
+      </motion.section>
+
+      {/* Search */}
+      <div className="max-w-6xl mx-auto px-5 pb-4 relative">
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="ابحث باسم المحل..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full ps-4 pe-12 py-2.5 rounded-xl border border-gray-200 bg-white/80 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm"
+          />
+        </div>
+      </div>
+
+      <main className="max-w-6xl mx-auto px-5 py-6">
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-              <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
+          <div className="grid grid-cols-2 gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <Skeleton key={i} className="aspect-[4/5] rounded-3xl" />
             ))}
           </div>
         ) : filteredTenants.length === 0 ? (
-          <div className="py-16 text-center rounded-2xl bg-white border border-dashed border-gray-200">
+          <div className="py-16 text-center rounded-3xl bg-white/90 shadow-xl border border-gray-100">
             <span className="text-5xl mb-4 block">🏬</span>
             <p className="text-gray-600">
-              {tenants.length === 0 && !search.trim() && activeCategory === 'ALL'
-                ? 'لا توجد محلات بعد'
-                : 'لا توجد محلات تطابق البحث أو الفئة'}
+              {tenantsInScope.length === 0 && !search.trim()
+                ? (filterIds?.length ? 'لا توجد محلات في هذه المجموعة' : 'لا توجد محلات في هذا السوق')
+                : 'لا توجد محلات تطابق البحث'}
             </p>
-            {tenants.length === 0 && (
-              <Link to={marketHomePath} className="inline-block mt-4 text-primary font-medium hover:underline">
-                ← العودة للسوق
-              </Link>
-            )}
+            <Link to={marketHomePath} className="inline-block mt-4 text-primary font-medium hover:underline">
+              ← العودة للسوق
+            </Link>
           </div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.25 }}
-            className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3"
+          <motion.section
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="grid grid-cols-2 gap-4"
           >
-            {filteredTenants.map((t) => (
-              <StoreCard
+            {filteredTenants.map((t, i) => (
+              <motion.div
                 key={t.id}
-                id={t.id}
-                slug={t.slug}
-                name={t.name}
-                marketSlug={marketSlug}
-                marketCategory={t.marketCategory}
-                type={t.type}
-                branding={t.branding ?? {}}
-                operationalStatus={t.operationalStatus}
-                businessHours={t.businessHours}
-                openTime={t.openTime}
-                closeTime={t.closeTime}
-                forceClosed={t.forceClosed}
-                categoryLabel={getCategoryLabel(categories, t.marketCategory ?? 'GENERAL')}
-                badge={getStoreBadge(t.slug)}
-              />
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: i * 0.04 }}
+              >
+                <Link to={`/${t.slug}`} className="block active:scale-95 transition-transform duration-150 ease-out">
+                  <div className="rounded-3xl shadow-xl border-none overflow-hidden bg-white hover:shadow-2xl transition-shadow aspect-[4/5]">
+                    <div className="relative w-full h-full min-h-[140px]">
+                      <img src={resolveImageUrl(t.branding?.logoUrl) || `https://picsum.photos/seed/${t.slug}/400/300`} alt={t.name} className="absolute inset-0 w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent rounded-3xl" />
+                      <div className="absolute inset-x-0 bottom-0 p-4 flex flex-col justify-end rounded-b-3xl">
+                        <h3 className="text-sm font-bold text-white truncate drop-shadow-md">{t.name}</h3>
+                        {(() => {
+                          const isAdminClosed = (t as { overrideStatus?: string }).overrideStatus === 'FORCE_CLOSED';
+                          const isAdminOpen = (t as { overrideStatus?: string }).overrideStatus === 'FORCE_OPEN';
+                          const st = isAdminClosed ? 'closed' : isAdminOpen ? 'open' : (t.operationalStatus ?? null);
+                          if (!st && !isAdminClosed && !isAdminOpen) return null;
+                          const effectiveStatus = st ?? 'open';
+                          const label = isAdminClosed ? 'مغلق مؤقتاً' : effectiveStatus === 'open' ? 'مفتوح' : effectiveStatus === 'busy' ? 'مشغول' : 'مغلق';
+                          const color = effectiveStatus === 'open' ? 'text-emerald-300' : effectiveStatus === 'busy' ? 'text-amber-300' : 'text-red-300';
+                          return (
+                            <span className={`text-[10px] mt-0.5 inline-flex items-center gap-1 ${color}`}>
+                              {effectiveStatus === 'open' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-open-dot" />}
+                              {label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
             ))}
-          </motion.div>
+          </motion.section>
         )}
       </main>
     </div>

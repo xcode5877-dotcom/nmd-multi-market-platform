@@ -26,4 +26,10 @@ export interface CartItem {
   optionGroups: OptionGroup[];
   totalPrice: number;
   imageUrl?: string;
+  /** Quantity increment (e.g. 0.5 for kg). Default 1. Used for +/- and display. */
+  quantityStep?: number;
+  /** Unit label (e.g. "كيلو", "حبة"). For display next to quantity. */
+  unitName?: string;
+  /** When true, item is sold by weight (decimals); when false, strict integer and "حبة". */
+  isWeightBased?: boolean;
 }

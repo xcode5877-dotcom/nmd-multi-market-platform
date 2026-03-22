@@ -61,32 +61,33 @@ function ToastContainer({
 }) {
   return (
     <div
-      className="fixed bottom-4 start-4 z-[100] flex flex-col gap-2"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none w-full max-w-[min(100vw-2rem,360px)] px-4"
       style={{ direction: 'ltr' }}
       role="region"
       aria-label="Notifications"
     >
-      <AnimatePresence>
-        {toasts.map((t) => (
-          <motion.div
-            key={t.id}
-            initial={{ opacity: 0, y: 20, x: 20 }}
-            animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ type: 'tween', duration: 0.25 }}
-            className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 min-w-[200px] ${VARIANT_STYLES[t.variant ?? 'info']}`}
-          >
+      <div className="flex flex-col gap-2 pointer-events-auto">
+        <AnimatePresence>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 min-w-0 max-w-full shadow-lg ${VARIANT_STYLES[t.variant ?? 'info']}`}
+            >
             {t.variant === 'success' && (
               <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">✓</span>
             )}
             {t.variant === 'error' && (
               <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">!</span>
             )}
-            <span className="flex-1">{t.message}</span>
+            <span className="flex-1 min-w-0 break-words">{t.message}</span>
             <button
               type="button"
               onClick={() => onRemove(t.id)}
-              className="opacity-70 hover:opacity-100 transition-opacity shrink-0"
+              className="opacity-70 hover:opacity-100 transition-opacity shrink-0 touch-manipulation p-1 -m-1"
               aria-label="إغلاق"
             >
               ×
@@ -94,6 +95,7 @@ function ToastContainer({
           </motion.div>
         ))}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -8,7 +8,9 @@ import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
-import { Store, Palette, Clock, Activity, Link2, Trash2, Truck, CheckCircle, AlertCircle, XCircle, Shield } from 'lucide-react';
+import { Store, Palette, Clock, Activity, Link2, Trash2, Truck, CheckCircle, AlertCircle, XCircle, Shield, MapPin, Bell, Wifi, WifiOff } from 'lucide-react';
+import { useOrderAlarm } from '../contexts/OrderAlarmContext';
+import { StoreLocationPicker } from '../components/StoreLocationPicker';
 import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
 import { normalizeStorePhoneForSave, validateStorePhone, storedPhoneToDisplay, STORE_PHONE_HELPER_TEXT } from '../lib/store-phone';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
@@ -39,12 +41,23 @@ function defaultBusinessHours(): BusinessHours {
   return h;
 }
 
+function formatFCMLastSync(d: Date | null): string {
+  if (!d) return '—';
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 60_000) return 'منذ أقل من دقيقة';
+  if (diffMs < 3600_000) return `منذ ${Math.floor(diffMs / 60_000)} د`;
+  if (diffMs < 86400_000) return `منذ ${Math.floor(diffMs / 3600_000)} س`;
+  return d.toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' });
+}
+
 export default function StoreSettingsPage() {
   const { tenantId } = useAdminContext();
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const addToast = useToast().addToast;
+  const orderAlarm = useOrderAlarm();
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant-by-id', tenantId],
@@ -69,6 +82,8 @@ export default function StoreSettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [storeLocation, setStoreLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [storeAddressLine, setStoreAddressLine] = useState('');
 
   useEffect(() => {
     if (tenant) {
@@ -80,6 +95,9 @@ export default function StoreSettingsPage() {
       setOfficeHours((tenant as { officeHours?: string }).officeHours ?? '');
       const bh = tenant.businessHours;
       setHours(bh && Object.keys(bh).length > 0 ? { ...defaultBusinessHours(), ...bh } : defaultBusinessHours());
+      const loc = (tenant as { location?: { lat: number; lng: number } }).location;
+      setStoreLocation(loc ?? null);
+      setStoreAddressLine((tenant as { addressLine?: string }).addressLine ?? '');
     }
   }, [tenant]);
 
@@ -88,6 +106,7 @@ export default function StoreSettingsPage() {
   const busyBannerEnabled = tenant?.busyBannerEnabled ?? false;
   const bookingEnabled = tenant?.bookingEnabled ?? false;
   const isProfessional = tenant?.storeType === 'PROFESSIONAL';
+  const supportsWeightSelling = (tenant as { supportsWeightSelling?: boolean })?.supportsWeightSelling ?? false;
 
   const handleStatusOverride = async (status: 'open' | 'closed' | 'busy') => {
     try {
@@ -475,6 +494,47 @@ export default function StoreSettingsPage() {
       </Card>
       </div>
 
+      {/* Store Location: map pin for courier pickup and maps */}
+      <Card className="p-6 bg-white">
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin className="w-5 h-5 text-gray-600" />
+          <h2 className="font-semibold text-gray-900">موقع المحل</h2>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">حدّد موقع المحل على الخريطة ليظهر للسائقين وللعملاء عند التوصيل.</p>
+        <div className="space-y-4 max-w-2xl">
+          <StoreLocationPicker
+            value={storeLocation}
+            onChange={(lat, lng) => setStoreLocation({ lat, lng })}
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">عنوان المحل (اختياري)</label>
+            <Input
+              value={storeAddressLine}
+              onChange={(e) => setStoreAddressLine(e.target.value)}
+              placeholder="الشارع، الحي، المدينة"
+              className="w-full"
+            />
+          </div>
+          <Button
+            onClick={async () => {
+              try {
+                await api.updateOperationalSettingsApi(tenantId, {
+                  location: storeLocation ?? undefined,
+                  addressLine: storeAddressLine.trim() || undefined,
+                });
+                queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                broadcastTenantUpdate(tenantId);
+                addToast('تم حفظ موقع المحل', 'success');
+              } catch {
+                addToast('حدث خطأ', 'error');
+              }
+            }}
+          >
+            حفظ الموقع
+          </Button>
+        </div>
+      </Card>
+
       {/* Row 3: ساعات العمل (Business Hours) — full width */}
       <Card className="p-6 bg-white">
         <div className="flex items-center gap-2 mb-4">
@@ -626,6 +686,43 @@ export default function StoreSettingsPage() {
         </Card>
       )}
 
+      {/* Order notifications diagnostics (FCM / Native bridge) */}
+      <Card className="p-6 bg-white" dir="rtl">
+        <div className="flex items-center gap-2 mb-4">
+          <Bell className="w-5 h-5 text-gray-600" />
+          <h2 className="font-semibold text-gray-900">إشعارات الطلبات — تشخيص</h2>
+        </div>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <span className="text-gray-700">حالة الجسر (Native Bridge)</span>
+            {orderAlarm?.fcmBridgeStatus === 'present' ? (
+              <span className="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
+                <Wifi className="w-4 h-4" /> متصل
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-amber-700 font-medium">
+                <WifiOff className="w-4 h-4" /> غير متاح (متصفح أو تطبيق غير أصلي)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <span className="text-gray-700">رمز FCM</span>
+            <span className="font-medium">
+              {orderAlarm?.fcmTokenStatus === 'found' ? 'تم الاستلام' : orderAlarm?.fcmTokenStatus === 'not-found' ? 'لم يُستلم' : '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <span className="text-gray-700">آخر مزامنة مع الخادم</span>
+            <span className="font-medium">{orderAlarm?.fcmLastSyncTime ? formatFCMLastSync(orderAlarm.fcmLastSyncTime) : '—'}</span>
+          </div>
+          {orderAlarm?.fcmBridgeStatus === 'present' && (
+            <Button variant="outline" size="sm" onClick={orderAlarm.registerFCMTokenManual}>
+              إعادة ربط الجهاز بالإشعارات
+            </Button>
+          )}
+        </div>
+      </Card>
+
       {/* Row 4: إعدادات إضافية then Danger Zone */}
       {/* Card E: إعدادات إضافية (Links & Logistics) */}
       <Card className="p-6 bg-white">
@@ -634,6 +731,30 @@ export default function StoreSettingsPage() {
           <h2 className="font-semibold text-gray-900">إعدادات إضافية</h2>
         </div>
         <div className="space-y-4">
+          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900">تفعيل نظام الأوزان (إعداد افتراضي للمنتجات الجديدة)</p>
+                <p className="text-sm text-gray-500 mt-0.5">عند التفعيل، المنتجات الجديدة التي تُضاف ستُعرض كـ &quot;تباع بالوزن&quot; بشكل افتراضي. كل منتج يتحكم فيه من نموذج تعديل المنتج → نظام البيع بالأوزان.</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={supportsWeightSelling}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    api.updateOperationalSettingsApi(tenantId, { supportsWeightSelling: checked }).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+                      broadcastTenantUpdate(tenantId);
+                      addToast(checked ? 'تم تفعيل نظام الأوزان' : 'تم إيقاف نظام الأوزان', 'success');
+                    }).catch(() => addToast('حدث خطأ', 'error'));
+                  }}
+                  className="rounded border-gray-300 text-primary focus:ring-primary w-5 h-5"
+                />
+                <span className="text-sm font-medium text-gray-700">{supportsWeightSelling ? 'مفعّل' : 'غير مفعّل'}</span>
+              </label>
+            </div>
+          </div>
           {canSeeDelivery ? (
             <div>
               <p className="text-sm text-gray-500 mb-2">رابط سريع لمناطق التوصيل</p>

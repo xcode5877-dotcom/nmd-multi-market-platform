@@ -60,6 +60,8 @@ export default function MarketBannersTab({ marketSlug, tenants }: MarketBannersT
   const saveMutation = useMutation({
     mutationFn: async (payload: { newBanners: MarketBanner[]; imageUrl?: string }) => {
       const { newBanners } = payload;
+      if (!MOCK_API_URL) throw new Error('VITE_MOCK_API_URL غير معرّف — لا يمكن الحفظ');
+      if (!Array.isArray(newBanners)) throw new Error('صيغة البيانات خاطئة (يجب أن تكون مصفوفة)');
       return apiFetch<MarketBanner[]>(`/markets/by-slug/${marketSlug}/banners`, {
         method: 'PUT',
         body: JSON.stringify(newBanners),
@@ -74,7 +76,11 @@ export default function MarketBannersTab({ marketSlug, tenants }: MarketBannersT
       if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     },
-    onError: (err: Error) => addToast(err?.message ?? 'فشل الحفظ', 'error'),
+    onError: (err: Error) => {
+      const msg = err?.message ?? 'فشل الحفظ';
+      console.error('[MarketBannersTab] Save failed:', msg, { marketSlug, endpoint: `/markets/by-slug/${marketSlug}/banners` });
+      addToast(`فشل حفظ الإعلانات: ${msg}`, 'error');
+    },
   });
 
   const openAdd = () => {
@@ -124,7 +130,9 @@ export default function MarketBannersTab({ marketSlug, tenants }: MarketBannersT
         const { urls } = await apiUploadBanner(pendingFile);
         imageUrl = urls[0];
       } catch (e) {
-        addToast(e instanceof Error ? e.message : 'فشل رفع الصورة', 'error');
+        const msg = e instanceof Error ? e.message : 'فشل رفع الصورة';
+        console.error('[MarketBannersTab] Banner upload failed:', msg);
+        addToast(msg, 'error');
         return;
       }
     } else if (pendingFile && !MOCK_API_URL) {
@@ -153,6 +161,17 @@ export default function MarketBannersTab({ marketSlug, tenants }: MarketBannersT
 
   if (isLoading) {
     return <div className="p-8 text-gray-500">جاري التحميل...</div>;
+  }
+
+  if (!MOCK_API_URL) {
+    return (
+      <Card>
+        <div className="p-6 text-center text-amber-700 bg-amber-50 rounded-lg">
+          <p className="font-medium">لا يمكن تحميل أو حفظ الإعلانات</p>
+          <p className="text-sm mt-1">VITE_MOCK_API_URL غير معرّف — تحقق من إعدادات البيئة.</p>
+        </div>
+      </Card>
+    );
   }
 
   return (

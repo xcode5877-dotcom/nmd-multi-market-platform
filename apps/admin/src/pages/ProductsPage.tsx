@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Button, Input, Select, Drawer, ConfirmDialog, useToast } from '@nmd/ui';
-import { Pencil, Trash2, Package } from 'lucide-react';
+import { Card, Button, Input, Select, Drawer, ConfirmDialog, Modal, useToast } from '@nmd/ui';
+import { Pencil, Trash2, Package, GripVertical } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAdminData } from '../hooks/useAdminData';
 import type {
@@ -14,9 +14,11 @@ import type {
   OptionGroupType,
 } from '@nmd/core';
 import { generateId, formatMoney } from '@nmd/core';
-import { uploadFiles } from '@nmd/mock';
+import { uploadFiles, MockApiClient } from '@nmd/mock';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const api = new MockApiClient();
 
 function variantKey(optionValues: VariantOptionValue[]): string {
   return [...optionValues]
@@ -65,15 +67,6 @@ function AddOptionInput({ onAdd }: { onAdd: (label: string) => void }) {
   );
 }
 
-function StockBadge({ product }: { product: Product }) {
-  if (!(product.inStock ?? true)) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">نفد</span>;
-  if (product.isLastItems && (product.inStock ?? true))
-    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">آخر {product.lastItemsCount ?? product.quantity ?? 0}</span>;
-  if (product.quantity != null && product.lowStockThreshold != null && product.quantity <= product.lowStockThreshold)
-    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{product.quantity}</span>;
-  return null;
-}
-
 function ProductCard({
   product,
   categoryName,
@@ -105,7 +98,7 @@ function ProductCard({
   const isAvailable = product.isAvailable ?? true;
 
   return (
-    <Card className="overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full text-right" dir="rtl">
+    <Card className={`overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full text-right transition-opacity ${!isAvailable ? 'opacity-60' : ''}`} dir="rtl">
       <div className="flex gap-3 p-4">
         <div className="w-20 h-20 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
           {imgUrl ? (
@@ -170,7 +163,7 @@ function ProductCard({
         </div>
         <label className="flex items-center gap-2 cursor-pointer shrink-0">
           <span className="text-xs font-medium text-slate-600">
-            {isAvailable ? 'ظاهر' : 'مخفي'}
+            {isAvailable ? 'متوفر' : 'غير متوفر'}
           </span>
           <button
             type="button"
@@ -196,7 +189,13 @@ function ProductCard({
 export default function ProductsPage() {
   const { tenantId, tenantType = 'GENERAL' } = useAdminContext();
   const addToast = useToast().addToast;
+  const queryClient = useQueryClient();
   const adminData = useAdminData(tenantId);
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant-by-id', tenantId],
+    queryFn: () => api.getTenant(tenantId!),
+    enabled: !!tenantId && USE_API,
+  });
   const [products, setProducts] = useState<Product[]>(() => adminData.getProducts());
   const categories = adminData.getCategories();
   const prevLoading = useRef(true);
@@ -232,6 +231,9 @@ export default function ProductsPage() {
     lastItemsCount: 0,
     isArchived: false,
     sortOrder: 0,
+    quantityStep: 1,
+    unitName: 'حبة',
+    isWeightBased: false,
   });
   /** Option groups for current tenant only (from catalog / Options page). */
   const catalogOptionGroups = adminData.getOptionGroups().filter(
@@ -248,7 +250,16 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [quickPriceProduct, setQuickPriceProduct] = useState<Product | null>(null);
   const [quickPriceValue, setQuickPriceValue] = useState<string>('');
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
+  const [templatePicks, setTemplatePicks] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: optionTemplates = [] } = useQuery({
+    queryKey: ['option-templates', tenantId],
+    queryFn: () => api.getOptionTemplates(tenantId!),
+    enabled: !!tenantId && USE_API && templatesModalOpen,
+  });
+  const templatesForModal = USE_API ? (optionTemplates as OptionGroup[]) : catalogOptionGroups;
 
   const productsByCategory = useMemo(() => {
     const map = new Map<string, Product[]>();
@@ -296,6 +307,17 @@ export default function ProductsPage() {
     addToast('تم تحديث السعر', 'success');
   }, [quickPriceProduct, quickPriceValue, products, adminData, addToast]);
 
+  const bulkSortMutation = useMutation({
+    mutationFn: (items: { id: string; sortOrder: number }[]) =>
+      api.bulkSortCatalog(tenantId!, 'products', items),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+      setProducts((data.products ?? []) as Product[]);
+      addToast('تم تحديث الترتيب', 'success');
+    },
+    onError: () => addToast('فشل حفظ الترتيب', 'error'),
+  });
+
   const handleReorder = useCallback((categoryId: string, fromIndex: number, toIndex: number) => {
     const list = productsByCategory.get(categoryId) ?? [];
     if (fromIndex === toIndex || toIndex < 0 || toIndex >= list.length) return;
@@ -307,9 +329,13 @@ export default function ProductsPage() {
       p.categoryId === categoryId ? { ...p, sortOrder: orderMap.get(p.id) ?? p.sortOrder ?? 0 } : p
     );
     setProducts(next);
-    adminData.setProducts(next);
-    addToast('تم تحديث الترتيب', 'success');
-  }, [productsByCategory, products, adminData, addToast]);
+    if (USE_API) {
+      bulkSortMutation.mutate(reordered.map((p, i) => ({ id: p.id, sortOrder: i })));
+    } else {
+      adminData.setProducts(next);
+      addToast('تم تحديث الترتيب', 'success');
+    }
+  }, [productsByCategory, products, adminData, addToast, bulkSortMutation]);
 
   const toProductImage = (url: string, sortOrder: number): ProductImage => ({
     id: generateId(),
@@ -326,6 +352,9 @@ export default function ProductsPage() {
     const linkedGroups = catalogOptionGroups.filter((g) => form.selectedOptionGroupIds.includes(g.id));
     const allOptionGroups = [...linkedGroups, ...form.optionGroups];
     const optionGroupIds = form.selectedOptionGroupIds;
+    const effectiveWeight = form.isWeightBased;
+    const effectiveStep = effectiveWeight ? form.quantityStep : 1;
+    const effectiveUnit = effectiveWeight ? form.unitName : 'حبة';
     if (editing) {
       const next = products.map((p) =>
         p.id === editing.id
@@ -350,6 +379,9 @@ export default function ProductsPage() {
               lastItemsCount: form.lastItemsCount,
               isArchived: form.isArchived,
               sortOrder: form.sortOrder,
+              quantityStep: effectiveStep,
+              unitName: effectiveUnit,
+              isWeightBased: effectiveWeight,
             }
           : p
       );
@@ -385,6 +417,9 @@ export default function ProductsPage() {
           lastItemsCount: form.isLastItems ? form.lastItemsCount : undefined,
           isArchived: form.isArchived,
           sortOrder: form.sortOrder ?? maxOrder + 1,
+          quantityStep: effectiveStep,
+          unitName: effectiveUnit,
+          isWeightBased: effectiveWeight,
         },
       ];
       setProducts(next);
@@ -412,6 +447,9 @@ export default function ProductsPage() {
       lastItemsCount: 0,
       isArchived: false,
       sortOrder: 0,
+      quantityStep: 1,
+      unitName: 'حبة',
+      isWeightBased: false,
     });
     setSaving(false);
     addToast('تم الحفظ بنجاح', 'success');
@@ -457,6 +495,9 @@ export default function ProductsPage() {
       lastItemsCount: p.lastItemsCount ?? 0,
       isArchived: p.isArchived ?? false,
       sortOrder: p.sortOrder ?? 0,
+      quantityStep: (p as { quantityStep?: number }).quantityStep ?? 1,
+      unitName: (p as { unitName?: string }).unitName ?? 'حبة',
+      isWeightBased: (p as { isWeightBased?: boolean }).isWeightBased ?? ((p as { quantityStep?: number }).quantityStep ?? 1) < 1,
     });
     setDrawerOpen(true);
   };
@@ -464,6 +505,7 @@ export default function ProductsPage() {
   const openAdd = () => {
     setEditing(null);
     const maxOrder = products.length > 0 ? Math.max(...products.map((p) => p.sortOrder ?? 0), 0) : 0;
+    const defaultWeight = (tenant as { supportsWeightSelling?: boolean } | null)?.supportsWeightSelling === true;
     setForm({
       name: '',
       slug: '',
@@ -484,6 +526,9 @@ export default function ProductsPage() {
       lastItemsCount: 0,
       isArchived: false,
       sortOrder: maxOrder + 1,
+      quantityStep: defaultWeight ? 0.25 : 1,
+      unitName: defaultWeight ? 'كيلو' : 'حبة',
+      isWeightBased: defaultWeight,
     });
     setDrawerOpen(true);
   };
@@ -764,7 +809,7 @@ export default function ProductsPage() {
                           data-product-id={p.id}
                           className={`flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 cursor-grab active:cursor-grabbing ${draggedProductId === p.id ? 'opacity-50' : ''}`}
                         >
-                          <span className="text-gray-400 select-none" aria-hidden>⋮⋮</span>
+                          <GripVertical className="w-4 h-4 text-gray-400 shrink-0" aria-hidden />
                           <span className="flex-1 font-medium text-gray-900">{p.name}</span>
                           <span className="text-xs text-gray-500">ترتيب: {(p as Product & { sortOrder?: number }).sortOrder ?? idx}</span>
                         </li>
@@ -899,6 +944,50 @@ export default function ProductsPage() {
             value={form.basePrice}
             onChange={(e) => setForm((f) => ({ ...f, basePrice: +e.target.value }))}
           />
+          <div className="space-y-3 p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+            <p className="text-sm font-semibold text-gray-800">نظام البيع بالأوزان</p>
+            <p className="text-xs text-gray-500">اختيار لكل منتج: يمكن أن يكون الحليب (وحدة واحدة) واللحم (ربع كيلو) في نفس المتجر.</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isWeightBased}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setForm((f) => ({
+                    ...f,
+                    isWeightBased: checked,
+                    ...(checked && !['كيلو', 'جرام', 'لتر'].includes(f.unitName) ? { unitName: 'كيلو' as const, quantityStep: 0.25 } : {}),
+                  }));
+                }}
+                className="rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <span className="text-sm font-medium text-gray-700">هذا المنتج يباع بالوزن</span>
+            </label>
+            {form.isWeightBased && (
+              <>
+                <Select
+                  label="وحدة القياس"
+                  options={[
+                    { value: 'كيلو', label: 'كيلو' },
+                    { value: 'جرام', label: 'جرام' },
+                    { value: 'لتر', label: 'لتر' },
+                  ]}
+                  value={form.unitName}
+                  onChange={(e) => setForm((f) => ({ ...f, unitName: e.target.value }))}
+                />
+                <Select
+                  label="قفزة الكمية"
+                  options={[
+                    { value: '0.25', label: '0.25 (ربع)' },
+                    { value: '0.5', label: '0.50 (نص)' },
+                    { value: '1', label: '1.0 (واحد)' },
+                  ]}
+                  value={String(form.quantityStep)}
+                  onChange={(e) => setForm((f) => ({ ...f, quantityStep: parseFloat(e.target.value) || 1 }))}
+                />
+              </>
+            )}
+          </div>
           <div className="space-y-2" dir="rtl">
             <label className="block text-sm font-medium text-gray-700">معرض الصور</label>
             <input
@@ -1009,6 +1098,9 @@ export default function ProductsPage() {
             <div className="space-y-2" dir="rtl">
               <label className="block text-sm font-medium text-gray-700">ربط مجموعات الخيارات</label>
               <p className="text-xs text-gray-500 mb-1">اختر مجموعات معرّفة من صفحة مجموعات الخيارات لربطها بهذا المنتج.</p>
+              <Button variant="outline" size="sm" className="mb-2" onClick={() => { setTemplatesModalOpen(true); setTemplatePicks([]); }}>
+                إضافة من القوالب الجاهزة
+              </Button>
               {catalogOptionGroups.length === 0 ? (
                 <p className="text-sm text-amber-600">لا توجد مجموعات خيارات. أضفها من صفحة &quot;مجموعات الخيارات&quot; أولاً.</p>
               ) : (
@@ -1078,7 +1170,7 @@ export default function ProductsPage() {
                     onChange={(e) => updateOptionGroup(g.id, { type: e.target.value as OptionGroupType })}
                     disabled={tenantType === 'FOOD'}
                   />
-                  {form.type === 'PIZZA' && g.type === 'CUSTOM' && (
+                  {g.type === 'CUSTOM' && (
                     <label className="flex items-center gap-2 mt-6">
                       <input
                         type="checkbox"
@@ -1110,7 +1202,7 @@ export default function ProductsPage() {
                         }
                         className="w-14 border border-gray-200 rounded px-1.5 py-0.5 text-xs"
                       />
-                      {form.type === 'PIZZA' && g.type === 'CUSTOM' && (
+                      {g.type === 'CUSTOM' && (
                         <label className="flex items-center gap-1" title="يدعم نصف (يمين/يسار)">
                           <input
                             type="checkbox"
@@ -1285,7 +1377,7 @@ export default function ProductsPage() {
       <ConfirmDialog
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => deleteConfirm && remove(deleteConfirm.id)}
+        onConfirm={() => { if (deleteConfirm) remove(deleteConfirm.id); }}
         title="حذف المنتج"
         message={`هل أنت متأكد من حذف "${deleteConfirm?.name}"؟`}
         confirmLabel="حذف"
@@ -1299,6 +1391,48 @@ export default function ProductsPage() {
         message="سيتم الحفاظ على المخزون والسعر للمتغيرات المطابقة. المتغيرات التي لم تعد موجودة ستُحذف."
         confirmLabel="إعادة التوليد"
       />
+      <Modal open={templatesModalOpen} onClose={() => setTemplatesModalOpen(false)} title="إضافة من القوالب الجاهزة">
+        <div className="space-y-4" dir="rtl">
+          <p className="text-sm text-gray-600">اختر مجموعة أو أكثر لربطها بهذا المنتج.</p>
+          {templatesForModal.length === 0 ? (
+            <p className="text-sm text-amber-600">لا توجد قوالب. أنشئ مجموعات من صفحة &quot;مجموعات الخيارات&quot; أولاً.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50 max-h-64 overflow-y-auto">
+              {templatesForModal.map((g) => (
+                <label key={g.id} className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={templatePicks.includes(g.id)}
+                    onChange={(e) => {
+                      setTemplatePicks((prev) =>
+                        e.target.checked ? [...prev, g.id] : prev.filter((id) => id !== g.id)
+                      );
+                    }}
+                    className="rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-gray-800">{g.name || g.id}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setTemplatesModalOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={() => {
+                setForm((f) => ({
+                  ...f,
+                  selectedOptionGroupIds: [...new Set([...f.selectedOptionGroupIds, ...templatePicks])],
+                }));
+                setTemplatesModalOpen(false);
+                setTemplatePicks([]);
+              }}
+              disabled={templatePicks.length === 0}
+            >
+              إضافة المحدد
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

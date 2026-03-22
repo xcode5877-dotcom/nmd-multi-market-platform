@@ -1,7 +1,7 @@
 import type { Order, Tenant } from '../types';
 import { formatMoney } from './money.js';
 import { formatDateGregorian } from './dates.js';
-import { formatAddonNameWithPlacement } from './placements.js';
+import { formatHalfAndHalfOptionDisplay } from './placements.js';
 
 /**
  * Build WhatsApp message for order handoff (Arabic, short, clear).
@@ -50,14 +50,8 @@ export function buildWhatsAppMessage(order: Order, tenant: Tenant): string {
         const g = optionGroups.find((x) => x.id === s.optionGroupId);
         const ids = 'optionItemIds' in s ? s.optionItemIds : [];
         const placements = 'optionPlacements' in s ? (s.optionPlacements ?? {}) : {};
-        return ids
-          .map((id) => {
-            const optName = g?.items?.find((i) => i.id === id)?.name;
-            if (!optName) return '';
-            return formatAddonNameWithPlacement(optName, placements[id]);
-          })
-          .filter(Boolean)
-          .join('، ');
+        const getOptionName = (id: string) => g?.items?.find((i) => i.id === id)?.name;
+        return formatHalfAndHalfOptionDisplay(ids, placements, getOptionName);
       })
       .filter(Boolean)
       .join(' | ');

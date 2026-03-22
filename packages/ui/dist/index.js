@@ -8,6 +8,17 @@ function useTheme() {
   if (!ctx) throw new Error("ThemeProvider required");
   return ctx;
 }
+var THEME_CSS_KEYS = [
+  "--color-primary",
+  "--color-secondary",
+  "--radius",
+  "--font",
+  "--layout-header",
+  "--layout-card",
+  "--layout-section",
+  "--layout-button",
+  "--layout-badge"
+];
 function ThemeProvider({ branding, dir = "rtl", children }) {
   const vars = useMemo(() => tenantBrandingToCssVars(branding), [branding]);
   useEffect(() => {
@@ -19,6 +30,9 @@ function ThemeProvider({ branding, dir = "rtl", children }) {
     Object.entries(vars).forEach(([key, value2]) => {
       root.style.setProperty(key, value2);
     });
+    return () => {
+      THEME_CSS_KEYS.forEach((key) => root.style.removeProperty(key));
+    };
   }, [vars]);
   const value = useMemo(() => ({ branding, layoutStyle: branding.layoutStyle }), [branding]);
   return /* @__PURE__ */ jsx(ThemeContext.Provider, { value, children });
@@ -80,7 +94,7 @@ DataTable.displayName = "DataTable";
 import { forwardRef as forwardRef4 } from "react";
 import { jsx as jsx5 } from "react/jsx-runtime";
 var STATUS_STYLES = {
-  PENDING: "bg-blue-100 text-blue-800",
+  PENDING: "bg-primary/15 text-primary",
   CONFIRMED: "bg-amber-100 text-amber-800",
   PREPARING: "bg-purple-100 text-purple-800",
   READY: "bg-green-100 text-green-800",
@@ -237,7 +251,7 @@ import { jsx as jsx8, jsxs as jsxs5 } from "react/jsx-runtime";
 var Button = forwardRef6(
   ({
     variant = "primary",
-    size = "md",
+    size: size2 = "md",
     loading = false,
     leftIcon,
     rightIcon,
@@ -263,7 +277,7 @@ var Button = forwardRef6(
       "button",
       {
         ref,
-        className: `${base} ${variants[variant]} ${sizes[size]} ${className}`,
+        className: `${base} ${variants[variant]} ${sizes[size2]} ${className}`,
         disabled: disabled || loading,
         "aria-busy": loading,
         ...props,
@@ -448,7 +462,7 @@ import { useEffect as useEffect2 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { jsx as jsx14, jsxs as jsxs8 } from "react/jsx-runtime";
-function Modal({ open, onClose, title, children, size = "md" }) {
+function Modal({ open, onClose, title, children, size: size2 = "md", zIndex }) {
   useEffect2(() => {
     const handleEscape = (e) => e.key === "Escape" && onClose();
     if (open) {
@@ -465,6 +479,7 @@ function Modal({ open, onClose, title, children, size = "md" }) {
     "div",
     {
       className: "fixed inset-0 z-50 flex items-center justify-center p-4",
+      style: zIndex !== void 0 ? { zIndex } : void 0,
       role: "dialog",
       "aria-modal": "true",
       "aria-labelledby": title ? "modal-title" : void 0,
@@ -476,7 +491,8 @@ function Modal({ open, onClose, title, children, size = "md" }) {
             animate: { opacity: 1 },
             exit: { opacity: 0 },
             onClick: onClose,
-            className: "absolute inset-0 bg-black/50"
+            className: "absolute inset-0 bg-black/50",
+            "aria-hidden": "true"
           }
         ),
         /* @__PURE__ */ jsxs8(
@@ -486,14 +502,14 @@ function Modal({ open, onClose, title, children, size = "md" }) {
             animate: { opacity: 1, scale: 1 },
             exit: { opacity: 0, scale: 0.95 },
             transition: { duration: 0.2 },
-            className: `relative w-full ${sizes[size]} bg-white rounded-[var(--radius)] shadow-xl`,
+            className: `relative flex flex-col w-full max-h-[90vh] ${sizes[size2]} bg-white rounded-[var(--radius)] shadow-xl`,
             onClick: (e) => e.stopPropagation(),
             children: [
-              /* @__PURE__ */ jsxs8("div", { className: "flex items-center justify-between p-4 border-b border-gray-200", children: [
+              /* @__PURE__ */ jsxs8("div", { className: "flex items-center justify-between flex-shrink-0 p-4 border-b border-gray-200", children: [
                 title && /* @__PURE__ */ jsx14("h2", { id: "modal-title", className: "text-lg font-semibold", children: title }),
                 /* @__PURE__ */ jsx14(Button, { variant: "ghost", size: "sm", onClick: onClose, "aria-label": "Close", children: /* @__PURE__ */ jsx14(X, { className: "w-5 h-5" }) })
               ] }),
-              /* @__PURE__ */ jsx14("div", { className: "p-4", children })
+              /* @__PURE__ */ jsx14("div", { className: "p-4 overflow-y-auto min-h-0", children })
             ]
           }
         )
@@ -513,11 +529,16 @@ function ConfirmDialog({
   confirmLabel = "\u062A\u0623\u0643\u064A\u062F",
   cancelLabel = "\u0625\u0644\u063A\u0627\u0621",
   variant = "danger",
-  loading = false
+  loading = false,
+  closeOnConfirm = true
 }) {
-  const handleConfirm = () => {
-    onConfirm();
-    if (!loading) onClose();
+  const handleConfirm = async () => {
+    const result = onConfirm();
+    if (result instanceof Promise) {
+      await result.catch(() => {
+      });
+    }
+    if (closeOnConfirm && !loading) onClose();
   };
   const confirmClass = variant === "danger" ? "bg-red-600 hover:bg-red-700 text-white" : variant === "warning" ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-primary hover:bg-primary/90 text-white";
   return /* @__PURE__ */ jsx15(Modal, { open, onClose, title, size: "sm", children: /* @__PURE__ */ jsxs9("div", { className: "space-y-4", children: [
@@ -537,7 +558,7 @@ import { useEffect as useEffect3 } from "react";
 import { motion as motion2, AnimatePresence as AnimatePresence2 } from "framer-motion";
 import { X as X2 } from "lucide-react";
 import { jsx as jsx16, jsxs as jsxs10 } from "react/jsx-runtime";
-function Drawer({ open, onClose, title, children, side = "end" }) {
+function Drawer({ open, onClose, title, children, side = "end", contentClassName }) {
   useEffect3(() => {
     const handleEscape = (e) => e.key === "Escape" && onClose();
     if (open) {
@@ -556,7 +577,7 @@ function Drawer({ open, onClose, title, children, side = "end" }) {
   return /* @__PURE__ */ jsx16(AnimatePresence2, { children: open && /* @__PURE__ */ jsxs10(
     "div",
     {
-      className: "fixed inset-0 z-50 flex",
+      className: "fixed inset-0 z-[9999] flex",
       style: { justifyContent: fromStart ? "flex-start" : "flex-end" },
       role: "dialog",
       "aria-modal": "true",
@@ -569,7 +590,8 @@ function Drawer({ open, onClose, title, children, side = "end" }) {
             animate: { opacity: 1 },
             exit: { opacity: 0 },
             onClick: onClose,
-            className: "absolute inset-0 bg-black/50"
+            className: "absolute inset-0 z-[9998] bg-black/50",
+            "aria-hidden": true
           }
         ),
         /* @__PURE__ */ jsxs10(
@@ -579,14 +601,14 @@ function Drawer({ open, onClose, title, children, side = "end" }) {
             animate: { x: 0 },
             exit: { x: xOffset },
             transition: { type: "spring", stiffness: 300, damping: 30 },
-            className: "relative w-full max-w-sm bg-white shadow-2xl h-full overflow-auto",
+            className: `relative z-[9999] w-full max-w-full md:max-w-md bg-white shadow-2xl max-h-screen h-full flex flex-col ${contentClassName ?? ""}`.trim(),
             onClick: (e) => e.stopPropagation(),
             children: [
-              /* @__PURE__ */ jsxs10("div", { className: "flex items-center justify-between p-4 border-b border-gray-200", children: [
+              /* @__PURE__ */ jsxs10("div", { className: "flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0", children: [
                 title && /* @__PURE__ */ jsx16("h2", { id: "drawer-title", className: "text-lg font-semibold", children: title }),
                 /* @__PURE__ */ jsx16(Button, { variant: "ghost", size: "sm", onClick: onClose, "aria-label": "Close", children: /* @__PURE__ */ jsx16(X2, { className: "w-5 h-5" }) })
               ] }),
-              /* @__PURE__ */ jsx16("div", { className: "p-4", children })
+              /* @__PURE__ */ jsx16("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 py-4 pb-20", children })
             ]
           }
         )
@@ -658,28 +680,28 @@ function ToastContainer({
   return /* @__PURE__ */ jsx18(
     "div",
     {
-      className: "fixed bottom-4 start-4 z-[100] flex flex-col gap-2",
+      className: "fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none w-full max-w-[min(100vw-2rem,360px)] px-4",
       style: { direction: "ltr" },
       role: "region",
       "aria-label": "Notifications",
-      children: /* @__PURE__ */ jsx18(AnimatePresence3, { children: toasts.map((t) => /* @__PURE__ */ jsxs11(
+      children: /* @__PURE__ */ jsx18("div", { className: "flex flex-col gap-2 pointer-events-auto", children: /* @__PURE__ */ jsx18(AnimatePresence3, { children: toasts.map((t) => /* @__PURE__ */ jsxs11(
         motion3.div,
         {
-          initial: { opacity: 0, y: 20, x: 20 },
-          animate: { opacity: 1, y: 0, x: 0 },
-          exit: { opacity: 0, x: 20 },
-          transition: { type: "tween", duration: 0.25 },
-          className: `px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 min-w-[200px] ${VARIANT_STYLES[t.variant ?? "info"]}`,
+          initial: { opacity: 0, y: 16 },
+          animate: { opacity: 1, y: 0 },
+          exit: { opacity: 0, scale: 0.98 },
+          transition: { type: "tween", duration: 0.2 },
+          className: `px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 min-w-0 max-w-full shadow-lg ${VARIANT_STYLES[t.variant ?? "info"]}`,
           children: [
             t.variant === "success" && /* @__PURE__ */ jsx18("span", { className: "w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0", children: "\u2713" }),
             t.variant === "error" && /* @__PURE__ */ jsx18("span", { className: "w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0", children: "!" }),
-            /* @__PURE__ */ jsx18("span", { className: "flex-1", children: t.message }),
+            /* @__PURE__ */ jsx18("span", { className: "flex-1 min-w-0 break-words", children: t.message }),
             /* @__PURE__ */ jsx18(
               "button",
               {
                 type: "button",
                 onClick: () => onRemove(t.id),
-                className: "opacity-70 hover:opacity-100 transition-opacity shrink-0",
+                className: "opacity-70 hover:opacity-100 transition-opacity shrink-0 touch-manipulation p-1 -m-1",
                 "aria-label": "\u0625\u063A\u0644\u0627\u0642",
                 children: "\xD7"
               }
@@ -687,7 +709,7 @@ function ToastContainer({
           ]
         },
         t.id
-      )) })
+      )) }) })
     }
   );
 }
@@ -739,6 +761,35 @@ function TenantSwitcher({ tenants, currentTenant, onSelect, className = "", visi
     ] })
   ] });
 }
+
+// src/PlacementIcons.tsx
+import { jsx as jsx20 } from "react/jsx-runtime";
+var size = 20;
+var viewBox = `0 0 ${size} ${size}`;
+var cx = size / 2;
+var cy = size / 2;
+var r = size / 2 - 1;
+function WholeCircleIcon({ className = "w-5 h-5" }) {
+  return /* @__PURE__ */ jsx20("svg", { viewBox, className, fill: "currentColor", "aria-hidden": true, children: /* @__PURE__ */ jsx20("circle", { cx, cy, r }) });
+}
+function LeftHalfCircleIcon({ className = "w-5 h-5" }) {
+  return /* @__PURE__ */ jsx20("svg", { viewBox, className, fill: "currentColor", "aria-hidden": true, children: /* @__PURE__ */ jsx20("path", { d: `M ${cx} ${cy - r} A ${r} ${r} 0 0 0 ${cx} ${cy + r} L ${cx} ${cy} Z` }) });
+}
+function RightHalfCircleIcon({ className = "w-5 h-5" }) {
+  return /* @__PURE__ */ jsx20("svg", { viewBox, className, fill: "currentColor", "aria-hidden": true, children: /* @__PURE__ */ jsx20("path", { d: `M ${cx} ${cy - r} A ${r} ${r} 0 0 1 ${cx} ${cy + r} L ${cx} ${cy} Z` }) });
+}
+function PlacementIcon({ placement, className }) {
+  switch (placement) {
+    case "WHOLE":
+      return /* @__PURE__ */ jsx20(WholeCircleIcon, { className });
+    case "LEFT":
+      return /* @__PURE__ */ jsx20(LeftHalfCircleIcon, { className });
+    case "RIGHT":
+      return /* @__PURE__ */ jsx20(RightHalfCircleIcon, { className });
+    default:
+      return null;
+  }
+}
 export {
   Badge,
   Button,
@@ -751,8 +802,11 @@ export {
   InlineBadge,
   Input,
   LayoutShell,
+  LeftHalfCircleIcon,
   Modal,
   PageHeader,
+  PlacementIcon,
+  RightHalfCircleIcon,
   Select,
   Skeleton,
   Tabs,
@@ -762,6 +816,7 @@ export {
   TenantSwitcher,
   ThemeProvider,
   ToastProvider,
+  WholeCircleIcon,
   layoutBadgeClass,
   layoutButtonClass,
   layoutCardClass,

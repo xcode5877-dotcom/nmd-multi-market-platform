@@ -5,6 +5,13 @@ var __dirname = fileURLToPath(new URL('.', import.meta.url));
 export default defineConfig({
     base: '/market-admin/', // Production path: system admin at /market-admin (Market + Root by role)
     plugins: [react()],
+    // Ensure UTF-8 for source and output (Arabic and other scripts)
+    build: {
+        target: 'esnext',
+        rollupOptions: {
+            output: { format: 'es' },
+        },
+    },
     server: {
         port: 5176,
         proxy: {

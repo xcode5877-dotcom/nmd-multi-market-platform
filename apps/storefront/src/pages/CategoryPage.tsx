@@ -49,8 +49,9 @@ export default function CategoryPage() {
     enabled: !!tenantId && !isOtherCategory(categoryId ?? ''),
   });
 
-  const category = isOtherCategory(categoryId ?? '') ? { id: 'other', name: 'أخرى', parentId: null } : menu?.find((c) => c.id === categoryId);
-  const subcategories = (menu ?? []).filter((c) => c.parentId === categoryId);
+  const sortedMenu = (menu ?? []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const category = isOtherCategory(categoryId ?? '') ? { id: 'other', name: 'أخرى', parentId: null } : sortedMenu.find((c) => c.id === categoryId);
+  const subcategories = sortedMenu.filter((c) => c.parentId === categoryId);
   const isMainCategory = !category?.parentId || category.parentId === '';
   const effectiveCategoryId = selectedSubId || categoryId;
 
@@ -77,7 +78,8 @@ export default function CategoryPage() {
     enabled: !!tenantId && isOtherCategory(categoryId ?? ''),
   });
 
-  const allProducts = isOtherCategory(categoryId ?? '') ? (productsOther.data ?? []) : (productsForCategory.data ?? []);
+  const allProductsRaw = isOtherCategory(categoryId ?? '') ? (productsOther.data ?? []) : (productsForCategory.data ?? []);
+  const allProducts = allProductsRaw.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const isLoading = isOtherCategory(categoryId ?? '') ? productsOther.isLoading : productsForCategory.isLoading;
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns', tenantId],

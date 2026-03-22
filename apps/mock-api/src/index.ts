@@ -31,20 +31,126 @@ import {
   type Courier,
   type DeliveryJob,
   type GlobalCategory,
+  type CategoryPolicy,
+  getCategoryPolicies,
+  setCategoryPolicies,
   loadFromPath,
   invalidateDataCache,
   getData,
+  getPillars,
+  setPillars,
+  getSubCategories,
+  setSubCategories,
+  type Pillar,
+  type SubCategory,
+  getSettlementLogs,
+  appendSettlementLog,
+  type SettlementLogEntry,
+  getOptionTemplates,
+  addOptionTemplate,
 } from './store.js';
 import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
+import { PrismaClient } from '@prisma/client';
 import { createOtp, verifyOtp } from './customer-auth.js';
-import { triggerStatusNotification, notifyMerchantNewOrder } from './services/NotificationService.js';
-import { getVapidPublicKey, saveSubscription } from './push-subscriptions.js';
+import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
+import { sendWhatsAppNotification } from './services/CouponService.js';
+import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
+import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast } from './firebase-admin.js';
 
 const PORT = Number(process.env.PORT ?? 5190);
 const repos = createRepos();
+const prisma = new PrismaClient();
+
+const isStorageDb = () => (process.env.STORAGE_DRIVER ?? '').toLowerCase() === 'db';
+
+/** Resolve customer FCM token: from latest CustomerFCMToken (DB, newest by createdAt) or customer.fcmToken (JSON). */
+async function getCustomerFcmToken(customerId: string): Promise<string | null> {
+  if (isStorageDb()) {
+    const row = await prisma.customerFCMToken.findFirst({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      select: { token: true },
+    });
+    return row?.token ?? null;
+  }
+  const customers = await repos.customers.findAll();
+  const c = customers.find((x) => x.id === customerId);
+  return (c as { fcmToken?: string | null } | undefined)?.fcmToken ?? null;
+}
+
+/** All customer FCM tokens for broadcast. */
+async function getAllCustomerFcmTokens(): Promise<string[]> {
+  if (isStorageDb()) {
+    const rows = await prisma.customerFCMToken.findMany({ select: { token: true } });
+    return rows.map((r) => r.token);
+  }
+  const customers = await repos.customers.findAll();
+  return customers.map((c) => (c as { fcmToken?: string | null }).fcmToken).filter(Boolean) as string[];
+}
+
+/** Customer-facing notification: look up latest FCM token for customerId and send simple title/body. */
+async function sendFCMNotification(customerId: string, title: string, body: string): Promise<void> {
+  try {
+    const token = await getCustomerFcmToken(customerId);
+    if (!token) {
+      console.log('[FCM] sendFCMNotification: no token for customerId', customerId);
+      return;
+    }
+    sendFCMToToken(token, title, body);
+  } catch (e) {
+    console.warn('[FCM] sendFCMNotification failed for customerId', customerId, e);
+  }
+}
+
+/**
+ * Send FCM "new order" notification to every device token linked to users who own/manage the given tenant.
+ * Called immediately after saving a new order so the merchant tablet/phone gets the system notification and alarm.
+ */
+async function sendFCMToTenantForNewOrder(
+  tenantId: string,
+  order: { id?: string; total?: number; tenantId?: string; [key: string]: unknown }
+): Promise<void> {
+  try {
+    const tenantRow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketId: true, name: true } });
+    const marketId = tenantRow?.marketId ?? null;
+    const storeName = (tenantRow as { name?: string })?.name ?? tenantId;
+    const amountStr =
+      order.total != null && !Number.isNaN(Number(order.total)) ? `₪${Number(order.total).toFixed(2)}` : '—';
+    const fcmTitle = 'طلب جديد وصل! 🔔';
+    const fcmBody = `طلب جديد بقيمة ${amountStr}! اضغط لمراجعة التفاصيل وتحضير الطلب.`;
+    const orderId = order.id ?? '';
+    console.log('[FCM] sendFCMToTenantForNewOrder: tenant', tenantId, storeName, 'orderId', orderId);
+    const ownerUsers = await prisma.user.findMany({
+      where: {
+        OR: [{ tenantId }, ...(marketId ? [{ role: 'MARKET_ADMIN', marketId }] : [])],
+      },
+      select: { id: true, fcmToken: true },
+    });
+    const ownerIds = [...new Set(ownerUsers.map((u) => u.id))];
+    console.log('[FCM] Owner user(s) for store:', ownerIds.length, ownerIds);
+    const tokensFromTable = await prisma.userFCMToken.findMany({
+      where: { userId: { in: ownerIds } },
+      select: { token: true },
+    });
+    const legacyTokens = ownerUsers.map((u) => u.fcmToken).filter(Boolean) as string[];
+    const allTokens = [...new Set([...tokensFromTable.map((r) => r.token), ...legacyTokens])];
+    console.log('[FCM] Total FCM tokens to send:', allTokens.length, '(UserFCMToken:', tokensFromTable.length, ', legacy:', legacyTokens.length, ')');
+    if (allTokens.length === 0) {
+      console.warn('[FCM] No FCM tokens for store owners. Merchant must log in from the app and allow notifications.');
+      return;
+    }
+    for (const token of allTokens) {
+      const result = await sendFCMToToken(token, { title: fcmTitle, body: fcmBody, data: { orderId, type: 'new_order' } });
+      if (result.success) console.log('[FCM] Sent to token', token.slice(0, 20) + '...');
+      else console.error('[FCM] Send failed:', result.error, 'token:', token.slice(0, 20) + '...');
+    }
+  } catch (e) {
+    console.error('[FCM] sendFCMToTenantForNewOrder failed:', e);
+  }
+}
 
 /** Wrap async route handlers so errors are forwarded to Express error handler. */
 function wrapAsync(fn: RequestHandler): RequestHandler {
@@ -115,45 +221,44 @@ async function seedMarketsIfNeeded(): Promise<void> {
   await repos.markets.setAll(newMarkets);
 }
 
+/** Set default marketId for tenants that have none (from market.stores or market.tenantIds). Default enabled/isListedInMarket. Persist so data.json is correct. Does not delete any users or orders (Global Identity / phone OTP preserved).
+ *  SAFEGUARD: This function must NEVER remove or filter out tenants from the tenants array. Only add/update fields. Tenant deletion is only allowed via explicit DELETE /tenants/:id. */
 async function seedTenantMarketIdsIfNeeded(): Promise<void> {
-  const markets = await repos.markets.findAll();
-  const dabburiyya = markets.find((m) => m.slug === 'dabburiyya');
-  if (!dabburiyya) return;
+  const markets = (await repos.markets.findAll()) as { id: string; slug?: string; stores?: { id: string }[]; tenantIds?: string[] }[];
   const tenants = await repos.tenants.findAll();
   let changed = false;
   for (const t of tenants) {
-    if (!t.marketId) {
-      (t as { marketId?: string }).marketId = dabburiyya.id;
+    if (!(t as { marketId?: string }).marketId && t.id) {
+      for (const m of markets) {
+        const stores = m.stores ?? [];
+        const ids = m.tenantIds ?? [];
+        if (stores.some((s) => s.id === t.id) || ids.includes(t.id)) {
+          (t as { marketId?: string }).marketId = m.id;
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (t.enabled === undefined) {
+      (t as { enabled?: boolean }).enabled = true;
+      changed = true;
+    }
+    if ((t as { isListedInMarket?: boolean }).isListedInMarket === undefined) {
       (t as { isListedInMarket?: boolean }).isListedInMarket = true;
+      changed = true;
+    }
+    const op = (t as { operationalStatus?: string }).operationalStatus;
+    if (op !== 'open' && op !== 'closed' && op !== 'busy') {
+      (t as { operationalStatus?: string }).operationalStatus = 'open';
       changed = true;
     }
   }
   if (changed) await repos.tenants.setAll(tenants);
 }
 
+/** No seed orders: start with empty orders. Do not push any hardcoded order when DB is empty. */
 async function seedOrdersIfNeeded(): Promise<void> {
-  const orders = await repos.orders.findAll();
-  if (orders.length > 0) return;
-  const tenants = await repos.tenants.findAll();
-  const msBrands = tenants.find((t) => (t as { slug?: string }).slug === 'ms-brands');
-  if (!msBrands?.marketId) return;
-  const seed = {
-    id: 'order-seed-delivery-1',
-    tenantId: msBrands.id,
-    marketId: msBrands.marketId,
-    status: 'PREPARING',
-    fulfillmentType: 'DELIVERY',
-    deliveryAssignmentMode: 'MARKET' as const,
-    total: 50,
-    subtotal: 45,
-    currency: 'ILS',
-    createdAt: new Date().toISOString(),
-    readyAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    items: [],
-    customerName: 'Test',
-    customerPhone: '0501234567',
-  };
-  await repos.orders.setAll([seed]);
+  /* intentionally no-op: orders start empty */
 }
 
 async function seedDeliveryZonesIfNeeded(): Promise<void> {
@@ -171,25 +276,32 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
   }
 }
 
-// Absolute path so Docker volume /app/uploads is used correctly (no __dirname/dist resolution).
+// Persistent uploads: use UPLOADS_DIR env, or ./data/uploads so uploads survive rebuilds when data/ is a volume.
 // API serves at /uploads/* (no /api prefix); Nginx strips /api and proxies /api/uploads/ → mock-api:5190/uploads/.
 const UPLOADS_DIR = (() => {
   const envDir = process.env.UPLOADS_DIR;
   if (envDir) return resolve(envDir);
+  // Default: data/uploads (create so uploads persist across builds; mount ./data in Docker).
   const dataUploads = join(process.cwd(), 'data', 'uploads');
-  if (existsSync(dataUploads)) return resolve(dataUploads);
-  if (process.cwd() === '/app/apps/mock-api') return '/app/uploads';
-  return resolve(join(process.cwd(), '..', '..', 'packages', 'mock', 'uploads'));
+  if (!existsSync(dataUploads)) mkdirSync(dataUploads, { recursive: true });
+  return resolve(dataUploads);
 })();
 const UPLOADS_BANNERS_DIR = join(UPLOADS_DIR, 'banners');
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!existsSync(UPLOADS_BANNERS_DIR)) mkdirSync(UPLOADS_BANNERS_DIR, { recursive: true });
 console.log('[mock-api] UPLOADS_DIR (static /uploads):', UPLOADS_DIR, 'exists:', existsSync(UPLOADS_DIR));
 
+/** Allowed image extensions only (no Arabic or special chars in filename = safe URLs). */
+const SAFE_IMAGE_EXT = /^(jpg|jpeg|png|webp|gif)$/i;
+function safeImageExt(originalName: string): string {
+  const ext = (originalName.match(/\.([^.]+)$/)?.[1] ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return SAFE_IMAGE_EXT.test(ext) ? ext : 'jpg';
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
-    const ext = (file.originalname.match(/\.([^.]+)$/)?.[1] ?? 'jpg').toLowerCase();
+    const ext = safeImageExt(file.originalname);
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
     cb(null, name);
   },
@@ -209,7 +321,7 @@ const ALLOWED_BANNER_MIMES = ['image/webp', 'image/jpeg', 'image/jpg', 'image/pn
 const bannerStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_BANNERS_DIR),
   filename: (_req, file, cb) => {
-    const ext = (file.originalname.match(/\.([^.]+)$/)?.[1] ?? 'jpg').toLowerCase().replace('jpeg', 'jpg');
+    const ext = safeImageExt(file.originalname).replace('jpeg', 'jpg');
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
     cb(null, name);
   },
@@ -241,6 +353,16 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+/** Ensure all JSON responses declare UTF-8 so Arabic and other non-ASCII render correctly (no ?????). */
+app.use((_req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = function (body: unknown) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return origJson(body);
+  };
+  next();
+});
 
 /** WebP quality for all new uploads (lightweight standard). */
 const UPLOAD_WEBP_QUALITY = 75;
@@ -346,18 +468,23 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/customer\/auth\/check-phone$/ },
   { method: 'POST', path: /^\/customer\/auth\/start$/ },
   { method: 'POST', path: /^\/customer\/auth\/verify$/ },
+  { method: 'POST', path: /^\/customer\/save-fcm-token$/ },
   { method: 'GET', path: /^\/campaigns$/ },
   { method: 'GET', path: /^\/delivery\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: 'GET', path: /^\/public\/orders\/[^/]+$/ },
   { method: 'GET', path: /^\/global-categories$/ },
   { method: 'GET', path: /^\/categories$/ },
+  { method: 'GET', path: /^\/pillars$/ },
+  { method: 'GET', path: /^\/sub-categories$/ },
   { method: 'POST', path: /^\/leads$/ },
   { method: 'GET', path: /^\/merchant\/dashboard$/ },
   { method: 'GET', path: /^\/merchant\/leads$/ },
   { method: 'POST', path: /^\/internal\/orders\/[^/]+\/status$/ },
   { method: 'GET', path: /^\/customer\/push-public-key$/ },
+  { method: 'GET', path: /^\/merchant\/push-public-key$/ },
   { method: 'GET', path: /^\/data$/ },
+  { method: 'GET', path: /^\/contest\/active$/ },
 ];
 
 function isPublicRoute(method: string, path: string): boolean {
@@ -407,6 +534,79 @@ app.use(async (req, _res, next) => {
   next();
 });
 
+/** Dev/debug: test FCM — no auth. Public URLs: POST /api/internal/test-fcm or POST /api/orders/test-fcm. Body: { "userId": "<uuid>" } or { "tenantId": "<uuid>" }. */
+async function handleTestFcm(req: express.Request, res: express.Response): Promise<void> {
+  console.log('--- TEST FCM TRIGGERED ---');
+  const body = req.body as { userId?: string; tenantId?: string };
+  const userIdRaw = body?.userId != null && typeof body.userId === 'string' ? body.userId.trim() : null;
+  const tenantIdRaw = body?.tenantId != null && typeof body.tenantId === 'string' ? body.tenantId.trim() : null;
+
+  let ownerIds: string[];
+  let label: string;
+
+  if (tenantIdRaw) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantIdRaw }, select: { name: true, marketId: true } });
+    if (!tenant) {
+      res.status(404).json({ error: 'Tenant not found', tenantId: tenantIdRaw });
+      return;
+    }
+    const marketId = tenant.marketId ?? null;
+    const users = await prisma.user.findMany({
+      where: { OR: [{ tenantId: tenantIdRaw }, ...(marketId ? [{ role: 'MARKET_ADMIN', marketId }] : [])] },
+      select: { id: true },
+    });
+    ownerIds = [...new Set(users.map((u) => u.id))];
+    label = `tenant ${tenantIdRaw} (${(tenant as { name?: string }).name ?? '?'})`;
+  } else if (userIdRaw) {
+    const user = await prisma.user.findUnique({ where: { id: userIdRaw }, select: { id: true } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found', userId: userIdRaw });
+      return;
+    }
+    ownerIds = [userIdRaw];
+    label = `user ${userIdRaw}`;
+  } else {
+    res.status(400).json({
+      error: 'userId or tenantId required in body',
+      example: '{"userId":"bb20b202-8060-48e6-bb9f-dab5f7de84a1"} or {"tenantId":"<tenant-uuid>"}',
+    });
+    return;
+  }
+
+  const tokensFromTable = await prisma.userFCMToken.findMany({
+    where: { userId: { in: ownerIds } },
+    select: { token: true },
+  });
+  const legacyUsers = await prisma.user.findMany({
+    where: { id: { in: ownerIds }, fcmToken: { not: null } },
+    select: { fcmToken: true },
+  });
+  const legacyTokens = (legacyUsers.map((u) => u.fcmToken).filter(Boolean) as string[]) ?? [];
+  const allTokens = [...new Set([...tokensFromTable.map((r) => r.token), ...legacyTokens])];
+
+  console.log('[FCM] Test send for', label, 'ownerIds:', ownerIds.length, 'tokens:', allTokens.length);
+  if (allTokens.length === 0) {
+    console.warn('[FCM] No FCM tokens for', label);
+    res.json({ ok: false, error: 'No FCM tokens for this ' + (tenantIdRaw ? 'tenant' : 'user'), ownerIds, tokens: 0 });
+    return;
+  }
+
+  const results: { token: string; success: boolean; error?: string }[] = [];
+  for (const token of allTokens) {
+    const result = await sendFCMToToken(token, {
+      title: 'اختبار تنبيه 🔔',
+      body: 'Test FCM from mock-api (internal/test-fcm)',
+      data: { type: 'test' },
+    });
+    results.push({ token: token.slice(0, 24) + '...', success: result.success, error: result.error });
+    if (result.success) console.log('[FCM] Test sent successfully to', token.slice(0, 20) + '...');
+    else console.error('[FCM] Test send failed:', result.error, 'token:', token.slice(0, 20) + '...');
+  }
+  res.json({ ok: true, label, ownerIds, sent: results.filter((r) => r.success).length, results });
+}
+app.post('/internal/test-fcm', wrapAsync(handleTestFcm));
+app.post('/orders/test-fcm', wrapAsync(handleTestFcm));
+
 /** For GET /courier/events only: accept token via ?token= (EventSource cannot set headers) */
 app.use(async (req, res, next) => {
   if (req.method !== 'GET' || req.path !== '/courier/events') return next();
@@ -424,15 +624,18 @@ app.use(async (req, res, next) => {
   next();
 });
 
-/** Require auth for non-public routes. GET /tenants, /markets, /catalog, /campaigns, /delivery, /public are allowed without token. */
+/** Require auth for non-public routes. GET /tenants, /markets, /catalog, /campaigns, /delivery, /public are allowed without token.
+ *  Customer JWT (role CUSTOMER) sets req.customer; admin JWT sets req.user. /contest/me and /contest/participate require req.customer. */
 app.use((req, res, next) => {
   if (req.path.startsWith('/uploads')) return next();
+  if (req.method === 'POST' && (req.path === '/internal/test-fcm' || req.path === '/orders/test-fcm')) return next();
   if (isPublicRoute(req.method, req.path)) return next();
   if (req.path.startsWith('/customer/') && !req.path.startsWith('/customer/auth/')) {
     if (!(req as express.Request & { customer?: unknown }).customer) return res.status(401).json({ error: 'Unauthorized' });
     return next();
   }
   if (req.user) return next();
+  if ((req as express.Request & { customer?: unknown }).customer) return next();
   if (req.method === 'POST' && (req.path === '/upload' || req.path === '/upload/banner')) {
     const hasAuth = !!req.get('Authorization');
     console.log('[Auth] 401 on POST', req.path, '- token', hasAuth ? 'present but invalid or user not found' : 'MISSING');
@@ -485,9 +688,28 @@ app.get('/auth/login', (_req, res) => {
   res.status(405).json({ error: 'Method Not Allowed. Use POST with { email, password } or { phone, code } (backdoor: 999 / 1234 for Root).' });
 });
 
+// --- App Auth (native merchant app): dedicated path, does not touch /customer/auth (web OTP flow) ---
+/** Native app login: email + password only. Returns same JWT shape as /auth/login. Use for NMD-Native-App; keeps web customer OTP flow separate. */
+app.post('/app/auth/login', wrapAsync(async (req, res) => {
+  const body = req.body as { email?: string; password?: string };
+  const email = body.email != null ? String(body.email).trim() : '';
+  const password = body.password;
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const users = await repos.users.findAll();
+  const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (!user || user.password !== password) return res.status(401).json({ error: 'Invalid email or password' });
+  const token = jwt.sign(
+    { sub: user.id, role: user.role, tenantId: user.tenantId, marketId: user.marketId },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+  res.json({ accessToken: token });
+}));
+
 app.get('/auth/me', wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const u = req.user as { id: string; email: string; role: string; marketId?: string; tenantId?: string; courierId?: string; mustChangePassword?: boolean };
+  console.log('[Auth] GET /auth/me userId=', u.id, 'role=', u.role, 'tenantId=', u.tenantId ?? '(none)');
   let tenantSlug: string | undefined;
   if (u.tenantId) {
     const tenants = await repos.tenants.findAll();
@@ -506,6 +728,59 @@ app.get('/auth/me', wrapAsync(async (req, res) => {
   });
 }));
 
+/** Register FCM token for the current user (Global Identity: token is linked to userId regardless of store). Call after login from native app. Does not modify user.tenantId or any other user fields. */
+const FCM_TOKENS_PER_USER_LIMIT = 10;
+app.put('/users/me/fcm-token', wrapAsync(async (req, res) => {
+  const raw = (req.body as { fcmToken?: string })?.fcmToken;
+  const hasAuth = !!req.user;
+  const authHeaderPresent = !!req.get('Authorization');
+  console.log('[FCM] PUT /users/me/fcm-token received', 'body.fcmToken:', raw != null ? (typeof raw === 'string' ? raw.slice(0, 32) + '...' : '(not a string)') : '(missing)', 'Authorization header:', authHeaderPresent ? 'present' : 'MISSING', 'req.user:', hasAuth ? (req.user as { id: string }).id : 'none');
+  if (!req.user) {
+    console.warn('[FCM] PUT /users/me/fcm-token 401 Unauthorized (missing or invalid Bearer token)');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  if (raw != null && typeof raw !== 'string') return res.status(400).json({ error: 'fcmToken must be a string' });
+  const token = raw && raw.trim() ? raw.trim() : null;
+  const userId = (req.user as { id: string }).id;
+  console.log('[FCM] Saving token for user ID:', userId);
+  console.log('[FCM] Token [' + (token ? token.slice(0, 24) + '...' : 'clear') + '] received for User [' + userId + ']');
+  const userWithTenant = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tenantId: true },
+  });
+  const tenantId = userWithTenant?.tenantId ?? null;
+  const tenantName =
+    tenantId != null
+      ? (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }))?.name ?? tenantId
+      : null;
+  console.log('--- SAVING FCM TOKEN FOR USER:', userId, 'tenantId:', tenantId, 'tenantName:', tenantName ?? '—', token ? `token: ${token.slice(0, 24)}...` : '(clear)');
+  if (token) {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { fcmToken: token } });
+      const existing = await tx.userFCMToken.findUnique({ where: { token } });
+      if (existing) {
+        if (existing.userId !== userId) await tx.userFCMToken.update({ where: { token }, data: { userId } });
+      } else {
+        await tx.userFCMToken.create({ data: { userId, token } });
+      }
+      const count = await tx.userFCMToken.count({ where: { userId } });
+      if (count > FCM_TOKENS_PER_USER_LIMIT) {
+        const oldest = await tx.userFCMToken.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'asc' },
+          take: count - FCM_TOKENS_PER_USER_LIMIT,
+        });
+        await tx.userFCMToken.deleteMany({ where: { id: { in: oldest.map((r) => r.id) } } });
+      }
+    });
+    console.log('[FCM] Saved token to both User.fcmToken and UserFCMToken for user ID:', userId);
+  } else {
+    await prisma.user.update({ where: { id: userId }, data: { fcmToken: null } });
+    await prisma.userFCMToken.deleteMany({ where: { userId } });
+  }
+  res.json({ ok: true });
+}));
+
 // --- Customer OTP auth: unified signup/login (name + phone for new). No POST /auth/register — admin stays on POST /auth/login. ---
 app.get('/customer/auth/check-phone', async (req, res) => {
   const phone = req.query.phone as string | undefined;
@@ -516,6 +791,86 @@ app.get('/customer/auth/check-phone', async (req, res) => {
   const exists = customers.some((c) => normalizePhoneForMatch(c.phone) === key);
   res.json({ exists });
 });
+
+// Ops: check if WhatsApp OTP gateway is reachable and ready (for debugging delayed OTP). No auth.
+app.get('/customer/auth/otp-gateway-health', async (_req, res) => {
+  const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || '').replace(/\/$/, '');
+  if (!gatewayUrl) {
+    return res.json({ gatewayConfigured: false, gatewayReachable: false, ready: false });
+  }
+  try {
+    const healthRes = await fetch(`${gatewayUrl}/health`, { method: 'GET' });
+    const data = (await healthRes.json().catch(() => ({}))) as { ready?: boolean };
+    res.json({
+      gatewayConfigured: true,
+      gatewayReachable: healthRes.ok,
+      ready: healthRes.ok && data.ready === true,
+    });
+  } catch (e) {
+    res.json({
+      gatewayConfigured: true,
+      gatewayReachable: false,
+      ready: false,
+      error: e instanceof Error ? e.message : 'Request failed',
+    });
+  }
+});
+
+// WhatsApp OTP gateway: set WHATSAPP_GATEWAY_URL and WA_API_KEY. If OTP is delayed, check gateway GET /health and provider status page.
+async function sendOtpViaGateway(
+  gatewayUrl: string,
+  waApiKey: string,
+  phone: string,
+  code: string,
+  retries = 1
+): Promise<{ sent: boolean; status?: number; error?: string }> {
+  const url = `${gatewayUrl}/send-otp`;
+  const gatewayHost = gatewayUrl.replace(/^https?:\/\//, '').split('/')[0] || 'gateway';
+  const opts: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': waApiKey },
+    body: JSON.stringify({ phone, code }),
+  };
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const sendRes = await fetch(url, opts);
+      if (sendRes.ok) {
+        return { sent: true };
+      }
+      const errText = await sendRes.text();
+      console.warn(
+        `[customer/auth/start] WhatsApp send-otp failed (attempt ${attempt + 1}/${retries + 1}):`,
+        sendRes.status,
+        gatewayHost,
+        errText.slice(0, 200)
+      );
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      console.warn(
+        '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
+      );
+      return { sent: false, status: sendRes.status, error: errText.slice(0, 100) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `[customer/auth/start] WhatsApp send-otp error (attempt ${attempt + 1}/${retries + 1}):`,
+        gatewayHost,
+        msg
+      );
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      console.warn(
+        '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
+      );
+      return { sent: false, error: msg };
+    }
+  }
+  return { sent: false };
+}
 
 app.post('/customer/auth/start', async (req, res) => {
   const { phone } = req.body as { phone?: string };
@@ -535,23 +890,13 @@ app.post('/customer/auth/start', async (req, res) => {
   }
   const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || '').replace(/\/$/, '');
   const waApiKey = process.env.WA_API_KEY;
+  let whatsAppSent = false;
   if (gatewayUrl && waApiKey && result.codeForSending) {
-    try {
-      const sendRes = await fetch(`${gatewayUrl}/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': waApiKey },
-        body: JSON.stringify({ phone: normalized, code: result.codeForSending }),
-      });
-      if (!sendRes.ok) {
-        const errText = await sendRes.text();
-        console.warn('[customer/auth/start] WhatsApp send-otp failed:', sendRes.status, errText);
-      }
-    } catch (e) {
-      console.warn('[customer/auth/start] WhatsApp send-otp error:', e instanceof Error ? e.message : e);
-    }
+    const sendResult = await sendOtpViaGateway(gatewayUrl, waApiKey, normalized, result.codeForSending, 1);
+    whatsAppSent = sendResult.sent;
   }
   if (result.devCode) console.log('[customer/auth/start] 200 → OTP sent (see [OTP] log above or client toast)');
-  res.json({ ok: true, ...(result.devCode && { devCode: result.devCode }) });
+  res.json({ ok: true, whatsAppSent, ...(result.devCode && { devCode: result.devCode }) });
 });
 
 function normalizePhoneForMatch(phone: string): string {
@@ -612,27 +957,140 @@ app.patch('/customer/profile', async (req, res) => {
   res.json({ customer: { id: updated.id, phone: updated.phone, name: updated.name } });
 });
 
+app.put('/customer/me/fcm-token', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const raw = (req.body as { fcmToken?: string })?.fcmToken;
+  const token = raw != null && typeof raw === 'string' ? raw.trim() : null;
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const updated = { ...customers[idx], fcmToken: token || null };
+  customers[idx] = updated;
+  await repos.customers.setAll(customers);
+  console.log('[FCM] Customer fcm-token saved for customer ID:', customer.id);
+  res.status(204).send();
+}));
+
+/** Android app: save FCM token after OTP login. Uses CustomerFCMToken (DB) or customer.fcmToken (JSON).
+ *  For testing: route is public; use Bearer JWT (req.customer) or body.customerId to identify customer. */
+app.post('/customer/save-fcm-token', wrapAsync(async (req, res) => {
+  const customerFromAuth = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
+  const body = req.body as { fcmToken?: string; customerId?: string };
+  const customerId = customerFromAuth?.id ?? (typeof body.customerId === 'string' ? body.customerId.trim() : undefined);
+  if (!customerId) return res.status(401).json({ error: 'Unauthorized or provide customerId in body for testing' });
+  const raw = body.fcmToken;
+  const token = raw != null && typeof raw === 'string' ? raw.trim() : null;
+  if (!token) return res.status(400).json({ error: 'fcmToken required' });
+  const isDb = (process.env.STORAGE_DRIVER ?? '').toLowerCase() === 'db';
+  if (isDb) {
+    await prisma.customerFCMToken.deleteMany({ where: { customerId } });
+    await prisma.customerFCMToken.upsert({
+      where: { token },
+      create: { customerId, token },
+      update: { customerId },
+    });
+    console.log('[FCM] Customer FCM token saved (DB) for customer ID:', customerId);
+  } else {
+    const customers = await repos.customers.findAll();
+    const idx = customers.findIndex((c) => c.id === customerId);
+    if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+    const updated = { ...customers[idx], fcmToken: token };
+    customers[idx] = updated;
+    await repos.customers.setAll(customers);
+    console.log('[FCM] Customer fcm-token saved (JSON) for customer ID:', customerId);
+  }
+  res.status(204).send();
+}));
+
 app.get('/customer/push-public-key', (_req, res) => {
   res.json({ publicKey: getVapidPublicKey() });
 });
 
-app.post('/customer/push-subscription', async (req, res) => {
-  console.log('[Push] POST /customer/push-subscription received, Authorization:', req.headers.authorization ? 'present' : 'missing');
-  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
-  if (!customer) {
-    console.log('[Push] 401 Unauthorized: no customer on request');
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const body = req.body as { subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; expirationTime?: number | null } };
+app.get('/merchant/push-public-key', (_req, res) => {
+  res.json({ publicKey: getVapidPublicKey() });
+});
+
+app.post('/merchant/push-subscription', async (req, res) => {
+  const u = req.user as { tenantId?: string; role?: string; marketId?: string } | undefined;
+  if (!u) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as { subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; expirationTime?: number | null }; tenantId?: string };
   const sub = body?.subscription;
   if (!sub || !sub.endpoint) return res.status(400).json({ error: 'subscription with endpoint required' });
+  let tenantId = body.tenantId ?? u.tenantId;
+  if (!tenantId) return res.status(400).json({ error: 'tenantId required (or login as tenant admin)' });
+  if (u.role === 'TENANT_ADMIN' && u.tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden: can only subscribe for your store' });
+  if (u.role === 'MARKET_ADMIN' && u.marketId) {
+    const tenants = await repos.tenants.findAll();
+    const tenant = tenants.find((t) => t.id === tenantId && (t as { marketId?: string }).marketId === u.marketId);
+    if (!tenant) return res.status(403).json({ error: 'Forbidden: tenant not in your market' });
+  }
   const subscription = {
     endpoint: sub.endpoint,
     keys: sub.keys ? { p256dh: sub.keys.p256dh, auth: sub.keys.auth } : undefined,
     expirationTime: sub.expirationTime ?? null,
   };
-  saveSubscription(customer.phone, subscription);
+  saveAdminSubscription(tenantId, subscription);
   res.json({ ok: true });
+});
+
+app.post('/merchant/push-test', async (req, res) => {
+  const u = req.user as { tenantId?: string; role?: string; marketId?: string } | undefined;
+  if (!u) return res.status(401).json({ error: 'Unauthorized' });
+  let tenantId = u.tenantId;
+  if (!tenantId) return res.status(400).json({ error: 'No tenant for this user; open a store first' });
+  const subs = getSubscriptionsByTenant(tenantId);
+  if (subs.length === 0) return res.status(404).json({ error: 'No push subscriptions for this store; allow notifications and reopen the app' });
+  const payload = { title: 'طلب جديد وصل! 🔔', body: 'لديك طلب جديد ينتظر القبول في متجر دبورية' };
+  try {
+    await Promise.all(subs.map((sub) => sendPushNotification(sub, payload)));
+    res.json({ ok: true, sent: subs.length });
+  } catch (e) {
+    console.error('[Push] Test send failed:', e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Push send failed' });
+  }
+});
+
+app.post('/customer/push-subscription', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  const hasAuth = !!req.headers.authorization;
+  if (!customer) {
+    console.log('[Push] POST /customer/push-subscription 401 – no customer (auth header present:', hasAuth, ')');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const body = req.body as {
+    subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; expirationTime?: number | null };
+    phone?: string;
+  };
+  const sub = body?.subscription;
+  if (!sub || !sub.endpoint) {
+    console.log('[Push] POST /customer/push-subscription 400 – subscription with endpoint required');
+    return res.status(400).json({ error: 'subscription with endpoint required' });
+  }
+  const phoneFromBody = typeof body.phone === 'string' ? body.phone.trim() : '';
+  if (!phoneFromBody) {
+    console.log('[Push] POST /customer/push-subscription 400 – phone required in body');
+    return res.status(400).json({ error: 'phone required in body for customer push subscription' });
+  }
+  const normalizedBody = phoneFromBody.replace(/\D/g, '');
+  const normalizedCustomer = customer.phone.replace(/\D/g, '');
+  if (normalizedBody !== normalizedCustomer) {
+    console.log('[Push] POST /customer/push-subscription 403 – phone mismatch body vs customer');
+    return res.status(403).json({ error: 'Phone in body does not match authenticated customer' });
+  }
+  const subscription = {
+    endpoint: sub.endpoint,
+    keys: sub.keys ? { p256dh: sub.keys.p256dh, auth: sub.keys.auth } : undefined,
+    expirationTime: sub.expirationTime ?? null,
+  };
+  try {
+    saveSubscription(customer.phone, subscription);
+    console.log('[Push] Customer subscription saved under phone key ***' + customer.phone.replace(/\D/g, '').slice(-4));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Push] Customer subscription save threw:', err);
+    res.status(500).json({ error: 'Failed to save subscription' });
+  }
 });
 
 app.get('/customer/activity', wrapAsync(async (req, res) => {
@@ -654,6 +1112,364 @@ app.get('/customer/activity', wrapAsync(async (req, res) => {
     return { ...l, tenantName: t?.name, tenantSlug: (t as { slug?: string })?.slug };
   });
   res.json({ orders: ordersWithTenant, leads: leadsWithTenant });
+}));
+
+// --- Contest & Prediction (logged-in customers only; DB/Prisma) ---
+app.get('/contest/active', wrapAsync(async (_req, res) => {
+  const now = new Date().toISOString();
+  const contest = await prisma.contest.findFirst({
+    where: {
+      isActive: true,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!contest) return res.json(null);
+  res.json({
+    id: contest.id,
+    title: contest.title,
+    description: contest.description,
+    type: contest.type,
+    options: contest.options ? (JSON.parse(contest.options) as { id: string; label: string }[]) : [],
+    rewardCode: contest.rewardCode,
+    bannerImageUrl: contest.bannerImageUrl ?? undefined,
+    teamAName: contest.teamAName ?? undefined,
+    teamBName: contest.teamBName ?? undefined,
+    isPrediction: contest.isPrediction ?? false,
+    finalScoreA: contest.finalScoreA ?? undefined,
+    finalScoreB: contest.finalScoreB ?? undefined,
+    expiresAt: contest.expiresAt,
+  });
+}));
+
+app.post('/contest/participate', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as { contestId?: string; userAnswer?: string; scoreA?: number; scoreB?: number };
+  const contestId = String(body?.contestId ?? '').trim();
+  const contest = await prisma.contest.findUnique({ where: { id: contestId } });
+  if (!contest || !contest.isActive) return res.status(404).json({ error: 'Contest not found or inactive' });
+  const now = new Date().toISOString();
+  if (contest.expiresAt && contest.expiresAt < now) return res.status(400).json({ error: 'Contest has expired' });
+  const existing = await prisma.contestParticipation.findUnique({
+    where: { customerId_contestId: { customerId: customer.id, contestId } },
+  });
+  if (existing) return res.status(400).json({ error: 'Already participated', participation: { id: existing.id, isWinner: existing.isWinner } });
+
+  let userAnswer: string;
+  let scoreA: number | null = null;
+  let scoreB: number | null = null;
+  if (contest.isPrediction) {
+    const a = typeof body?.scoreA === 'number' ? body.scoreA : parseInt(String(body?.scoreA ?? ''), 10);
+    const b = typeof body?.scoreB === 'number' ? body.scoreB : parseInt(String(body?.scoreB ?? ''), 10);
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) return res.status(400).json({ error: 'scoreA and scoreB required (non-negative integers) for match prediction' });
+    scoreA = a;
+    scoreB = b;
+    userAnswer = `${scoreA}-${scoreB}`;
+  } else {
+    userAnswer = String(body?.userAnswer ?? '').trim();
+    if (!userAnswer) return res.status(400).json({ error: 'contestId and userAnswer required' });
+  }
+
+  const correctAnswer = contest.correctAnswer?.trim();
+  const finalA = contest.finalScoreA;
+  const finalB = contest.finalScoreB;
+  const isWinner = contest.type === 'QUESTION'
+    ? !!correctAnswer && userAnswer === correctAnswer
+    : contest.isPrediction && finalA != null && finalB != null && scoreA === finalA && scoreB === finalB;
+
+  const participation = await prisma.contestParticipation.create({
+    data: {
+      id: `cp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      customerId: customer.id,
+      contestId,
+      userAnswer,
+      scoreA: scoreA ?? undefined,
+      scoreB: scoreB ?? undefined,
+      isWinner,
+      createdAt: now,
+    },
+  });
+  res.status(201).json({
+    id: participation.id,
+    isWinner,
+    rewardCode: isWinner ? contest.rewardCode : undefined,
+  });
+}));
+
+app.get('/contest/me', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const list = await prisma.contestParticipation.findMany({
+    where: { customerId: customer.id },
+    include: { contest: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(list.map((p) => ({ contestId: p.contestId, userAnswer: p.userAnswer, isWinner: p.isWinner, rewardCode: p.contest.rewardCode ?? undefined, createdAt: p.createdAt })));
+}));
+
+// --- Admin: Contests CRUD + Enter Result (platform admin) ---
+function requireContestAdmin(req: express.Request, res: express.Response): boolean {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
+
+function contestToJson(c: { id: string; title: string; description: string | null; type: string; options: string | null; correctAnswer: string | null; isActive: boolean; rewardCode: string | null; bannerImageUrl: string | null; teamAName: string | null; teamBName: string | null; isPrediction: boolean | null; finalScoreA: number | null; finalScoreB: number | null; expiresAt: string | null; createdAt: string }) {
+  return {
+    id: c.id,
+    title: c.title,
+    description: c.description,
+    type: c.type,
+    options: c.options ? JSON.parse(c.options) : [],
+    correctAnswer: c.correctAnswer,
+    isActive: c.isActive,
+    rewardCode: c.rewardCode,
+    bannerImageUrl: c.bannerImageUrl ?? undefined,
+    teamAName: c.teamAName ?? undefined,
+    teamBName: c.teamBName ?? undefined,
+    isPrediction: c.isPrediction ?? false,
+    finalScoreA: c.finalScoreA ?? undefined,
+    finalScoreB: c.finalScoreB ?? undefined,
+    expiresAt: c.expiresAt,
+    createdAt: c.createdAt,
+  };
+}
+
+app.get('/contests', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const list = await prisma.contest.findMany({ orderBy: { createdAt: 'desc' } });
+  res.json(list.map(contestToJson));
+}));
+
+app.post('/contests', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const body = req.body as { title: string; description?: string; type: 'QUESTION' | 'PREDICTION'; options?: { id: string; label: string }[]; correctAnswer?: string; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string };
+  const title = String(body?.title ?? '').trim();
+  if (!title) return res.status(400).json({ error: 'title required' });
+  const type = body.type === 'PREDICTION' ? 'PREDICTION' : 'QUESTION';
+  const isPrediction = !!body?.isPrediction;
+  const id = `contest-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const now = new Date().toISOString();
+  await prisma.contest.create({
+    data: {
+      id,
+      title,
+      description: body.description?.trim() ?? null,
+      type,
+      options: !isPrediction && body.options && body.options.length > 0 ? JSON.stringify(body.options) : null,
+      correctAnswer: body.correctAnswer?.trim() ?? null,
+      isActive: true,
+      rewardCode: body.rewardCode?.trim() ?? null,
+      bannerImageUrl: body.bannerImageUrl?.trim() || null,
+      teamAName: body.teamAName?.trim() || null,
+      teamBName: body.teamBName?.trim() || null,
+      isPrediction,
+      expiresAt: body.expiresAt?.trim() || null,
+      createdAt: now,
+    },
+  });
+  const c = await prisma.contest.findUnique({ where: { id } });
+  res.status(201).json(c ? contestToJson(c) : { id });
+}));
+
+app.put('/contests/:id', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as { title?: string; description?: string; options?: { id: string; label: string }[]; correctAnswer?: string; isActive?: boolean; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string; finalScoreA?: number; finalScoreB?: number };
+  const existing = await prisma.contest.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Contest not found' });
+  await prisma.contest.update({
+    where: { id },
+    data: {
+      ...(body.title !== undefined && { title: body.title.trim() }),
+      ...(body.description !== undefined && { description: body.description?.trim() ?? null }),
+      ...(body.options !== undefined && { options: body.options?.length ? JSON.stringify(body.options) : null }),
+      ...(body.correctAnswer !== undefined && { correctAnswer: body.correctAnswer?.trim() ?? null }),
+      ...(body.isActive !== undefined && { isActive: !!body.isActive }),
+      ...(body.rewardCode !== undefined && { rewardCode: body.rewardCode?.trim() ?? null }),
+      ...(body.bannerImageUrl !== undefined && { bannerImageUrl: body.bannerImageUrl?.trim() || null }),
+      ...(body.expiresAt !== undefined && { expiresAt: body.expiresAt?.trim() || null }),
+      ...(body.isPrediction !== undefined && { isPrediction: !!body.isPrediction }),
+      ...(body.teamAName !== undefined && { teamAName: body.teamAName?.trim() || null }),
+      ...(body.teamBName !== undefined && { teamBName: body.teamBName?.trim() || null }),
+      ...(body.finalScoreA !== undefined && { finalScoreA: Number.isInteger(body.finalScoreA) ? body.finalScoreA : null }),
+      ...(body.finalScoreB !== undefined && { finalScoreB: Number.isInteger(body.finalScoreB) ? body.finalScoreB : null }),
+    },
+  });
+  const c = await prisma.contest.findUnique({ where: { id } });
+  res.json(c ? contestToJson(c) : { id });
+}));
+
+app.delete('/contests/:id', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  await prisma.contest.delete({ where: { id } }).catch((e: { code?: string }) => {
+    if (e.code === 'P2025') return null;
+    throw e;
+  });
+  res.status(204).end();
+}));
+
+app.post('/contests/:id/result', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as { correctAnswer?: string; finalScoreA?: number; finalScoreB?: number };
+  const contest = await prisma.contest.findUnique({ where: { id } });
+  if (!contest) return res.status(404).json({ error: 'Contest not found' });
+  if (contest.type !== 'PREDICTION') return res.status(400).json({ error: 'Only PREDICTION contests can have result set' });
+
+  if (contest.isPrediction) {
+    const finalScoreA = typeof body?.finalScoreA === 'number' ? body.finalScoreA : parseInt(String(body?.finalScoreA ?? ''), 10);
+    const finalScoreB = typeof body?.finalScoreB === 'number' ? body.finalScoreB : parseInt(String(body?.finalScoreB ?? ''), 10);
+    if (!Number.isInteger(finalScoreA) || !Number.isInteger(finalScoreB) || finalScoreA < 0 || finalScoreB < 0) return res.status(400).json({ error: 'finalScoreA and finalScoreB required (non-negative integers) for match prediction' });
+    const correctAnswer = `${finalScoreA}-${finalScoreB}`;
+    await prisma.contest.update({ where: { id }, data: { correctAnswer, finalScoreA, finalScoreB } });
+    const updated = await prisma.contestParticipation.updateMany({
+      where: { contestId: id, scoreA: finalScoreA, scoreB: finalScoreB },
+      data: { isWinner: true },
+    });
+    return res.json({ correctAnswer, finalScoreA, finalScoreB, winnersCount: updated.count });
+  }
+
+  const correctAnswer = String(body?.correctAnswer ?? '').trim();
+  if (!correctAnswer) return res.status(400).json({ error: 'correctAnswer required' });
+  await prisma.contest.update({ where: { id }, data: { correctAnswer } });
+  const updated = await prisma.contestParticipation.updateMany({
+    where: { contestId: id, userAnswer: correctAnswer },
+    data: { isWinner: true },
+  });
+  res.json({ correctAnswer, winnersCount: updated.count });
+}));
+
+app.get('/contests/:id/participations', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  const contest = await prisma.contest.findUnique({ where: { id } });
+  if (!contest) return res.status(404).json({ error: 'Contest not found' });
+  const list = await prisma.contestParticipation.findMany({ where: { contestId: id }, orderBy: { createdAt: 'desc' } });
+  const customers = await repos.customers.findAll();
+  const rows = list.map((p) => {
+    const c = customers.find((x) => x.id === p.customerId);
+    return { id: p.id, customerId: p.customerId, customerPhone: c?.phone, customerName: c?.name, userAnswer: p.userAnswer, scoreA: p.scoreA ?? undefined, scoreB: p.scoreB ?? undefined, isWinner: p.isWinner, createdAt: p.createdAt };
+  });
+  res.json({
+    contest: { id: contest.id, title: contest.title, type: contest.type, correctAnswer: contest.correctAnswer, isPrediction: contest.isPrediction ?? false, finalScoreA: contest.finalScoreA ?? undefined, finalScoreB: contest.finalScoreB ?? undefined },
+    participations: rows,
+  });
+}));
+
+// --- Coupons (winner / promo codes; validate at checkout) ---
+function normalizePhoneForCoupon(phone: string | undefined): string {
+  return String(phone ?? '').replace(/\D/g, '').trim();
+}
+
+app.get('/coupons/validate', wrapAsync(async (req, res) => {
+  const code = (req.query.code as string)?.trim()?.toUpperCase();
+  const tenantId = (req.query.tenantId as string)?.trim() || undefined;
+  const cartStoreIds = (req.query.cartStoreIds as string)?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  const subtotal = Number(req.query.subtotal) || 0;
+  const customerPhone = normalizePhoneForCoupon(req.query.customerPhone as string);
+
+  if (!code) return res.status(400).json({ valid: false, error: 'code required' });
+
+  const coupon = await prisma.coupon.findUnique({ where: { code } });
+  if (!coupon) return res.json({ valid: false, error: 'الكود غير صحيح' });
+  if (coupon.usedAt) return res.json({ valid: false, error: 'الكود مستخدم مسبقاً' });
+  if (coupon.expiresAt && coupon.expiresAt < new Date().toISOString()) return res.json({ valid: false, error: 'انتهت صلاحية الكود' });
+  if (coupon.tenantId && tenantId && coupon.tenantId !== tenantId) return res.json({ valid: false, error: 'الكود غير صالح لهذا المتجر' });
+
+  if (coupon.storeId) {
+    const allStoreIds = cartStoreIds.length > 0 ? cartStoreIds : (tenantId ? [tenantId] : []);
+    if (allStoreIds.length > 0 && !allStoreIds.includes(coupon.storeId)) {
+      const store = await prisma.tenant.findUnique({ where: { id: coupon.storeId }, select: { name: true } }).catch(() => null);
+      const storeName = store?.name ?? coupon.storeId;
+      return res.json({ valid: false, error: `هذا الكود صالح فقط لمتجر ${storeName}` });
+    }
+  }
+
+  if (coupon.oneTimeUse && coupon.winnerPhone) {
+    const normalized = normalizePhoneForCoupon(coupon.winnerPhone);
+    if (normalized && customerPhone && normalized !== customerPhone) return res.json({ valid: false, error: 'الكود غير صالح لهذا الرقم' });
+  }
+
+  let discountAmount = 0;
+  if (coupon.type === 'FIXED') discountAmount = Math.min(Number(coupon.value), subtotal);
+  else if (coupon.type === 'PERCENT') discountAmount = Math.min((subtotal * Number(coupon.value)) / 100, subtotal);
+  if (discountAmount <= 0) return res.json({ valid: false, error: 'الحد الأدنى للطلب غير محقق' });
+
+  res.json({
+    valid: true,
+    coupon: { id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value, discountAmount, storeId: coupon.storeId ?? undefined },
+  });
+}));
+
+app.get('/customer/rewards', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.json([]);
+
+  const now = new Date().toISOString();
+  const list = await prisma.coupon.findMany({
+    where: {
+      winnerPhone: { not: null },
+      usedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  const forCustomer = list.filter((c) => normalizePhoneForCoupon(c.winnerPhone ?? '') === phoneNorm);
+  res.json(forCustomer.map((c) => ({ id: c.id, code: c.code, type: c.type, value: c.value, expiresAt: c.expiresAt ?? undefined })));
+}));
+
+app.post('/coupons', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+
+  const body = req.body as { code: string; type: 'FIXED' | 'PERCENT'; value: number; tenantId?: string; storeId?: string; oneTimeUse?: boolean; winnerPhone?: string; expiresAt?: string };
+  const code = String(body?.code ?? '').trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: 'code required' });
+  const type = body?.type === 'PERCENT' ? 'PERCENT' : 'FIXED';
+  const value = Number(body?.value);
+  if (Number.isNaN(value) || value <= 0) return res.status(400).json({ error: 'value must be a positive number' });
+  if (type === 'PERCENT' && value > 100) return res.status(400).json({ error: 'percent value must be 1-100' });
+
+  const existing = await prisma.coupon.findUnique({ where: { code } });
+  if (existing) return res.status(409).json({ error: 'Coupon code already exists' });
+
+  const id = `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const now = new Date().toISOString();
+  await prisma.coupon.create({
+    data: {
+      id,
+      code,
+      type,
+      value,
+      tenantId: body?.tenantId?.trim() || null,
+      storeId: body?.storeId?.trim() || null,
+      oneTimeUse: !!body?.oneTimeUse,
+      winnerPhone: body?.winnerPhone?.trim() || null,
+      createdAt: now,
+      expiresAt: body?.expiresAt?.trim() || null,
+    },
+  });
+  const created = await prisma.coupon.findUnique({ where: { id } });
+  const winnerPhone = body?.winnerPhone?.trim();
+  if (winnerPhone) {
+    sendWhatsAppNotification(winnerPhone, code);
+  }
+  res.status(201).json(created);
+}));
+
+app.get('/coupons', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const list = await prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
+  res.json(list);
 }));
 
 // --- Courier portal (COURIER role only) ---
@@ -687,11 +1503,11 @@ app.get('/courier/me', async (req, res) => {
 /** Enrich delivery orders for courier API (tenant, customer, payment, delivery zone/area). */
 function enrichCourierOrders(
   orders: { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown>; delivery?: { zoneName?: string; addressText?: string } }[],
-  tenants: { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[]
+  tenants: { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number }; categoryId?: string }[]
 ): Record<string, unknown>[] {
   return orders.map((o) => {
     const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : undefined;
-    const tenant = t ? { name: t.name ?? '', phone: t.whatsappPhone, address: t.addressLine, location: t.location } : { name: '', phone: undefined, address: undefined, location: undefined };
+    const tenant = t ? { name: t.name ?? '', phone: t.whatsappPhone, address: t.addressLine, location: t.location, categoryId: t.categoryId } : { name: '', phone: undefined, address: undefined, location: undefined, categoryId: undefined };
     const deliveryZoneName = (o.delivery as { zoneName?: string } | undefined)?.zoneName ?? '';
     const customer = { name: o.customerName ?? '', phone: o.customerPhone ?? '', deliveryAddress: o.deliveryAddress ?? '', deliveryLocation: o.deliveryLocation, deliveryZoneName };
     const currency = o.currency ?? 'ILS';
@@ -947,6 +1763,32 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   res.json(orders[idx]);
 });
 
+/** Courier heartbeat: update order's courierLocation when ON_THE_WAY (PICKED_UP). Used for live tracking. */
+app.patch('/courier/orders/:orderId/location', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const { orderId } = req.params;
+  const body = (req.body ?? {}) as { lat?: number; lng?: number };
+  const lat = typeof body.lat === 'number' ? body.lat : undefined;
+  const lng = typeof body.lng === 'number' ? body.lng : undefined;
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'Missing or invalid lat/lng', code: 'BAD_REQUEST' });
+  }
+  const orders = (await repos.orders.findAll()) as { id?: string; courierId?: string; deliveryStatus?: string }[];
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const order = orders[idx];
+  if (order.courierId !== scope.courierId) return res.status(403).json({ error: 'Order not assigned to you', code: 'FORBIDDEN' });
+  const deliveryStatus = order.deliveryStatus ?? 'UNASSIGNED';
+  if (deliveryStatus !== 'PICKED_UP') {
+    return res.status(400).json({ error: 'Location updates only when order is on the way (PICKED_UP)', code: 'INVALID_STATE' });
+  }
+  const updated = { ...order, courierLocation: { lat, lng } };
+  orders[idx] = updated;
+  await repos.orders.setAll(orders);
+  res.json(updated);
+}));
+
 /** SSE: courier events. Emits when order assigned to this courier. Auth via Bearer or ?token= query.
  *  Test: open courier app, login, SSE connects without 401. */
 const courierEventListeners = new Map<string, (data: string) => void>();
@@ -954,7 +1796,7 @@ const courierEventListeners = new Map<string, (data: string) => void>();
 app.get('/courier/events', async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
@@ -979,6 +1821,22 @@ export function emitCourierAssigned(courierId: string, order: { id?: string; ten
 export function emitCourierUnassigned(courierId: string, orderId: string) {
   const send = courierEventListeners.get(courierId);
   if (send) send(JSON.stringify({ type: 'order_unassigned', orderId }));
+}
+
+/** Broadcast to all couriers in a market: new delivery order is in the global dispatch pool (available to accept). */
+export function emitOrderAvailableForMarket(marketId: string, orderId: string, couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
+  const marketCourierIds = couriers.filter((c) => (c.scopeType === 'MARKET' && (c.marketId ?? c.scopeId) === marketId)).map((c) => c.id).filter(Boolean);
+  const payload = JSON.stringify({ type: 'order_available', orderId });
+  for (const cid of marketCourierIds) {
+    const send = courierEventListeners.get(cid);
+    if (send) {
+      try {
+        send(payload);
+      } catch {
+        courierEventListeners.delete(cid);
+      }
+    }
+  }
 }
 
 /** Broadcast to all couriers in a market: order is READY for pickup (open-market call to action). */
@@ -1017,10 +1875,11 @@ app.post('/auth/change-password', async (req, res) => {
   res.json({ ok: true });
 });
 
-/** ROOT_ADMIN/SUPER_ADMIN: require emergency mode for writes. MARKET_ADMIN: always allowed (scope checked elsewhere). */
+/** ROOT_ADMIN: require emergency mode for writes. SUPER_ADMIN: always allowed (ghost mode). MARKET_ADMIN: always allowed (scope checked elsewhere). */
 function requireWrite(req: express.Request): boolean {
   const user = req.user;
   if (!user) return false;
+  if (user.role === 'SUPER_ADMIN') return true;
   if (user.role === 'MARKET_ADMIN') return true;
   if (isPlatformAdmin(user.role)) {
     const em = (req as express.Request & { emergencyMode?: boolean }).emergencyMode;
@@ -1033,12 +1892,13 @@ function getEmergencyReason(req: express.Request): string {
   return (req as express.Request & { emergencyReason?: string }).emergencyReason?.trim() ?? '';
 }
 
-/** For ROOT_ADMIN writes: require emergency mode + non-empty reason. Returns false and sends response if invalid. */
+/** For ROOT_ADMIN writes: require emergency mode + non-empty reason. SUPER_ADMIN bypasses (no reason required). Returns false and sends response if invalid. */
 function requireWriteWithReason(req: express.Request, res: express.Response): boolean {
   if (!requireWrite(req)) {
     res.status(403).json({ error: 'Emergency mode required', code: 'EMERGENCY_MODE_REQUIRED' });
     return false;
   }
+  if (req.user?.role === 'SUPER_ADMIN') return true;
   if (isPlatformAdmin(req.user?.role) && !getEmergencyReason(req)) {
     res.status(400).json({ error: 'emergencyReason is required in body _meta when emergency mode is on', code: 'EMERGENCY_REASON_REQUIRED' });
     return false;
@@ -1078,6 +1938,21 @@ function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
     closeTime,
     forceClosed,
   } as RegistryTenant;
+}
+
+/** Resolve tenant's category display name from sub-category (preferred) or pillar. Aligns with Admin Tenants table. Never returns raw ID. */
+function resolveTenantCategoryName(t: { subCategoryId?: string | null; pillarId?: string | null }): string | null {
+  const subs = getSubCategories();
+  const pillars = getPillars();
+  if (t.subCategoryId) {
+    const sub = subs.find((s) => s.id === t.subCategoryId);
+    if (sub) return (sub.nameAr && sub.nameAr.trim()) || sub.name || null;
+  }
+  if (t.pillarId) {
+    const pillar = pillars.find((p) => p.id === t.pillarId);
+    if (pillar) return (pillar.nameAr && pillar.nameAr.trim()) || pillar.name || null;
+  }
+  return null;
 }
 
 // --- Leads (public POST for storefront tracking; GET requires auth) ---
@@ -1412,6 +2287,42 @@ app.get('/users', async (req, res) => {
   res.json(users);
 });
 
+/** Admin broadcast: send FCM to all customers with fcmToken. Body: { title, body }. Super Admin / platform admin only. */
+app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
+  const user = req.user as { id?: string; role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const body = req.body as { title?: string; body?: string };
+  const t = typeof body.title === 'string' ? body.title.trim() : '';
+  const b = typeof body.body === 'string' ? body.body.trim() : '';
+  if (!t && !b) return res.status(400).json({ error: 'title or body required' });
+
+  const tokens = await getAllCustomerFcmTokens();
+  const uniqueTokens = Array.from(new Set(tokens.map((tok) => tok.trim()).filter(Boolean)));
+  if (uniqueTokens.length === 0) {
+    return res.json({ sent: 0, failed: 0, message: 'No customer FCM tokens registered' });
+  }
+
+  const payload = {
+    title: t || 'إشعار',
+    body: b || '',
+  };
+  const { successCount, failureCount } = await sendFCMMulticast(uniqueTokens, payload);
+  res.json({ sent: successCount, failed: failureCount, totalTokens: uniqueTokens.length });
+}));
+
+/** Super Admin: send a manual notification to a single customer by customerId. */
+app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const body = req.body as { customerId?: string; title?: string; body?: string };
+  const customerId = (body.customerId ?? '').toString().trim();
+  if (!customerId) return res.status(400).json({ error: 'customerId required' });
+  const title = (body.title ?? '').toString().trim() || 'إشعار';
+  const msgBody = (body.body ?? '').toString().trim() || '';
+  await sendFCMNotification(customerId, title, msgBody);
+  res.json({ ok: true });
+}));
+
 /** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset only TENANT_ADMIN whose tenant is in their market. */
 app.post('/admin/users/:userId/reset-password', async (req, res) => {
   const caller = req.user;
@@ -1442,7 +2353,11 @@ app.post('/admin/users/:userId/reset-password', async (req, res) => {
   }
 
   users[idx] = { ...users[idx], password: newPassword, mustChangePassword: true };
+  console.log('Updating password for User ID:', userId, 'to:', newPassword);
   await repos.users.setAll(users);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Password updated successfully for tenant:', (target as { tenantId?: string }).tenantId ?? userId);
+  }
 
   appendAuditEvent({
     userId: caller.id,
@@ -1628,6 +2543,225 @@ app.delete('/global-categories/:id', async (req, res) => {
   res.status(204).send();
 });
 
+// --- Pillars & Sub-Categories (storefront sections; admin-managed) ---
+app.get('/pillars', (_req, res) => {
+  res.json(getPillars());
+});
+
+app.post('/pillars', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = req.body as { name: string; nameAr?: string; slug?: string; icon?: string; sortOrder?: number };
+  const id = crypto.randomUUID?.() ?? `pillar-${Date.now()}`;
+  const slug = (body.slug ?? body.name).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || id;
+  const pillar: Pillar = {
+    id,
+    name: body.name ?? '',
+    nameAr: body.nameAr != null ? String(body.nameAr).trim() || undefined : undefined,
+    slug,
+    icon: body.icon,
+    sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : getPillars().length,
+  };
+  const list = getPillars();
+  list.push(pillar);
+  setPillars(list);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'create',
+    entity: 'pillar',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    after: pillar,
+  });
+  res.status(201).json(pillar);
+});
+
+app.put('/pillars/:id', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as Partial<Omit<Pillar, 'id'>>;
+  const list = getPillars();
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Pillar not found' });
+  const before = list[idx];
+  list[idx] = { ...list[idx], ...body };
+  setPillars(list);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'update',
+    entity: 'pillar',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before,
+    after: list[idx],
+  });
+  res.json(list[idx]);
+});
+
+app.delete('/pillars/:id', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const list = getPillars();
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Pillar not found' });
+  const removed = list[idx];
+  const subs = getSubCategories().filter((s) => s.pillarId === id);
+  if (subs.length > 0) {
+    return res.status(400).json({ error: 'Cannot delete pillar: remove or reassign its sub-categories first' });
+  }
+  list.splice(idx, 1);
+  setPillars(list);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'delete',
+    entity: 'pillar',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before: removed,
+  });
+  res.status(204).send();
+});
+
+app.get('/sub-categories', (req, res) => {
+  const pillarId = (req.query.pillarId as string)?.trim();
+  let list = getSubCategories();
+  if (pillarId) list = list.filter((s) => s.pillarId === pillarId);
+  res.json(list);
+});
+
+app.post('/sub-categories', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = req.body as { pillarId: string; name: string; nameAr?: string; slug?: string; sortOrder?: number };
+  const pillarId = (body.pillarId ?? '').trim();
+  if (!pillarId) return res.status(400).json({ error: 'pillarId is required' });
+  const pillars = getPillars();
+  if (!pillars.some((p) => p.id === pillarId)) return res.status(400).json({ error: 'Pillar not found' });
+  const id = crypto.randomUUID?.() ?? `sub-${Date.now()}`;
+  const slug = (body.slug ?? body.name).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || id;
+  const sub: SubCategory = {
+    id,
+    pillarId,
+    name: body.name ?? '',
+    nameAr: body.nameAr != null ? String(body.nameAr).trim() || undefined : undefined,
+    slug,
+    sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : getSubCategories().length,
+  };
+  const list = getSubCategories();
+  list.push(sub);
+  setSubCategories(list);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'create',
+    entity: 'subCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    after: sub,
+  });
+  res.status(201).json(sub);
+});
+
+app.put('/sub-categories/:id', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as Partial<Omit<SubCategory, 'id'>>;
+  const list = getSubCategories();
+  const idx = list.findIndex((s) => s.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Sub-category not found' });
+  const before = list[idx];
+  list[idx] = { ...list[idx], ...body };
+  setSubCategories(list);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'update',
+    entity: 'subCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before,
+    after: list[idx],
+  });
+  res.json(list[idx]);
+});
+
+app.delete('/sub-categories/:id', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const list = getSubCategories();
+  const idx = list.findIndex((s) => s.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Sub-category not found' });
+  const removed = list[idx];
+  list.splice(idx, 1);
+  setSubCategories(list);
+  const tenants = await repos.tenants.findAll();
+  let changed = false;
+  for (let i = 0; i < tenants.length; i++) {
+    if (tenants[i].subCategoryId === id) {
+      (tenants[i] as RegistryTenant).subCategoryId = null;
+      changed = true;
+    }
+  }
+  if (changed) await repos.tenants.setAll(tenants);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'delete',
+    entity: 'subCategory',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before: removed,
+  });
+  res.status(204).send();
+});
+
+// --- Category policies (SLA: green/orange/red thresholds per category) ---
+app.get('/category-policies', (_req, res) => {
+  res.json(getCategoryPolicies());
+});
+
+app.patch('/category-policies/:id', async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  if (!requireWriteWithReason(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as { name?: string; greenMs?: number; orangeMs?: number; redMs?: number; isUrgent?: boolean };
+  const policies = getCategoryPolicies();
+  const idx = policies.findIndex((p) => p.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Category policy not found' });
+  const before = { ...policies[idx] };
+  if (body.name !== undefined) policies[idx].name = String(body.name).trim() || policies[idx].name;
+  if (typeof body.greenMs === 'number' && body.greenMs >= 0) policies[idx].greenMs = body.greenMs;
+  if (typeof body.orangeMs === 'number' && body.orangeMs >= 0) policies[idx].orangeMs = body.orangeMs;
+  if (typeof body.redMs === 'number' && body.redMs >= 0) policies[idx].redMs = body.redMs;
+  if (typeof body.isUrgent === 'boolean') policies[idx].isUrgent = body.isUrgent;
+  setCategoryPolicies(policies);
+  appendAuditEvent({
+    userId: req.user!.id,
+    role: req.user!.role,
+    action: 'update',
+    entity: 'categoryPolicy',
+    entityId: id,
+    reason: getEmergencyReason(req),
+    emergencyMode: true,
+    before,
+    after: policies[idx],
+  });
+  res.json(policies[idx]);
+});
+
 // --- Markets ---
 app.get('/markets', async (req, res) => {
   const user = req.user;
@@ -1645,7 +2779,7 @@ app.post('/markets', async (req, res) => {
   if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
   const body = req.body as {
-    name: string; slug: string; branding?: unknown; isActive?: boolean; sortOrder?: number;
+    name: string; slug: string; imageUrl?: string; branding?: unknown; isActive?: boolean; sortOrder?: number;
     adminEmail?: string; adminPassword?: string;
   };
   const id = crypto.randomUUID?.() ?? `market-${Date.now()}`;
@@ -1653,6 +2787,7 @@ app.post('/markets', async (req, res) => {
     id,
     name: body.name ?? '',
     slug: body.slug ?? id,
+    imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : undefined,
     branding: body.branding as Market['branding'],
     isActive: body.isActive ?? true,
     sortOrder: body.sortOrder,
@@ -1713,8 +2848,15 @@ app.put('/markets/:id', async (req, res) => {
   const idx = markets.findIndex((m) => m.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Market not found' });
   const before = markets[idx];
-  markets[idx] = { ...markets[idx], ...body };
+  if (isMarketAdminOwn && !isRoot) {
+    const { name, sortOrder, ...rest } = body;
+    if (name !== undefined || sortOrder !== undefined) return res.status(403).json({ error: 'Forbidden: only Super Admin can change display name and sort order' });
+    Object.assign(markets[idx], rest);
+  } else {
+    markets[idx] = { ...markets[idx], ...body };
+  }
   try {
+    // Persists to PostgreSQL when STORAGE_DRIVER=db (imageUrl, name, etc.). GET /markets returns same data so frontend shows update immediately.
     await repos.markets.setAll(markets);
   } catch (err) {
     console.error('[markets] Failed to persist (check file permissions, e.g. /data):', err instanceof Error ? err.message : err);
@@ -1742,6 +2884,8 @@ app.get('/markets/by-slug/:slug', async (req, res) => {
 });
 
 app.get('/markets/by-slug/:slug/banners', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
   if (!market) return res.status(404).json({ error: 'Market not found' });
   const banners = getBannersForMarket(req.params.slug);
@@ -1792,8 +2936,36 @@ app.put('/markets/by-slug/:slug/layout', async (req, res) => {
   } else {
     return res.status(400).json({ error: 'layout must be an array' });
   }
-  setLayoutForMarket(req.params.slug, layout);
-  res.json(layout);
+  const normalizedLayout = layout.map((s) => ({
+    ...s,
+    type: (s as MarketSection & { type?: string }).type === 'MARKET_GROUP' ? 'MARKET_GROUP' : 'SLIDER',
+  }));
+  setLayoutForMarket(req.params.slug, normalizedLayout);
+
+  const storeIdsInMarketGroup = new Set<string>();
+  for (const section of normalizedLayout) {
+    if (section.type === 'MARKET_GROUP') {
+      for (const id of section.storeIds) {
+        if (id && typeof id === 'string') storeIdsInMarketGroup.add(id.trim());
+      }
+    }
+  }
+  // IMPORTANT: Never remove or clear existing tenant.marketId assignments when saving layout.
+  // Layout should only *add* marketId for tenants explicitly included in MARKET_GROUP sections.
+  if (storeIdsInMarketGroup.size > 0) {
+    const tenants = await repos.tenants.findAll();
+    let changed = false;
+    for (const t of tenants) {
+      const inGroup = storeIdsInMarketGroup.has(t.id) || storeIdsInMarketGroup.has(t.slug ?? '');
+      if (inGroup && t.marketId !== market.id) {
+        (t as { marketId?: string }).marketId = market.id;
+        changed = true;
+      }
+    }
+    if (changed) await repos.tenants.setAll(tenants);
+  }
+
+  res.json(normalizedLayout);
 });
 
 app.get('/markets/:id', async (req, res) => {
@@ -1916,13 +3088,27 @@ app.put('/markets/:marketId/admin-credentials', async (req, res) => {
 app.get('/markets/:marketId/tenants', async (req, res) => {
   const { marketId } = req.params;
   const categoryId = (req.query.categoryId as string)?.trim() || (req.query.marketCategory as string)?.trim();
-  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  const allMarkets = await repos.markets.findAll();
+  let market = allMarkets.find((m) => m.id === marketId);
+  if (!market && marketId) {
+    const slugNorm = marketId.toLowerCase().replace(/^market-/, '');
+    market = allMarkets.find(
+      (m) => m.slug === marketId || m.slug === slugNorm || (m.slug === 'dabburiyya' && (marketId === 'daburiyya' || marketId === 'dabburiyya'))
+    );
+  }
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) {
+  const resolvedMarketId = market.id;
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== resolvedMarketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  let tenants = (await repos.tenants.findAll())
-    .filter((t) => t.marketId === marketId && t.enabled && (t.isListedInMarket !== false));
+  const marketTenantIds = new Set((market as { tenantIds?: string[] }).tenantIds ?? []);
+  const allTenants = await repos.tenants.findAll();
+  let tenants = allTenants.filter(
+    (t) =>
+      (t.marketId === resolvedMarketId || t.marketId === marketId || marketTenantIds.has(t.id)) &&
+      t.enabled !== false &&
+      (t.isListedInMarket !== false)
+  );
   if (categoryId) {
     const norm = (s: string) => (s ?? '').toLowerCase();
     const globalCats = getGlobalCategories();
@@ -1936,6 +3122,9 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
   }
   tenants = tenants
     .sort((a, b) => {
+      const orderA = (a as { sortOrder?: number }).sortOrder ?? 999;
+      const orderB = (b as { sortOrder?: number }).sortOrder ?? 999;
+      if (orderA !== orderB) return orderA - orderB;
       const soA = a.marketSortOrder ?? 999;
       const soB = b.marketSortOrder ?? 999;
       if (soA !== soB) return soA - soB;
@@ -1960,12 +3149,16 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
         },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
-        operationalStatus: (n as RegistryTenant).operationalStatus,
+        operationalStatus: (n as RegistryTenant).operationalStatus === 'open' || (n as RegistryTenant).operationalStatus === 'closed' || (n as RegistryTenant).operationalStatus === 'busy' ? (n as RegistryTenant).operationalStatus : 'open',
         orderPolicy: (n as RegistryTenant).orderPolicy,
         businessHours: (n as RegistryTenant).businessHours,
         openTime: n.openTime,
         closeTime: n.closeTime,
         forceClosed: n.forceClosed,
+        overrideStatus: (n as RegistryTenant).overrideStatus ?? undefined,
+        pillarId: (n as RegistryTenant).pillarId ?? null,
+        subCategoryId: (n as RegistryTenant).subCategoryId ?? null,
+        categoryName: resolveTenantCategoryName(t) ?? null,
       };
     });
   res.json(tenants);
@@ -2071,13 +3264,15 @@ app.get('/tenants', async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId) {
     tenants = tenants.filter((t) => t.marketId === req.user!.marketId);
   }
+  tenants = tenants.sort((a, b) => ((a as { sortOrder?: number }).sortOrder ?? 999) - ((b as { sortOrder?: number }).sortOrder ?? 999));
   res.json(tenants.map(normalizeTenantResponse));
 });
 
-/** Storefront/Market: list active tenants with full branding */
+/** Storefront/Market: list ALL active tenants (no marketId filter) so every store stays visible. Includes marketId for grouping. */
 app.get('/storefront/tenants', async (_req, res) => {
   const tenants = (await repos.tenants.findAll())
     .filter((t) => t.enabled)
+    .sort((a, b) => ((a as { sortOrder?: number }).sortOrder ?? 0) - ((b as { sortOrder?: number }).sortOrder ?? 0))
     .map((t) => {
       const n = normalizeTenantResponse(t);
       return {
@@ -2097,6 +3292,17 @@ app.get('/storefront/tenants', async (_req, res) => {
         },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
+        marketId: (t as { marketId?: string | null }).marketId ?? null,
+        operationalStatus: (n as RegistryTenant).operationalStatus,
+        orderPolicy: (n as RegistryTenant).orderPolicy,
+        businessHours: (n as RegistryTenant).businessHours,
+        openTime: n.openTime,
+        closeTime: n.closeTime,
+        forceClosed: n.forceClosed,
+        overrideStatus: (n as RegistryTenant).overrideStatus ?? undefined,
+        pillarId: (n as RegistryTenant).pillarId ?? null,
+        subCategoryId: (n as RegistryTenant).subCategoryId ?? null,
+        categoryName: resolveTenantCategoryName(t) ?? null,
       };
     });
   res.json(tenants);
@@ -2168,6 +3374,7 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
   const { id } = req.params;
   let updates = req.body as Partial<Omit<RegistryTenant, 'id' | 'createdAt'>>;
   const user = req.user;
+  let updatedAdminPayload: { tenantId: string; email: string } | undefined;
   if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
@@ -2180,6 +3387,7 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     return;
   }
   const tenant = tenants[idx];
+  const rawUpdates = req.body as Record<string, unknown>;
 
   if (isPlatformAdmin(user.role) && !requireWriteWithReason(req, res)) return;
 
@@ -2193,20 +3401,56 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
       res.status(403).json({ error: 'Not authorized for this tenant: tenant must belong to your market' });
       return;
     }
-    // MARKET_ADMIN can only update: marketCategory, isListedInMarket, marketSortOrder, marketId (only to assign to their market)
-    const allowed = ['marketCategory', 'isListedInMarket', 'marketSortOrder', 'marketId'] as const;
+    // MARKET_ADMIN can only update: marketCategory, isListedInMarket, marketSortOrder, marketId, pillarId, subCategoryId, adminEmail, supportsWeightSelling, overrideStatus
+    const allowed = ['marketCategory', 'isListedInMarket', 'marketSortOrder', 'marketId', 'pillarId', 'subCategoryId', 'adminEmail', 'supportsWeightSelling', 'overrideStatus'] as const;
     updates = Object.fromEntries(
       Object.entries(updates).filter(([k]) => allowed.includes(k as (typeof allowed)[number]))
     ) as Partial<RegistryTenant>;
+    if (rawUpdates.pillarId !== undefined) {
+      (updates as Record<string, unknown>).pillarId = rawUpdates.pillarId === null || rawUpdates.pillarId === '' ? null : String(rawUpdates.pillarId);
+    }
+    if (rawUpdates.subCategoryId !== undefined) {
+      (updates as Record<string, unknown>).subCategoryId = rawUpdates.subCategoryId === null || rawUpdates.subCategoryId === '' ? null : String(rawUpdates.subCategoryId);
+    }
     if (updates.marketId !== undefined && normalizeId(updates.marketId) !== callerMarketId) {
       updates = { ...updates, marketId: user.marketId as string };
     }
+    delete (updates as Record<string, unknown>).adminEmail;
   }
+
+  // adminEmail is stored on User (TENANT_ADMIN), not Tenant. Apply for both ROOT_ADMIN and MARKET_ADMIN so it persists in Postgres when STORAGE_DRIVER=db.
+  const newAdminEmail = typeof rawUpdates.adminEmail === 'string' ? rawUpdates.adminEmail.trim().toLowerCase() : undefined;
+  if (newAdminEmail !== undefined && (user.role === 'MARKET_ADMIN' || isPlatformAdmin(user.role))) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[PUT /tenants/:id] adminEmail received:', newAdminEmail, 'for tenantId:', id);
+    }
+    const users = await repos.users.findAll();
+    const tenantAdminUser = users.find((u) => (u as { tenantId?: string }).tenantId === id && (u as { role?: string }).role === 'TENANT_ADMIN');
+    if (!tenantAdminUser) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[PUT /tenants/:id] No TENANT_ADMIN user found for tenantId:', id);
+      }
+      res.status(400).json({ error: 'لا يوجد حساب مدير لهذا المحل لتحديث بريده' });
+      return;
+    }
+    if (users.some((u) => u.id !== tenantAdminUser.id && u.email?.toLowerCase() === newAdminEmail)) {
+      res.status(409).json({ error: 'البريد الإلكتروني مستخدم بالفعل لحساب آخر' });
+      return;
+    }
+    (tenantAdminUser as { email?: string }).email = newAdminEmail;
+    await repos.users.setAll(users);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[PUT /tenants/:id] Updated tenant admin email for tenantId:', id, '(Postgres User table when STORAGE_DRIVER=db)');
+    }
+    updatedAdminPayload = { tenantId: id, email: newAdminEmail };
+  }
+  delete (updates as Record<string, unknown>).adminEmail;
 
   const before = { ...tenants[idx] };
   if (updates.banners !== undefined && !Array.isArray(updates.banners)) delete (updates as Record<string, unknown>).banners;
   if (updates.hero !== undefined && (typeof updates.hero !== 'object' || updates.hero === null)) delete (updates as Record<string, unknown>).hero;
   tenants[idx] = { ...tenants[idx], ...updates };
+  // Persists to PostgreSQL when STORAGE_DRIVER=db (marketId transfer, pillarId, etc. are permanent)
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
     userId: user!.id,
@@ -2220,7 +3464,11 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     before,
     after: tenants[idx],
   });
-  res.json(normalizeTenantResponse(tenants[idx]));
+  const response = normalizeTenantResponse(tenants[idx]) as Record<string, unknown>;
+  if (updatedAdminPayload) {
+    response.updatedAdmin = updatedAdminPayload;
+  }
+  res.json(response);
 }
 
 app.put('/tenants/:id', handleTenantUpdate);
@@ -2256,16 +3504,23 @@ app.post('/tenants/:id/toggle', async (req, res) => {
 });
 
 app.get('/tenants/by-id/:id', async (req, res) => {
-  const tenant = (await repos.tenants.findAll()).find((t) => t.id === req.params.id);
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-  if (req.user?.role === 'TENANT_ADMIN' && req.user.tenantId !== req.params.id) {
+  const requestedId = req.params.id;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === requestedId);
+  const uid = (req.user as { id?: string; role?: string; tenantId?: string; marketId?: string } | undefined);
+  if (!tenant) {
+    console.log('[Tenant] GET /tenants/by-id/' + requestedId + ' → 404 (tenant not found). req.user id=', uid?.id, 'tenantId=', uid?.tenantId);
+    return res.status(404).json({ error: 'Tenant not found' });
+  }
+  if (req.user?.role === 'TENANT_ADMIN' && req.user.tenantId !== requestedId) {
+    console.log('[Tenant] GET /tenants/by-id/' + requestedId + ' → 403 (TENANT_ADMIN user.tenantId=' + req.user.tenantId + ' != requested id)');
     return res.status(403).json({ error: 'Forbidden' });
   }
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
+    console.log('[Tenant] GET /tenants/by-id/' + requestedId + ' → 403 (MARKET_ADMIN marketId mismatch)');
     return res.status(403).json({ error: 'Forbidden' });
   }
-  // deliveryZones strictly scoped to this tenant (e.g. findMany({ where: { tenantId } }))
-  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id));
+  // deliveryZones strictly scoped to this tenant; normalize so centerLat/centerLng/radiusKm are always present
+  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id)).map(normalizeZoneForResponse);
   res.json({ ...normalizeTenantResponse(tenant), deliveryZones });
 });
 
@@ -2279,8 +3534,8 @@ app.get('/tenants/by-slug/:slug', async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  // deliveryZones strictly scoped to this tenant (e.g. findMany({ where: { tenantId } }))
-  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id));
+  // deliveryZones strictly scoped to this tenant; normalize so centerLat/centerLng/radiusKm are always present
+  const deliveryZones = sortZones(await repos.deliveryZones.getByTenant(tenant.id)).map(normalizeZoneForResponse);
   res.json({ ...normalizeTenantResponse(tenant), deliveryZones });
 });
 
@@ -2381,16 +3636,20 @@ app.put('/tenants/:id/collections', async (req, res) => {
 /** Updates name, about, storeType, officeHours, etc. Banners and hero are never read or written here; updating name/about does not wipe banners. */
 app.put('/tenants/:id/operational-settings', async (req, res) => {
   const { id } = req.params;
-  const user = req.user;
+  const user = req.user as { role?: string; marketId?: string; tenantId?: string } | undefined;
   const tenants = await repos.tenants.findAll();
   const t = tenants.find((x) => x.id === id);
   if (!t) return res.status(404).json({ error: 'Tenant not found' });
-  if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
+  if (user?.role === 'MARKET_ADMIN' && (t as { marketId?: string }).marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (user?.role === 'TENANT_ADMIN' && user.tenantId !== id) {
+    return res.status(403).json({ error: 'Forbidden: can only update your own store' });
   }
   if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
   const body = req.body as {
     operationalStatus?: 'open' | 'closed' | 'busy';
+    overrideStatus?: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
     orderPolicy?: 'accept_always' | 'accept_only_when_open';
     businessHours?: Record<string, { open: string; close: string; isClosedDay: boolean }>;
     busyBannerEnabled?: boolean;
@@ -2405,6 +3664,9 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     phone?: string;
     whatsappPhone?: string;
     storeType?: 'RESTAURANT' | 'PROFESSIONAL';
+    addressLine?: string;
+    location?: { lat: number; lng: number };
+    supportsWeightSelling?: boolean;
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
@@ -2418,6 +3680,10 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     tenants[idx].hero = normalizeHero({ ...existingHero, title: trimmed });
   }
   if (body.operationalStatus !== undefined) (tenants[idx] as RegistryTenant).operationalStatus = body.operationalStatus;
+  if (body.overrideStatus !== undefined) {
+    const val = body.overrideStatus;
+    (tenants[idx] as RegistryTenant).overrideStatus = (val === 'FORCE_OPEN' || val === 'FORCE_CLOSED') ? val : undefined;
+  }
   if (body.orderPolicy !== undefined) (tenants[idx] as RegistryTenant).orderPolicy = body.orderPolicy;
   if (body.businessHours !== undefined) (tenants[idx] as RegistryTenant).businessHours = body.businessHours;
   if (body.busyBannerEnabled !== undefined) (tenants[idx] as RegistryTenant).busyBannerEnabled = body.busyBannerEnabled;
@@ -2441,6 +3707,9 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (body.storeType !== undefined) {
     (tenants[idx] as RegistryTenant).storeType = body.storeType;
   }
+  if (body.addressLine !== undefined) (tenants[idx] as RegistryTenant).addressLine = body.addressLine;
+  if (body.location !== undefined) (tenants[idx] as RegistryTenant).location = body.location;
+  if (body.supportsWeightSelling !== undefined) (tenants[idx] as RegistryTenant).supportsWeightSelling = body.supportsWeightSelling;
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
@@ -2463,6 +3732,9 @@ app.delete('/tenants/:id', async (req, res) => {
   const { id } = req.params;
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role === 'TENANT_ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: only SUPER_ADMIN or MARKET_ADMIN can delete a store' });
+  }
   const tenants = await repos.tenants.findAll();
   const t = tenants.find((x) => x.id === id);
   if (!t) return res.status(404).json({ error: 'Tenant not found' });
@@ -2504,7 +3776,7 @@ app.delete('/tenants/:id', async (req, res) => {
 });
 
 // --- Upload ---
-/** Base URL for upload/image links. Set PUBLIC_URL=https://nmd.marketing/api in production to avoid mixed content. */
+/** Base URL for image links. Set PUBLIC_URL=https://nmd.marketing/api in production so Storefront gets absolute URLs. */
 const UPLOAD_BASE = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 app.post('/upload', async (req, res) => {
   const files = (req as { files?: Express.Multer.File[] }).files ?? [];
@@ -2545,7 +3817,14 @@ app.get('/catalog/:tenantId', wrapAsync(async (req, res) => {
   try {
     const tenantId = await resolveCatalogTenantId(req.params.tenantId);
     const catalog = await repos.catalog.getCatalog(tenantId);
-    res.json(catalog);
+    const sortByOrder = (a: { sortOrder?: number }, b: { sortOrder?: number }) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    const products = [...(catalog.products ?? [])].sort(sortByOrder);
+    const sorted = {
+      ...catalog,
+      categories: [...(catalog.categories ?? [])].sort(sortByOrder),
+      products,
+    };
+    res.json(sorted);
   } catch (err) {
     console.error('[catalog] getCatalog failed:', err instanceof Error ? err.message : err);
     res.status(200).json({ categories: [], products: [], optionGroups: [], optionItems: [] });
@@ -2560,6 +3839,44 @@ function normalizeProductForCompat(p: { imageUrl?: string; images?: { url: strin
   return p;
 }
 
+/** Bulk update sortOrder for categories or products (merchant reorder). */
+app.post('/bulk-sort', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as { entity: 'categories' | 'products'; tenantId: string; items: { id: string; sortOrder: number }[] };
+  const { entity, tenantId: rawTenantId, items } = body;
+  if (!entity || !rawTenantId || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'entity, tenantId, and items (array of { id, sortOrder }) required' });
+  }
+  const tenantId = await resolveCatalogTenantId(rawTenantId);
+  if (user.role === 'TENANT_ADMIN' && user.tenantId !== tenantId) {
+    return res.status(403).json({ error: 'Forbidden: tenant scope' });
+  }
+  const catalog = await repos.catalog.getCatalog(tenantId);
+  const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
+  if (entity === 'categories') {
+    const categories = (catalog.categories ?? []).map((c) => {
+      const rec = c as Record<string, unknown>;
+      const id = rec.id as string;
+      const so = orderMap.get(id);
+      return so !== undefined ? { ...rec, sortOrder: so } : rec;
+    });
+    await repos.catalog.setCatalog(tenantId, { ...catalog, categories });
+  } else if (entity === 'products') {
+    const products = (catalog.products ?? []).map((p) => {
+      const rec = p as Record<string, unknown>;
+      const id = rec.id as string;
+      const so = orderMap.get(id);
+      return so !== undefined ? { ...rec, sortOrder: so } : rec;
+    });
+    await repos.catalog.setCatalog(tenantId, { ...catalog, products });
+  } else {
+    return res.status(400).json({ error: 'entity must be categories or products' });
+  }
+  const updated = await repos.catalog.getCatalog(tenantId);
+  res.json(updated);
+}));
+
 app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
   const tenantId = await resolveCatalogTenantId(req.params.tenantId);
   const catalog = req.body as TenantCatalog;
@@ -2573,6 +3890,39 @@ app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
   await repos.catalog.setCatalog(tenantId, normalized);
   const updated = await repos.catalog.getCatalog(tenantId);
   res.json(updated);
+}));
+
+/** Option templates (reusable library) for a tenant. TENANT_ADMIN: own tenant; MARKET_ADMIN: tenants in market. */
+app.get('/tenants/:tenantId/option-templates', wrapAsync(async (req, res) => {
+  const tenantId = await resolveCatalogTenantId(req.params.tenantId);
+  const user = req.user as { role?: string; tenantId?: string; marketId?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role === 'TENANT_ADMIN' && user.tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden' });
+  if (user.role === 'MARKET_ADMIN') {
+    const tenants = await repos.tenants.findAll();
+    const t = tenants.find((x) => x.id === tenantId);
+    if (!t || (t as { marketId?: string }).marketId !== user.marketId) return res.status(403).json({ error: 'Forbidden' });
+  }
+  const list = getOptionTemplates(tenantId);
+  res.json(list);
+}));
+
+/** Save one option group to templates (and catalog) so it appears in "Add from Templates". */
+app.post('/tenants/:tenantId/option-templates', wrapAsync(async (req, res) => {
+  const tenantId = await resolveCatalogTenantId(req.params.tenantId);
+  const user = req.user as { role?: string; tenantId?: string; marketId?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role === 'TENANT_ADMIN' && user.tenantId !== tenantId) return res.status(403).json({ error: 'Forbidden' });
+  if (user.role === 'MARKET_ADMIN') {
+    const tenants = await repos.tenants.findAll();
+    const t = tenants.find((x) => x.id === tenantId);
+    if (!t || (t as { marketId?: string }).marketId !== user.marketId) return res.status(403).json({ error: 'Forbidden' });
+  }
+  const group = req.body as Record<string, unknown>;
+  if (!group || typeof group !== 'object') return res.status(400).json({ error: 'Body must be an option group object' });
+  addOptionTemplate(tenantId, group);
+  const list = getOptionTemplates(tenantId);
+  res.status(201).json(list);
 }));
 
 // --- Orders ---
@@ -2647,6 +3997,7 @@ app.post('/orders', wrapAsync(async (req, res) => {
     deliveryAssignmentMode?: string;
     fulfillmentType?: string;
     createdAt?: string;
+    couponId?: string;
     [key: string]: unknown;
   };
   if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId) {
@@ -2657,7 +4008,7 @@ app.post('/orders', wrapAsync(async (req, res) => {
   }
   const tenant = order.tenantId ? (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) : undefined;
   const tenantType = tenant?.tenantType ?? (tenant?.type === 'FOOD' ? 'RESTAURANT' : 'SHOP');
-  const deliveryMode = tenant?.deliveryProviderMode ?? 'TENANT';
+  const deliveryMode = tenant?.deliveryProviderMode ?? 'MARKET';
 
   const now = new Date().toISOString();
   const created = { ...order, createdAt: order.createdAt ?? now };
@@ -2670,7 +4021,8 @@ app.post('/orders', wrapAsync(async (req, res) => {
     created.status = created.status ?? 'PREPARING';
     created.deliveryAssignmentMode = undefined;
   } else {
-    created.deliveryAssignmentMode = deliveryMode === 'MARKET' ? 'MARKET' : 'TENANT';
+    // Mandatory market drivers: all delivery orders go to global dispatch pool (MARKET)
+    created.deliveryAssignmentMode = 'MARKET';
     if (tenantType === 'RESTAURANT') {
       const prepMin = order.prepTimeMin ?? tenant?.defaultPrepTimeMin ?? 30;
       created.status = 'PREPARING';
@@ -2683,6 +4035,31 @@ app.post('/orders', wrapAsync(async (req, res) => {
       created.readyAt = created.createdAt ?? now;
     }
   }
+
+  let orderSubtotal = (created as { subtotal?: number }).subtotal ?? (created as { items?: { totalPrice?: number }[] }).items?.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0) ?? 0;
+  const orderDeliveryFee = (created as { delivery?: { fee?: number } }).delivery?.fee ?? 0;
+  let couponDiscount = 0;
+  const orderCouponId = (order as { couponId?: string }).couponId;
+  const clientCouponDiscount = Number((order as { couponDiscountAmount?: number }).couponDiscountAmount);
+  if (orderCouponId) {
+    if (clientCouponDiscount > 0) {
+      couponDiscount = Math.min(clientCouponDiscount, orderSubtotal + orderDeliveryFee);
+    } else {
+      const coupon = await prisma.coupon.findUnique({ where: { id: orderCouponId } });
+      if (coupon && !coupon.usedAt && (!coupon.expiresAt || coupon.expiresAt > now)) {
+        if (!coupon.tenantId || coupon.tenantId === created.tenantId) {
+          const customerPhoneNorm = normalizePhoneForCoupon((created as { customerPhone?: string }).customerPhone ?? (req as express.Request & { customer?: { phone?: string } }).customer?.phone);
+          if (!coupon.oneTimeUse || !coupon.winnerPhone || normalizePhoneForCoupon(coupon.winnerPhone) === customerPhoneNorm) {
+            if (coupon.type === 'FIXED') couponDiscount = Math.min(Number(coupon.value), orderSubtotal);
+            else if (coupon.type === 'PERCENT') couponDiscount = Math.min((orderSubtotal * Number(coupon.value)) / 100, orderSubtotal);
+          }
+        }
+      }
+    }
+  }
+  const finalTotal = Math.max(0, orderSubtotal + orderDeliveryFee - couponDiscount);
+  (created as Record<string, unknown>).subtotal = orderSubtotal;
+  (created as Record<string, unknown>).total = finalTotal;
 
   const payment = await computePaymentForOrder(created as { items?: { totalPrice?: number }[]; subtotal?: number; total?: number; delivery?: { fee?: number } }, created.tenantId ?? '');
   const method = ((created as { paymentMethod?: string }).paymentMethod === 'CARD' ? 'CARD' : 'CASH') as 'CASH' | 'CARD';
@@ -2700,8 +4077,27 @@ app.post('/orders', wrapAsync(async (req, res) => {
     currency: payment.currency,
   });
 
+  const couponId = (order as { couponId?: string }).couponId;
+  if (couponId) {
+    await prisma.coupon.updateMany({ where: { id: couponId }, data: { usedAt: now } }).catch(() => {});
+  }
+
   if (tenant) {
     notifyMerchantNewOrder(created as { id?: string; customerName?: string; customerPhone?: string; items?: unknown[]; total?: number; notes?: string; delivery?: unknown; fulfillmentType?: string; tenantId?: string; [key: string]: unknown }, tenant as { name?: string; whatsappPhone?: string; phone?: string });
+    const orderTenantId = (created as { tenantId?: string }).tenantId;
+    if (orderTenantId) {
+      sendFCMToTenantForNewOrder(orderTenantId, created as { id?: string; total?: number; tenantId?: string; [key: string]: unknown }).catch((e) =>
+        console.error('[FCM] sendFCMToTenantForNewOrder error:', e)
+      );
+    }
+  }
+
+  // Notify all market couriers that a new delivery order is in the global dispatch pool (order_available)
+  const fulfillmentType = (created as { fulfillmentType?: string }).fulfillmentType;
+  const marketIdForNotify = (created as { marketId?: string }).marketId;
+  if (fulfillmentType === 'DELIVERY' && marketIdForNotify) {
+    const couriers = (await repos.couriers.findAll()) as { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[];
+    emitOrderAvailableForMarket(marketIdForNotify, (created as { id?: string }).id ?? '', couriers);
   }
 
   res.status(201).json(created);
@@ -2743,6 +4139,8 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
     fulfillmentType: order.fulfillmentType,
     delivery: order.delivery,
     deliveryAddress: order.deliveryAddress,
+    deliveryLocation: order.deliveryLocation,
+    courierLocation: (order as { courierLocation?: { lat: number; lng: number } }).courierLocation,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     notes: order.notes,
@@ -2786,6 +4184,18 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
     (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
     orders[idx] = updated;
     await repos.orders.setAll(orders);
+  }
+  try {
+    const orderWithCustomer = updated as { customerPhone?: string; customerId?: string };
+    let customerPhone = orderWithCustomer.customerPhone;
+    if (!customerPhone && orderWithCustomer.customerId) {
+      const customers = await repos.customers.findAll();
+      const customer = customers.find((c) => c.id === orderWithCustomer.customerId);
+      customerPhone = customer?.phone;
+    }
+    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, status);
+  } catch {
+    // do not break order update if push lookup/send fails
   }
   res.json(orders[idx]);
 }));
@@ -2832,7 +4242,44 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
     await repos.orders.setAll(orders);
   }
 
+  try {
+    const orderWithCustomer = updated as { customerPhone?: string; customerId?: string; id?: string };
+    let customerPhone = orderWithCustomer.customerPhone;
+    const customerId = orderWithCustomer.customerId;
+    const customers = await repos.customers.findAll();
+    const customer = customerId ? customers.find((c) => c.id === customerId) : undefined;
+    if (!customerPhone && customer) customerPhone = customer.phone;
+    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, status);
+    if (customerId && orderWithCustomer.id && ['CONFIRMED', 'READY', 'COMPLETED', 'DELIVERED'].includes(status)) {
+      const fcmToken = await getCustomerFcmToken(customerId);
+      if (fcmToken) sendFCMToCustomerToken(fcmToken, status, orderWithCustomer.id);
+    }
+    // Customer-facing FCM notification on key status changes
+    if (customerId && ['COMPLETED', 'CANCELLED'].includes(status)) {
+      const title = 'تحديث حالة طلبك';
+      const body = status === 'COMPLETED' ? 'طلبك جاهز! استمتع بوجبتك.' : 'نعتذر، تم إلغاء طلبك.';
+      await sendFCMNotification(customerId, title, body);
+    }
+  } catch {
+    // do not break order update if push lookup/send fails
+  }
+
   res.json(orders[idx]);
+}));
+
+/** Hard delete order (and cascade: payment, etc.). SUPER_ADMIN only. */
+app.delete('/orders/:orderId/hard-delete', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: SUPER_ADMIN only' });
+  }
+  const orderId = req.params.orderId;
+  if (!orderId) return res.status(400).json({ error: 'orderId required' });
+  const orders = await repos.orders.findAll();
+  const exists = orders.some((o) => (o as { id?: string }).id === orderId);
+  if (!exists) return res.status(404).json({ error: 'Order not found' });
+  await repos.orders.deleteById(orderId);
+  res.status(204).send();
 }));
 
 // --- Campaigns ---
@@ -2882,6 +4329,19 @@ app.put('/delivery/:tenantId', wrapAsync(async (req, res) => {
 }));
 
 // --- Delivery Zones ---
+const DEFAULT_ZONE_CENTER = { lat: 32.08, lng: 34.78 };
+const DEFAULT_RADIUS_KM = 2;
+
+/** Ensure each zone has centerLat, centerLng, radiusKm so the map and storefront can use them. */
+function normalizeZoneForResponse(z: DeliveryZoneRecord): DeliveryZoneRecord {
+  return {
+    ...z,
+    centerLat: z.centerLat ?? DEFAULT_ZONE_CENTER.lat,
+    centerLng: z.centerLng ?? DEFAULT_ZONE_CENTER.lng,
+    radiusKm: z.radiusKm ?? DEFAULT_RADIUS_KM,
+  };
+}
+
 function sortZones(zones: DeliveryZoneRecord[]): DeliveryZoneRecord[] {
   return [...zones].sort((a, b) => {
     const soA = a.sortOrder ?? 999;
@@ -2894,7 +4354,8 @@ function sortZones(zones: DeliveryZoneRecord[]): DeliveryZoneRecord[] {
 app.get('/tenants/:tenantId/delivery-zones', wrapAsync(async (req, res) => {
   const { tenantId } = req.params;
   const zones = await repos.deliveryZones.getByTenant(tenantId);
-  res.json(sortZones(zones));
+  const sorted = sortZones(zones);
+  res.json(sorted.map(normalizeZoneForResponse));
 }));
 
 function requirePlatformAdminForDelivery(req: express.Request, res: express.Response): boolean {
@@ -2918,11 +4379,14 @@ app.post('/tenants/:tenantId/delivery-zones', wrapAsync(async (req, res) => {
     etaMinutes: body.etaMinutes,
     isActive: body.isActive ?? true,
     sortOrder: body.sortOrder,
+    centerLat: body.centerLat,
+    centerLng: body.centerLng,
+    radiusKm: body.radiusKm,
   };
   const zones = await repos.deliveryZones.getByTenant(tenantId);
   zones.push(zone);
   await repos.deliveryZones.setAll(tenantId, zones);
-  res.status(201).json(zone);
+  res.status(201).json(normalizeZoneForResponse(zone));
 }));
 
 app.put('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
@@ -2934,19 +4398,19 @@ app.put('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) 
   if (idx === -1) return res.status(404).json({ error: 'Zone not found' });
   zones[idx] = { ...zones[idx], ...body };
   await repos.deliveryZones.setAll(tenantId, zones);
-  res.json(zones[idx]);
+  res.json(normalizeZoneForResponse(zones[idx]));
 }));
 
 app.patch('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
   if (!requirePlatformAdminForDelivery(req, res)) return;
   const { tenantId, zoneId } = req.params;
-  const body = req.body as Partial<Pick<DeliveryZoneRecord, 'isActive' | 'name' | 'fee' | 'etaMinutes' | 'sortOrder'>>;
+  const body = req.body as Partial<Pick<DeliveryZoneRecord, 'isActive' | 'name' | 'fee' | 'etaMinutes' | 'sortOrder' | 'centerLat' | 'centerLng' | 'radiusKm'>>;
   const zones = await repos.deliveryZones.getByTenant(tenantId);
   const idx = zones.findIndex((z) => z.id === zoneId);
   if (idx === -1) return res.status(404).json({ error: 'Zone not found' });
   zones[idx] = { ...zones[idx], ...body };
   await repos.deliveryZones.setAll(tenantId, zones);
-  res.json(zones[idx]);
+  res.json(normalizeZoneForResponse(zones[idx]));
 }));
 
 app.delete('/tenants/:tenantId/delivery-zones/:zoneId', wrapAsync(async (req, res) => {
@@ -2988,6 +4452,9 @@ app.post('/markets/:marketId/sync-delivery', wrapAsync(async (req, res) => {
     etaMinutes: z.etaMinutes,
     isActive: z.isActive ?? true,
     sortOrder: z.sortOrder,
+    centerLat: z.centerLat,
+    centerLng: z.centerLng,
+    radiusKm: z.radiusKm,
   }));
   const synced: string[] = [];
   for (const tid of tenantIds) {
@@ -3000,6 +4467,9 @@ app.post('/markets/:marketId/sync-delivery', wrapAsync(async (req, res) => {
       etaMinutes: t.etaMinutes,
       isActive: t.isActive,
       sortOrder: t.sortOrder,
+      centerLat: t.centerLat,
+      centerLng: t.centerLng,
+      radiusKm: t.radiusKm,
     }));
     await repos.deliveryZones.setAll(tid, newZones);
     synced.push(tid);
@@ -3078,6 +4548,21 @@ app.post('/tenants/:tenantId/orders/:orderId/ready', async (req, res) => {
   (updated as Record<string, unknown>).lastStatusNotification = { status: 'READY', at: now };
   orders[idx] = updated;
   await repos.orders.setAll(orders);
+
+  try {
+    const orderWithCustomer = updated as { customerPhone?: string; customerId?: string; id?: string };
+    let customerPhone = orderWithCustomer.customerPhone;
+    const customers = await repos.customers.findAll();
+    const customer = orderWithCustomer.customerId ? customers.find((c) => c.id === orderWithCustomer.customerId) : undefined;
+    if (!customerPhone && customer) customerPhone = customer.phone;
+    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, 'READY');
+    if (orderWithCustomer.customerId && orderWithCustomer.id) {
+      const fcmToken = await getCustomerFcmToken(orderWithCustomer.customerId);
+      if (fcmToken) sendFCMToCustomerToken(fcmToken, 'READY', orderWithCustomer.id);
+    }
+  } catch {
+    // do not break order update
+  }
 
   const fulfillmentType = (updated as { fulfillmentType?: string }).fulfillmentType;
   if (fulfillmentType === 'DELIVERY') {
@@ -3849,6 +5334,181 @@ app.get('/markets/:marketId/finance/couriers', wrapAsync(async (req, res) => {
   res.json(result);
 }));
 
+// --- Reports & driver settlement ---
+
+/** Daily summary: total orders (delivery vs pickup), total revenue, daily cash flow. */
+app.get('/markets/:marketId/reports/daily-summary', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) return res.status(403).json({ error: 'Forbidden' });
+  const tenantIds = await getMarketTenantIds(marketId);
+  const allOrders = ((await repos.orders.findAll()) as OrderWithPayment[]).filter(
+    (o) => o.tenantId && tenantIds.has(o.tenantId)
+  );
+  const orders = ordersInDateRange(allOrders, from, to);
+
+  let totalOrders = orders.length;
+  let deliveryOrders = 0;
+  let pickupOrders = 0;
+  let totalRevenue = 0;
+  let totalMerchantSales = 0;
+  let totalDeliveryFees = 0;
+  let dailyCashFlow = 0;
+
+  for (const o of orders) {
+    const f = computeOrderFinancials(o);
+    if ((o.fulfillmentType ?? '') === 'DELIVERY') deliveryOrders++;
+    else pickupOrders++;
+    totalRevenue += f.gross;
+    totalMerchantSales += f.itemsTotal;
+    totalDeliveryFees += f.deliveryFee;
+    if (f.isCash) dailyCashFlow += f.gross;
+  }
+
+  res.json({
+    totalOrders,
+    deliveryOrders,
+    pickupOrders,
+    totalRevenue,
+    totalMerchantSales,
+    totalDeliveryFees,
+    dailyCashFlow,
+  });
+}));
+
+/** Merchant performance: each store's orders and sales (product price only; delivery fee tracked separately). */
+app.get('/markets/:marketId/reports/merchant-performance', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) return res.status(403).json({ error: 'Forbidden' });
+  const tenantIds = await getMarketTenantIds(marketId);
+  const tenants = (await repos.tenants.findAll()).filter((t) => tenantIds.has(t.id));
+  const allOrders = ((await repos.orders.findAll()) as OrderWithPayment[]).filter(
+    (o) => o.tenantId && tenantIds.has(o.tenantId)
+  );
+  const orders = ordersInDateRange(allOrders, from, to);
+
+  const byTenant = new Map<string, { orderCount: number; sales: number; deliveryFees: number }>();
+  for (const t of tenants) {
+    byTenant.set(t.id, { orderCount: 0, sales: 0, deliveryFees: 0 });
+  }
+  for (const o of orders) {
+    const f = computeOrderFinancials(o);
+    const row = byTenant.get(o.tenantId ?? '');
+    if (row) {
+      row.orderCount++;
+      row.sales += f.itemsTotal;
+      row.deliveryFees += f.deliveryFee;
+    }
+  }
+
+  const result = tenants.map((t) => {
+    const row = byTenant.get(t.id) ?? { orderCount: 0, sales: 0, deliveryFees: 0 };
+    return {
+      tenantId: t.id,
+      tenantName: t.name ?? t.id,
+      ...row,
+    };
+  });
+  res.json(result);
+}));
+
+/** Driver leaderboard: ranked by delivery count (for the market). */
+app.get('/markets/:marketId/reports/driver-leaderboard', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) return res.status(403).json({ error: 'Forbidden' });
+  const tenantIds = await getMarketTenantIds(marketId);
+  const allOrders = ((await repos.orders.findAll()) as OrderWithPayment[]).filter(
+    (o) => o.tenantId && tenantIds.has(o.tenantId) && o.fulfillmentType === 'DELIVERY' && (o.status === 'DELIVERED' || o.status === 'COMPLETED')
+  );
+  const orders = ordersInDateRange(allOrders, from, to);
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
+
+  const deliveryCountByCourier = new Map<string, number>();
+  const totalCashCollectedByCourier = new Map<string, number>();
+  for (const o of orders) {
+    const cid = o.courierId ?? '';
+    if (cid) {
+      deliveryCountByCourier.set(cid, (deliveryCountByCourier.get(cid) ?? 0) + 1);
+      const f = computeOrderFinancials(o);
+      if (f.isCash) {
+        totalCashCollectedByCourier.set(cid, (totalCashCollectedByCourier.get(cid) ?? 0) + f.gross);
+      }
+    }
+  }
+
+  const rows = couriers.map((c) => ({
+    courierId: c.id,
+    courierName: c.name ?? c.id,
+    phone: c.phone,
+    deliveryCount: deliveryCountByCourier.get(c.id) ?? 0,
+    initialFloat: c.initialFloat ?? 300,
+    totalCashCollected: totalCashCollectedByCourier.get(c.id) ?? 0,
+  }));
+  rows.sort((a, b) => b.deliveryCount - a.deliveryCount);
+  const ranked = rows.map((r, i) => ({ ...r, rank: i + 1 }));
+  res.json(ranked);
+}));
+
+/** Settlement log: history of driver shift settlements for the market. */
+app.get('/markets/:marketId/reports/settlement-log', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) return res.status(403).json({ error: 'Forbidden' });
+  const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
+  const courierIds = new Set(couriers.map((c) => c.id));
+  const allLogs = getSettlementLogs();
+  const marketLogs = allLogs.filter(
+    (e) => e.courierId && courierIds.has(e.courierId) && (e.marketId === marketId || !e.marketId)
+  );
+  marketLogs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  const withNames = marketLogs.map((e) => {
+    const c = couriers.find((x) => x.id === e.courierId);
+    return { ...e, courierName: c?.name ?? e.courierId };
+  });
+  res.json(withNames);
+}));
+
+/** Shift settlement: admin logs driver handover (Coba). Platform admin or market admin for that courier's market. */
+app.post('/admin/couriers/:id/settle', wrapAsync(async (req, res) => {
+  const courierId = req.params.id;
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.role !== 'MARKET_ADMIN' && !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden' });
+
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+  const cMarketId = courierMarketId(courier);
+  if (user.role === 'MARKET_ADMIN' && user.marketId !== cMarketId) return res.status(403).json({ error: 'Forbidden' });
+
+  const body = req.body as { totalCollected?: number };
+  const totalCollected = typeof body.totalCollected === 'number' ? body.totalCollected : 0;
+
+  const entry: SettlementLogEntry = {
+    id: `settle-${Date.now()}-${courierId}`,
+    courierId,
+    adminId: user.id,
+    totalCollected,
+    timestamp: new Date().toISOString(),
+    marketId: cMarketId,
+  };
+  appendSettlementLog(entry);
+
+  res.status(201).json(entry);
+}));
+
 /** Assign courier to a MARKET delivery order. Validates courier.marketId == order.marketId == token.marketId. */
 app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) => {
   const { marketId, orderId } = req.params;
@@ -3866,7 +5526,7 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
     return res.status(400).json({ error: 'courierId is required' });
   }
 
-  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; marketId?: string; deliveryAssignmentMode?: string; courierId?: string; deliveryStatus?: string }[];
+  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; marketId?: string; fulfillmentType?: string; deliveryAssignmentMode?: string; courierId?: string; deliveryStatus?: string }[];
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: 'Order not found' });
   const order = orders[idx];
@@ -3875,8 +5535,10 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
   if (orderMarketId !== marketId) {
     return res.status(403).json({ error: 'Order not in this market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (order.deliveryAssignmentMode !== 'MARKET') {
-    return res.status(400).json({ error: 'Order must have deliveryAssignmentMode MARKET' });
+  const isDelivery = (order as { fulfillmentType?: string }).fulfillmentType === 'DELIVERY';
+  const assignmentMode = order.deliveryAssignmentMode ?? (isDelivery ? 'MARKET' : undefined);
+  if (assignmentMode !== 'MARKET') {
+    return res.status(400).json({ error: 'Order must be a delivery order with market dispatch (deliveryAssignmentMode MARKET)' });
   }
 
   const currentStatus = order.deliveryStatus ?? (order.courierId ? 'ASSIGNED' : 'UNASSIGNED');
@@ -3891,11 +5553,14 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
   if (cMarketId !== marketId) {
     return res.status(403).json({ error: 'Courier belongs to another market', code: 'CROSS_MARKET_ACCESS' });
   }
-  if (!courier.isActive || !courier.isOnline) {
-    return res.status(400).json({ error: 'Courier must be active and online' });
-  }
-  if (courier.isAvailable === false) {
-    return res.status(400).json({ error: 'Courier is busy with another delivery' });
+  const platformAdmin = isPlatformAdmin(user?.role);
+  if (!platformAdmin) {
+    if (!courier.isActive || !courier.isOnline) {
+      return res.status(400).json({ error: 'Courier must be active and online' });
+    }
+    if (courier.isAvailable === false) {
+      return res.status(400).json({ error: 'Courier is busy with another delivery' });
+    }
   }
 
   const before = { ...order };
@@ -3906,6 +5571,7 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
     ...order,
     courierId,
     deliveryStatus: 'ASSIGNED',
+    deliveryAssignmentMode: 'MARKET',
     deliveryTimeline: { ...timeline, assignedAt },
   } as OrderRecord;
   await repos.orders.setAll(orders);
@@ -4172,11 +5838,16 @@ app.use((err: Error & { status?: number; code?: string }, _req: express.Request,
   res.status(status).json(body);
 });
 
-/** When using PostgreSQL, if DB is empty, seed from JSON file so site is not empty. Preserves all IDs. */
+/** When using PostgreSQL, seed only when DB is empty (no markets). Never overwrites existing data — tenant marketId, admin email, etc. persist across restarts and rebuilds. */
 async function seedDbFromJsonIfEmpty(): Promise<void> {
   if ((process.env.STORAGE_DRIVER ?? '').toLowerCase() !== 'db') return;
   const markets = await repos.markets.findAll();
-  if (markets.length > 0) return;
+  if (markets.length > 0) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[seed] DB already has', markets.length, 'market(s) — skip seed (tenant/market changes are preserved)');
+    }
+    return;
+  }
   const candidates = [
     process.env.SEED_JSON_PATH,
     process.env.DATA_FILE,
@@ -4211,23 +5882,38 @@ async function seedDbFromJsonIfEmpty(): Promise<void> {
   }
   if ((data.couriers ?? []).length > 0) await repos.couriers.setAll(data.couriers);
   if ((data.customers ?? []).length > 0) await repos.customers.setAll(data.customers);
-  if ((data.orders ?? []).length > 0) await repos.orders.setAll(data.orders as OrderRecord[]);
+  // Never seed orders from data.json — orders live in Order table (or ORDERS_FILE). Prevents "zombie" orders from data.json after DB wipe.
   console.log('[seed] Done: markets=', data.markets.length, 'tenants=', data.tenants.length, 'catalog tenants=', Object.keys(data.catalog ?? {}).length);
 }
 
+const DATA_FILE_PATH = process.env.DATA_FILE || join(process.cwd(), 'data.json');
+
 (async () => {
   await seedDbFromJsonIfEmpty();
-  await seedUsersIfNeeded();
-  await seedMarketsIfNeeded();
-  await seedTenantMarketIdsIfNeeded();
-  await seedOrdersIfNeeded();
-  await seedDeliveryZonesIfNeeded();
+  const storageDriver = (process.env.STORAGE_DRIVER ?? '').toLowerCase();
+  if (storageDriver === 'json' && existsSync(DATA_FILE_PATH)) {
+    const existing = getData();
+    if (existing.users.length > 0 || existing.tenants.length > 0) {
+      console.log('[seed] DATA_FILE has existing users/tenants — skip JSON seeds (zero data loss on restart/build)');
+    } else {
+      console.log('[seed] DATA_FILE exists — skip JSON seeds to avoid overwriting mounted volume');
+    }
+  } else {
+    await seedUsersIfNeeded();
+    await seedMarketsIfNeeded();
+    await seedTenantMarketIdsIfNeeded();
+    await seedOrdersIfNeeded();
+    await seedDeliveryZonesIfNeeded();
+  }
 
-  if ((process.env.STORAGE_DRIVER ?? '').toLowerCase() !== 'db') {
+  if (storageDriver !== 'db') {
     invalidateDataCache();
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);
+    if (storageDriver === 'json') {
+      console.log(`DATA_FILE=${DATA_FILE_PATH} — ensure process has write permission so admin email and other updates persist.`);
+    }
   });
 })();

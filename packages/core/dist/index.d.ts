@@ -1,5 +1,20 @@
 import { z } from 'zod';
 
+/**
+ * Market layout section for storefront home (admin-configured).
+ * SLIDER = horizontal strip; MARKET_GROUP = "order together" group.
+ */
+type MarketSectionType = 'SLIDER' | 'MARKET_GROUP';
+interface MarketSection {
+    id: string;
+    title: string;
+    type: MarketSectionType;
+    /** Tenant IDs or slugs. Order preserved. */
+    storeIds: string[];
+    /** Display order (lower = first). Optional for backward compatibility. */
+    sortOrder?: number;
+}
+
 type LayoutStyle = 'minimal' | 'cozy' | 'bold' | 'modern' | 'default' | 'compact' | 'spacious';
 interface StorefrontHero {
     title: string;
@@ -59,6 +74,8 @@ interface TenantBranding {
 type TenantStoreType = 'CLOTHING' | 'FOOD' | 'GENERAL';
 /** Manual override for store operational status */
 type OperationalStatus = 'open' | 'closed' | 'busy';
+/** Super-admin remote override: AUTO follows schedule, FORCE_OPEN/FORCE_CLOSED bypass everything */
+type OverrideStatus = 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
 /** When to accept orders: always, or only when status is open */
 type OrderPolicy = 'accept_always' | 'accept_only_when_open';
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -86,6 +103,8 @@ interface Tenant {
     businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE';
     /** Market category for filtering in mall/market UI */
     marketCategory?: MarketCategory;
+    /** Market group id when store participates in combined orders (same marketId = one cart). */
+    marketId?: string | null;
     /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
     paymentCapabilities?: {
         cash: boolean;
@@ -109,10 +128,16 @@ interface Tenant {
     closeTime?: string;
     /** Manual override: when true, store displays as CLOSED regardless of openTime/closeTime. */
     forceClosed?: boolean;
+    /** Super-admin remote override: AUTO (default) follows schedule; FORCE_OPEN/FORCE_CLOSED bypass everything. */
+    overrideStatus?: OverrideStatus;
     /** Appointment duration in minutes. For PROFESSIONAL booking. */
     appointmentDuration?: number;
     /** Enable online booking (Coming Soon). For PROFESSIONAL stores. */
     bookingEnabled?: boolean;
+    /** SLA category policy id (platform-admin configured). Used for order-ready timers. */
+    categoryId?: string;
+    /** When true, merchant sees "وحدة البيع" and "قفزة الكمية" in product form (e.g. weight-based businesses). */
+    supportsWeightSelling?: boolean;
 }
 
 interface Template {
@@ -244,6 +269,12 @@ interface Product {
     isArchived?: boolean;
     /** Display order within category (lower = first). Storefront sorts by this then createdAt. */
     sortOrder?: number;
+    /** Quantity increment for add-to-cart (default 1). Use 0.5 for vegetables/butchery (e.g. kg). */
+    quantityStep?: number;
+    /** Unit label for display (e.g. "كيلو", "حبة", "كرتونة"). Default "حبة" when omitted. */
+    unitName?: string;
+    /** When true, product is sold by weight/fraction (show decimals and weight unit). When false, always integer and "حبة". */
+    isWeightBased?: boolean;
 }
 
 interface SelectedOption {
@@ -269,9 +300,15 @@ interface CartItem {
     optionGroups: OptionGroup[];
     totalPrice: number;
     imageUrl?: string;
+    /** Quantity increment (e.g. 0.5 for kg). Default 1. Used for +/- and display. */
+    quantityStep?: number;
+    /** Unit label (e.g. "كيلو", "حبة"). For display next to quantity. */
+    unitName?: string;
+    /** When true, item is sold by weight (decimals); when false, strict integer and "حبة". */
+    isWeightBased?: boolean;
 }
 
-/** Per-tenant delivery zone. No minOrder. */
+/** Per-tenant delivery zone. No minOrder. Geo-radius: center + radiusKm for distance-based pricing. */
 declare const DeliveryZoneSchema: z.ZodObject<{
     id: z.ZodString;
     tenantId: z.ZodString;
@@ -280,6 +317,9 @@ declare const DeliveryZoneSchema: z.ZodObject<{
     etaMinutes: z.ZodOptional<z.ZodNumber>;
     isActive: z.ZodDefault<z.ZodBoolean>;
     sortOrder: z.ZodOptional<z.ZodNumber>;
+    centerLat: z.ZodOptional<z.ZodNumber>;
+    centerLng: z.ZodOptional<z.ZodNumber>;
+    radiusKm: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     id: string;
     tenantId: string;
@@ -288,6 +328,9 @@ declare const DeliveryZoneSchema: z.ZodObject<{
     isActive: boolean;
     etaMinutes?: number | undefined;
     sortOrder?: number | undefined;
+    centerLat?: number | undefined;
+    centerLng?: number | undefined;
+    radiusKm?: number | undefined;
 }, {
     id: string;
     tenantId: string;
@@ -296,8 +339,16 @@ declare const DeliveryZoneSchema: z.ZodObject<{
     etaMinutes?: number | undefined;
     isActive?: boolean | undefined;
     sortOrder?: number | undefined;
+    centerLat?: number | undefined;
+    centerLng?: number | undefined;
+    radiusKm?: number | undefined;
 }>;
 type DeliveryZone = z.infer<typeof DeliveryZoneSchema>;
+/** Customer delivery pin (lat/lng from checkout map). */
+interface DeliveryLocation {
+    lat: number;
+    lng: number;
+}
 /** Snapshot stored with order for delivery details. */
 interface OrderDeliverySnapshot {
     method: 'PICKUP' | 'DELIVERY';
@@ -305,6 +356,10 @@ interface OrderDeliverySnapshot {
     zoneName?: string;
     fee?: number;
     addressText?: string;
+    /** Customer pin from Location Picker (for courier map and Google Maps). */
+    deliveryLocation?: DeliveryLocation;
+    /** 'gps' = address set via detect/last location (GPS Verified). */
+    deliveryAddressSource?: 'gps' | 'manual';
 }
 declare const DeliverySettingsSchema: z.ZodObject<{
     tenantId: z.ZodString;
@@ -327,6 +382,9 @@ declare const DeliverySettingsSchema: z.ZodObject<{
         etaMinutes: z.ZodOptional<z.ZodNumber>;
         isActive: z.ZodDefault<z.ZodBoolean>;
         sortOrder: z.ZodOptional<z.ZodNumber>;
+        centerLat: z.ZodOptional<z.ZodNumber>;
+        centerLng: z.ZodOptional<z.ZodNumber>;
+        radiusKm: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         id: string;
         tenantId: string;
@@ -335,6 +393,9 @@ declare const DeliverySettingsSchema: z.ZodObject<{
         isActive: boolean;
         etaMinutes?: number | undefined;
         sortOrder?: number | undefined;
+        centerLat?: number | undefined;
+        centerLng?: number | undefined;
+        radiusKm?: number | undefined;
     }, {
         id: string;
         tenantId: string;
@@ -343,6 +404,9 @@ declare const DeliverySettingsSchema: z.ZodObject<{
         etaMinutes?: number | undefined;
         isActive?: boolean | undefined;
         sortOrder?: number | undefined;
+        centerLat?: number | undefined;
+        centerLng?: number | undefined;
+        radiusKm?: number | undefined;
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
     tenantId: string;
@@ -359,6 +423,9 @@ declare const DeliverySettingsSchema: z.ZodObject<{
         isActive: boolean;
         etaMinutes?: number | undefined;
         sortOrder?: number | undefined;
+        centerLat?: number | undefined;
+        centerLng?: number | undefined;
+        radiusKm?: number | undefined;
     }[] | undefined;
 }, {
     tenantId: string;
@@ -375,6 +442,9 @@ declare const DeliverySettingsSchema: z.ZodObject<{
         etaMinutes?: number | undefined;
         isActive?: boolean | undefined;
         sortOrder?: number | undefined;
+        centerLat?: number | undefined;
+        centerLng?: number | undefined;
+        radiusKm?: number | undefined;
     }[] | undefined;
 }>;
 type DeliverySettings = z.infer<typeof DeliverySettingsSchema>;
@@ -390,7 +460,20 @@ interface OrderPayload {
     customerName?: string;
     customerPhone?: string;
     deliveryAddress?: string;
+    /** Customer pin from Location Picker (lat/lng). */
+    deliveryLocation?: {
+        lat: number;
+        lng: number;
+    };
+    /** When set to 'gps', address was set via one-tap detect or last location (show "GPS Verified"). */
+    deliveryAddressSource?: 'gps' | 'manual';
     delivery?: OrderDeliverySnapshot;
+    /** Links multiple orders (e.g. multi-store cart) for customer tracking. */
+    orderGroupId?: string;
+    /** Applied coupon id (from validate); backend marks it used when order is created. */
+    couponId?: string;
+    /** Cart-level discount amount (sent with first order when coupon applies to whole cart). */
+    couponDiscountAmount?: number;
 }
 interface Order {
     id: string;
@@ -409,7 +492,16 @@ interface Order {
     customerName?: string;
     customerPhone?: string;
     deliveryAddress?: string;
+    /** Customer pin from Location Picker (lat/lng). Persisted for courier map and Google Maps. */
+    deliveryLocation?: {
+        lat: number;
+        lng: number;
+    };
+    /** 'gps' = one-tap detect or last location (show "GPS Verified" in Admin/Courier). */
+    deliveryAddressSource?: 'gps' | 'manual';
     delivery?: OrderDeliverySnapshot;
+    /** Links multiple orders (multi-store cart) for customer tracking. */
+    orderGroupId?: string;
 }
 
 declare const CampaignStatusSchema: z.ZodEnum<["draft", "active", "paused"]>;
@@ -495,18 +587,20 @@ declare function resolveTenantId(hostname: string, searchParams: URLSearchParams
 declare const LAST_TENANT_KEY = "nmd.lastTenant";
 /**
  * Resolve effective operational status from tenant.
- * 1. If forceClosed is true (manual override), return 'closed'.
+ * 0. If overrideStatus is FORCE_CLOSED, return 'closed' (super-admin remote override).
+ *    If overrideStatus is FORCE_OPEN, return 'open' (super-admin remote override).
+ * 1. If forceClosed is true (merchant manual override), return 'closed'.
  * 2. If operationalStatus is 'open' or 'busy', use it (priority over time so dev/manual override works).
  * 3. If openTime/closeTime are used (simple daily window), compare current time in store TZ (supports next-day close e.g. 03:00).
  * 4. If operationalStatus is set (manual override), use it.
  * 5. Else compute from businessHours using store timezone (Asia/Jerusalem).
  */
-declare function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): OperationalStatus;
+declare function getOperationalStatus(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed' | 'overrideStatus'>): OperationalStatus;
 /**
  * Whether the store is open (accepting orders from schedule + override).
  * For order blocking, also check orderPolicy.
  */
-declare function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed'>): boolean;
+declare function isStoreOpen(tenant: Pick<Tenant, 'operationalStatus' | 'businessHours' | 'openTime' | 'closeTime' | 'forceClosed' | 'overrideStatus'>): boolean;
 /**
  * Resolve tenant from URL (dev): ?tenant=slug or fallback to last selected in localStorage
  */
@@ -567,6 +661,10 @@ interface FormatMoneyOptions {
     maximumFractionDigits?: number;
 }
 /**
+ * Round to 2 decimal places for money (avoids floating-point errors in price × quantity).
+ */
+declare function roundMoney(amount: number): number;
+/**
  * Format amount as Israeli Shekel (₪). Gregorian/Western numerals only.
  * Financial numbers: 2 decimal places. Handles NaN/invalid safely.
  */
@@ -605,11 +703,11 @@ declare function buildOrderActionLinksSection(orderId: string, baseUrl?: string)
 
 /** Re-export for addon placement (WHOLE/LEFT/RIGHT). */
 type Placement = PizzaPlacement;
-/** Arabic labels for addon placement. Single source of truth. */
+/** Arabic labels for addon placement. Single source of truth. Half & Half: "First Half" / "Second Half". */
 declare const PLACEMENT_LABELS_AR: {
     readonly WHOLE: "كامل";
-    readonly LEFT: "يسار";
-    readonly RIGHT: "يمين";
+    readonly LEFT: "نصف ثاني";
+    readonly RIGHT: "نصف أول";
 };
 /** Options for placement selector (value + Arabic label). */
 declare const PLACEMENT_OPTIONS_AR: {
@@ -620,6 +718,14 @@ declare const PLACEMENT_OPTIONS_AR: {
 declare function formatPlacementAr(p?: Placement | null): string | undefined;
 /** Format addon name with optional placement. Returns "name" or "name (label)". */
 declare function formatAddonNameWithPlacement(name: string, p?: Placement | null): string;
+/** Format a single option group selection for display. When two options with LEFT and RIGHT (half & half), returns "نصف X / نصف Y". */
+declare function formatHalfAndHalfOptionDisplay(ids: string[], placements: Record<string, Placement>, getOptionName: (id: string) => string | undefined): string;
+
+/**
+ * Haversine formula: exact distance between two GPS points on Earth.
+ * Returns distance in kilometers.
+ */
+declare function haversineDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number;
 
 /**
  * Filter option groups by tenant type.
@@ -652,4 +758,4 @@ declare const mockTenants: Record<string, Tenant>;
 declare const mockCategories: Record<string, Category[]>;
 declare const mockProducts: Record<string, Product[]>;
 
-export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, PLATFORM_BRANDING, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildOrderActionLinksSection, buildWhatsAppDeepLink, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, setLastTenant, tenantBrandingToCssVars };
+export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliveryLocation, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type MarketSection, type MarketSectionType, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, type OverrideStatus, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, PLATFORM_BRANDING, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildOrderActionLinksSection, buildWhatsAppDeepLink, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatHalfAndHalfOptionDisplay, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, haversineDistanceKm, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, roundMoney, setLastTenant, tenantBrandingToCssVars };

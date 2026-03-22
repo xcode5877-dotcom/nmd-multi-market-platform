@@ -12,11 +12,31 @@ import { getTemplate } from './template-store';
 import { listCampaigns } from './campaign-store';
 import { getDeliverySettings as getDeliverySettingsStore } from './delivery-store';
 import { getDeliveryZones as getDeliveryZonesStore } from './delivery-zones-store';
-import type { RegistryTenant, MarketCourier, MarketCourierWithStats } from './types';
+import type { RegistryTenant, MarketCourier, MarketCourierWithStats, CategoryPolicy } from './types';
 
-const MOCK_API_URL =
+const MOCK_API_URL_RAW =
   (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) ||
   '';
+/** Production fallback so merchant app at /merchant/ never uses relative paths (which would hit /merchant/auth/me instead of API). */
+const PROD_API_BASE = 'https://nmd.marketing/api';
+/** Always use absolute base: no trailing slash. In production, fallback to full URL so requests never include /merchant/. */
+const MOCK_API_URL = (() => {
+  const s = typeof MOCK_API_URL_RAW === 'string' ? MOCK_API_URL_RAW.trim().replace(/\/$/, '') : '';
+  if (s) return s;
+  const prod = typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, boolean> }).env?.PROD;
+  return prod ? PROD_API_BASE : '';
+})();
+
+/** Build absolute API URL so requests never go to /merchant/auth/me when app is served at /merchant/. */
+function apiBaseUrl(): string {
+  return MOCK_API_URL;
+}
+function buildAbsoluteUrl(path: string): string {
+  const base = apiBaseUrl();
+  if (!base) return path;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return base + p;
+}
 /** Must match AuthContext TOKEN_KEY in apps/nmd-admin - same localStorage key for JWT */
 const TOKEN_KEY = 'nmd-access-token';
 
@@ -56,6 +76,8 @@ function getApiHeaders(path: string, method: string, init?: RequestInit): Record
     token = getCustomerToken() ?? getToken();
   } else if (method === 'POST' && path === '/orders') {
     token = getCustomerToken();
+  } else if (path.startsWith('/coupons/validate')) {
+    token = getCustomerToken() ?? getToken();
   } else {
     token = getAuthToken() ?? getToken();
   }
@@ -92,7 +114,7 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
   const template = r.templateId ? getTemplate(r.templateId) : null;
   const layoutStyle = template?.layoutStyle ?? r.layoutStyle;
   const type = (r.type === 'CLOTHING' || r.type === 'FOOD') ? r.type : 'GENERAL';
-  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE'; about?: string; phone?: string; officeHours?: string; openTime?: string; closeTime?: string; forceClosed?: boolean; appointmentDuration?: number };
+  const t = r as RegistryTenant & { operationalStatus?: 'open' | 'closed' | 'busy'; overrideStatus?: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED'; orderPolicy?: string; businessHours?: import('@nmd/core').BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; businessType?: 'RETAIL' | 'RESTAURANT' | 'SERVICE'; about?: string; phone?: string; officeHours?: string; openTime?: string; closeTime?: string; forceClosed?: boolean; appointmentDuration?: number };
   return {
     id: r.id,
     name: r.name,
@@ -107,6 +129,7 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
     forceClosed: t.forceClosed ?? false,
     appointmentDuration: t.appointmentDuration,
     marketCategory: r.marketCategory ?? 'GENERAL',
+    marketId: r.marketId ?? null,
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
     branding: {
       logoUrl: r.logoUrl ?? '',
@@ -122,10 +145,12 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
       collections: (r as { collections?: import('@nmd/core').HomeCollection[] }).collections ?? [],
     },
     operationalStatus: t.operationalStatus,
+    overrideStatus: t.overrideStatus,
     orderPolicy: t.orderPolicy as 'accept_always' | 'accept_only_when_open' | undefined,
     businessHours: t.businessHours,
     busyBannerEnabled: t.busyBannerEnabled,
     busyBannerText: t.busyBannerText,
+    categoryId: (r as { categoryId?: string }).categoryId,
   };
 }
 
@@ -147,7 +172,7 @@ function delay(ms: number): Promise<void> {
 
 /** Public fetch - no auth. For endpoints that don't require JWT (e.g. GET /public/orders/:id). */
 async function publicFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${MOCK_API_URL}${path}`, {
+  const res = await fetch(buildAbsoluteUrl(path), {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -178,7 +203,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!headers['Authorization'] && MOCK_API_URL && !isPublicRoute(method, path)) {
     console.warn(`[MockApiClient] Protected request to ${path} without token. Ensure you are logged in and token is in localStorage (key: ${TOKEN_KEY}).`);
   }
-  const res = await fetch(`${MOCK_API_URL}${path}`, {
+  const url = buildAbsoluteUrl(path);
+  const res = await fetch(url, {
     ...init,
     method,
     body,
@@ -214,7 +240,7 @@ export async function uploadFiles(files: File[]): Promise<string[]> {
   if (token === null) {
     throw new Error('Upload blocked: No token found in localStorage');
   }
-  const res = await fetch(`${MOCK_API_URL}/upload?token=${encodeURIComponent(token)}`, {
+  const res = await fetch(`${buildAbsoluteUrl('/upload')}?token=${encodeURIComponent(token)}`, {
     method: 'POST',
     body: form,
     headers: { Authorization: `Bearer ${token}` },
@@ -339,7 +365,7 @@ export class MockApiClient implements ApiClient {
     const subtotal = payload.items.reduce((sum, item) => sum + item.totalPrice, 0);
     const deliveryFee = payload.delivery?.fee ?? 0;
     const total = subtotal + deliveryFee;
-    const order: Order = {
+    const order: Order & { orderGroupId?: string } = {
       id: generateId(),
       tenantId,
       status: 'PENDING',
@@ -354,8 +380,15 @@ export class MockApiClient implements ApiClient {
       customerName: payload.customerName,
       customerPhone: payload.customerPhone,
       deliveryAddress: payload.deliveryAddress,
+      deliveryLocation: payload.deliveryLocation ?? payload.delivery?.deliveryLocation,
+      deliveryAddressSource: payload.deliveryAddressSource,
       delivery: payload.delivery,
     };
+    if (payload.orderGroupId) order.orderGroupId = payload.orderGroupId;
+    const payloadWithCoupon = payload as { couponId?: string; couponDiscountAmount?: number };
+    const orderPayload = order as unknown as Record<string, unknown>;
+    if (payloadWithCoupon.couponId) orderPayload.couponId = payloadWithCoupon.couponId;
+    if (payloadWithCoupon.couponDiscountAmount != null) orderPayload.couponDiscountAmount = payloadWithCoupon.couponDiscountAmount;
     if (this.useApi) {
       const created = await apiFetch<Order>('/orders', {
         method: 'POST',
@@ -400,6 +433,57 @@ export class MockApiClient implements ApiClient {
     }
     await delay(80);
     return { orders: [], leads: [] };
+  }
+
+  /** Validate coupon; returns discount and coupon id if valid. Uses customer token when available. */
+  async validateCoupon(params: { code: string; tenantId?: string; cartStoreIds?: string[]; subtotal: number; customerPhone?: string }): Promise<
+    | { valid: true; coupon: { id: string; code: string; type: string; value: number; discountAmount: number; storeId?: string } }
+    | { valid: false; error: string }
+  > {
+    if (this.useApi) {
+      const q = new URLSearchParams();
+      q.set('code', params.code.trim());
+      if (params.tenantId) q.set('tenantId', params.tenantId);
+      if (params.cartStoreIds?.length) q.set('cartStoreIds', params.cartStoreIds.join(','));
+      q.set('subtotal', String(params.subtotal));
+      if (params.customerPhone) q.set('customerPhone', params.customerPhone);
+      const path = `/coupons/validate?${q.toString()}`;
+      try {
+        const data = await apiFetch<{ valid: boolean; coupon?: { id: string; code: string; type: string; value: number; discountAmount: number; storeId?: string }; error?: string }>(path);
+        return data.valid && data.coupon ? { valid: true, coupon: data.coupon } : { valid: false, error: data.error || 'الكود غير صحيح' };
+      } catch (e) {
+        const err = e as { message?: string };
+        if (err?.message?.includes('401')) throw Object.assign(new Error('UNAUTHORIZED'), { status: 401 });
+        throw e;
+      }
+    }
+    await delay(80);
+    return { valid: false, error: 'الكود غير صحيح' };
+  }
+
+  /** Customer rewards (winner coupons). Requires customer auth. */
+  async getCustomerRewards(): Promise<Array<{ id: string; code: string; type: string; value: number; expiresAt?: string }>> {
+    if (this.useApi) {
+      return apiFetch<Array<{ id: string; code: string; type: string; value: number; expiresAt?: string }>>('/customer/rewards');
+    }
+    await delay(80);
+    return [];
+  }
+
+  /** List coupons (platform admin). */
+  async getCoupons(): Promise<Array<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }>> {
+    if (this.useApi) {
+      return apiFetch<Array<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }>>('/coupons');
+    }
+    return [];
+  }
+
+  /** Create coupon (platform admin). */
+  async createCoupon(body: { code: string; type: 'FIXED' | 'PERCENT'; value: number; tenantId?: string; storeId?: string; oneTimeUse?: boolean; winnerPhone?: string; expiresAt?: string }): Promise<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }> {
+    if (this.useApi) {
+      return apiFetch<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }>('/coupons', { method: 'POST', body: JSON.stringify(body) });
+    }
+    throw new Error('API required');
   }
 
   async getCampaigns(tenantId: string): Promise<Campaign[]> {
@@ -476,6 +560,31 @@ export class MockApiClient implements ApiClient {
     }
     await delay(80);
     return listOptionItemsByGroup(tenantId, groupId);
+  }
+
+  /** Option templates (reusable library) for "Add from Templates" in product form. */
+  async getOptionTemplates(tenantId: string): Promise<OptionGroup[]> {
+    if (this.useApi) {
+      try {
+        return (await apiFetch<unknown[]>(`/tenants/${tenantId}/option-templates`)) as OptionGroup[];
+      } catch {
+        return [];
+      }
+    }
+    return listOptionGroups(tenantId) as OptionGroup[];
+  }
+
+  /** Save an option group to the templates library (and catalog). Used by Options generator. */
+  async addOptionTemplate(tenantId: string, group: OptionGroup): Promise<void> {
+    if (this.useApi) {
+      await apiFetch(`/tenants/${tenantId}/option-templates`, {
+        method: 'POST',
+        body: JSON.stringify(group),
+      });
+      return;
+    }
+    const { upsertOptionGroup } = await import('./catalog-store');
+    upsertOptionGroup(tenantId, group);
   }
 
   // --- Admin/OS Control API (used by nmd-admin, admin) ---
@@ -773,6 +882,76 @@ export class MockApiClient implements ApiClient {
     return apiFetch(`/markets/${marketId}/finance/couriers${q}`);
   }
 
+  /** Reports: daily summary (orders, revenue, cash flow). */
+  async getReportsDailySummary(marketId: string, from?: string, to?: string): Promise<{
+    totalOrders: number;
+    deliveryOrders: number;
+    pickupOrders: number;
+    totalRevenue: number;
+    totalMerchantSales: number;
+    totalDeliveryFees: number;
+    dailyCashFlow: number;
+  }> {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const q = params.toString() ? `?${params}` : '';
+    return apiFetch(`/markets/${marketId}/reports/daily-summary${q}`);
+  }
+
+  /** Reports: merchant performance (per-store orders and sales). */
+  async getReportsMerchantPerformance(marketId: string, from?: string, to?: string): Promise<{
+    tenantId: string;
+    tenantName: string;
+    orderCount: number;
+    sales: number;
+    deliveryFees: number;
+  }[]> {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const q = params.toString() ? `?${params}` : '';
+    return apiFetch(`/markets/${marketId}/reports/merchant-performance${q}`);
+  }
+
+  /** Reports: driver leaderboard (ranked by delivery count). */
+  async getReportsDriverLeaderboard(marketId: string, from?: string, to?: string): Promise<{
+    courierId: string;
+    courierName: string;
+    phone?: string;
+    deliveryCount: number;
+    initialFloat: number;
+    totalCashCollected: number;
+    rank: number;
+  }[]> {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const q = params.toString() ? `?${params}` : '';
+    return apiFetch(`/markets/${marketId}/reports/driver-leaderboard${q}`);
+  }
+
+  /** Reports: settlement log (driver Coba handover history). */
+  async getReportsSettlementLog(marketId: string): Promise<{
+    id: string;
+    courierId: string;
+    courierName?: string;
+    adminId: string;
+    totalCollected: number;
+    timestamp: string;
+    marketId?: string;
+  }[]> {
+    return apiFetch(`/markets/${marketId}/reports/settlement-log`);
+  }
+
+  /** Shift settlement: log driver handover (total collected). Admin only. */
+  async settleCourier(courierId: string, totalCollected: number): Promise<{ id: string; courierId: string; adminId: string; totalCollected: number; timestamp: string; marketId?: string }> {
+    return apiFetch(`/admin/couriers/${encodeURIComponent(courierId)}/settle`, {
+      method: 'POST',
+      body: JSON.stringify({ totalCollected }),
+    });
+  }
+
   /** All orders for a market (from tenants in that market). For market admin orders/dispatch views. */
   async getMarketOrders(marketId: string): Promise<Order[]> {
     if (this.useApi) {
@@ -841,7 +1020,12 @@ export class MockApiClient implements ApiClient {
       return apiFetch(`/catalog/${tenantId}`);
     }
     const cat = getCatalog(tenantId);
-    return { ...cat };
+    const sortByOrder = (a: { sortOrder?: number }, b: { sortOrder?: number }) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    return {
+      ...cat,
+      categories: [...(cat.categories ?? [])].sort(sortByOrder),
+      products: [...(cat.products ?? [])].sort(sortByOrder),
+    };
   }
 
   async setCatalogApi(tenantId: string, catalog: { categories: Category[]; products: Product[]; optionGroups: unknown[]; optionItems?: unknown[] }): Promise<void> {
@@ -866,6 +1050,37 @@ export class MockApiClient implements ApiClient {
     });
   }
 
+  async bulkSortCatalog(
+    tenantId: string,
+    entity: 'categories' | 'products',
+    items: { id: string; sortOrder: number }[]
+  ): Promise<{ categories: Category[]; products: Product[]; optionGroups: unknown[]; optionItems: unknown[] }> {
+    if (this.useApi) {
+      return apiFetch(`/bulk-sort`, {
+        method: 'POST',
+        body: JSON.stringify({ entity, tenantId, items }),
+      });
+    }
+    const cat = getCatalog(tenantId);
+    const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
+    if (entity === 'categories') {
+      const categories = (cat.categories ?? []).map((c): Category => {
+        const so = orderMap.get(c.id);
+        return so !== undefined ? { ...c, sortOrder: so } : c;
+      });
+      const { setCatalog: sc } = await import('./catalog-store');
+      sc(tenantId, { ...cat, categories });
+      return { ...getCatalog(tenantId) };
+    }
+    const products = (cat.products ?? []).map((p): Product => {
+      const so = orderMap.get(p.id);
+      return so !== undefined ? { ...p, sortOrder: so } : p;
+    });
+    const { setCatalog: sc } = await import('./catalog-store');
+    sc(tenantId, { ...cat, products });
+    return { ...getCatalog(tenantId) };
+  }
+
   async listOrdersByTenant(
     tenantId: string,
     options?: { from?: string; to?: string; search?: string }
@@ -881,6 +1096,30 @@ export class MockApiClient implements ApiClient {
     }
     const { listOrdersByTenant: lot } = await import('./orders-store');
     return lot(tenantId);
+  }
+
+  async getCategoryPolicies(): Promise<CategoryPolicy[]> {
+    if (this.useApi) {
+      return apiFetch<CategoryPolicy[]>('/category-policies');
+    }
+    return [
+      { id: 'cat-sla-food', name: 'طعام / حلويات', greenMs: 3 * 60 * 1000, orangeMs: 5 * 60 * 1000, redMs: 6 * 60 * 1000, isUrgent: true },
+      { id: 'cat-sla-general', name: 'عام', greenMs: 10 * 60 * 1000, orangeMs: 15 * 60 * 1000, redMs: 20 * 60 * 1000, isUrgent: false },
+    ];
+  }
+
+  async updateCategoryPolicy(
+    id: string,
+    payload: { name?: string; greenMs?: number; orangeMs?: number; redMs?: number; isUrgent?: boolean }
+  ): Promise<CategoryPolicy> {
+    if (this.useApi) {
+      return apiFetch<CategoryPolicy>(`/category-policies/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    }
+    const policies = await this.getCategoryPolicies();
+    const idx = policies.findIndex((p) => p.id === id);
+    if (idx === -1) throw new Error('Category policy not found');
+    policies[idx] = { ...policies[idx], ...payload };
+    return policies[idx];
   }
 
   async getTenantDashboardStats(
@@ -957,6 +1196,12 @@ export class MockApiClient implements ApiClient {
     return uos(orderId, status);
   }
 
+  /** Hard delete order (SUPER_ADMIN only). Requires useApi. */
+  async hardDeleteOrder(orderId: string): Promise<void> {
+    if (!this.useApi) return;
+    await apiFetch(`/orders/${encodeURIComponent(orderId)}/hard-delete`, { method: 'DELETE' });
+  }
+
   async listCampaignsApi(tenantId: string): Promise<unknown[]> {
     if (this.useApi) {
       return apiFetch<unknown[]>(`/campaigns?tenantId=${encodeURIComponent(tenantId)}`);
@@ -1026,7 +1271,7 @@ export class MockApiClient implements ApiClient {
     return zones[idx];
   }
 
-  async patchDeliveryZoneApi(tenantId: string, zoneId: string, updates: Partial<Pick<DeliveryZone, 'isActive' | 'name' | 'fee' | 'etaMinutes' | 'sortOrder'>>): Promise<DeliveryZone | null> {
+  async patchDeliveryZoneApi(tenantId: string, zoneId: string, updates: Partial<Pick<DeliveryZone, 'isActive' | 'name' | 'fee' | 'etaMinutes' | 'sortOrder' | 'centerLat' | 'centerLng' | 'radiusKm'>>): Promise<DeliveryZone | null> {
     if (this.useApi) {
       try {
         return await apiFetch<DeliveryZone>(`/tenants/${tenantId}/delivery-zones/${zoneId}`, {
@@ -1087,6 +1332,7 @@ export class MockApiClient implements ApiClient {
     tenantId: string,
     updates: {
       operationalStatus?: 'open' | 'closed' | 'busy';
+      overrideStatus?: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
       orderPolicy?: 'accept_always' | 'accept_only_when_open';
       businessHours?: import('@nmd/core').BusinessHours;
       busyBannerEnabled?: boolean;
@@ -1097,6 +1343,9 @@ export class MockApiClient implements ApiClient {
       name?: string;
       phone?: string;
       whatsappPhone?: string;
+      addressLine?: string;
+      location?: { lat: number; lng: number };
+      supportsWeightSelling?: boolean;
     }
   ): Promise<void> {
     if (this.useApi) {

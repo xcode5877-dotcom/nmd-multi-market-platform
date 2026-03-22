@@ -100,4 +100,10 @@ export interface Product {
   isArchived?: boolean;
   /** Display order within category (lower = first). Storefront sorts by this then createdAt. */
   sortOrder?: number;
+  /** Quantity increment for add-to-cart (default 1). Use 0.5 for vegetables/butchery (e.g. kg). */
+  quantityStep?: number;
+  /** Unit label for display (e.g. "كيلو", "حبة", "كرتونة"). Default "حبة" when omitted. */
+  unitName?: string;
+  /** When true, product is sold by weight/fraction (show decimals and weight unit). When false, always integer and "حبة". */
+  isWeightBased?: boolean;
 }

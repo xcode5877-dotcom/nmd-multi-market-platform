@@ -2,7 +2,53 @@ import { createContext, useContext, useCallback, useState, useEffect, type React
 
 /** Ultimate Auth Sync: Customer session only. Key nmd-customer-token; distinct from admin (nmd-access-token). Logout removes only this token and resets customer state. */
 const CUSTOMER_TOKEN_KEY = 'nmd-customer-token';
-const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) || '';
+const API_BASE = ((typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) || '').replace(/\/$/, '');
+
+/** Only when running in Android wrapper (NMD-Android-App): get FCM token from bridge and POST to backend. No-op for web. */
+function saveFcmTokenIfAndroidApp(apiBase: string, authToken: string | null): void {
+  if (!authToken?.trim() || typeof navigator === 'undefined') return;
+  console.log('NMD-DEBUG: Checking for Android Bridge...');
+  console.log('NMD-DEBUG: UserAgent is:', navigator.userAgent);
+  if (!navigator.userAgent.includes('NMD-Android-App')) return;
+  const w = typeof window !== 'undefined' ? (window as unknown as { NMDNative?: { getFCMToken?: () => string } }) : null;
+
+  function attemptSync(retry: boolean) {
+    const bridge = w?.NMDNative;
+    if (!bridge || typeof bridge.getFCMToken !== 'function') {
+      console.log('NMD-DEBUG: window.NMDNative not found or getFCMToken missing.');
+      return;
+    }
+    console.log('NMD-DEBUG: NMDNative bridge detected. Calling getFCMToken()...');
+    try {
+      const raw = bridge.getFCMToken();
+      const token = typeof raw === 'string' ? raw.trim() : '';
+      if (!token) {
+        console.log('NMD-DEBUG: getFCMToken returned empty token.', retry ? 'No more retries.' : 'Retrying in 2000ms...');
+        if (!retry) {
+          setTimeout(() => attemptSync(true), 2000);
+        }
+        return;
+      }
+      const base = apiBase && apiBase.trim().length > 0 ? apiBase : 'https://nmd.marketing/api';
+      const finalUrl = base.replace(/\/$/, '') + '/customer/save-fcm-token';
+      console.log('NMD-DEBUG: Final POST URL is:', finalUrl);
+      console.log('NMD-DEBUG: Sending FCM token to backend URL:', finalUrl);
+      fetch(finalUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ fcmToken: token }),
+        credentials: 'include',
+      }).catch((err) => {
+        console.log('NMD-DEBUG: Error while sending FCM token:', err instanceof Error ? err.message : String(err));
+      });
+    } catch (e) {
+      console.log('NMD-DEBUG: Exception in saveFcmTokenIfAndroidApp:', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // Small delay to let WebView and bridge finish initialization.
+  setTimeout(() => attemptSync(false), 1000);
+}
 
 export interface Customer {
   id: string;
@@ -10,11 +56,18 @@ export interface Customer {
   name?: string;
 }
 
+export interface OtpGatewayHealth {
+  gatewayConfigured: boolean;
+  gatewayReachable: boolean;
+  ready: boolean;
+}
+
 interface CustomerAuthContextValue {
   customer: Customer | null;
   isLoading: boolean;
   checkPhone: (phone: string) => Promise<{ exists: boolean }>;
-  start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string }>;
+  checkOtpGatewayHealth: () => Promise<OtpGatewayHealth>;
+  start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }>;
   verify: (phone: string, code: string, name?: string) => Promise<{ ok: boolean; error?: string; customer?: Customer; isNewUser?: boolean }>;
   updateProfile: (name: string) => Promise<{ ok: boolean; error?: string; customer?: Customer }>;
   me: () => Promise<Customer | null>;
@@ -73,7 +126,22 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string }> => {
+  const checkOtpGatewayHealth = useCallback(async (): Promise<OtpGatewayHealth> => {
+    if (!API_BASE) return { gatewayConfigured: false, gatewayReachable: false, ready: false };
+    try {
+      const res = await fetch(`${API_BASE}/customer/auth/otp-gateway-health`);
+      const data = (await res.json()) as { gatewayConfigured?: boolean; gatewayReachable?: boolean; ready?: boolean };
+      return {
+        gatewayConfigured: !!data.gatewayConfigured,
+        gatewayReachable: !!data.gatewayReachable,
+        ready: !!data.ready,
+      };
+    } catch {
+      return { gatewayConfigured: false, gatewayReachable: false, ready: false };
+    }
+  }, []);
+
+  const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }> => {
     if (!API_BASE) return { ok: false, error: 'API غير متاح. حدّث VITE_MOCK_API_URL أو شغّل Mock API.' };
     const phoneNormalized = String(phone ?? '').trim().replace(/\D/g, '');
     if (!phoneNormalized || phoneNormalized.length < 9) return { ok: false, error: 'رقم الجوال غير صالح' };
@@ -83,9 +151,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneNormalized }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string };
+      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string; whatsAppSent?: boolean };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
-      return { ok: true, devCode: data.devCode };
+      return { ok: true, devCode: data.devCode, whatsAppSent: data.whatsAppSent };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
     }
@@ -107,6 +175,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
       const meData = (data.customer ?? (await fetchMe())) as Customer | null;
       setCustomer(meData);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nmd-fcm-sync-request', { detail: { token: data.token } }));
+      }
+      saveFcmTokenIfAndroidApp(API_BASE, data.token);
       return { ok: true, customer: meData ?? undefined, isNewUser: !!data.isNewUser };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
@@ -149,6 +221,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     customer,
     isLoading,
     checkPhone,
+    checkOtpGatewayHealth,
     start,
     verify,
     updateProfile,
