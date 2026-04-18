@@ -8,6 +8,9 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
+      # Environment variable group in Codemagic (Team settings → Environment variables): certificates / profiles / secrets
+      groups:
+        - ios_signing
       xcode: 16.2
       ios_signing:
         distribution_type: app_store
