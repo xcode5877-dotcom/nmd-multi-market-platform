@@ -67,9 +67,20 @@ interface CustomerAuthContextValue {
   isLoading: boolean;
   checkPhone: (phone: string) => Promise<{ exists: boolean }>;
   checkOtpGatewayHealth: () => Promise<OtpGatewayHealth>;
-  start: (phone: string) => Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }>;
+  start: (
+    phone: string
+  ) => Promise<{
+    ok: boolean;
+    error?: string;
+    devCode?: string;
+    whatsAppSent?: boolean;
+    smsSent?: boolean;
+    sentVia?: 'whatsapp' | 'sms' | 'both' | 'none' | string;
+  }>;
   verify: (phone: string, code: string, name?: string) => Promise<{ ok: boolean; error?: string; customer?: Customer; isNewUser?: boolean }>;
   updateProfile: (name: string) => Promise<{ ok: boolean; error?: string; customer?: Customer }>;
+  /** Permanently deletes the account on the server (Apple App Store requirement), then clears local session. */
+  deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   me: () => Promise<Customer | null>;
   logout: () => void;
 }
@@ -141,7 +152,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const start = useCallback(async (phone: string): Promise<{ ok: boolean; error?: string; devCode?: string; whatsAppSent?: boolean }> => {
+  const start = useCallback(async (
+    phone: string
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    devCode?: string;
+    whatsAppSent?: boolean;
+    smsSent?: boolean;
+    sentVia?: 'whatsapp' | 'sms' | 'both' | 'none' | string;
+  }> => {
     if (!API_BASE) return { ok: false, error: 'API غير متاح. حدّث VITE_MOCK_API_URL أو شغّل Mock API.' };
     const phoneNormalized = String(phone ?? '').trim().replace(/\D/g, '');
     if (!phoneNormalized || phoneNormalized.length < 9) return { ok: false, error: 'رقم الجوال غير صالح' };
@@ -151,9 +171,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneNormalized }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; devCode?: string; whatsAppSent?: boolean };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        devCode?: string;
+        whatsAppSent?: boolean;
+        smsSent?: boolean;
+        sentVia?: string;
+      };
       if (!res.ok) return { ok: false, error: data.error ?? `خطأ: ${res.status}` };
-      return { ok: true, devCode: data.devCode, whatsAppSent: data.whatsAppSent };
+      return { ok: true, devCode: data.devCode, whatsAppSent: data.whatsAppSent, smsSent: data.smsSent, sentVia: data.sentVia };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
     }
@@ -217,6 +244,32 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setCustomer(null);
   }, []);
 
+  const deleteAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!API_BASE) return { ok: false, error: 'API غير متاح' };
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem(CUSTOMER_TOKEN_KEY) : null;
+    if (!token) return { ok: false, error: 'غير مسجّل الدخول' };
+    try {
+      const res = await fetch(`${API_BASE}/customer/me`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 204 || res.status === 200) {
+        logout();
+        return { ok: true };
+      }
+      let msg = `خطأ: ${res.status}`;
+      try {
+        const j = (await res.json()) as { error?: string };
+        if (j.error) msg = j.error;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, error: msg };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'خطأ في الاتصال' };
+    }
+  }, [logout]);
+
   const value: CustomerAuthContextValue = {
     customer,
     isLoading,
@@ -225,6 +278,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     start,
     verify,
     updateProfile,
+    deleteAccount,
     me,
     logout,
   };

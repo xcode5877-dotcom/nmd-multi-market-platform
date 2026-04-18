@@ -4,7 +4,7 @@ import cors from 'cors';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import { join, resolve, dirname, basename } from 'path';
-import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'fs';
 import sharp from 'sharp';
 import type { RequestHandler } from 'express';
 import {
@@ -49,20 +49,62 @@ import {
   getOptionTemplates,
   addOptionTemplate,
 } from './store.js';
+import {
+  parseAccountExtras,
+  mergeExtrasIntoCustomer,
+  luhnValid,
+  inferCardBrand,
+  newAddressId,
+  newCardId,
+  normalizeNotificationPatch,
+} from './customer-account-extras.js';
 import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { PrismaClient } from '@prisma/client';
 import { createOtp, verifyOtp } from './customer-auth.js';
+import { normalizeInternationalPhoneDigits } from './utils/phone.js';
 import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
 import { sendWhatsAppNotification } from './services/CouponService.js';
 import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
 import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast } from './firebase-admin.js';
+import { awardLoyaltyCoinsIfNeeded, INITIAL_COINS } from './loyalty-coins.js';
+import {
+  loadHypConfig,
+  loadHypConfigDiagnostics,
+  buildDoDealPaymentPageXml,
+  requestHypHostedPage,
+  parseDoDealResponse,
+  normalizeHypQuery,
+  verifyHypResponseMac,
+} from './hyp-service.js';
+import { sendOtpViaExternalWhatsAppApi } from './services/externalWhatsAppOtp.js';
+import { aggregateMerchantStats, dateRangeForMerchant, orderPaymentChannel, type MerchantTimeRange } from './merchant-stats.js';
+import { logExpressRoutes } from './utils/list-express-routes.js';
+import { whatsAppFetch } from './utils/whatsapp-http.js';
 
 const PORT = Number(process.env.PORT ?? 5190);
+/** Dev-only: `GET /customer/orders` skips auth and returns fixed samples. Default off so live DB + JWT path is used. Set `MOCK_CUSTOMER_ORDERS_STATIC_BYPASS=1` to enable. */
+const MOCK_CUSTOMER_ORDERS_STATIC_BYPASS =
+  String(process.env.MOCK_CUSTOMER_ORDERS_STATIC_BYPASS ?? '0') === '1';
 const repos = createRepos();
 const prisma = new PrismaClient();
+
+/** When WhatsApp + SMS all fail, log OTP for manual login (debug). Uses DATA volume in Docker. */
+function logOtpManualFallback(phoneDigits: string, code: string, reason: string) {
+  const payload = { phone: phoneDigits, code, reason, at: new Date().toISOString() };
+  console.warn('[OTP-FALLBACK] All delivery channels failed — use this code to sign in manually:', payload);
+  const dataDir = dirname(process.env.DATA_FILE || join(process.cwd(), 'data', 'data.json'));
+  const logPath = process.env.OTP_FALLBACK_LOG_PATH || join(dataDir, 'otp-debug.log');
+  try {
+    mkdirSync(dirname(logPath), { recursive: true });
+    appendFileSync(logPath, `${payload.at}\t${phoneDigits}\t${code}\t${reason}\n`, 'utf8');
+    console.warn('[OTP-FALLBACK] Appended one line to', logPath);
+  } catch (e) {
+    console.warn('[OTP-FALLBACK] Could not write log file:', e instanceof Error ? e.message : e);
+  }
+}
 
 const isStorageDb = () => (process.env.STORAGE_DRIVER ?? '').toLowerCase() === 'db';
 
@@ -92,17 +134,145 @@ async function getAllCustomerFcmTokens(): Promise<string[]> {
 }
 
 /** Customer-facing notification: look up latest FCM token for customerId and send simple title/body. */
-async function sendFCMNotification(customerId: string, title: string, body: string): Promise<void> {
+async function sendFCMNotification(
+  customerId: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<void> {
   try {
     const token = await getCustomerFcmToken(customerId);
     if (!token) {
       console.log('[FCM] sendFCMNotification: no token for customerId', customerId);
       return;
     }
-    sendFCMToToken(token, title, body);
+    await sendAdminFCMToToken(token, { title, body, data });
   } catch (e) {
     console.warn('[FCM] sendFCMNotification failed for customerId', customerId, e);
   }
+}
+
+async function runLoyaltyAwardForOrderAtIndex(
+  orders: Record<string, unknown>[],
+  idx: number,
+  prevStatus: string | undefined
+): Promise<void> {
+  try {
+    const o = orders[idx] as Record<string, unknown>;
+    const orderId = o?.id != null ? String(o.id) : '—';
+    const newStatus = String(o?.status ?? '');
+    const awardedRaw = (o as { loyaltyCoinsAwarded?: unknown }).loyaltyCoinsAwarded;
+    const awardedBefore =
+      awardedRaw === undefined || awardedRaw === null ? '—' : String(awardedRaw);
+    console.log(
+      `[loyalty-debug] Order: ${orderId}, Old: ${prevStatus ?? '—'}, New: ${newStatus || '—'}, AwardedBefore: ${awardedBefore}`
+    );
+    const tenants = await repos.tenants.findAll();
+    const result = await awardLoyaltyCoinsIfNeeded({
+      prisma,
+      repos,
+      orders,
+      orderIndex: idx,
+      tenants,
+    });
+    if (result?.customerId && result.coinsEarned > 0) {
+      await sendFCMNotification(
+        result.customerId,
+        'رصيد NMD',
+        `حصلت على ${result.coinsEarned} عملة من اكتمال طلبك!`,
+        {
+          type: 'coins_earned',
+          coinsEarned: String(result.coinsEarned),
+          newBalance: String(result.newBalance ?? ''),
+        }
+      );
+    }
+  } catch (e) {
+    console.warn('[loyalty] award failed', e);
+  }
+}
+
+/** Base URL for Hyp redirect callbacks (must be reachable by the user’s browser). E.g. https://nmd.marketing/api */
+function getPublicApiBaseUrl(): string {
+  const u = process.env.PUBLIC_API_BASE_URL?.trim() || process.env.MOCK_API_PUBLIC_URL?.trim() || process.env.PUBLIC_URL?.trim();
+  if (u) return u.replace(/\/$/, '');
+  return `http://127.0.0.1:${PORT}`;
+}
+
+/**
+ * After successful card capture: mark group orders COMPLETED, payment CAPTURED, run loyalty once per line.
+ * (Demo behaviour: immediate completion so customer coins / UI can celebrate.)
+ */
+async function completeHypPaymentForGroup(
+  orderGroupId: string,
+  opts?: { providerRef?: string; demoMode?: boolean; cardLast4?: string; cardBrand?: string }
+): Promise<void> {
+  const all = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const now = new Date().toISOString();
+  const prevById = new Map<string, string>();
+  for (let i = 0; i < all.length; i++) {
+    const o = all[i];
+    if (String((o as { orderGroupId?: string }).orderGroupId ?? '') !== orderGroupId) continue;
+    const oid = String(o.id ?? '');
+    prevById.set(oid, String(o.status ?? ''));
+    const pay = ((o as { payment?: Record<string, unknown> }).payment ?? {}) as Record<string, unknown>;
+    all[i] = {
+      ...o,
+      status: 'PAID',
+      paymentMethod: 'CARD',
+      paymentStatus: 'CAPTURED',
+      payment: {
+        ...pay,
+        method: 'CARD',
+        status: 'CAPTURED',
+        provider: 'HYP',
+        providerRef: opts?.providerRef || (pay.providerRef as string | undefined) || '',
+        cardLast4: opts?.cardLast4 || (pay.cardLast4 as string | undefined) || '',
+        cardBrand: opts?.cardBrand || (pay.cardBrand as string | undefined) || '',
+        paidAt: now,
+        demoMode: Boolean(opts?.demoMode),
+      },
+    };
+  }
+  if (prevById.size === 0) {
+    console.warn('[Hyp] completeHypPaymentForGroup: no orders for group', orderGroupId);
+    return;
+  }
+  await repos.orders.setAll(all as OrderRecord[]);
+  for (const orderId of prevById.keys()) {
+    await prisma.payment.upsert({
+      where: { orderId },
+      create: {
+        id: `pay-${orderId}`,
+        orderId,
+        method: 'CARD',
+        status: 'CAPTURED',
+        amount: Number((all.find((o) => String(o.id ?? '') === orderId) as { total?: number } | undefined)?.total ?? 0) || 0,
+        currency: 'ILS',
+        provider: 'HYP',
+        providerRef: opts?.providerRef ?? null,
+        ...(opts?.cardLast4 ? { providerRef: `${opts.providerRef ?? ''}${opts.providerRef ? '|' : ''}last4:${opts.cardLast4}` } : {}),
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: {
+        method: 'CARD',
+        status: 'CAPTURED',
+        provider: 'HYP',
+        providerRef: opts?.providerRef ?? undefined,
+        updatedAt: now,
+      },
+    });
+  }
+  const orders2 = (await repos.orders.findAll()) as Record<string, unknown>[];
+  for (let i = 0; i < orders2.length; i++) {
+    const o = orders2[i];
+    const id = String(o.id ?? '');
+    const prev = prevById.get(id);
+    if (prev === undefined) continue;
+    await runLoyaltyAwardForOrderAtIndex(orders2, i, prev);
+  }
+  await repos.orders.setAll(orders2 as OrderRecord[]);
 }
 
 /**
@@ -159,6 +329,9 @@ function wrapAsync(fn: RequestHandler): RequestHandler {
   };
 }
 const JWT_SECRET = process.env.JWT_SECRET ?? 'nmd-dev-secret-2026';
+const API_KEY = String(process.env.API_KEY ?? '').trim();
+/** Server-to-server (WhatsApp bot, internal jobs). Same env as POST /internal/orders/:id/status. */
+const INTERNAL_API_SECRET = String(process.env.INTERNAL_API_SECRET ?? process.env.WA_INTERNAL_SECRET ?? '').trim();
 console.log('[MockAPI] JWT_SECRET loaded:', JWT_SECRET ? `${JWT_SECRET.slice(0, 8)}...` : 'MISSING (using default)');
 const app = express();
 
@@ -171,9 +344,22 @@ function isPlatformAdmin(role: string | undefined): boolean {
   return role === 'ROOT_ADMIN' || role === 'SUPER_ADMIN';
 }
 
+/** Grant coins only via platform admin JWT, API_KEY, or INTERNAL_API_SECRET — not customer sessions. */
+function authorizeCoinAddRequest(req: express.Request): 'platform_admin' | 'service' | null {
+  const user = req.user as { role?: string } | undefined;
+  if (user && isPlatformAdmin(user.role)) return 'platform_admin';
+  if (API_KEY && String(req.get('x-api-key') ?? '').trim() === API_KEY) return 'service';
+  if (INTERNAL_API_SECRET && String(req.headers['x-internal-secret'] ?? '').trim() === INTERNAL_API_SECRET) {
+    return 'service';
+  }
+  return null;
+}
+
 const BUFFALO28_TENANT_ID = '78463821-ccb7-48af-841b-84a18c42abb6';
 const OBR_TENANT_ID = '3f801fb9-f6f9-4e81-b3a2-f8954498cdac';
 const TOP_MARKET_TENANT_ID = '60904bcc-970a-45e3-8669-8015ee2afe64';
+const FALLBACK_CUSTOMER_PHONE = '972546111668';
+const FALLBACK_CUSTOMER_NAME = 'Rand';
 
 async function seedUsersIfNeeded(): Promise<void> {
   const users = await repos.users.findAll();
@@ -276,6 +462,60 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
   }
 }
 
+/**
+ * Ensure one demo customer + merchant profile exist so newly-authenticated phone users
+ * always have visible data immediately (coins/profile/stats).
+ */
+async function seedDemoProfilesIfNeeded(): Promise<void> {
+  const customers = await repos.customers.findAll();
+  const normalized = normalizePhoneForCoupon(FALLBACK_CUSTOMER_PHONE) ?? FALLBACK_CUSTOMER_PHONE;
+  const existingCustomer = customers.find((c) => normalizePhoneForCoupon(c.phone) === normalized);
+  if (!existingCustomer) {
+    await repos.customers.setAll([
+      ...customers,
+      {
+        id: `customer-demo-${normalized}`,
+        phone: FALLBACK_CUSTOMER_PHONE,
+        name: FALLBACK_CUSTOMER_NAME,
+        email: 'rand@nmd.customer',
+        city: 'Iksal',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  const users = await repos.users.findAll();
+  const demoMerchantEmail = `${normalized}@merchant.nmd.com`;
+  const hasMerchant = users.some((u) => u.email?.toLowerCase() === demoMerchantEmail.toLowerCase());
+  if (!hasMerchant) {
+    await repos.users.setAll([
+      ...users,
+      {
+        id: `user-merchant-${normalized}`,
+        email: demoMerchantEmail,
+        role: 'TENANT_ADMIN',
+        tenantId: BUFFALO28_TENANT_ID,
+        password: '123456',
+      },
+    ]);
+  }
+
+  // DB mode: prime a visible coins balance for immediate UI confirmation.
+  try {
+    await prisma.customerCoin.upsert({
+      where: { customerPhone: normalized },
+      update: {},
+      create: {
+        customerPhone: normalized,
+        balance: INITIAL_COINS,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Ignore in non-DB storage or if prisma table is unavailable.
+  }
+}
+
 // Persistent uploads: use UPLOADS_DIR env, or ./data/uploads so uploads survive rebuilds when data/ is a volume.
 // API serves at /uploads/* (no /api prefix); Nginx strips /api and proxies /api/uploads/ → mock-api:5190/uploads/.
 const UPLOADS_DIR = (() => {
@@ -353,6 +593,16 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+/** Force JSON content type for gateway /api requests (defensive for mobile clients). */
+app.use((req, res, next) => {
+  const original = req.originalUrl || '';
+  const path = req.path || '';
+  if (original.startsWith('/api/') || path.startsWith('/api/')) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  }
+  next();
+});
 
 /** Ensure all JSON responses declare UTF-8 so Arabic and other non-ASCII render correctly (no ?????). */
 app.use((_req, res, next) => {
@@ -454,6 +704,7 @@ declare global {
 const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/$/ },
   { method: 'POST', path: /^\/auth\/login$/ },
+  { method: 'POST', path: /^\/auth\/verify-otp$/ },
   { method: 'GET', path: /^\/health$/ },
   { method: 'GET', path: /^\/storefront\/tenants$/ },
   { method: 'GET', path: /^\/markets$/ },
@@ -485,9 +736,19 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/merchant\/push-public-key$/ },
   { method: 'GET', path: /^\/data$/ },
   { method: 'GET', path: /^\/contest\/active$/ },
+  { method: 'GET', path: /^\/lucky-wheel\/prizes$/ },
+  { method: 'GET', path: /^\/rewards$/ },
+  /** Hyp hosted payment return (browser redirect from CreditGuard). */
+  { method: 'GET', path: /^\/payments\/hyp\/return$/ },
+  /** Mock-api–served Hyp HTML (WebView cannot send Bearer on redirects; must be public). */
+  { method: 'GET', path: /^\/payments\/hyp\/hosted\/[^/]+$/ },
+  { method: 'GET', path: /^\/payments\/hyp\/demo$/ },
+  /** Hyp server-to-server webhook (optional; configure HYP_WEBHOOK_SECRET). */
+  { method: 'POST', path: /^\/payments\/hyp\/webhook$/ },
 ];
 
 function isPublicRoute(method: string, path: string): boolean {
+  if (MOCK_CUSTOMER_ORDERS_STATIC_BYPASS && method === 'GET' && path === '/customer/orders') return true;
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path.test(path));
 }
 
@@ -628,6 +889,16 @@ app.use(async (req, res, next) => {
  *  Customer JWT (role CUSTOMER) sets req.customer; admin JWT sets req.user. /contest/me and /contest/participate require req.customer. */
 app.use((req, res, next) => {
   if (req.path.startsWith('/uploads')) return next();
+  if (req.method === 'GET' && (req.path === '/payments/hyp/demo' || req.path.startsWith('/payments/hyp/hosted/'))) {
+    return next();
+  }
+  if (
+    req.path === '/customer/auth/otp-gateway-health' ||
+    req.path === '/api/internal/whatsapp/reset' ||
+    req.path === '/internal/whatsapp/reset'
+  ) {
+    return next();
+  }
   if (req.method === 'POST' && (req.path === '/internal/test-fcm' || req.path === '/orders/test-fcm')) return next();
   if (isPublicRoute(req.method, req.path)) return next();
   if (req.path.startsWith('/customer/') && !req.path.startsWith('/customer/auth/')) {
@@ -645,6 +916,25 @@ app.use((req, res, next) => {
 
 // --- Auth (admin: email/password or OTP backdoor for Root) ---
 /** Traditional admin login. Required for ROOT_ADMIN / Global Categories. Also accepts OTP backdoor: phone=999, code=1234 → root@nmd.com. */
+function buildAdminAuthPayload(user: User, token: string) {
+  const fallbackNameFromEmail = user.email ? user.email.split('@')[0] : '';
+  const safeName = fallbackNameFromEmail.trim() || 'Rand';
+  return {
+    token,
+    accessToken: token,
+    user: {
+      id: user.id,
+      name: safeName,
+      email: user.email,
+      role: user.role,
+      marketId: user.marketId,
+      tenantId: user.tenantId,
+      courierId: user.courierId,
+      mustChangePassword: user.mustChangePassword ?? false,
+    },
+  };
+}
+
 app.post('/auth/login', async (req, res) => {
   const body = req.body as { email?: string; password?: string; phone?: string; code?: string };
   const users = (await repos.users.findAll());
@@ -665,7 +955,17 @@ app.post('/auth/login', async (req, res) => {
     const password = body.password;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
     user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-    if (!user || user.password !== password) {
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    // Absolute admin control: courier credentials are controlled from Courier model.
+    if (user.role === 'COURIER' && user.courierId) {
+      const courier = (await repos.couriers.findAll()).find((c) => c.id === user!.courierId);
+      const courierPassword = courier?.password ?? user.password;
+      if (!courierPassword || courierPassword !== password) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+    } else if (user.password !== password) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
   }
@@ -680,7 +980,7 @@ app.post('/auth/login', async (req, res) => {
     JWT_SECRET,
     { expiresIn: '7d' }
   );
-  res.json({ accessToken: token });
+  res.json(buildAdminAuthPayload(user, token));
 });
 
 app.get('/auth/login', (_req, res) => {
@@ -703,7 +1003,7 @@ app.post('/app/auth/login', wrapAsync(async (req, res) => {
     JWT_SECRET,
     { expiresIn: '7d' }
   );
-  res.json({ accessToken: token });
+  res.json(buildAdminAuthPayload(user, token));
 }));
 
 app.get('/auth/me', wrapAsync(async (req, res) => {
@@ -792,57 +1092,187 @@ app.get('/customer/auth/check-phone', async (req, res) => {
   res.json({ exists });
 });
 
-// Ops: check if WhatsApp OTP gateway is reachable and ready (for debugging delayed OTP). No auth.
+/** Mask secrets for logs / health (container env verification). */
+function maskSecret(v: string | undefined, keep = 4): string {
+  if (!v || v.length <= keep) return v ? '***' : '';
+  return `${v.slice(0, keep)}…(${v.length} chars)`;
+}
+
+// Ops: check if WhatsApp OTP gateway is reachable + which OTP env vars are loaded (no secrets). No auth.
 app.get('/customer/auth/otp-gateway-health', async (_req, res) => {
-  const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || '').replace(/\/$/, '');
-  if (!gatewayUrl) {
-    return res.json({ gatewayConfigured: false, gatewayReachable: false, ready: false });
+  const useLegacy =
+    process.env.USE_LEGACY_WHATSAPP_GATEWAY === '1' || process.env.USE_LEGACY_WHATSAPP_GATEWAY === 'true';
+  let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
+  if (useLegacy && !gatewayUrl) {
+    gatewayUrl = 'http://whatsapp-service:3000';
+  }
+  const extUrl = (process.env.WHATSAPP_API_URL || '').replace(/\/$/, '');
+  const otpEnv = {
+    WHATSAPP_API_URL: extUrl ? `${extUrl.slice(0, 48)}${extUrl.length > 48 ? '…' : ''}` : '',
+    WHATSAPP_TOKEN_set: !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_TOKEN.length > 0),
+    WHATSAPP_TOKEN_preview: maskSecret(process.env.WHATSAPP_TOKEN),
+    WHATSAPP_GATEWAY_URL: (process.env.WHATSAPP_GATEWAY_URL || '').trim().slice(0, 48) || '',
+    WHATSAPP_SERVICE_URL: (process.env.WHATSAPP_SERVICE_URL || '').trim().slice(0, 48) || '',
+    effectiveGatewayUrl: gatewayUrl ? `${gatewayUrl.slice(0, 40)}${gatewayUrl.length > 40 ? '…' : ''}` : '',
+    WA_API_KEY_set: !!(process.env.WA_API_KEY && process.env.WA_API_KEY.length > 0),
+    WA_API_KEY_preview: maskSecret(process.env.WA_API_KEY),
+    USE_LEGACY_WHATSAPP_GATEWAY: process.env.USE_LEGACY_WHATSAPP_GATEWAY || '',
+    FAWAZ_PHONE_set: !!(process.env.FAWAZ_PHONE || process.env.MOCK_OTP_FIXED_PHONES),
+    SMS_GATEWAY_URL_set: !!(process.env.SMS_GATEWAY_URL && process.env.SMS_GATEWAY_URL.length > 0),
+    SMS_API_KEY_set: !!(process.env.SMS_API_KEY && process.env.SMS_API_KEY.length > 0),
+    TWILIO_ACCOUNT_SID_set: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.length > 0),
+    TWILIO_AUTH_TOKEN_set: !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 0),
+    TWILIO_FROM_NUMBER: process.env.TWILIO_FROM_NUMBER || '',
+    MOCK_OTP: process.env.MOCK_OTP || '',
+    NODE_ENV: process.env.NODE_ENV || '',
+  };
+  const externalConfigured = !!(extUrl && process.env.WHATSAPP_TOKEN);
+  if (!gatewayUrl && !externalConfigured) {
+    return res.json({
+      gatewayConfigured: false,
+      gatewayReachable: false,
+      ready: false,
+      externalWhatsAppConfigured: false,
+      otpEnv,
+    });
+  }
+  if (externalConfigured) {
+    return res.json({
+      externalWhatsAppConfigured: true,
+      gatewayConfigured: !!gatewayUrl,
+      gatewayReachable: null,
+      ready: null,
+      note: 'OTP WhatsApp uses WHATSAPP_API_URL + WHATSAPP_TOKEN (UltraMsg-compatible). Legacy /health only if USE_LEGACY_WHATSAPP_GATEWAY.',
+      otpEnv,
+    });
   }
   try {
-    const healthRes = await fetch(`${gatewayUrl}/health`, { method: 'GET' });
+    const healthRes = await whatsAppFetch(`${gatewayUrl.replace(/\/$/, '')}/health`, {
+      method: 'GET',
+      headers: process.env.WA_API_KEY ? { 'x-api-key': process.env.WA_API_KEY } : undefined,
+    });
     const data = (await healthRes.json().catch(() => ({}))) as { ready?: boolean };
     res.json({
       gatewayConfigured: true,
       gatewayReachable: healthRes.ok,
       ready: healthRes.ok && data.ready === true,
+      externalWhatsAppConfigured: false,
+      otpEnv,
     });
   } catch (e) {
     res.json({
       gatewayConfigured: true,
       gatewayReachable: false,
       ready: false,
+      externalWhatsAppConfigured: false,
       error: e instanceof Error ? e.message : 'Request failed',
+      otpEnv,
     });
   }
 });
 
-// WhatsApp OTP gateway: set WHATSAPP_GATEWAY_URL and WA_API_KEY. If OTP is delayed, check gateway GET /health and provider status page.
+app.get('/api/internal/whatsapp/reset', async (_req, res) => {
+  const useLegacy =
+    process.env.USE_LEGACY_WHATSAPP_GATEWAY === '1' || process.env.USE_LEGACY_WHATSAPP_GATEWAY === 'true';
+  let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
+  if (useLegacy && !gatewayUrl) {
+    gatewayUrl = 'http://whatsapp-service:3000';
+  }
+  const waApiKey = process.env.WA_API_KEY || '';
+  if (!gatewayUrl || !waApiKey) {
+    return res.status(500).json({
+      success: false,
+      error: 'WHATSAPP_GATEWAY_URL or WA_API_KEY is missing',
+    });
+  }
+  try {
+    const r = await whatsAppFetch(`${gatewayUrl.replace(/\/$/, '')}/internal/reset`, {
+      method: 'GET',
+      headers: { 'x-api-key': waApiKey },
+    });
+    const body = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string; message?: string };
+    if (!r.ok || body.success === false) {
+      return res.status(502).json({
+        success: false,
+        error: body.error || `Gateway reset failed (HTTP ${r.status})`,
+      });
+    }
+    return res.json({
+      success: true,
+      message: body.message || 'Reset triggered. Check whatsapp-service logs for fresh QR code.',
+    });
+  } catch (e) {
+    return res.status(502).json({
+      success: false,
+      error: e instanceof Error ? e.message : 'Failed to contact WhatsApp gateway',
+    });
+  }
+});
+
+app.get('/internal/whatsapp/reset', async (req, res) => {
+  return res.redirect(307, '/api/internal/whatsapp/reset');
+});
+
+/**
+ * Legacy: internal whatsapp-service (Docker) — only if USE_LEGACY_WHATSAPP_GATEWAY=1.
+ */
+function classifyWhatsAppOtpError(rawError: string, status?: number): string {
+  const e = (rawError || '').toLowerCase();
+  if (status === 503 || e.includes('client not ready') || e.includes('not ready') || e.includes('disconnected')) {
+    return 'WHATSAPP_DEVICE_OFFLINE: WhatsApp is not connected. Please scan QR and keep phone online.';
+  }
+  if (e.includes('timeout') || e.includes('getchatbyid')) {
+    return 'WHATSAPP_TIMEOUT: Gateway timed out while reaching WhatsApp. Try reset and rescan QR.';
+  }
+  if (e.includes('unauthorized') || status === 401) {
+    return 'WHATSAPP_AUTH_ERROR: WA_API_KEY mismatch between mock-api and whatsapp-service.';
+  }
+  return rawError || 'WHATSAPP_SEND_FAILED';
+}
+
 async function sendOtpViaGateway(
   gatewayUrl: string,
   waApiKey: string,
-  phone: string,
+  /** Digits only, country code, no + (e.g. 972501234567) — matches whatsapp-service normalizePhone */
+  phoneDigits: string,
   code: string,
-  retries = 1
+  retries = 0
 ): Promise<{ sent: boolean; status?: number; error?: string }> {
-  const url = `${gatewayUrl}/send-otp`;
+  const url = `${gatewayUrl.replace(/\/$/, '')}/send-otp`;
   const gatewayHost = gatewayUrl.replace(/^https?:\/\//, '').split('/')[0] || 'gateway';
   const opts: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': waApiKey },
-    body: JSON.stringify({ phone, code }),
+    body: JSON.stringify({ phone: phoneDigits, code }),
   };
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const sendRes = await fetch(url, opts);
-      if (sendRes.ok) {
+      const sendRes = await whatsAppFetch(url, opts);
+      const responseText = await sendRes.text();
+      let parsed: { success?: boolean; error?: string; message?: string } = {};
+      try {
+        parsed = JSON.parse(responseText) as { success?: boolean; error?: string; message?: string };
+      } catch {
+        /* non-JSON body */
+      }
+      // Gateway must return JSON { success: true }; treat anything else as failure → SMS fallback
+      const waOk = sendRes.ok && parsed.success === true;
+      const response = {
+        status: sendRes.status,
+        ok: sendRes.ok,
+        success: parsed.success,
+        error: parsed.error ?? parsed.message,
+        bodyPreview: responseText.length > 400 ? `${responseText.slice(0, 400)}…` : responseText,
+      };
+      console.log('OTP-SEND-DEBUG:', { phone: phoneDigits, code, response });
+      if (waOk) {
         return { sent: true };
       }
-      const errText = await sendRes.text();
       console.warn(
         `[customer/auth/start] WhatsApp send-otp failed (attempt ${attempt + 1}/${retries + 1}):`,
         sendRes.status,
         gatewayHost,
-        errText.slice(0, 200)
+        responseText.slice(0, 200)
       );
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000));
@@ -851,9 +1281,11 @@ async function sendOtpViaGateway(
       console.warn(
         '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
       );
-      return { sent: false, status: sendRes.status, error: errText.slice(0, 100) };
+      const raw = ((parsed.error ?? parsed.message ?? responseText.slice(0, 200)) || '').trim();
+      return { sent: false, status: sendRes.status, error: classifyWhatsAppOtpError(raw, sendRes.status) };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.log('OTP-SEND-DEBUG:', { phone: phoneDigits, code, response: { error: msg, network: true } });
       console.warn(
         `[customer/auth/start] WhatsApp send-otp error (attempt ${attempt + 1}/${retries + 1}):`,
         gatewayHost,
@@ -866,10 +1298,72 @@ async function sendOtpViaGateway(
       console.warn(
         '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
       );
-      return { sent: false, error: msg };
+      return { sent: false, error: classifyWhatsAppOtpError(msg) };
     }
   }
   return { sent: false };
+}
+
+function normalizePhoneForSms(phone: string): string | null {
+  const digits = String(phone ?? '').replace(/\D/g, '');
+  if (!digits || digits.length < 9) return null;
+  // Israel numbers are usually local 05xxxxxxxx. Convert to +9725xxxxxxxx (E.164-like).
+  const withCountry = digits.startsWith('0') ? '972' + digits.slice(1) : digits.length <= 10 ? '972' + digits : digits;
+  return '+' + withCountry;
+}
+
+async function sendOtpViaSmsGateway(
+  smsGatewayUrl: string,
+  apiKey: string,
+  phone: string,
+  code: string
+): Promise<{ sent: boolean; error?: string; status?: number }> {
+  const url = `${smsGatewayUrl.replace(/\/$/, '')}/send-otp`;
+  const phoneTo = normalizePhoneForSms(phone);
+  if (!phoneTo) return { sent: false, error: 'Invalid phone for SMS' };
+
+  const message = `رمز التحقق الخاص بك هو: ${String(code).trim()}`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ phone: phoneTo, code, message }),
+    });
+    if (res.ok) return { sent: true };
+    const errText = await res.text().catch(() => '');
+    return { sent: false, status: res.status, error: errText.slice(0, 200) || `HTTP ${res.status}` };
+  } catch (e) {
+    return { sent: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function sendOtpViaTwilio(
+  accountSid: string,
+  authToken: string,
+  fromNumber: string,
+  phone: string,
+  code: string
+): Promise<{ sent: boolean; error?: string }> {
+  const phoneTo = normalizePhoneForSms(phone);
+  if (!phoneTo) return { sent: false, error: 'Invalid phone for SMS' };
+  if (!fromNumber) return { sent: false, error: 'Missing TWILIO_FROM_NUMBER' };
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
+  const message = `رمز التحقق الخاص بك هو: ${String(code).trim()}`;
+  const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basicAuth}` },
+      body: new URLSearchParams({ To: phoneTo, From: fromNumber, Body: message }),
+    });
+    if (res.ok) return { sent: true };
+    const errText = await res.text().catch(() => '');
+    return { sent: false, error: errText.slice(0, 200) || `Twilio HTTP error ${res.status}` };
+  } catch (e) {
+    return { sent: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 app.post('/customer/auth/start', async (req, res) => {
@@ -878,8 +1372,8 @@ app.post('/customer/auth/start', async (req, res) => {
     console.log('[customer/auth/start] 400: phone required');
     return res.status(400).json({ error: 'phone required' });
   }
-  const normalized = normalizePhoneForMatch(phone);
-  if (!normalized || normalized.length < 9) {
+  const phoneDigits = normalizeInternationalPhoneDigits(phone);
+  if (!phoneDigits || phoneDigits.length < 9) {
     console.log('[customer/auth/start] 400: invalid phone', phone);
     return res.status(400).json({ error: 'Invalid phone format' });
   }
@@ -888,19 +1382,118 @@ app.post('/customer/auth/start', async (req, res) => {
     console.log('[customer/auth/start] 429:', result.error, result.code);
     return res.status(429).json({ error: result.error, code: result.code });
   }
-  const gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || '').replace(/\/$/, '');
+  const externalApiUrl = (process.env.WHATSAPP_API_URL || '').trim().replace(/\/$/, '');
+  const externalToken = (process.env.WHATSAPP_TOKEN || '').trim();
+  let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
   const waApiKey = process.env.WA_API_KEY;
-  let whatsAppSent = false;
-  if (gatewayUrl && waApiKey && result.codeForSending) {
-    const sendResult = await sendOtpViaGateway(gatewayUrl, waApiKey, normalized, result.codeForSending, 1);
-    whatsAppSent = sendResult.sent;
+  const useLegacyGateway = process.env.USE_LEGACY_WHATSAPP_GATEWAY === '1' || process.env.USE_LEGACY_WHATSAPP_GATEWAY === 'true';
+  if (useLegacyGateway && !gatewayUrl) {
+    gatewayUrl = 'http://whatsapp-service:3000';
   }
+
+  let whatsAppSent = false;
+  let whatsAppError: string | undefined;
+  if (externalApiUrl && externalToken && result.codeForSending) {
+    const ext = await sendOtpViaExternalWhatsAppApi(externalApiUrl, externalToken, phoneDigits, result.codeForSending);
+    whatsAppSent = ext.sent;
+    if (!ext.sent && ext.providerError) {
+      console.error('[customer/auth/start] External WhatsApp API error (exact provider message):', ext.providerError);
+    }
+  } else if (useLegacyGateway && gatewayUrl && waApiKey && result.codeForSending) {
+    const sendResult = await sendOtpViaGateway(gatewayUrl, waApiKey, phoneDigits, result.codeForSending, 0);
+    whatsAppSent = sendResult.sent;
+    if (!sendResult.sent && sendResult.error) {
+      whatsAppError = sendResult.error;
+      console.error('[customer/auth/start] Legacy gateway error:', sendResult.error);
+    }
+    // Debugging: if legacy whatsapp connection fails, always print the OTP code to container logs
+    // (even if SMS fallback succeeds) so Fawaz can manually sign in while the gateway is down.
+    if (!sendResult.sent && result.codeForSending) {
+      const shouldLogOtp = process.env.OTP_LOG_ON_WA_FAIL === '1' || process.env.NODE_ENV !== 'production';
+      if (shouldLogOtp) {
+        logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_connection_failed');
+      }
+    }
+  }
+
+  // If WhatsApp failed or was not configured, try SMS (custom gateway first, then Twilio).
+  let smsSent = false;
+  if (!whatsAppSent && result.codeForSending) {
+    const smsGatewayUrl = (process.env.SMS_GATEWAY_URL || '').replace(/\/$/, '');
+    const smsApiKey = process.env.SMS_API_KEY ?? '';
+    if (smsGatewayUrl && smsApiKey) {
+      const smsRes = await sendOtpViaSmsGateway(smsGatewayUrl, smsApiKey, phoneDigits, result.codeForSending);
+      smsSent = smsRes.sent;
+      if (!smsRes.sent) {
+        console.warn('[customer/auth/start] SMS gateway fallback failed:', smsRes.error);
+      }
+    }
+    if (!smsSent) {
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID ?? '';
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN ?? '';
+      const twilioFrom = process.env.TWILIO_FROM_NUMBER ?? '';
+      if (twilioSid && twilioToken && twilioFrom) {
+        const smsRes = await sendOtpViaTwilio(twilioSid, twilioToken, twilioFrom, phoneDigits, result.codeForSending);
+        smsSent = smsRes.sent;
+        if (!smsRes.sent) console.warn('[customer/auth/start] Twilio SMS fallback failed:', smsRes.error);
+      }
+    }
+  }
+
+  if (!whatsAppSent && smsSent) {
+    console.warn('[customer/auth/start] WhatsApp delivery failed; SMS delivered the OTP.');
+  }
+  if (!whatsAppSent && !smsSent && result.codeForSending) {
+    logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_and_sms_failed');
+  }
+
   if (result.devCode) console.log('[customer/auth/start] 200 → OTP sent (see [OTP] log above or client toast)');
-  res.json({ ok: true, whatsAppSent, ...(result.devCode && { devCode: result.devCode }) });
+  const sentVia = whatsAppSent && smsSent ? 'both' : whatsAppSent ? 'whatsapp' : smsSent ? 'sms' : 'none';
+  const deliveryOk = whatsAppSent || smsSent;
+  const mockOrDevCode = Boolean(result.devCode);
+  const clientSeesSuccess = deliveryOk || mockOrDevCode;
+  res.json({
+    ok: true,
+    whatsAppSent: clientSeesSuccess, // true if WA/SMS worked OR dev/fixed MOCK_OTP exposes devCode
+    smsSent,
+    sentVia,
+    ...(!deliveryOk &&
+      !mockOrDevCode && {
+        deliveryFailed: true,
+        deliveryError: whatsAppError || 'OTP delivery failed',
+        hint: 'OTP logged to server console and otp-debug.log if configured',
+      }),
+    ...(result.devCode && { devCode: result.devCode }),
+  });
 });
 
 function normalizePhoneForMatch(phone: string): string {
-  return String(phone ?? '').replace(/\D/g, '').slice(-10);
+  return normalizeInternationalPhoneDigits(phone) ?? '';
+}
+
+function loadOtpConfig(): { fawazPhone: string; mockOtp: string; nodeEnv: string } {
+  return {
+    fawazPhone: normalizePhoneForMatch(process.env.FAWAZ_PHONE ?? ''),
+    mockOtp: String(process.env.MOCK_OTP ?? '').trim(),
+    nodeEnv: String(process.env.NODE_ENV ?? '').trim(),
+  };
+}
+
+function shouldBypassOtpVerification(phone: string, code: string): boolean {
+  const cfg = loadOtpConfig();
+  if (cfg.nodeEnv.toLowerCase() === 'production') return false;
+  const phoneNorm = normalizePhoneForMatch(phone);
+  const codeNorm = String(code ?? '').trim();
+  if (!cfg.mockOtp || codeNorm !== cfg.mockOtp) return false;
+  const fawazMatch = !!cfg.fawazPhone && phoneNorm === cfg.fawazPhone;
+  if (fawazMatch) {
+    console.warn('[OTP-BYPASS] MOCK_OTP accepted', {
+      phone: phoneNorm,
+      reason: 'FAWAZ_PHONE match',
+    });
+    return true;
+  }
+  return false;
 }
 
 // Customer signup/login: name from storefront is saved via repos.customers (DB or JSON per STORAGE_DRIVER).
@@ -908,7 +1501,8 @@ app.post('/customer/auth/verify', async (req, res) => {
   const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
   if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
   const result = verifyOtp(phone, code);
-  if (!result.ok) {
+  const bypass = !result.ok && shouldBypassOtpVerification(phone, code);
+  if (!result.ok && !bypass) {
     const status = result.code === 'OTP_LOCKED' || result.code === 'RATE_LIMITED' ? 429 : 401;
     return res.status(status).json({ error: result.error, code: result.code });
   }
@@ -929,32 +1523,315 @@ app.post('/customer/auth/verify', async (req, res) => {
     await repos.customers.setAll(next);
   }
   const token = jwt.sign({ sub: customer.id, role: 'CUSTOMER' }, JWT_SECRET, { expiresIn: '30d' });
+  const customerUser = { id: customer.id, phone: customer.phone, name: customer.name?.trim() || 'Rand' };
   res.json({
     token,
-    customer: { id: customer.id, phone: customer.phone, name: customer.name },
+    accessToken: token,
+    user: customerUser,
+    customer: customerUser,
     isNewUser,
   });
 });
+
+// Mobile compatibility endpoint: same OTP verification flow, legacy path.
+app.post('/auth/verify-otp', async (req, res) => {
+  const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
+  if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
+  const result = verifyOtp(phone, code);
+  const bypass = !result.ok && shouldBypassOtpVerification(phone, code);
+  if (!result.ok && !bypass) {
+    const status = result.code === 'OTP_LOCKED' || result.code === 'RATE_LIMITED' ? 429 : 401;
+    return res.status(status).json({ error: result.error, code: result.code });
+  }
+  const key = normalizePhoneForMatch(phone);
+  const customers = await repos.customers.findAll();
+  const existing = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const isNewUser = !existing;
+  let customer = existing;
+  const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
+  if (!customer) {
+    const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
+    customer = { id, phone: String(phone).trim(), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
+    const next = [...customers, customer];
+    await repos.customers.setAll(next);
+  } else if (nameTrimmed && !customer.name) {
+    customer = { ...customer, name: nameTrimmed };
+    const next = customers.map((c) => (c.id === customer!.id ? customer! : c));
+    await repos.customers.setAll(next);
+  }
+  const token = jwt.sign({ sub: customer.id, role: 'CUSTOMER' }, JWT_SECRET, { expiresIn: '30d' });
+  const user = { id: customer.id, phone: customer.phone, name: customer.name?.trim() || 'Rand' };
+  res.json({ token, accessToken: token, user, customer: user, isNewUser });
+});
+
+// Compatibility aliases for clients using /customer/auth/otp/* paths.
+app.post('/customer/auth/otp/start', async (req, res) => res.redirect(307, '/customer/auth/start'));
+app.post('/customer/auth/otp/verify', async (req, res) => res.redirect(307, '/customer/auth/verify'));
 
 app.get('/customer/me', async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
   const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
-  res.json({ id: customer.id, phone: customer.phone, name: full?.name ?? customer.name });
+  res.json({
+    id: customer.id,
+    phone: customer.phone,
+    name: full?.name ?? customer.name,
+    email: full?.email,
+    city: full?.city,
+    avatarUrl: full?.avatarUrl,
+  });
 });
 
 app.patch('/customer/profile', async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
-  const { name } = req.body as { name?: string };
-  const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
+  const body = req.body as { name?: string; email?: string | null; city?: string | null; avatarUrl?: string | null };
   const customers = await repos.customers.findAll();
   const idx = customers.findIndex((c) => c.id === customer.id);
   if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
-  const updated = { ...customers[idx], name: nameTrimmed ?? customers[idx].name };
+  const prev = customers[idx];
+  const updated = { ...prev };
+  if (typeof body.name === 'string') updated.name = body.name.trim();
+  if ('email' in body) {
+    const raw = body.email;
+    if (raw == null || raw === '') updated.email = undefined;
+    else {
+      const t = String(raw).trim();
+      updated.email = t.length === 0 ? undefined : t;
+    }
+  }
+  if ('city' in body) {
+    const raw = body.city;
+    if (raw == null || raw === '') updated.city = undefined;
+    else {
+      const t = String(raw).trim();
+      updated.city = t.length === 0 ? undefined : t;
+    }
+  }
+  if ('avatarUrl' in body) {
+    const raw = body.avatarUrl;
+    if (raw == null || raw === '') updated.avatarUrl = undefined;
+    else {
+      const t = String(raw).trim();
+      updated.avatarUrl = t.length === 0 ? undefined : t;
+    }
+  }
   customers[idx] = updated;
   await repos.customers.setAll(customers);
-  res.json({ customer: { id: updated.id, phone: updated.phone, name: updated.name } });
+  res.json({
+    customer: {
+      id: updated.id,
+      phone: updated.phone,
+      name: updated.name,
+      email: updated.email,
+      city: updated.city,
+      avatarUrl: updated.avatarUrl,
+    },
+  });
+});
+
+/** Apple App Store: account deletion — removes customer row and related data (DB: participations, coins, FCM cascade). */
+app.delete('/customer/me', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const isDb = (process.env.STORAGE_DRIVER ?? '').toLowerCase() === 'db';
+  if (isDb) {
+    const phoneKey = normalizePhoneForMatch(customer.phone);
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.contestParticipation.deleteMany({ where: { customerId: customer.id } });
+        await tx.customerCoin.deleteMany({ where: { customerPhone: phoneKey } });
+        await tx.customer.delete({ where: { id: customer.id } });
+      });
+    } catch (e) {
+      console.error('[DELETE /customer/me]', e);
+      return res.status(500).json({ error: 'Failed to delete account' });
+    }
+    return res.status(204).send();
+  }
+  const customers = await repos.customers.findAll();
+  const next = customers.filter((c) => c.id !== customer.id);
+  if (next.length === customers.length) return res.status(404).json({ error: 'Customer not found' });
+  await repos.customers.setAll(next);
+  return res.status(204).send();
+});
+
+// --- Customer account: addresses, payment methods (masked), notification prefs (stored in Customer.accountExtras) ---
+app.get('/customer/addresses', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const customers = await repos.customers.findAll();
+  const full = customers.find((c) => c.id === customer.id);
+  const extras = parseAccountExtras(full);
+  res.json({ addresses: extras.addresses });
+});
+
+app.post('/customer/addresses', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as { label?: string; line1?: string; city?: string; notes?: string; isDefault?: boolean };
+  const line1 = typeof body.line1 === 'string' ? body.line1.trim() : '';
+  const city = typeof body.city === 'string' ? body.city.trim() : '';
+  if (!line1 || !city) return res.status(400).json({ error: 'line1 and city required' });
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[idx]);
+  const id = newAddressId();
+  const addr = {
+    id,
+    label: typeof body.label === 'string' ? body.label.trim() || undefined : undefined,
+    line1,
+    city,
+    notes: typeof body.notes === 'string' ? body.notes.trim() || undefined : undefined,
+    isDefault: !!body.isDefault,
+  };
+  if (addr.isDefault) extras.addresses = extras.addresses.map((a) => ({ ...a, isDefault: false }));
+  extras.addresses.push(addr);
+  customers[idx] = mergeExtrasIntoCustomer(customers[idx]!, extras);
+  await repos.customers.setAll(customers);
+  res.status(201).json({ address: addr });
+});
+
+app.patch('/customer/addresses/:id', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const id = String(req.params.id ?? '').trim();
+  const body = req.body as { label?: string; line1?: string; city?: string; notes?: string; isDefault?: boolean };
+  const customers = await repos.customers.findAll();
+  const cidx = customers.findIndex((c) => c.id === customer.id);
+  if (cidx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[cidx]);
+  const aidx = extras.addresses.findIndex((a) => a.id === id);
+  if (aidx === -1) return res.status(404).json({ error: 'Address not found' });
+  const cur = extras.addresses[aidx]!;
+  const next = { ...cur };
+  if (typeof body.label === 'string') next.label = body.label.trim() || undefined;
+  if (typeof body.line1 === 'string') next.line1 = body.line1.trim();
+  if (typeof body.city === 'string') next.city = body.city.trim();
+  if (typeof body.notes === 'string') next.notes = body.notes.trim() || undefined;
+  if (typeof body.isDefault === 'boolean') {
+    next.isDefault = body.isDefault;
+  }
+  if (!next.line1 || !next.city) return res.status(400).json({ error: 'line1 and city required' });
+  extras.addresses[aidx] = next;
+  if (body.isDefault === true) {
+    extras.addresses = extras.addresses.map((a) => ({ ...a, isDefault: a.id === id }));
+  }
+  customers[cidx] = mergeExtrasIntoCustomer(customers[cidx]!, extras);
+  await repos.customers.setAll(customers);
+  res.json({ address: next });
+});
+
+app.delete('/customer/addresses/:id', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const id = String(req.params.id ?? '').trim();
+  const customers = await repos.customers.findAll();
+  const cidx = customers.findIndex((c) => c.id === customer.id);
+  if (cidx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[cidx]);
+  const before = extras.addresses.length;
+  extras.addresses = extras.addresses.filter((a) => a.id !== id);
+  if (extras.addresses.length === before) return res.status(404).json({ error: 'Address not found' });
+  customers[cidx] = mergeExtrasIntoCustomer(customers[cidx]!, extras);
+  await repos.customers.setAll(customers);
+  res.status(204).send();
+});
+
+app.get('/customer/payment-methods', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const customers = await repos.customers.findAll();
+  const full = customers.find((c) => c.id === customer.id);
+  const extras = parseAccountExtras(full);
+  res.json({ paymentMethods: extras.paymentMethods });
+});
+
+app.post('/customer/payment-methods', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as {
+    cardNumber?: string;
+    holderName?: string;
+    expiryMonth?: number;
+    expiryYear?: number;
+    cvv?: string;
+  };
+  const pan = String(body.cardNumber ?? '').replace(/\D/g, '');
+  const holderName = typeof body.holderName === 'string' ? body.holderName.trim() : '';
+  if (!holderName) return res.status(400).json({ error: 'holderName required' });
+  if (!luhnValid(pan)) return res.status(400).json({ error: 'Invalid card number' });
+  const brand = inferCardBrand(pan);
+  const last4 = pan.slice(-4);
+  let expM = Number(body.expiryMonth);
+  let expY = Number(body.expiryYear);
+  if (!Number.isFinite(expM) || expM < 1 || expM > 12) return res.status(400).json({ error: 'Invalid expiry month' });
+  if (!Number.isFinite(expY)) return res.status(400).json({ error: 'Invalid expiry year' });
+  if (expY < 100) expY += 2000;
+  const cvv = String(body.cvv ?? '').replace(/\D/g, '');
+  const needCvv = brand === 'Amex' ? 4 : 3;
+  if (cvv.length !== needCvv) return res.status(400).json({ error: 'Invalid CVV' });
+  const endOfExpiryMonth = new Date(expY, expM, 0, 23, 59, 59, 999);
+  if (endOfExpiryMonth < new Date()) {
+    return res.status(400).json({ error: 'Card expired' });
+  }
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[idx]);
+  const id = newCardId();
+  const card = {
+    id,
+    brand,
+    last4,
+    holderName,
+    expiryMonth: expM,
+    expiryYear: expY,
+  };
+  extras.paymentMethods.push(card);
+  customers[idx] = mergeExtrasIntoCustomer(customers[idx]!, extras);
+  await repos.customers.setAll(customers);
+  res.status(201).json({ paymentMethod: card });
+});
+
+app.delete('/customer/payment-methods/:id', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const id = String(req.params.id ?? '').trim();
+  const customers = await repos.customers.findAll();
+  const cidx = customers.findIndex((c) => c.id === customer.id);
+  if (cidx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[cidx]);
+  const before = extras.paymentMethods.length;
+  extras.paymentMethods = extras.paymentMethods.filter((p) => p.id !== id);
+  if (extras.paymentMethods.length === before) return res.status(404).json({ error: 'Card not found' });
+  customers[cidx] = mergeExtrasIntoCustomer(customers[cidx]!, extras);
+  await repos.customers.setAll(customers);
+  res.status(204).send();
+});
+
+app.get('/customer/notification-settings', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const customers = await repos.customers.findAll();
+  const full = customers.find((c) => c.id === customer.id);
+  const extras = parseAccountExtras(full);
+  res.json(extras.notifications);
+});
+
+app.patch('/customer/notification-settings', async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as Partial<{ orderUpdates: boolean; promotions: boolean; news: boolean }>;
+  const customers = await repos.customers.findAll();
+  const idx = customers.findIndex((c) => c.id === customer.id);
+  if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+  const extras = parseAccountExtras(customers[idx]);
+  extras.notifications = normalizeNotificationPatch(extras.notifications, body);
+  customers[idx] = mergeExtrasIntoCustomer(customers[idx]!, extras);
+  await repos.customers.setAll(customers);
+  res.json(extras.notifications);
 });
 
 app.put('/customer/me/fcm-token', wrapAsync(async (req, res) => {
@@ -1112,6 +1989,157 @@ app.get('/customer/activity', wrapAsync(async (req, res) => {
     return { ...l, tenantName: t?.name, tenantSlug: (t as { slug?: string })?.slug };
   });
   res.json({ orders: ordersWithTenant, leads: leadsWithTenant });
+}));
+
+/** Fixed samples for native/UI test builds (`MOCK_CUSTOMER_ORDERS_STATIC_BYPASS=1`). */
+function getStaticCustomerOrdersSamples(): Record<string, unknown>[] {
+  const base = Date.now();
+  return [
+    {
+      id: 'static-order-001',
+      tenantId: 'static-tenant-a',
+      customerId: 'static-bypass',
+      orderType: 'PRODUCT',
+      status: 'PREPARING',
+      total: 120.5,
+      currency: 'ILS',
+      createdAt: new Date(base - 3600_000).toISOString(),
+      fulfillmentType: 'DELIVERY',
+      orderGroupId: undefined,
+      tenantName: 'متجر تجريبي — أ',
+      tenantSlug: 'demo-a',
+      tenantLogoUrl: undefined,
+      tenantWhatsappDigits: '972501111111',
+      itemCount: 2,
+      items: [
+        { productId: 'p1', productName: 'منتج أ', quantity: 1, basePrice: 60, totalPrice: 60, imageUrl: '' },
+        { productId: 'p2', productName: 'منتج ب', quantity: 1, basePrice: 60.5, totalPrice: 60.5, imageUrl: '' },
+      ],
+    },
+    {
+      id: 'static-order-002',
+      tenantId: 'static-tenant-b',
+      customerId: 'static-bypass',
+      orderType: 'PRODUCT',
+      status: 'OUT_FOR_DELIVERY',
+      total: 45,
+      currency: 'ILS',
+      createdAt: new Date(base - 86_400_000).toISOString(),
+      fulfillmentType: 'DELIVERY',
+      driverLocation: { lat: 32.794, lng: 34.9896 },
+      dropoffLocation: { lat: 32.805, lng: 34.998 },
+      orderGroupId: undefined,
+      tenantName: 'متجر تجريبي — ب',
+      tenantSlug: 'demo-b',
+      tenantLogoUrl: undefined,
+      tenantWhatsappDigits: '972502222222',
+      itemCount: 1,
+      items: [{ productId: 'p3', productName: 'طلب سريع', quantity: 1, basePrice: 45, totalPrice: 45, imageUrl: '' }],
+    },
+    {
+      id: 'static-order-service-001',
+      tenantId: 'static-tenant-svc',
+      customerId: 'static-bypass',
+      orderType: 'SERVICE',
+      status: 'PREPARING',
+      total: 300,
+      currency: 'ILS',
+      createdAt: new Date(base - 7200_000).toISOString(),
+      fulfillmentType: 'PICKUP',
+      orderGroupId: undefined,
+      tenantName: 'عيادة تجريبية',
+      tenantSlug: 'demo-svc',
+      tenantLogoUrl: undefined,
+      tenantWhatsappDigits: '972504444444',
+      itemCount: 1,
+      items: [{ productId: 'svc1', productName: 'استشارة', quantity: 1, basePrice: 300, totalPrice: 300, imageUrl: '' }],
+    },
+    {
+      id: 'static-order-003',
+      tenantId: 'static-tenant-c',
+      customerId: 'static-bypass',
+      orderType: 'PRODUCT',
+      status: 'DELIVERED',
+      total: 210,
+      currency: 'ILS',
+      createdAt: new Date(base - 172_800_000).toISOString(),
+      fulfillmentType: 'DELIVERY',
+      orderGroupId: 'group-demo-1',
+      tenantName: 'متجر تجريبي — ج',
+      tenantSlug: 'demo-c',
+      tenantLogoUrl: undefined,
+      tenantWhatsappDigits: '972503333333',
+      itemCount: 3,
+      items: [
+        { productId: 'p4', productName: 'صنف 1', quantity: 2, basePrice: 50, totalPrice: 100, imageUrl: '' },
+        { productId: 'p5', productName: 'صنف 2', quantity: 1, basePrice: 110, totalPrice: 110, imageUrl: '' },
+      ],
+    },
+  ];
+}
+
+/** Native app: full order list for customer (same enrichment as activity.orders, sorted newest first). */
+app.get('/customer/orders', wrapAsync(async (req, res) => {
+  if (MOCK_CUSTOMER_ORDERS_STATIC_BYPASS) {
+    const samples = getStaticCustomerOrdersSamples();
+    console.log('[customer/orders] MOCK_CUSTOMER_ORDERS_STATIC_BYPASS — returning', samples.length, 'static orders (no auth)');
+    return res.json({ orders: samples });
+  }
+
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const rows = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const customerOrders = rows.filter((o) => (o as { customerId?: string }).customerId === customer.id);
+  const tenants = await repos.tenants.findAll();
+  const enriched = customerOrders.map((raw) => {
+    const o = raw as {
+      id?: string;
+      tenantId?: string;
+      status?: string;
+      total?: number;
+      currency?: string;
+      createdAt?: string;
+      items?: unknown[];
+      fulfillmentType?: string;
+      orderGroupId?: string;
+      customerName?: string;
+      customerPhone?: string;
+      orderType?: string;
+    };
+    const t = tenants.find((x) => x.id === o.tenantId);
+    const items = Array.isArray(o.items) ? o.items : [];
+    const itemCount = items.length;
+    const logoUrl = (t as { logoUrl?: string } | undefined)?.logoUrl ?? '';
+    const whatsapp =
+      (t as { whatsappPhone?: string; phone?: string } | undefined)?.whatsappPhone ??
+      (t as { phone?: string } | undefined)?.phone ??
+      '';
+    const orderType = String(o.orderType ?? 'PRODUCT').toUpperCase();
+    const isService = orderType === 'SERVICE';
+    const st = String(o.status ?? '').toUpperCase();
+    const isDelivery = String(o.fulfillmentType ?? '').toUpperCase() === 'DELIVERY';
+    let driverLocation: { lat: number; lng: number } | undefined;
+    if (!isService && isDelivery && ['OUT_FOR_DELIVERY', 'PICKED_UP', 'IN_PROGRESS', 'ON_THE_WAY'].includes(st)) {
+      driverLocation = { lat: 32.794, lng: 34.9896 };
+    }
+    return {
+      ...o,
+      orderType: o.orderType ?? 'PRODUCT',
+      tenantName: t?.name ?? o.tenantId,
+      tenantSlug: (t as { slug?: string } | undefined)?.slug,
+      tenantLogoUrl: logoUrl || undefined,
+      tenantWhatsappDigits: String(whatsapp).replace(/\D/g, '') || undefined,
+      itemCount,
+      ...(driverLocation ? { driverLocation } : {}),
+    };
+  });
+  enriched.sort((a, b) => {
+    const ta = String((a as { createdAt?: string }).createdAt ?? '');
+    const tb = String((b as { createdAt?: string }).createdAt ?? '');
+    return tb.localeCompare(ta);
+  });
+
+  res.json({ orders: enriched });
 }));
 
 // --- Contest & Prediction (logged-in customers only; DB/Prisma) ---
@@ -1314,6 +2342,441 @@ app.delete('/contests/:id', wrapAsync(async (req, res) => {
   res.status(204).end();
 }));
 
+/** Public catalog for customer app: active rewards, not expired, in stock. */
+function rewardToPublicJson(r: {
+  id: string;
+  titleAr: string;
+  titleEn: string;
+  description: string | null;
+  imageUrl: string | null;
+  type: string;
+  coinsCost: number;
+  stockLimit: number;
+  expiryDate: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return {
+    id: r.id,
+    title_ar: r.titleAr,
+    title_en: r.titleEn,
+    description: r.description ?? undefined,
+    image_url: r.imageUrl ?? undefined,
+    type: r.type,
+    coins_cost: r.coinsCost,
+    stock_limit: r.stockLimit,
+    expiry_date: r.expiryDate ?? undefined,
+    is_active: r.isActive,
+    created_at: r.createdAt,
+  };
+}
+
+function rewardToAdminJson(r: {
+  id: string;
+  titleAr: string;
+  titleEn: string;
+  description: string | null;
+  imageUrl: string | null;
+  type: string;
+  coinsCost: number;
+  stockLimit: number;
+  expiryDate: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return {
+    id: r.id,
+    titleAr: r.titleAr,
+    titleEn: r.titleEn,
+    description: r.description ?? '',
+    imageUrl: r.imageUrl ?? '',
+    type: r.type,
+    coinsCost: r.coinsCost,
+    stockLimit: r.stockLimit,
+    expiryDate: r.expiryDate ?? '',
+    isActive: r.isActive,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+function isRewardType(t: string): t is 'COUPON' | 'EVENT' | 'PRIZE' | 'TOURNAMENT' {
+  return t === 'COUPON' || t === 'EVENT' || t === 'PRIZE' || t === 'TOURNAMENT';
+}
+
+/** GET /rewards — public catalog; includes locked (expired / sold out) for storefront overlays. */
+app.get('/rewards', wrapAsync(async (_req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await prisma.globalReward.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    if (r.stockLimit < 0) continue;
+    let locked = false;
+    let lock_reason: 'EXPIRED' | 'SOLD_OUT' | null = null;
+    if (r.expiryDate) {
+      const exp = r.expiryDate.slice(0, 10);
+      if (exp < today) {
+        locked = true;
+        lock_reason = 'EXPIRED';
+      }
+    }
+    if (!locked && r.stockLimit > 0) {
+      const used = await prisma.rewardRedemption.count({
+        where: { rewardId: r.id, status: { in: ['PENDING', 'COMPLETED'] } },
+      });
+      if (used >= r.stockLimit) {
+        locked = true;
+        lock_reason = 'SOLD_OUT';
+      }
+    }
+    out.push({
+      ...rewardToPublicJson(r),
+      locked,
+      lock_reason,
+    } as Record<string, unknown>);
+  }
+  res.json(out);
+}));
+
+/** GET /admin/rewards — platform admin full list. */
+app.get('/admin/rewards', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const rows = await prisma.globalReward.findMany({ orderBy: { createdAt: 'desc' } });
+  res.json(rows.map(rewardToAdminJson));
+}));
+
+app.post('/admin/rewards', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const body = req.body as {
+    titleAr?: string;
+    titleEn?: string;
+    description?: string;
+    imageUrl?: string;
+    type?: string;
+    coinsCost?: number;
+    stockLimit?: number;
+    expiryDate?: string;
+    isActive?: boolean;
+  };
+  const titleAr = String(body?.titleAr ?? '').trim();
+  const titleEn = String(body?.titleEn ?? '').trim();
+  if (!titleAr || !titleEn) return res.status(400).json({ error: 'titleAr and titleEn required' });
+  const typeRaw = String(body?.type ?? 'COUPON').trim();
+  if (!isRewardType(typeRaw)) return res.status(400).json({ error: 'Invalid type' });
+  const coinsCost = Math.max(0, Number(body?.coinsCost ?? 0));
+  const stockLimit = Math.max(0, Number(body?.stockLimit ?? 0));
+  const id = `reward-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  await prisma.globalReward.create({
+    data: {
+      id,
+      titleAr,
+      titleEn,
+      description: body.description?.trim() || null,
+      imageUrl: body.imageUrl?.trim() || null,
+      type: typeRaw,
+      coinsCost,
+      stockLimit,
+      expiryDate: body.expiryDate?.trim() || null,
+      isActive: body.isActive !== false,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  const row = await prisma.globalReward.findUnique({ where: { id } });
+  res.status(201).json(row ? rewardToAdminJson(row) : { id });
+}));
+
+app.patch('/admin/rewards/:id', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as {
+    titleAr?: string;
+    titleEn?: string;
+    description?: string;
+    imageUrl?: string;
+    type?: string;
+    coinsCost?: number;
+    stockLimit?: number;
+    expiryDate?: string | null;
+    isActive?: boolean;
+  };
+  const existing = await prisma.globalReward.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Reward not found' });
+  if (body.type !== undefined && !isRewardType(String(body.type))) return res.status(400).json({ error: 'Invalid type' });
+  const now = new Date().toISOString();
+  await prisma.globalReward.update({
+    where: { id },
+    data: {
+      ...(body.titleAr !== undefined && { titleAr: String(body.titleAr).trim() }),
+      ...(body.titleEn !== undefined && { titleEn: String(body.titleEn).trim() }),
+      ...(body.description !== undefined && { description: body.description?.trim() || null }),
+      ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl?.trim() || null }),
+      ...(body.type !== undefined && { type: String(body.type).trim() }),
+      ...(body.coinsCost !== undefined && { coinsCost: Math.max(0, Number(body.coinsCost)) }),
+      ...(body.stockLimit !== undefined && { stockLimit: Math.max(0, Number(body.stockLimit)) }),
+      ...(body.expiryDate !== undefined && { expiryDate: body.expiryDate?.trim() ? body.expiryDate.trim() : null }),
+      ...(body.isActive !== undefined && { isActive: !!body.isActive }),
+      updatedAt: now,
+    },
+  });
+  const row = await prisma.globalReward.findUnique({ where: { id } });
+  res.json(row ? rewardToAdminJson(row) : { id });
+}));
+
+app.delete('/admin/rewards/:id', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  await prisma.globalReward.delete({ where: { id } }).catch((e: { code?: string }) => {
+    if (e.code === 'P2025') return null;
+    throw e;
+  });
+  res.status(204).end();
+}));
+
+/** Customer joins / redeems a global reward: checks balance, deducts coins, creates PENDING redemption. */
+app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const rewardId = req.params.rewardId;
+  if (!rewardId) return res.status(400).json({ error: 'rewardId required' });
+
+  const reward = await prisma.globalReward.findUnique({ where: { id: rewardId } });
+  if (!reward || !reward.isActive) return res.status(404).json({ error: 'Reward not found or inactive' });
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (reward.expiryDate) {
+    const exp = reward.expiryDate.slice(0, 10);
+    if (exp < today) return res.status(400).json({ error: 'Reward expired' });
+  }
+
+  const coinsCost = Math.max(0, reward.coinsCost);
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+
+  const usedSlots = await prisma.rewardRedemption.count({
+    where: { rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
+  });
+  if (reward.stockLimit > 0 && usedSlots >= reward.stockLimit) {
+    return res.status(400).json({ error: 'Reward is out of stock' });
+  }
+
+  const dup = await prisma.rewardRedemption.findFirst({
+    where: { customerId: customer.id, rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
+  });
+  if (dup) return res.status(400).json({ error: 'Already redeemed this reward' });
+
+  const existingCoin = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+  const currentBalance = existingCoin?.balance ?? INITIAL_COINS;
+  if (currentBalance < coinsCost) {
+    return res.status(400).json({ error: 'Insufficient coins', balance: currentBalance, required: coinsCost });
+  }
+
+  const newBalance = currentBalance - coinsCost;
+  const now = new Date().toISOString();
+  const redemptionId = `rred-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (existingCoin) {
+        await tx.customerCoin.update({
+          where: { customerPhone: phoneNorm },
+          data: { balance: newBalance, updatedAt: now },
+        });
+      } else {
+        await tx.customerCoin.create({
+          data: { customerPhone: phoneNorm, balance: newBalance, updatedAt: now },
+        });
+      }
+      await tx.rewardRedemption.create({
+        data: {
+          id: redemptionId,
+          customerId: customer.id,
+          rewardId,
+          status: 'PENDING',
+          coinsSpent: coinsCost,
+          redeemedAt: now,
+          updatedAt: now,
+        },
+      });
+    });
+  } catch (e: unknown) {
+    throw e;
+  }
+
+  console.log('[coins-audit] DEDUCT', {
+    customerPhone: phoneNorm,
+    amount: coinsCost,
+    newBalance,
+    via: 'reward_redeem',
+    rewardId,
+  });
+
+  res.status(201).json({
+    id: redemptionId,
+    rewardId,
+    status: 'PENDING',
+    coinsSpent: coinsCost,
+    balance: newBalance,
+    redeemedAt: now,
+  });
+}));
+
+function redemptionToAdminRow(r: {
+  id: string;
+  customerId: string;
+  rewardId: string;
+  status: string;
+  coinsSpent: number;
+  redeemedAt: string;
+  updatedAt: string | null;
+  customer: { id: string; phone: string; name: string | null };
+  reward: { id: string; titleAr: string; titleEn: string; type: string };
+}) {
+  return {
+    id: r.id,
+    customerId: r.customerId,
+    customerName: r.customer.name?.trim() || '—',
+    customerPhone: r.customer.phone,
+    rewardId: r.rewardId,
+    rewardTitleAr: r.reward.titleAr,
+    rewardTitleEn: r.reward.titleEn,
+    type: r.reward.type,
+    coinsSpent: r.coinsSpent,
+    redeemedAt: r.redeemedAt,
+    status: r.status,
+    updatedAt: r.updatedAt ?? undefined,
+  };
+}
+
+/** Admin: list reward redemptions (participants log). */
+app.get('/admin/reward-redemptions', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const rewardId = typeof req.query.rewardId === 'string' ? req.query.rewardId.trim() : '';
+  const rows = await prisma.rewardRedemption.findMany({
+    where: rewardId ? { rewardId } : undefined,
+    include: {
+      customer: { select: { id: true, phone: true, name: true } },
+      reward: { select: { id: true, titleAr: true, titleEn: true, type: true } },
+    },
+    orderBy: { redeemedAt: 'desc' },
+  });
+  res.json(rows.map(redemptionToAdminRow));
+}));
+
+/** Admin: update status (e.g. mark COMPLETED when user attends; CANCELLED refunds coins). */
+app.patch('/admin/reward-redemptions/:id', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const { id } = req.params;
+  const body = req.body as { status?: string };
+  const next = String(body?.status ?? '').toUpperCase();
+  if (next !== 'COMPLETED' && next !== 'CANCELLED' && next !== 'PENDING') {
+    return res.status(400).json({ error: 'status must be PENDING, COMPLETED, or CANCELLED' });
+  }
+
+  const existing = await prisma.rewardRedemption.findUnique({
+    where: { id },
+    include: { customer: true },
+  });
+  if (!existing) return res.status(404).json({ error: 'Redemption not found' });
+
+  if (existing.status === next) {
+    const full = await prisma.rewardRedemption.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, phone: true, name: true } },
+        reward: { select: { id: true, titleAr: true, titleEn: true, type: true } },
+      },
+    });
+    return res.json(full ? redemptionToAdminRow(full) : { error: 'not found' });
+  }
+
+  const now = new Date().toISOString();
+  const phoneNorm = normalizePhoneForCoupon(existing.customer.phone);
+
+  /** Refund coins only when cancelling a pending reservation (not after COMPLETED). */
+  if (next === 'CANCELLED' && existing.status === 'PENDING') {
+    const refund = Math.max(0, existing.coinsSpent);
+    if (refund > 0 && phoneNorm) {
+      const coinRow = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+      const bal = (coinRow?.balance ?? INITIAL_COINS) + refund;
+      if (coinRow) {
+        await prisma.customerCoin.update({
+          where: { customerPhone: phoneNorm },
+          data: { balance: bal, updatedAt: now },
+        });
+      } else {
+        await prisma.customerCoin.create({
+          data: { customerPhone: phoneNorm, balance: bal, updatedAt: now },
+        });
+      }
+      console.log('[coins-audit] ADD', {
+        customerPhone: phoneNorm,
+        amount: refund,
+        newBalance: bal,
+        via: 'reward_redemption_refund',
+        redemptionId: id,
+      });
+    }
+  }
+
+  await prisma.rewardRedemption.update({
+    where: { id },
+    data: { status: next, updatedAt: now },
+  });
+
+  const updated = await prisma.rewardRedemption.findUnique({
+    where: { id },
+    include: {
+      customer: { select: { id: true, phone: true, name: true } },
+      reward: { select: { id: true, titleAr: true, titleEn: true, type: true } },
+    },
+  });
+  res.json(updated ? redemptionToAdminRow(updated) : { id });
+}));
+
+/** Admin: CSV export of participants (optional ?rewardId=). */
+app.get('/admin/reward-redemptions/export.csv', wrapAsync(async (req, res) => {
+  if (!requireContestAdmin(req, res)) return;
+  const rewardId = typeof req.query.rewardId === 'string' ? req.query.rewardId.trim() : '';
+  const rows = await prisma.rewardRedemption.findMany({
+    where: rewardId ? { rewardId } : undefined,
+    include: {
+      customer: { select: { id: true, phone: true, name: true } },
+      reward: { select: { id: true, titleAr: true, titleEn: true, type: true } },
+    },
+    orderBy: { redeemedAt: 'desc' },
+  });
+
+  const escape = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+  const header = ['User Name', 'Phone', 'Reward (AR)', 'Reward (EN)', 'Type', 'Coins Spent', 'Date', 'Status'];
+  const lines = [header.join(',')];
+  for (const r of rows) {
+    const row = redemptionToAdminRow(r);
+    lines.push(
+      [
+        escape(row.customerName),
+        escape(row.customerPhone),
+        escape(row.rewardTitleAr),
+        escape(row.rewardTitleEn),
+        escape(row.type),
+        String(row.coinsSpent),
+        escape(row.redeemedAt),
+        escape(row.status),
+      ].join(',')
+    );
+  }
+  const csv = '\uFEFF' + lines.join('\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="reward-participants.csv"');
+  res.send(csv);
+}));
+
 app.post('/contests/:id/result', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
   const { id } = req.params;
@@ -1426,6 +2889,563 @@ app.get('/customer/rewards', wrapAsync(async (req, res) => {
   res.json(forCustomer.map((c) => ({ id: c.id, code: c.code, type: c.type, value: c.value, expiresAt: c.expiresAt ?? undefined })));
 }));
 
+// --- Customer Now Coins (Lucky Wheel; backend persistence) ---
+const SPIN_COST = 10;
+const hypHostedHtmlPages = new Map<string, { html: string; expiresAt: number }>();
+
+function extractFirstHttpUrlFromHtml(html: string): string | null {
+  const m = html.match(/https?:\/\/[^\s"'<>]+/i);
+  return m ? m[0] : null;
+}
+
+function saveHostedPaymentHtml(base: string, html: string, orderGroupId: string): string {
+  const id = `hyp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  hypHostedHtmlPages.set(id, { html, expiresAt: Date.now() + 10 * 60 * 1000 });
+  return `${base}/payments/hyp/hosted/${encodeURIComponent(id)}?orderGroupId=${encodeURIComponent(orderGroupId)}`;
+}
+
+/** If client sent Bearer JWT, append `token=` for mock-api hosted/demo URLs (WebViews may drop headers on redirect). */
+function withPaymentWebViewToken(req: express.Request, paymentUrl: string): string {
+  const auth = req.headers.authorization?.trim();
+  const token = auth?.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (!token) return paymentUrl;
+  try {
+    const u = new URL(paymentUrl);
+    if (!u.pathname.includes('/payments/hyp/demo') && !u.pathname.includes('/payments/hyp/hosted/')) {
+      return paymentUrl;
+    }
+    u.searchParams.set('token', token);
+    return u.toString();
+  } catch {
+    return paymentUrl;
+  }
+}
+
+app.get('/customer/coins', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.json({ balance: INITIAL_COINS, spinCost: SPIN_COST });
+  try {
+    const row = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+    const balance = row?.balance ?? INITIAL_COINS;
+    return res.json({ balance, spinCost: SPIN_COST });
+  } catch {
+    // Hard fallback to keep UI alive even if DB lookup fails.
+    return res.json({ balance: INITIAL_COINS, spinCost: SPIN_COST });
+  }
+}));
+
+/** Start Hyp hosted payment: returns one-time CreditGuard URL (redirect / WebView). */
+app.post('/customer/payments/hyp/session', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body as { orderGroupId?: string };
+  const orderGroupId = body.orderGroupId != null ? String(body.orderGroupId).trim() : '';
+  if (!orderGroupId) return res.status(400).json({ error: 'orderGroupId required' });
+
+  const demoModeEnabled = String(process.env.HYP_DEMO_MODE ?? '0').toLowerCase() !== '0';
+  const buildDemoUrl = (base: string, groupId: string) =>
+    `${base}/payments/hyp/demo?orderGroupId=${encodeURIComponent(groupId)}`;
+
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const mine = orders.filter(
+    (o) =>
+      String((o as { orderGroupId?: string }).orderGroupId ?? '') === orderGroupId &&
+      String((o as { customerId?: string }).customerId ?? '') === customer.id
+  );
+  if (mine.length === 0) return res.status(404).json({ error: 'No orders for this group or access denied' });
+
+  let totalAg = 0;
+  for (const o of mine) {
+    const t = Number((o as { total?: number }).total);
+    if (Number.isFinite(t)) totalAg += Math.round(t * 100);
+  }
+  if (totalAg <= 0) return res.status(400).json({ error: 'Invalid order total' });
+
+  const hypCfg = loadHypConfigDiagnostics();
+  const cfg = hypCfg.config;
+  const base = getPublicApiBaseUrl();
+  if (hypCfg.missingKeys.length > 0) {
+    console.warn('[Hyp] session starting with missing keys (forcing relay attempt):', hypCfg.missingKeys.join(', '));
+  }
+
+  const successUrl = `nmdcustomer://payment-success?orderGroupId=${encodeURIComponent(orderGroupId)}&paymentStatus=success`;
+  const errorUrl = `nmdcustomer://payment-cancel?orderGroupId=${encodeURIComponent(orderGroupId)}&paymentStatus=error`;
+  const cancelUrl = `nmdcustomer://payment-cancel?orderGroupId=${encodeURIComponent(orderGroupId)}&paymentStatus=cancel`;
+
+  const allTenants = await repos.tenants.findAll();
+  const tenantInstallmentOptions = mine
+    .map((o) => String((o as { tenantId?: string }).tenantId ?? ''))
+    .map((tid) => allTenants.find((t) => t.id === tid))
+    .filter((t): t is RegistryTenant => Boolean(t))
+    .flatMap((t) => {
+      const caps = (t.paymentCapabilities ?? {}) as {
+        allowInstallments?: boolean;
+        installmentOptions?: number[];
+      };
+      if (!caps.allowInstallments) return [];
+      const opts = Array.isArray(caps.installmentOptions) ? caps.installmentOptions : [3, 6, 12];
+      return opts;
+    });
+
+  const xml = buildDoDealPaymentPageXml({
+    terminalNumber: cfg.terminalNumber,
+    mid: cfg.mid,
+    totalAgorot: totalAg,
+    uniqueId: orderGroupId,
+    successUrl,
+    errorUrl,
+    cancelUrl,
+    language: 'HEB',
+    installmentOptions: tenantInstallmentOptions,
+  });
+
+  const maskTail = (v: string, keep = 3) => {
+    const s = String(v ?? '');
+    if (!s) return '';
+    if (s.length <= keep) return '*'.repeat(s.length);
+    return `${'*'.repeat(Math.max(0, s.length - keep))}${s.slice(-keep)}`;
+  };
+  console.log('[Hyp] Session relay preflight', {
+    mode: String(process.env.HYP_DEMO_MODE ?? ''),
+    relayUrl: cfg.relayBaseUrl,
+    terminal: maskTail(cfg.terminalNumber, 3),
+    mid: maskTail(cfg.mid, 3),
+    apiUser: maskTail(cfg.apiUser, 3),
+    hasToken: Boolean(process.env.HYP_TOKEN?.trim()),
+    missingKeys: hypCfg.missingKeys,
+  });
+
+  const { ok, status: httpStatus, bodyText } = await requestHypHostedPage(cfg, xml);
+  const parsed = parseDoDealResponse(bodyText);
+  const looksLikeHtml = /^\s*</.test(bodyText) && /<(html|form|script|body)\b/i.test(bodyText);
+  // Strict direct-bank mode: use ONLY provider paymentUrl, never wrap in local /payments/hyp/hosted.
+  const effectiveUrl = parsed.paymentUrl;
+  const looksLikeGatewayLoginPage =
+    looksLikeHtml && /(login|password|sign[ -]?in|user ?name|yaad|hyp|creditguard)/i.test(bodyText);
+
+  if (ok && effectiveUrl) {
+    return res.json({
+      success: true,
+      paymentUrl: effectiveUrl,
+      url: effectiveUrl,
+      orderGroupId,
+      amountAgorot: totalAg,
+      currency: 'ILS',
+      installmentsEnabled: tenantInstallmentOptions.length > 0,
+      installmentOptions: tenantInstallmentOptions.length > 0 ? [...new Set(tenantInstallmentOptions)].sort((a, b) => a - b) : [],
+    });
+  }
+
+  if (!ok || parsed.result !== '000' || !parsed.paymentUrl) {
+    const hypResult =
+      parsed.result ||
+      (!ok ? (httpStatus ? String(httpStatus) : bodyText.startsWith('[fetch]') ? 'NETWORK' : '') : '');
+    const hypMessage = parsed.message?.trim() || undefined;
+    const snippet = bodyText.replace(/\s+/g, ' ').trim().slice(0, 500);
+    console.warn('[Hyp] doDeal relay failed', {
+      relayUrl: cfg.relayBaseUrl,
+      httpStatus,
+      ok,
+      hypResult: hypResult || '(empty)',
+      hypMessage: hypMessage ?? '(none)',
+      snippet,
+    });
+    const isAuthOrEnvHint =
+      httpStatus === 401 ||
+      /invalid.*credential|auth|password|user/i.test(snippet) ||
+      hypResult === '401';
+    const looksLikeGatewayHtmlLogin = looksLikeHtml && /action=login|window\.location|yaadpay|pay\.hyp\.co\.il|charset=windows-1255/i.test(snippet);
+    if (demoModeEnabled && (isAuthOrEnvHint || looksLikeGatewayLoginPage || looksLikeHtml)) {
+      const url = withPaymentWebViewToken(req, buildDemoUrl(base, orderGroupId));
+      return res.json({ url, paymentUrl: url, orderGroupId, amountAgorot: totalAg, currency: 'ILS', demoMode: true });
+    }
+    const providerErrorDescription =
+      hypMessage || (isAuthOrEnvHint || looksLikeGatewayHtmlLogin
+        ? 'Provider rejected credentials or account mapping.'
+        : 'Provider failed to generate payment URL.');
+    return res.status(502).json({
+      error: 'Hyp payment page failed',
+      code: isAuthOrEnvHint || looksLikeGatewayHtmlLogin ? 'HYP_CONFIG_ERROR' : 'HYP_DO_DEAL_FAILED',
+      details: providerErrorDescription,
+      errorDescription: providerErrorDescription,
+      missingKeys: hypCfg.missingKeys.length > 0 ? hypCfg.missingKeys : undefined,
+      hypResult: hypResult || undefined,
+      hypMessage: hypMessage ?? undefined,
+      httpStatus,
+    });
+  }
+
+  res.json({ success: true, paymentUrl: parsed.paymentUrl, url: parsed.paymentUrl, orderGroupId, amountAgorot: totalAg, currency: 'ILS' });
+}));
+
+app.get('/payments/hyp/hosted/:id', (req, res) => {
+  const id = String(req.params.id ?? '').trim();
+  const page = hypHostedHtmlPages.get(id);
+  if (!page) return res.status(404).send('Payment page expired');
+  if (Date.now() > page.expiresAt) {
+    hypHostedHtmlPages.delete(id);
+    return res.status(410).send('Payment page expired');
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(page.html);
+});
+
+app.get('/payments/hyp/demo', (req, res) => {
+  const orderGroupId = String(req.query.orderGroupId ?? '').trim();
+  if (!orderGroupId) return res.status(400).send('Missing orderGroupId');
+  const base = getPublicApiBaseUrl();
+  const successUrl = `${base}/payments/hyp/return?outcome=success&orderGroupId=${encodeURIComponent(orderGroupId)}&demo=1`;
+  const cancelUrl = `${base}/payments/hyp/return?outcome=cancel&orderGroupId=${encodeURIComponent(orderGroupId)}&demo=1`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo Visa Payment</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f7fb; margin:0; padding:24px; color:#102a43; }
+    .card { max-width:420px; margin:24px auto; background:#fff; border-radius:14px; padding:20px; box-shadow:0 10px 30px rgba(16,42,67,.12); }
+    .title { font-size:20px; font-weight:700; margin-bottom:8px; }
+    .sub { font-size:13px; color:#486581; margin-bottom:16px; }
+    .input { width:100%; box-sizing:border-box; margin:8px 0; padding:12px; border:1px solid #d9e2ec; border-radius:10px; }
+    .row { display:flex; gap:10px; }
+    .btn { width:100%; border:0; border-radius:10px; padding:12px; font-weight:700; cursor:pointer; margin-top:10px; }
+    .ok { background:#16a34a; color:#fff; }
+    .cancel { background:#e4e7eb; color:#102a43; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Demo Visa Checkout</div>
+    <div class="sub">This is a simulated card page. Pay to mark the order as PAID/CARD.</div>
+    <input class="input" placeholder="Card Number" />
+    <div class="row">
+      <input class="input" placeholder="MM/YY" />
+      <input class="input" placeholder="CVV" />
+    </div>
+    <button class="btn ok" onclick="location.href='${successUrl}'">Pay Now (Demo)</button>
+    <button class="btn cancel" onclick="location.href='${cancelUrl}'">Cancel</button>
+  </div>
+</body>
+</html>`);
+});
+
+/** Browser return from Hyp payment page — validates MAC, completes orders, redirects to app deep link. */
+app.get('/payments/hyp/return', wrapAsync(async (req, res) => {
+  const cfg = loadHypConfig();
+  const orderGroupId = String(req.query.orderGroupId ?? '').trim();
+  const outcome = String(req.query.outcome ?? '').trim();
+  const isDemo = String(req.query.demo ?? '').trim() === '1';
+  const q = normalizeHypQuery(req.query as Record<string, string | string[] | undefined>);
+
+  if (!cfg && !isDemo) {
+    return res.status(503).send('<html><body>Hyp not configured</body></html>');
+  }
+  if (!orderGroupId) return res.status(400).send('Missing orderGroupId');
+
+  const deep = (status: string) =>
+    `nmdcustomer://hyp-payment?status=${encodeURIComponent(status)}&paymentStatus=${encodeURIComponent(
+      status === 'paid' ? 'success' : status
+    )}&paymentMethod=CREDIT_CARD&orderGroupId=${encodeURIComponent(orderGroupId)}`;
+  const html = (url: string) =>
+    `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width"/></head><body><script>location.replace(${JSON.stringify(
+      url
+    )});</script><p>جاري العودة إلى التطبيق…</p></body></html>`;
+
+  if (outcome === 'cancel' || outcome === 'error') {
+    if (!isDemo && q.responseMac && !verifyHypResponseMac(cfg!.macPassword, q)) {
+      return res.status(400).send('Invalid MAC');
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html(deep(outcome)));
+  }
+
+  const gatewayErrorCode = String(q.errorCode ?? '').trim();
+  if (!isDemo && gatewayErrorCode && gatewayErrorCode !== '000') {
+    console.warn('[Hyp] return indicates non-success', { orderGroupId, gatewayErrorCode, txId: q.txId || '' });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html(deep('error')));
+  }
+
+  if (!isDemo && q.responseMac && !verifyHypResponseMac(cfg!.macPassword, q)) {
+    console.warn('[Hyp] MAC mismatch on return');
+    return res.status(400).send('Invalid payment verification');
+  }
+
+  try {
+    const maskRaw = String(q.cardMask ?? '').replace(/[^\d]/g, '');
+    const tokenRaw = String(q.cardToken ?? '').replace(/[^\d]/g, '');
+    const cardLast4 =
+      maskRaw.length >= 4 ? maskRaw.slice(-4) : tokenRaw.length >= 4 ? tokenRaw.slice(-4) : '';
+    const cardBrand = String(q.cardBrand ?? '').trim().toUpperCase().slice(0, 24);
+    await completeHypPaymentForGroup(orderGroupId, {
+      providerRef: q.txId || q.uniqueID || undefined,
+      demoMode: isDemo,
+      cardLast4: cardLast4 || undefined,
+      cardBrand: cardBrand || undefined,
+    });
+  } catch (e) {
+    console.error('[Hyp] completeHypPaymentForGroup', e);
+    return res.status(500).send('Payment recorded but order update failed');
+  }
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(html(deep('paid')));
+}));
+
+/** Optional Hyp IPN — verify shared secret; extend payload parsing when Hyp provides it. */
+app.post('/payments/hyp/webhook', (req, res) => {
+  const secret = process.env.HYP_WEBHOOK_SECRET?.trim();
+  if (secret) {
+    const got = String(req.headers['x-hyp-signature'] ?? req.headers['x-webhook-secret'] ?? '');
+    if (got !== secret) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+  }
+  console.log('[Hyp] webhook', JSON.stringify(req.body ?? {}).slice(0, 800));
+  res.json({ ok: true });
+});
+
+app.post('/customer/coins/sync', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+
+  const body = req.body as { balance?: number };
+  const localBalance = Math.max(0, Math.floor(Number(body?.balance ?? 0) || 0));
+
+  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+  const now = new Date().toISOString();
+
+  if (existing) {
+    const merged = Math.max(existing.balance, localBalance);
+    await prisma.customerCoin.update({
+      where: { customerPhone: phoneNorm },
+      data: { balance: merged, updatedAt: now },
+    });
+    console.log('[coins-audit] SYNC', { customerPhone: phoneNorm, merged, localBalance });
+    res.json({ balance: merged, synced: true });
+  } else {
+    const merged = Math.max(INITIAL_COINS, localBalance);
+    await prisma.customerCoin.create({
+      data: { customerPhone: phoneNorm, balance: merged, updatedAt: now },
+    });
+    console.log('[coins-audit] SYNC', { customerPhone: phoneNorm, merged, localBalance, note: 'first_row' });
+    res.json({ balance: merged, synced: true });
+  }
+}));
+
+/** Add coins: platform admin JWT, or x-api-key (API_KEY), or x-internal-secret (INTERNAL_API_SECRET). Body: { phone, amount } — never customer self-serve. */
+app.post('/customer/coins/add', wrapAsync(async (req, res) => {
+  const via = authorizeCoinAddRequest(req);
+  if (!via) {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Coin grants require platform admin JWT (ROOT_ADMIN/SUPER_ADMIN), x-api-key, or x-internal-secret',
+    });
+  }
+
+  const body = req.body as { phone?: string; amount?: number };
+  const phoneNorm = normalizePhoneForCoupon(body.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'phone required' });
+
+  const amount = Math.max(0, Math.floor(Number(body?.amount ?? 0) || 0));
+  if (amount <= 0) return res.status(400).json({ error: 'amount must be positive' });
+
+  const now = new Date().toISOString();
+  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+
+  let balance: number;
+  if (existing) {
+    balance = existing.balance + amount;
+    await prisma.customerCoin.update({
+      where: { customerPhone: phoneNorm },
+      data: { balance, updatedAt: now },
+    });
+  } else {
+    balance = INITIAL_COINS + amount;
+    await prisma.customerCoin.create({
+      data: { customerPhone: phoneNorm, balance, updatedAt: now },
+    });
+  }
+  console.log('[coins-audit] ADD', { customerPhone: phoneNorm, amount, newBalance: balance, via });
+  res.json({ balance });
+}));
+
+app.post('/customer/coins/deduct', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+
+  const body = req.body as { amount?: number };
+  const amount = Math.max(0, Math.floor(Number(body?.amount ?? 0) || 0));
+  if (amount <= 0) return res.status(400).json({ error: 'amount must be positive' });
+
+  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+  const currentBalance = existing?.balance ?? INITIAL_COINS;
+
+  if (currentBalance < amount) {
+    return res.status(400).json({ error: 'Insufficient balance', balance: currentBalance });
+  }
+
+  const balance = currentBalance - amount;
+  const now = new Date().toISOString();
+
+  if (existing) {
+    await prisma.customerCoin.update({
+      where: { customerPhone: phoneNorm },
+      data: { balance, updatedAt: now },
+    });
+  } else {
+    await prisma.customerCoin.create({
+      data: { customerPhone: phoneNorm, balance, updatedAt: now },
+    });
+  }
+  console.log('[coins-audit] DEDUCT', { customerPhone: phoneNorm, amount, newBalance: balance, via: 'customer_deduct' });
+  res.json({ balance });
+}));
+
+/** POST /customer/lucky-wheel/spin: deduct coins, weighted random to pick prize, return prizeIndex. */
+app.post('/customer/lucky-wheel/spin', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+
+  const prizes = await prisma.wheelPrize.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+  });
+  if (prizes.length === 0) {
+    return res.status(400).json({ error: 'No active prizes configured' });
+  }
+
+  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+  const currentBalance = existing?.balance ?? INITIAL_COINS;
+  if (currentBalance < SPIN_COST) {
+    return res.status(400).json({ error: 'Insufficient balance', balance: currentBalance });
+  }
+
+  const totalWeight = prizes.reduce((s, p) => s + Math.max(1, p.chanceWeight), 0);
+  const r = Math.random() * totalWeight;
+  let cum = 0;
+  let prizeIndex = prizes.length - 1;
+  for (let i = 0; i < prizes.length; i++) {
+    cum += Math.max(1, prizes[i].chanceWeight);
+    if (r < cum) {
+      prizeIndex = i;
+      break;
+    }
+  }
+
+  const balance = currentBalance - SPIN_COST;
+  const now = new Date().toISOString();
+  if (existing) {
+    await prisma.customerCoin.update({
+      where: { customerPhone: phoneNorm },
+      data: { balance, updatedAt: now },
+    });
+  } else {
+    await prisma.customerCoin.create({
+      data: { customerPhone: phoneNorm, balance, updatedAt: now },
+    });
+  }
+
+  console.log('[coins-audit] DEDUCT', {
+    customerPhone: phoneNorm,
+    amount: SPIN_COST,
+    newBalance: balance,
+    via: 'lucky_wheel_spin',
+  });
+
+  const prize = prizes[prizeIndex];
+  res.json({
+    prizeIndex,
+    prize: { id: prize.id, label: prize.label, type: prize.type, value: prize.value },
+    balance,
+  });
+}));
+
+/** POST /customer/lucky-wheel/redeem: redeem prize after spin. PERCENT/FIXED → coupon; COINS → add coins. */
+app.post('/customer/lucky-wheel/redeem', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+
+  const body = req.body as { prizeId: string; prizeType: string; prizeValue?: number };
+  const prizeType = String(body?.prizeType ?? '').toUpperCase();
+  const prizeValue = Math.max(0, Math.floor(Number(body?.prizeValue ?? 0) || 0));
+
+  if (prizeType === 'NO_WIN') {
+    return res.json({ ok: true, type: 'NO_WIN' });
+  }
+
+  if (prizeType === 'COINS') {
+    if (prizeValue <= 0) return res.status(400).json({ error: 'Invalid prize value' });
+    const now = new Date().toISOString();
+    const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+    let balance: number;
+    if (existing) {
+      balance = existing.balance + prizeValue;
+      await prisma.customerCoin.update({
+        where: { customerPhone: phoneNorm },
+        data: { balance, updatedAt: now },
+      });
+    } else {
+      balance = INITIAL_COINS + prizeValue;
+      await prisma.customerCoin.create({
+        data: { customerPhone: phoneNorm, balance, updatedAt: now },
+      });
+    }
+    console.log('[coins-audit] ADD', {
+      customerPhone: phoneNorm,
+      amount: prizeValue,
+      newBalance: balance,
+      via: 'lucky_wheel_redeem_coins',
+    });
+    return res.json({ ok: true, type: 'COINS', balance });
+  }
+
+  if (prizeType === 'PERCENT' || prizeType === 'FIXED') {
+    const value = prizeType === 'PERCENT' ? Math.min(100, Math.max(1, prizeValue || 5)) : Math.max(1, prizeValue || 10);
+    const type = prizeType as 'PERCENT' | 'FIXED';
+    let code = `NMD-LUCKY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    for (let i = 0; i < 5; i++) {
+      const exists = await prisma.coupon.findUnique({ where: { code } });
+      if (!exists) break;
+      code = `NMD-LUCKY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    }
+    const id = `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await prisma.coupon.create({
+      data: {
+        id,
+        code,
+        type,
+        value,
+        tenantId: null,
+        storeId: null,
+        oneTimeUse: true,
+        winnerPhone: customer.phone,
+        usedAt: null,
+        createdAt: now,
+        expiresAt,
+      },
+    });
+    sendWhatsAppNotification(customer.phone, code);
+    return res.json({ ok: true, type: 'COUPON', code });
+  }
+
+  return res.status(400).json({ error: 'Invalid prize type' });
+}));
+
 app.post('/coupons', wrapAsync(async (req, res) => {
   const user = req.user as { role?: string } | undefined;
   if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
@@ -1472,6 +3492,84 @@ app.get('/coupons', wrapAsync(async (req, res) => {
   res.json(list);
 }));
 
+/** Super Admin: manually grant NMD reward coins to a wallet (normalized phone). */
+app.post('/admin/customers/grant-coins', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const body = req.body as { phone?: string; amount?: number; note?: string };
+  const phoneNorm = normalizePhoneForCoupon(body.phone);
+  if (!phoneNorm) return res.status(400).json({ error: 'phone required' });
+  const amount = Math.max(0, Math.floor(Number(body.amount) || 0));
+  if (amount <= 0) return res.status(400).json({ error: 'amount must be positive' });
+
+  const now = new Date().toISOString();
+  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+  let balance: number;
+  if (existing) {
+    balance = existing.balance + amount;
+    await prisma.customerCoin.update({
+      where: { customerPhone: phoneNorm },
+      data: { balance, updatedAt: now },
+    });
+  } else {
+    balance = INITIAL_COINS + amount;
+    await prisma.customerCoin.create({
+      data: { customerPhone: phoneNorm, balance, updatedAt: now },
+    });
+  }
+  console.log('[coins-audit] ADD', { customerPhone: phoneNorm, amount, newBalance: balance, via: 'admin_grant', note: body.note });
+  res.json({ balance, granted: amount });
+}));
+
+// --- Wheel Prizes (Lucky Wheel) ---
+/** GET /lucky-wheel/prizes: public, returns active prizes for storefront */
+app.get('/lucky-wheel/prizes', wrapAsync(async (_req, res) => {
+  const list = await prisma.wheelPrize.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+  });
+  res.json(list);
+}));
+
+/** GET /admin/wheel-prizes: platform admin only, list all prizes */
+app.get('/admin/wheel-prizes', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const list = await prisma.wheelPrize.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+  });
+  res.json(list);
+}));
+
+/** POST /admin/wheel-prizes: platform admin only, create or update prize */
+app.post('/admin/wheel-prizes', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const body = req.body as { id?: string; label: string; type: string; value?: number; chanceWeight?: number; isActive?: boolean; sortOrder?: number };
+  const label = String(body?.label ?? '').trim();
+  if (!label) return res.status(400).json({ error: 'label required' });
+  const type = ['PERCENT', 'FIXED', 'COINS', 'NO_WIN'].includes(body?.type) ? body.type : 'NO_WIN';
+  const value = Math.max(0, Math.floor(Number(body?.value ?? 0) || 0));
+  const chanceWeight = Math.max(1, Math.floor(Number(body?.chanceWeight ?? 1) || 1));
+  const isActive = body?.isActive !== false;
+  const sortOrder = Math.floor(Number(body?.sortOrder ?? 0) || 0);
+
+  if (body?.id) {
+    const existing = await prisma.wheelPrize.findUnique({ where: { id: body.id } });
+    if (!existing) return res.status(404).json({ error: 'Prize not found' });
+    const updated = await prisma.wheelPrize.update({
+      where: { id: body.id },
+      data: { label, type, value, chanceWeight, isActive, sortOrder },
+    });
+    return res.json(updated);
+  }
+  const id = `wheel-prize-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const created = await prisma.wheelPrize.create({
+    data: { id, label, type, value, chanceWeight, isActive, sortOrder },
+  });
+  res.status(201).json(created);
+}));
+
 // --- Courier portal (COURIER role only) ---
 function requireCourier(req: express.Request, res: express.Response): { courierId: string; marketId: string } | null {
   const user = req.user as { role?: string; courierId?: string; marketId?: string } | undefined;
@@ -1481,6 +3579,23 @@ function requireCourier(req: express.Request, res: express.Response): { courierI
   }
   return { courierId: user.courierId, marketId: user.marketId };
 }
+
+/** Courier API hard gate: require x-api-key on all /courier routes. */
+function requireCourierApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!API_KEY) {
+    return res.status(500).json({ error: 'Server API_KEY is not configured' });
+  }
+  const fromHeader = String(req.get('x-api-key') ?? '').trim();
+  const fromQuery = String((req.query.apiKey as string | undefined) ?? '').trim();
+  const provided = fromHeader || fromQuery;
+  if (!provided || provided !== API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: invalid API key' });
+  }
+  next();
+}
+
+// Must run before any /courier route handlers.
+app.use('/courier', requireCourierApiKey);
 
 app.get('/courier/me', async (req, res) => {
   const scope = requireCourier(req, res);
@@ -1523,8 +3638,8 @@ function enrichCourierOrders(
 app.get('/courier/orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number } }[])
-    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED');
+  const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
+    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED' && !o.isExternal);
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
   res.json(enrichCourierOrders(orders, tenants));
 }));
@@ -1611,6 +3726,207 @@ app.get('/courier/stats', async (req, res) => {
   res.json(metrics);
 });
 
+/** Restaurants + destination labels (delivery zones) for manual external-order form. */
+app.get('/courier/forms/options', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const courier = await prisma.courier.findUnique({
+    where: { id: scope.courierId },
+    select: { allowedStoreIds: true },
+  });
+  let allowedStoreIds: string[] = [];
+  try {
+    const parsed = courier?.allowedStoreIds ? JSON.parse(courier.allowedStoreIds) : [];
+    if (Array.isArray(parsed)) allowedStoreIds = parsed.map((x) => String(x)).filter(Boolean);
+  } catch {
+    allowedStoreIds = [];
+  }
+  const tenants = await prisma.tenant.findMany({
+    where: {
+      marketId: scope.marketId,
+      enabled: { not: false },
+      ...(allowedStoreIds.length > 0 ? { id: { in: allowedStoreIds } } : {}),
+    },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  const restaurants = tenants.map((t) => ({ id: t.id, name: (t.name ?? t.id) as string }));
+  const zones = await prisma.deliveryZone.findMany({
+    where: { tenantId: { in: tenants.map((t) => t.id) } },
+    select: { name: true },
+  });
+  const zoneNames = new Set<string>();
+  for (const z of zones) {
+    if (z.name?.trim()) zoneNames.add(z.name.trim());
+  }
+  const destinations = [...zoneNames].sort((a, b) => a.localeCompare(b, 'ar'));
+  res.json({ restaurants, destinations });
+}));
+
+/** Manual off-app delivery entry — persisted as Order with isExternal=true. */
+app.post('/courier/external-orders', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const body = (req.body ?? {}) as { tenantId?: string; manualStoreName?: string; externalDestination?: string; deliveryFee?: number };
+  const tenantId = String(body.tenantId ?? '').trim();
+  const manualStoreName = String(body.manualStoreName ?? '').trim();
+  const dest = String(body.externalDestination ?? '').trim();
+  const fee = Number(body.deliveryFee);
+  if (!dest || !Number.isFinite(fee) || fee < 0) {
+    return res.status(400).json({ error: 'externalDestination and deliveryFee (≥0) are required' });
+  }
+  const normalizedTenantId = tenantId && tenantId !== 'other' ? tenantId : '';
+  if (!normalizedTenantId && !manualStoreName) {
+    return res.status(400).json({ error: 'tenantId or manualStoreName is required' });
+  }
+  if (normalizedTenantId) {
+    const t = await prisma.tenant.findUnique({
+      where: { id: normalizedTenantId },
+      select: { id: true, marketId: true },
+    });
+    if (!t || t.marketId !== scope.marketId) return res.status(400).json({ error: 'Invalid restaurant for this market' });
+    const courier = await prisma.courier.findUnique({
+      where: { id: scope.courierId },
+      select: { allowedStoreIds: true },
+    });
+    if (courier?.allowedStoreIds) {
+      try {
+        const allow = JSON.parse(courier.allowedStoreIds) as unknown;
+        if (Array.isArray(allow) && allow.length > 0 && !allow.map((x) => String(x)).includes(normalizedTenantId)) {
+          return res.status(403).json({ error: 'Store is not allowed for this courier', code: 'FORBIDDEN' });
+        }
+      } catch {
+        // ignore malformed allowlist and continue with market validation only
+      }
+    }
+  }
+  const id = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const now = new Date().toISOString();
+  const paymentId = `pay-${id}`;
+  await prisma.$transaction([
+    prisma.order.create({
+      data: {
+        id,
+        tenantId: normalizedTenantId || null,
+        courierId: scope.courierId,
+        marketId: scope.marketId,
+        status: 'COMPLETED',
+        fulfillmentType: 'DELIVERY',
+        orderType: 'EXTERNAL',
+        total: fee,
+        createdAt: now,
+        isExternal: true,
+        externalDestination: dest,
+        manualStoreName: normalizedTenantId ? null : manualStoreName,
+        deliveryTimeline: JSON.stringify({ deliveredAt: now, externalManual: true }),
+      },
+    }),
+    prisma.payment.create({
+      data: {
+        id: paymentId,
+        orderId: id,
+        method: 'CASH',
+        status: 'COLLECTED',
+        amount: fee,
+        currency: 'ILS',
+        createdAt: now,
+        updatedAt: now,
+      },
+    }),
+  ]);
+  res.status(201).json({
+    id,
+    total: fee,
+    isExternal: true,
+    externalDestination: dest,
+    tenantId: normalizedTenantId || null,
+    manualStoreName: normalizedTenantId ? null : manualStoreName,
+  });
+}));
+
+/** Driver expense (fuel / repairs). */
+app.post('/courier/expenses', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const body = (req.body ?? {}) as { category?: string; amount?: number; note?: string };
+  const cat = String(body.category ?? '').toUpperCase();
+  if (cat !== 'FUEL' && cat !== 'REPAIR') {
+    return res.status(400).json({ error: 'category must be FUEL or REPAIR' });
+  }
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+  const id = `cexp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const now = new Date().toISOString();
+  await prisma.courierExpense.create({
+    data: {
+      id,
+      courierId: scope.courierId,
+      marketId: scope.marketId,
+      category: cat,
+      amount,
+      currency: 'ILS',
+      note: body.note?.trim() || null,
+      createdAt: now,
+    },
+  });
+  res.status(201).json({ id, category: cat, amount, createdAt: now });
+}));
+
+app.get('/courier/expenses', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const rows = await prisma.courierExpense.findMany({
+    where: { courierId: scope.courierId },
+    orderBy: { createdAt: 'desc' },
+    take: 300,
+  });
+  res.json(rows);
+}));
+
+/** Daily P&L: (app + external delivery fees) − expenses. `date` = YYYY-MM-DD (local day via ISO prefix match). */
+app.get('/courier/daily-summary', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const date = String(req.query.date ?? new Date().toISOString().slice(0, 10)).trim();
+  const dayOrders = await prisma.order.findMany({
+    where: {
+      courierId: scope.courierId,
+      status: 'COMPLETED',
+      createdAt: { startsWith: date },
+    },
+    select: {
+      total: true,
+      isExternal: true,
+    },
+  });
+  let appOrdersTotal = 0;
+  let externalOrdersTotal = 0;
+  for (const o of dayOrders) {
+    const t = Number(o.total) || 0;
+    if (o.isExternal) externalOrdersTotal += t;
+    else appOrdersTotal += t;
+  }
+  const expenseRows = await prisma.courierExpense.findMany({
+    where: {
+      courierId: scope.courierId,
+      createdAt: { startsWith: date },
+    },
+    select: { amount: true },
+  });
+  const expensesTotal = expenseRows
+    .reduce((s, e) => s + e.amount, 0);
+  const gross = appOrdersTotal + externalOrdersTotal;
+  const net = gross - expensesTotal;
+  res.json({
+    date,
+    appOrdersTotal,
+    externalOrdersTotal,
+    expensesTotal,
+    gross,
+    net,
+  });
+}));
+
 /** Valid action transitions by deliveryStatus (not order.status). */
 const VALID_ACTION_FROM_DELIVERY: Record<string, string[]> = {
   ASSIGNED: ['ACKNOWLEDGE'],
@@ -1694,6 +4010,7 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: 'Order not found' });
   const order = orders[idx];
+  const prevOrderStatusForLoyalty = order.status as string | undefined;
   if (order.courierId !== scope.courierId) return res.status(403).json({ error: 'Order not assigned to you', code: 'FORBIDDEN' });
   const currentDeliveryStatus = order.deliveryStatus ?? 'UNASSIGNED';
   const allowed = VALID_ACTION_FROM_DELIVERY[currentDeliveryStatus];
@@ -1759,6 +4076,8 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
     }
   }
   orders[idx] = updated;
+  await repos.orders.setAll(orders);
+  await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevOrderStatusForLoyalty);
   await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
@@ -2469,15 +4788,26 @@ app.get('/categories', (_req, res) => {
 app.post('/global-categories', async (req, res) => {
   if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
   if (!requireWriteWithReason(req, res)) return;
-  const body = req.body as { title: string; nameAr?: string; icon: string; isProfessional?: boolean; sortOrder?: number };
+  const body = req.body as {
+    title: string;
+    nameAr?: string;
+    icon: string;
+    isProfessional?: boolean;
+    sortOrder?: number;
+    iconUrl?: string;
+    /** App route/query as set in admin, e.g. `?pillar=pillar-food` or `/market/slug/rewards` */
+    targetPath?: string;
+  };
   const id = crypto.randomUUID?.() ?? `cat-${Date.now()}`;
   const cat: GlobalCategory = {
     id,
     title: body.title ?? '',
     nameAr: body.nameAr != null ? String(body.nameAr).trim() || undefined : undefined,
     icon: body.icon ?? '📦',
+    iconUrl: body.iconUrl != null && String(body.iconUrl).trim() !== '' ? String(body.iconUrl).trim() : undefined,
     isProfessional: body.isProfessional ?? false,
     sortOrder: body.sortOrder ?? 999,
+    targetPath: body.targetPath != null && String(body.targetPath).trim() !== '' ? String(body.targetPath).trim() : undefined,
   };
   const cats = getGlobalCategories();
   cats.push(cat);
@@ -3109,6 +5439,30 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
       t.enabled !== false &&
       (t.isListedInMarket !== false)
   );
+  const pillarIdFilter =
+    (req.query.pillarId as string | undefined)?.trim() || (req.query.pillar_id as string | undefined)?.trim();
+  if (pillarIdFilter) {
+    tenants = tenants.filter((t) => (t as RegistryTenant).pillarId === pillarIdFilter);
+  }
+  const subCategoryIdFilter =
+    (req.query.subCategoryId as string | undefined)?.trim() ||
+    (req.query.sub_category_id as string | undefined)?.trim();
+  if (subCategoryIdFilter) {
+    tenants = tenants.filter((t) => (t as RegistryTenant).subCategoryId === subCategoryIdFilter);
+  } else {
+    const subCategoryNameFilter = (req.query.sub_category as string | undefined)?.trim();
+    if (subCategoryNameFilter && pillarIdFilter) {
+      const subs = getSubCategories().filter((s) => s.pillarId === pillarIdFilter);
+      const subMatch = subs.find((s) => {
+        const ar = (s.nameAr ?? '').trim();
+        const en = (s.name ?? '').trim();
+        return subCategoryNameFilter === ar || subCategoryNameFilter === en;
+      });
+      if (subMatch) {
+        tenants = tenants.filter((t) => (t as RegistryTenant).subCategoryId === subMatch.id);
+      }
+    }
+  }
   if (categoryId) {
     const norm = (s: string) => (s ?? '').toLowerCase();
     const globalCats = getGlobalCategories();
@@ -3146,6 +5500,8 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
           layoutStyle: n.layoutStyle ?? 'default',
           hero: n.hero,
           banners: n.banners ?? [],
+          whatsappPhone: (n as RegistryTenant).whatsappPhone ?? '',
+          phone: (n as RegistryTenant).phone ?? '',
         },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
@@ -3208,7 +5564,7 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
     deliveryProviderMode: input.deliveryProviderMode ?? 'TENANT',
     allowMarketCourierFallback: input.allowMarketCourierFallback ?? true,
     financialConfig: input.financialConfig ?? { commissionType: 'PERCENTAGE', commissionValue: 10, deliveryFeeModel: 'TENANT' },
-    paymentCapabilities: input.paymentCapabilities ?? { cash: true, card: false },
+    paymentCapabilities: input.paymentCapabilities ?? { cash: true, card: false, allowInstallments: false, installmentOptions: [3, 6, 12] },
     collections: input.collections ?? [],
   };
   if (adminEmail && adminPassword && adminPassword.length >= 6) {
@@ -3289,6 +5645,8 @@ app.get('/storefront/tenants', async (_req, res) => {
           layoutStyle: n.layoutStyle ?? 'default',
           hero: n.hero,
           banners: n.banners ?? [],
+          whatsappPhone: (n as RegistryTenant).whatsappPhone ?? '',
+          phone: (n as RegistryTenant).phone ?? '',
         },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
@@ -3667,6 +6025,8 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     addressLine?: string;
     location?: { lat: number; lng: number };
     supportsWeightSelling?: boolean;
+    allowInstallments?: boolean;
+    installmentOptions?: number[];
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
@@ -3710,6 +6070,22 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (body.addressLine !== undefined) (tenants[idx] as RegistryTenant).addressLine = body.addressLine;
   if (body.location !== undefined) (tenants[idx] as RegistryTenant).location = body.location;
   if (body.supportsWeightSelling !== undefined) (tenants[idx] as RegistryTenant).supportsWeightSelling = body.supportsWeightSelling;
+  if (body.allowInstallments !== undefined || body.installmentOptions !== undefined) {
+    const current = ((tenants[idx] as RegistryTenant).paymentCapabilities ?? { cash: true, card: true }) as {
+      cash: boolean;
+      card: boolean;
+      allowInstallments?: boolean;
+      installmentOptions?: number[];
+    };
+    const normalizedOptions = Array.isArray(body.installmentOptions)
+      ? [...new Set(body.installmentOptions.map((n) => Math.floor(Number(n))).filter((n) => n >= 2 && n <= 36))].sort((a, b) => a - b)
+      : (current.installmentOptions ?? [3, 6, 12]);
+    (tenants[idx] as RegistryTenant).paymentCapabilities = {
+      ...current,
+      allowInstallments: body.allowInstallments ?? current.allowInstallments ?? false,
+      installmentOptions: normalizedOptions,
+    };
+  }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
   appendAuditEvent({
@@ -3985,7 +6361,57 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
   for (const o of orders) {
     await enrichOrderWithCourierInfo(o as Record<string, unknown>, couriers);
   }
+  const pmRaw = String(req.query.paymentMethod ?? '').trim().toUpperCase();
+  if (pmRaw && pmRaw !== 'ALL') {
+    orders = orders.filter((o) => {
+      const ch = orderPaymentChannel(o as Record<string, unknown>);
+      if (pmRaw === 'CASH') return ch === 'CASH';
+      if (pmRaw === 'CARD' || pmRaw === 'CREDIT_CARD' || pmRaw === 'ONLINE') return ch === 'CARD';
+      return true;
+    });
+  }
   res.json(orders);
+}));
+
+/** Tenant merchant: sales breakdown CASH vs card for completed/delivered/paid orders in the selected window. */
+app.get('/merchant/stats', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (customer) {
+    const normalized = normalizePhoneForCoupon(customer.phone);
+    const normalizedFallbackIntl = normalizePhoneForCoupon(FALLBACK_CUSTOMER_PHONE);
+    const normalizedFallbackLocal = normalizePhoneForCoupon('0546111668');
+    if (
+      normalized === normalizedFallbackIntl ||
+      normalized === normalizedFallbackLocal ||
+      normalized.endsWith('546111668')
+    ) {
+      const tr = String(req.query.timeRange ?? 'day').toLowerCase() as MerchantTimeRange;
+      const timeRange: MerchantTimeRange = tr === 'week' || tr === 'month' ? tr : 'day';
+      const now = new Date();
+      const { start, end } = dateRangeForMerchant(timeRange, now);
+      return res.json({
+        timeRange,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        totalSales: 1250,
+        cashSales: 700,
+        onlineSales: 550,
+        orderCount: 8,
+        cashOrderCount: 5,
+        onlineOrderCount: 3,
+      });
+    }
+  }
+  if (!req.user || req.user.role !== 'TENANT_ADMIN' || !req.user.tenantId) {
+    return res.status(403).json({ error: 'Forbidden', code: 'TENANT_ADMIN_ONLY' });
+  }
+  const tenantId = req.user.tenantId;
+  const tr = String(req.query.timeRange ?? 'day').toLowerCase() as MerchantTimeRange;
+  const timeRange: MerchantTimeRange = tr === 'week' || tr === 'month' ? tr : 'day';
+  const all = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const mine = all.filter((o) => String(o.tenantId ?? '') === tenantId);
+  const payload = aggregateMerchantStats(mine, timeRange);
+  res.json(payload);
 }));
 
 app.post('/orders', wrapAsync(async (req, res) => {
@@ -4152,7 +6578,6 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
 }));
 
 /** Internal: used by whatsapp-service bot to update order status (reply 1/2/3). Requires X-Internal-Secret if INTERNAL_API_SECRET is set. */
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET ?? process.env.WA_INTERNAL_SECRET ?? '';
 app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   if (INTERNAL_API_SECRET && req.headers['x-internal-secret'] !== INTERNAL_API_SECRET) {
     return res.status(403).json({ error: 'Forbidden' });
@@ -4166,6 +6591,7 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx === -1) return res.status(404).json({ error: 'Order not found' });
   const order = orders[idx];
+  const prevStatusForLoyaltyInternal = order.status as string | undefined;
   const updated = { ...orders[idx], status } as Record<string, unknown>;
   if (status === 'DELIVERED' && order.courierId) {
     updated.deliveredAt = new Date().toISOString();
@@ -4197,6 +6623,8 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   } catch {
     // do not break order update if push lookup/send fails
   }
+  await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyInternal);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
 }));
 
@@ -4206,6 +6634,7 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
   const idx = orders.findIndex((o) => o.id === req.params.orderId);
   if (idx === -1) return res.status(404).json({ error: 'Order not found' });
   const order = orders[idx];
+  const prevStatusForLoyaltyPatch = order.status as string | undefined;
   if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId) {
     const tenant = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId);
     if (!tenant || tenant.marketId !== req.user.marketId) {
@@ -4264,20 +6693,91 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
     // do not break order update if push lookup/send fails
   }
 
+  await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyPatch);
+  await repos.orders.setAll(orders);
   res.json(orders[idx]);
 }));
 
-/** Hard delete order (and cascade: payment, etc.). SUPER_ADMIN only. */
-app.delete('/orders/:orderId/hard-delete', wrapAsync(async (req, res) => {
-  const user = req.user as { role?: string } | undefined;
-  if (!user || user.role !== 'SUPER_ADMIN') {
-    return res.status(403).json({ error: 'Forbidden: SUPER_ADMIN only' });
+/**
+ * Manually run loyalty award for an order (testing / recovery).
+ * Persists COMPLETED first if needed, then runs the same award path as courier/admin completion.
+ * Auth: TENANT_ADMIN (own store), MARKET_ADMIN (same market), ROOT_ADMIN / SUPER_ADMIN (any).
+ */
+app.post('/orders/:orderId/loyalty-force-award', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string; marketId?: string; tenantId?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const orderId = req.params.orderId;
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const idx = orders.findIndex((o) => o.id === orderId);
+  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const row = orders[idx] as { tenantId?: string; status?: string };
+  const isPlatform = user.role === 'ROOT_ADMIN' || user.role === 'SUPER_ADMIN';
+  if (!isPlatform) {
+    if (user.role === 'MARKET_ADMIN' && user.marketId) {
+      const tenant = (await repos.tenants.findAll()).find((t) => t.id === row.tenantId);
+      if (!tenant || tenant.marketId !== user.marketId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    } else if (user.role === 'TENANT_ADMIN' && user.tenantId) {
+      if (row.tenantId !== user.tenantId) {
+        return res.status(403).json({ error: 'Forbidden: order does not belong to your store' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
   }
+  const prevStatus = row.status;
+  const st = String(row.status ?? '').toUpperCase();
+  if (st !== 'COMPLETED' && st !== 'DELIVERED') {
+    orders[idx] = { ...orders[idx], status: 'COMPLETED' };
+    await repos.orders.setAll(orders);
+  }
+  await runLoyaltyAwardForOrderAtIndex(orders, idx, prevStatus);
+  await repos.orders.setAll(orders);
+  res.json({ ok: true, order: orders[idx] });
+}));
+
+/** Hard delete order (and cascade: payment, etc.).
+ *  ROOT_ADMIN / SUPER_ADMIN: any order.
+ *  MARKET_ADMIN: orders whose tenant belongs to the same market.
+ *  TENANT_ADMIN: orders for their store only.
+ */
+app.delete('/orders/:orderId/hard-delete', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string; marketId?: string; tenantId?: string; id?: string } | undefined;
+  console.log('HARD-DELETE-ATTEMPT:', req.user);
+
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const orderId = req.params.orderId;
   if (!orderId) return res.status(400).json({ error: 'orderId required' });
+
   const orders = await repos.orders.findAll();
-  const exists = orders.some((o) => (o as { id?: string }).id === orderId);
-  if (!exists) return res.status(404).json({ error: 'Order not found' });
+  const order = orders.find((o) => (o as { id?: string }).id === orderId);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  const orderTenantId = (order as { tenantId?: string }).tenantId;
+  const tenants = await repos.tenants.findAll();
+  const orderTenant = orderTenantId ? tenants.find((t) => t.id === orderTenantId) : undefined;
+  const orderMarketId = (orderTenant as { marketId?: string | null } | undefined)?.marketId ?? undefined;
+
+  const role = user.role;
+  let allowed = false;
+  if (isPlatformAdmin(role)) {
+    allowed = true;
+  } else if (role === 'MARKET_ADMIN' && user.marketId && orderMarketId && orderMarketId === user.marketId) {
+    allowed = true;
+  } else if (role === 'TENANT_ADMIN' && user.tenantId && orderTenantId && orderTenantId === user.tenantId) {
+    allowed = true;
+  }
+
+  if (!allowed) {
+    return res.status(403).json({
+      error: 'Forbidden: hard delete requires platform admin, market admin (same market), or tenant admin (same store)',
+    });
+  }
+
   await repos.orders.deleteById(orderId);
   res.status(204).send();
 }));
@@ -4604,6 +7104,11 @@ function courierMarketId(c: { scopeType?: string; scopeId?: string; marketId?: s
   return c.marketId ?? c.scopeId;
 }
 
+function sanitizeCourier<T extends { password?: string }>(courier: T): Omit<T, 'password'> {
+  const { password: _password, ...safe } = courier;
+  return safe;
+}
+
 /** SLA threshold (minutes) for onTimeRate: delivery within this = on time */
 const SLA_OK_MIN = 30;
 
@@ -4719,7 +7224,9 @@ app.get('/markets/:marketId/couriers', async (req, res) => {
     return res.status(403).json({ error: 'Cannot access couriers from another market', code: 'CROSS_MARKET_ACCESS' });
   }
   const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
-  res.json(couriers);
+  const users = await repos.users.findAll();
+  const emailByCourierId = new Map(users.filter((u) => u.role === 'COURIER' && u.courierId).map((u) => [u.courierId as string, u.email ?? '']));
+  res.json(couriers.map((c) => ({ ...sanitizeCourier(c), email: emailByCourierId.get(c.id) ?? undefined })));
 });
 
 /** Courier performance stats. MARKET_ADMIN scoped. Same access rules as GET /couriers. */
@@ -4733,7 +7240,7 @@ app.get('/markets/:marketId/couriers/stats', async (req, res) => {
   }
   const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
   const list = await Promise.all(couriers.map(async (c) => ({
-    ...c,
+    ...sanitizeCourier(c),
     ...(await computeCourierMetrics(marketId, c.id)),
   })));
   res.json(list);
@@ -4799,7 +7306,16 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
   }
   if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
 
-  const body = req.body as { name?: string; phone?: string };
+  const body = req.body as { name?: string; phone?: string; email?: string; password?: string; allowedStoreIds?: string[] };
+  const allowedStoreIds = Array.isArray(body.allowedStoreIds)
+    ? [...new Set(body.allowedStoreIds.map((x) => String(x).trim()).filter(Boolean))]
+    : undefined;
+  const password = typeof body.password === 'string' && body.password.trim().length >= 6 ? body.password.trim() : '123456';
+  const email = String(body.email ?? '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email is required' });
+  const users = await repos.users.findAll();
+  const duplicate = users.find((u) => u.email?.toLowerCase() === email);
+  if (duplicate) return res.status(409).json({ error: 'Email already in use', code: 'EMAIL_EXISTS' });
   const id = `courier-${crypto.randomUUID?.() ?? Date.now()}`;
   const courier: Courier = {
     id,
@@ -4808,15 +7324,22 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
     marketId,
     name: body.name ?? '',
     phone: body.phone,
+    password,
     isActive: true,
     isOnline: false,
     capacity: 3,
     isAvailable: true,
     deliveryCount: 0,
+    allowedStoreIds,
   };
   const couriers = (await repos.couriers.findAll());
   couriers.push(courier);
   await repos.couriers.setAll(couriers);
+  const userId = `user-courier-${id}`;
+  await repos.users.setAll([
+    ...users,
+    { id: userId, email, role: 'COURIER', marketId, courierId: id, password },
+  ]);
   appendAuditEvent({
     userId: user!.id,
     role: user!.role,
@@ -4828,7 +7351,7 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
     emergencyMode: isPlatformAdmin(user!.role),
     after: courier,
   });
-  res.status(201).json(courier);
+  res.status(201).json({ ...sanitizeCourier(courier), email });
 });
 
 app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
@@ -4852,9 +7375,34 @@ app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
     return res.status(404).json({ error: 'Courier not found' });
   }
   const before = { ...couriers[idx] };
-  const body = req.body as Partial<Pick<Courier, 'name' | 'phone' | 'isActive' | 'isOnline' | 'isAvailable' | 'capacity'>>;
-  couriers[idx] = { ...couriers[idx], ...body };
+  const body = req.body as Partial<Pick<Courier, 'name' | 'phone' | 'isActive' | 'isOnline' | 'isAvailable' | 'capacity'>> & { allowedStoreIds?: string[]; email?: string };
+  const normalizedAllowedStoreIds = Array.isArray(body.allowedStoreIds)
+    ? [...new Set(body.allowedStoreIds.map((x) => String(x).trim()).filter(Boolean))]
+    : undefined;
+  const users = await repos.users.findAll();
+  const uIdx = users.findIndex((u) => u.role === 'COURIER' && u.courierId === courierId);
+  const requestedEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : undefined;
+  if (requestedEmail) {
+    const collision = users.find((u, i) => i !== uIdx && u.email?.toLowerCase() === requestedEmail);
+    if (collision) return res.status(409).json({ error: 'Email already in use', code: 'EMAIL_EXISTS' });
+  }
+  couriers[idx] = { ...couriers[idx], ...body, ...(normalizedAllowedStoreIds ? { allowedStoreIds: normalizedAllowedStoreIds } : {}) };
   await repos.couriers.setAll(couriers);
+  if (requestedEmail) {
+    if (uIdx >= 0) {
+      users[uIdx] = { ...users[uIdx], email: requestedEmail };
+    } else {
+      users.push({
+        id: `user-courier-${courierId}`,
+        email: requestedEmail,
+        role: 'COURIER',
+        marketId,
+        courierId,
+        password: couriers[idx].password ?? '123456',
+      });
+    }
+    await repos.users.setAll(users);
+  }
   appendAuditEvent({
     userId: user!.id,
     role: user!.role,
@@ -4867,11 +7415,85 @@ app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
     before,
     after: couriers[idx],
   });
-  res.json(couriers[idx]);
+  const currentEmail = users.find((u) => u.role === 'COURIER' && u.courierId === courierId)?.email;
+  res.json({ ...sanitizeCourier(couriers[idx]), email: currentEmail ?? undefined });
 });
+
+/** Admin override: reset/change a courier password. */
+app.post('/markets/:marketId/couriers/:courierId/change-password', async (req, res) => {
+  const { marketId, courierId } = req.params;
+  const user = req.user;
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (user?.role === 'TENANT_ADMIN') return res.status(403).json({ error: 'Forbidden', code: 'SCOPE_VIOLATION' });
+  if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) return res.status(403).json({ error: 'Cannot update courier in another market', code: 'CROSS_MARKET_ACCESS' });
+  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
+  const body = req.body as { newPassword?: string };
+  const newPassword = String(body?.newPassword ?? '').trim();
+  if (newPassword.length < 6) return res.status(400).json({ error: 'newPassword min 6 chars required' });
+  const couriers = await repos.couriers.findAll();
+  const idx = couriers.findIndex((c) => c.id === courierId && courierMarketId(c) === marketId);
+  if (idx === -1) return res.status(404).json({ error: 'Courier not found' });
+  couriers[idx] = { ...couriers[idx], password: newPassword };
+  await repos.couriers.setAll(couriers);
+  res.json({ ok: true });
+});
+
+/** Global external manual orders report for Super Admin. */
+app.get('/admin/external-orders', wrapAsync(async (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden', code: 'SCOPE_VIOLATION' });
+  const rows = await prisma.order.findMany({
+    where: { isExternal: true },
+    select: {
+      id: true,
+      marketId: true,
+      tenantId: true,
+      manualStoreName: true,
+      courierId: true,
+      total: true,
+      externalDestination: true,
+      createdAt: true,
+      status: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 2000,
+  });
+  const [couriers, tenants, markets] = await Promise.all([
+    prisma.courier.findMany({ select: { id: true, name: true, phone: true } }),
+    prisma.tenant.findMany({ select: { id: true, name: true } }),
+    prisma.market.findMany({ select: { id: true, name: true } }),
+  ]);
+  const courierMap = new Map(couriers.map((c) => [c.id, c]));
+  const tenantMap = new Map(tenants.map((t) => [t.id, t]));
+  const marketMap = new Map(markets.map((m) => [m.id, m]));
+  res.json(rows.map((o) => {
+    const c = o.courierId ? courierMap.get(o.courierId) : undefined;
+    const t = o.tenantId ? tenantMap.get(o.tenantId) : undefined;
+    const m = o.marketId ? marketMap.get(o.marketId) : undefined;
+    return {
+      id: o.id,
+      createdAt: o.createdAt,
+      status: o.status,
+      marketId: o.marketId,
+      marketName: m?.name ?? o.marketId ?? null,
+      courierId: o.courierId,
+      courierName: c?.name ?? null,
+      courierPhone: c?.phone ?? null,
+      tenantId: o.tenantId,
+      tenantName: t?.name ?? null,
+      manualStoreName: o.manualStoreName ?? null,
+      storeDisplayName: t?.name ?? o.manualStoreName ?? 'Other',
+      externalDestination: o.externalDestination ?? null,
+      deliveryFee: o.total ?? 0,
+      isExternal: true,
+    };
+  }));
+}));
 
 app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
   const { marketId, courierId } = req.params;
+  const cascade = String(req.query.cascade ?? '').toLowerCase();
+  const shouldCascade = cascade === '1' || cascade === 'true' || cascade === 'yes';
   const user = req.user;
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
@@ -4891,17 +7513,27 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
     return res.status(404).json({ error: 'Courier not found' });
   }
   const before = { ...couriers[idx] };
-  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string }[];
-  let ordersChanged = false;
-  for (let i = 0; i < orders.length; i++) {
-    if (orders[i].courierId === courierId) {
-      orders[i] = { ...orders[i], courierId: undefined };
-      ordersChanged = true;
+  if (shouldCascade) {
+    await prisma.payment.deleteMany({ where: { order: { courierId } } });
+    await prisma.order.deleteMany({ where: { courierId } });
+    await prisma.courierExpense.deleteMany({ where: { courierId } });
+  } else {
+    const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string }[];
+    let ordersChanged = false;
+    for (let i = 0; i < orders.length; i++) {
+      if (orders[i].courierId === courierId) {
+        orders[i] = { ...orders[i], courierId: undefined };
+        ordersChanged = true;
+      }
     }
+    if (ordersChanged) await repos.orders.setAll(orders);
   }
-  if (ordersChanged) await repos.orders.setAll(orders);
   const remaining = couriers.filter((_, i) => i !== idx);
   await repos.couriers.setAll(remaining);
+  // Remove linked courier-auth users to prevent stale logins to deleted courier accounts.
+  const users = await repos.users.findAll();
+  const nextUsers = users.filter((u) => u.courierId !== courierId);
+  if (nextUsers.length !== users.length) await repos.users.setAll(nextUsers);
   appendAuditEvent({
     userId: user!.id,
     role: user!.role,
@@ -4909,13 +7541,72 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
     action: 'delete',
     entity: 'courier',
     entityId: courierId,
-    reason: isPlatformAdmin(user!.role) ? getEmergencyReason(req) : 'driver deleted and unassigned from orders',
+    reason: isPlatformAdmin(user!.role)
+      ? getEmergencyReason(req)
+      : shouldCascade
+      ? 'driver deleted with cascade wipe (orders + expenses)'
+      : 'driver deleted and unassigned from orders',
     emergencyMode: isPlatformAdmin(user!.role),
     before,
     after: null,
   });
-  res.json(before);
+  res.json({ ...sanitizeCourier(before), cascade: shouldCascade });
 });
+
+/** Courier financial stats view: app revenue, external revenue, expenses, net. */
+app.get('/markets/:marketId/couriers/:courierId/stats', wrapAsync(async (req, res) => {
+  const { marketId, courierId } = req.params;
+  const from = String(req.query.from ?? '').trim();
+  const to = String(req.query.to ?? '').trim();
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== marketId) return res.status(403).json({ error: 'Forbidden' });
+  const courier = (await repos.couriers.findAll()).find((c) => c.id === courierId && courierMarketId(c) === marketId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+
+  const allOrders = (await repos.orders.findAll()) as { courierId?: string; marketId?: string; createdAt?: string; total?: number; isExternal?: boolean }[];
+  const inRange = (dt?: string) => {
+    if (!dt) return false;
+    if (from && dt < from) return false;
+    if (to && dt > `${to}T23:59:59.999Z`) return false;
+    return true;
+  };
+  const orders = allOrders.filter((o) => o.courierId === courierId && (o.marketId === marketId || !o.marketId) && inRange(o.createdAt));
+  let appRevenue = 0;
+  let externalRevenue = 0;
+  for (const o of orders) {
+    const amount = Number(o.total) || 0;
+    if (o.isExternal) externalRevenue += amount;
+    else appRevenue += amount;
+  }
+  const expenses = await prisma.courierExpense.findMany({
+    where: {
+      courierId,
+      marketId,
+      ...(from || to
+        ? {
+            createdAt: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: `${to}T23:59:59.999Z` } : {}),
+            },
+          }
+        : {}),
+    },
+    select: { amount: true },
+  });
+  const expensesTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const net = appRevenue + externalRevenue - expensesTotal;
+  res.json({
+    courierId,
+    marketId,
+    from: from || null,
+    to: to || null,
+    appRevenue,
+    externalRevenue,
+    expenses: expensesTotal,
+    net,
+  });
+}));
 
 // --- Tenant couriers ---
 app.get('/tenants/:tenantId/couriers', async (req, res) => {
@@ -4929,7 +7620,7 @@ app.get('/tenants/:tenantId/couriers', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const couriers = (await repos.couriers.findAll()).filter((c) => c.scopeType === 'TENANT' && c.scopeId === tenantId);
-  res.json(couriers);
+  res.json(couriers.map((c) => sanitizeCourier(c)));
 });
 
 app.post('/tenants/:tenantId/couriers', async (req, res) => {
@@ -4960,7 +7651,7 @@ app.post('/tenants/:tenantId/couriers', async (req, res) => {
   const couriers = (await repos.couriers.findAll());
   couriers.push(courier);
   await repos.couriers.setAll(couriers);
-  res.status(201).json(courier);
+  res.status(201).json(sanitizeCourier(courier));
 });
 
 app.patch('/tenants/:tenantId/couriers/:courierId', async (req, res) => {
@@ -4982,7 +7673,7 @@ app.patch('/tenants/:tenantId/couriers/:courierId', async (req, res) => {
   const body = req.body as Partial<Pick<Courier, 'name' | 'phone' | 'isActive' | 'isOnline' | 'capacity'>>;
   couriers[idx] = { ...couriers[idx], ...body };
   await repos.couriers.setAll(couriers);
-  res.json(couriers[idx]);
+  res.json(sanitizeCourier(couriers[idx]));
 });
 
 /** Market orders: all orders from tenants in this market. Requires MARKET_ADMIN or ROOT_ADMIN. */
@@ -5804,7 +8495,7 @@ app.post('/staff', async (req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.json({ name: 'nmd-mock-api', login: 'POST /auth/login', rootAdmin: 'root@nmd.com (email+password or phone=999 code=1234)' });
+  res.json({ status: 'ready' });
 });
 
 app.get('/health', async (_req, res) => {
@@ -5824,6 +8515,15 @@ app.get('/data', async (_req, res) => {
     hasShaghafAnywhereInData: hasShaghafAnywhere,
     sampleTenantNames: names.slice(0, 10),
   });
+});
+
+/**
+ * Unmatched routes (Express sees paths WITHOUT `/api` — nginx strips the prefix).
+ * Log client mistakes (wrong path, missing /api on gateway, etc.).
+ */
+app.use((req, res) => {
+  console.warn('[404] catch-all', req.method, req.originalUrl);
+  res.status(404).json({ error: 'Not found', path: req.originalUrl });
 });
 
 /** Global error handler: prevents uncaught errors from crashing the server. */
@@ -5904,6 +8604,7 @@ const DATA_FILE_PATH = process.env.DATA_FILE || join(process.cwd(), 'data.json')
     await seedTenantMarketIdsIfNeeded();
     await seedOrdersIfNeeded();
     await seedDeliveryZonesIfNeeded();
+    await seedDemoProfilesIfNeeded();
   }
 
   if (storageDriver !== 'db') {
@@ -5911,9 +8612,25 @@ const DATA_FILE_PATH = process.env.DATA_FILE || join(process.cwd(), 'data.json')
   }
 
   app.listen(PORT, '0.0.0.0', () => {
+    logExpressRoutes(app);
     console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);
     if (storageDriver === 'json') {
       console.log(`DATA_FILE=${DATA_FILE_PATH} — ensure process has write permission so admin email and other updates persist.`);
     }
+    console.log('[OTP-ENV] dotenv/process.env OTP-related keys:', {
+      WHATSAPP_API_URL: (process.env.WHATSAPP_API_URL || '').slice(0, 56) || '(unset)',
+      WHATSAPP_TOKEN_set: !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_TOKEN.length > 0),
+      USE_LEGACY_WHATSAPP_GATEWAY: process.env.USE_LEGACY_WHATSAPP_GATEWAY || '(unset)',
+      WHATSAPP_GATEWAY_URL: (process.env.WHATSAPP_GATEWAY_URL || '').slice(0, 48) || '(unset)',
+      WA_API_KEY_set: !!(process.env.WA_API_KEY && process.env.WA_API_KEY.length > 0),
+      SMS_GATEWAY_URL_set: !!(process.env.SMS_GATEWAY_URL && process.env.SMS_GATEWAY_URL.length > 0),
+      SMS_API_KEY_set: !!(process.env.SMS_API_KEY && process.env.SMS_API_KEY.length > 0),
+      TWILIO_ACCOUNT_SID_set: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.length > 0),
+      TWILIO_AUTH_TOKEN_set: !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 0),
+      TWILIO_FROM_NUMBER_set: !!(process.env.TWILIO_FROM_NUMBER && process.env.TWILIO_FROM_NUMBER.length > 0),
+      FAWAZ_PHONE_set: !!(process.env.FAWAZ_PHONE || process.env.MOCK_OTP_FIXED_PHONES),
+      MOCK_OTP: process.env.MOCK_OTP || '(unset)',
+      NODE_ENV: process.env.NODE_ENV || '(unset)',
+    });
   });
 })();

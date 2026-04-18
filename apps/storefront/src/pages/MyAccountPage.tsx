@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Button, Input, useToast, Card } from '@nmd/ui';
-import { ArrowLeft, User, Bell, Wifi, WifiOff } from 'lucide-react';
+import { Button, Input, useToast, Card, ConfirmDialog } from '@nmd/ui';
+import { ArrowLeft, User, Bell, Wifi, WifiOff, Coins } from 'lucide-react';
 import { useCustomerAuth } from '../contexts/CustomerAuthContext';
+import { useCoins } from '../hooks/useCoins';
 import { useGlobalAuthModal } from '../contexts/GlobalAuthModalContext';
 import { useCustomerNotification } from '../contexts/CustomerNotificationContext';
 import { isNativeAppUA, getBridgeDebugMessage } from '../lib/fcm-bridge';
@@ -18,12 +19,15 @@ function formatFCMLastSync(d: Date): string {
 
 export default function MyAccountPage() {
   const { pathname } = useLocation();
-  const { customer, isLoading: authLoading, updateProfile, logout } = useCustomerAuth();
+  const { customer, isLoading: authLoading, updateProfile, logout, deleteAccount } = useCustomerAuth();
+  const { nowCoins } = useCoins();
   const { openAuthModal } = useGlobalAuthModal();
   const { addToast } = useToast();
   const notification = useCustomerNotification();
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (customer) {
@@ -67,15 +71,49 @@ export default function MyAccountPage() {
   return (
     <div className="max-w-xl mx-auto p-4 pt-6 bg-white min-h-full" dir="rtl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">حسابي</h1>
+        <h1 className="text-xl font-semibold" style={{ color: '#0f766e' }}>حسابي</h1>
         <Link
           to={backHref}
-          className="flex items-center gap-1 text-sm text-primary hover:underline"
+          className="flex items-center gap-1 text-sm hover:underline"
+          style={{ color: '#14b8a6' }}
         >
           <ArrowLeft className="w-4 h-4" />
           العودة
         </Link>
       </div>
+
+      {/* Gamification: Now Coins — heart of community rewards */}
+      <section
+        className="rounded-2xl border-2 mb-6 overflow-hidden shadow-sm"
+        style={{ borderColor: '#0f766e', backgroundColor: '#ffffff' }}
+        aria-label="رصيد العملات"
+      >
+        <div
+          className="px-4 py-4 flex items-center justify-between gap-3"
+          style={{ background: 'linear-gradient(135deg, rgba(15,118,110,0.08) 0%, #ffffff 100%)' }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
+              style={{ backgroundColor: '#0f766e', color: '#ffffff' }}
+            >
+              <Coins className="w-6 h-6" strokeWidth={2.5} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#14b8a6' }}>
+                عملاتك الآن
+              </p>
+              <p className="text-2xl font-bold tabular-nums" style={{ color: '#0f766e' }}>
+                {nowCoins.toLocaleString('ar-SA')}
+                <span className="text-base font-semibold ms-1">عملة</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <p className="px-4 pb-3 text-xs leading-relaxed" style={{ color: '#0a0a0a' }}>
+          اجمع العملات من الطلبات والفعاليات المجتمعية واستخدمها في العروض والمكافآت.
+        </p>
+      </section>
 
       <section className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-6">
         <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center gap-2">
@@ -181,7 +219,7 @@ export default function MyAccountPage() {
         عرض نشاطي (طلباتي وتواصلي)
       </Link>
 
-      <div className="mt-6 pt-4 border-t border-gray-200">
+      <div className="mt-6 pt-4 border-t border-gray-200 space-y-3">
         <Button
           variant="outline"
           className="w-full text-gray-600 hover:bg-white hover:border-neutral-300"
@@ -189,7 +227,40 @@ export default function MyAccountPage() {
         >
           تسجيل الخروج
         </Button>
+        <Button
+          variant="outline"
+          className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
+          onClick={() => setDeleteDialogOpen(true)}
+        >
+          حذف الحساب
+        </Button>
+        <p className="text-xs text-gray-500 text-center leading-relaxed">
+          حذف الحساب يزيل بياناتك من التطبيق بشكل دائم وفق متطلبات Apple.
+        </p>
       </div>
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onClose={() => !deleteLoading && setDeleteDialogOpen(false)}
+        title="حذف الحساب نهائياً؟"
+        message="سيتم حذف حسابك وبيانات الملف الشخصي من الخادم. لا يمكن التراجع عن هذا الإجراء."
+        confirmLabel="حذف نهائي"
+        cancelLabel="إلغاء"
+        variant="danger"
+        loading={deleteLoading}
+        closeOnConfirm={false}
+        onConfirm={async () => {
+          setDeleteLoading(true);
+          const result = await deleteAccount();
+          setDeleteLoading(false);
+          if (result.ok) {
+            setDeleteDialogOpen(false);
+            addToast('تم حذف حسابك', 'success');
+          } else {
+            addToast(result.error ?? 'تعذّر حذف الحساب', 'error');
+          }
+        }}
+      />
     </div>
   );
 }

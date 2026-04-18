@@ -1,0 +1,4 @@
+/* Localized permission strings — Hebrew */
+"NSCameraUsageDescription" = "נדרשת גישה למצלמה כדי להעלות תמונות מוצרים ולסרוק קודי QR.";
+"NSLocationWhenInUseUsageDescription" = "נדרשת גישה למיקום כדי לספק משלוחים, לזהות חנויות קרובות ולהתאים את החוויה לאזורך.";
+"NSPhotoLibraryUsageDescription" = "נדרשת גישה לספריית התמונות כדי לבחור תמונות פרופיל מהגלריה.";

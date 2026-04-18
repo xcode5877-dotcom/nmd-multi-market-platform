@@ -1,0 +1,4 @@
+/* Localized permission strings — Arabic */
+"NSCameraUsageDescription" = "لرفع صور المنتجات ومسح الـ QR";
+"NSLocationWhenInUseUsageDescription" = "لتوصيل الطلبات وتحديد المتاجر القريبة";
+"NSPhotoLibraryUsageDescription" = "لاختيار صور من المعرض للملف الشخصي";
