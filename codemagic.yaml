@@ -1,0 +1,59 @@
+# Codemagic CI — Now Market (Capacitor + Vite/React storefront → native iOS shell)
+# Not React Native CLI; the native project lives under apps/storefront/ios (Capacitor 6).
+# Configure App Store Connect + signing in Codemagic: Team settings → Integrations → Code signing.
+
+workflows:
+  ios-capacitor-release:
+    name: Now Market iOS (Capacitor Release)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: 16.2
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.nowmarket.app
+      vars:
+        XCODE_WORKSPACE: App.xcworkspace
+        XCODE_SCHEME: App
+        BUNDLE_ID: com.nowmarket.app
+      # Link an App Store Connect API key in Codemagic (Integrations) and reference it here if required:
+      # integrations:
+      #   app_store_connect: <your_integration_name>
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Install pnpm and JS dependencies
+        script: |
+          set -e
+          cd "$FCI_BUILD_DIR"
+          corepack enable
+          corepack prepare pnpm@9.14.2 --activate
+          pnpm install --frozen-lockfile
+      - name: Build workspace packages, web bundle, and Capacitor sync (iOS)
+        script: |
+          set -e
+          cd "$FCI_BUILD_DIR"
+          pnpm run sync:ios
+      - name: CocoaPods (Capacitor iOS)
+        script: |
+          set -e
+          cd "$FCI_BUILD_DIR/apps/storefront/ios/App"
+          pod install
+      - name: Set up code signing on the Xcode project
+        script: xcode-project use-profiles
+      - name: Build IPA (Release)
+        script: |
+          set -e
+          xcode-project build-ipa \
+            --workspace "$FCI_BUILD_DIR/apps/storefront/ios/App/$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/xcarchive/**/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
