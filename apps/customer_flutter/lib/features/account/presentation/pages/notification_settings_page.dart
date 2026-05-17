@@ -1,10 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../widgets/account_sub_scaffold.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
@@ -77,63 +76,88 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return AccountSubScaffold(
       title: 'الإشعارات',
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryTeal))
+          ? const NmdLoading(message: 'جاري التحميل…')
           : ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.fromLTRB(
+                NmdSpacing.screenHorizontal,
+                NmdSpacing.sm,
+                NmdSpacing.screenHorizontal,
+                NmdSpacing.xl,
+              ),
               children: [
+                NmdSectionHeader(
+                  title: 'تفضيلات الإشعارات',
+                  subtitle: 'اختر ما يناسبك — يمكنك التغيير في أي وقت',
+                  padding: EdgeInsets.zero,
+                ),
                 if (_saving)
-                  const LinearProgressIndicator(
-                    minHeight: 2,
-                    color: AppColors.primaryTeal,
-                    backgroundColor: Color(0xFFE2E8F0),
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: NmdSpacing.sm),
+                    child: LinearProgressIndicator(
+                      minHeight: 2,
+                      color: NmdColors.brandPrimary,
+                      backgroundColor: NmdColors.borderSubtle,
+                    ),
                   ),
-                SwitchListTile(
-                  title: Text('تحديثات الطلبات',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    'حالة الطلب والتوصيل',
-                    style: GoogleFonts.cairo(
-                        fontSize: 13, color: const Color(0xFF64748B)),
-                  ),
+                _NotificationTile(
+                  title: 'تحديثات الطلبات',
+                  subtitle: 'حالة الطلب والتوصيل',
                   value: _orders,
-                  activeThumbColor: AppColors.primaryTeal,
-                  activeTrackColor:
-                      AppColors.primaryTeal.withValues(alpha: 0.35),
                   onChanged: _saving ? null : (v) => _apply(orderUpdates: v),
                 ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: Text('العروض والترويج',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    'كوبونات وعروض خاصة',
-                    style: GoogleFonts.cairo(
-                        fontSize: 13, color: const Color(0xFF64748B)),
-                  ),
+                const SizedBox(height: NmdSpacing.sm),
+                _NotificationTile(
+                  title: 'العروض والترويج',
+                  subtitle: 'كوبونات وعروض خاصة',
                   value: _promos,
-                  activeThumbColor: AppColors.primaryTeal,
-                  activeTrackColor:
-                      AppColors.primaryTeal.withValues(alpha: 0.35),
                   onChanged: _saving ? null : (v) => _apply(promotions: v),
                 ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: Text('الأخبار',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    'تحديثات المنصة والأسواق',
-                    style: GoogleFonts.cairo(
-                        fontSize: 13, color: const Color(0xFF64748B)),
-                  ),
+                const SizedBox(height: NmdSpacing.sm),
+                _NotificationTile(
+                  title: 'الأخبار',
+                  subtitle: 'تحديثات المنصة والأسواق',
                   value: _news,
-                  activeThumbColor: AppColors.primaryTeal,
-                  activeTrackColor:
-                      AppColors.primaryTeal.withValues(alpha: 0.35),
                   onChanged: _saving ? null : (v) => _apply(news: v),
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _NotificationTile extends StatelessWidget {
+  const _NotificationTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return NmdCard(
+      variant: NmdCardVariant.outlined,
+      padding: EdgeInsets.zero,
+      child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: NmdSpacing.md,
+          vertical: NmdSpacing.xxs,
+        ),
+        title: Text(
+          title,
+          style: NmdTypography.label.copyWith(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(subtitle, style: NmdTypography.bodySmall),
+        value: value,
+        activeThumbColor: NmdColors.brandPrimary,
+        activeTrackColor: NmdColors.brandPrimary.withValues(alpha: 0.35),
+        onChanged: onChanged,
+      ),
     );
   }
 }

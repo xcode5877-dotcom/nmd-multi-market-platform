@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/app_routes.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 
@@ -22,97 +22,320 @@ class AccountPage extends StatelessWidget {
     await navigate(slug);
   }
 
+  Future<void> _signIn(BuildContext context) async {
+    await ensureCustomerAuth(context);
+    if (!context.mounted) return;
+    context.read<CoinsBalanceCubit>().refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthBloc>().state;
     final coins = context.watch<CoinsBalanceCubit>().state;
     final loggedIn = auth.step == AuthStep.done;
+    final slug = GoRouterState.of(context).pathParameters['slug'] ?? '';
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      children: [
-        if (loggedIn)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Material(
-              color: const Color(0xFF0F766E),
-              borderRadius: BorderRadius.circular(14),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                title: Text(
+    return ColoredBox(
+      color: NmdColors.surfaceMuted,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.sm,
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.xxl,
+        ),
+        children: [
+          NmdSectionHeader(
+            title: 'حسابي',
+            subtitle: loggedIn
+                ? 'مركز هويتك في Now Market'
+                : 'سجّل دخولك للوصول إلى إعداداتك',
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: NmdSpacing.sm),
+          _IdentityHeader(
+            loggedIn: loggedIn,
+            phone: auth.phone,
+            onSignIn: () => _signIn(context),
+          ),
+          if (loggedIn) ...[
+            const SizedBox(height: NmdSpacing.md),
+            _CoinsCard(
+              balance: coins.balance,
+              loading: coins.loading,
+              onRefresh: () => context.read<CoinsBalanceCubit>().refresh(),
+              onRewards: slug.isNotEmpty
+                  ? () => context.go('/market/$slug/rewards')
+                  : null,
+            ),
+            const SizedBox(height: NmdSpacing.md),
+            _QuickActionsRow(
+              onProfile: () => _openAfterAuth(
+                context,
+                (s) async => context.push(AppRoutes.editProfile(s)),
+              ),
+              onAddresses: () => _openAfterAuth(
+                context,
+                (s) async => context.push(AppRoutes.addresses(s)),
+              ),
+            ),
+          ],
+          const SizedBox(height: NmdSpacing.lg),
+          NmdSectionHeader(
+            title: 'الإعدادات',
+            padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
+          ),
+          _AccountTile(
+            title: 'الملف الشخصي',
+            subtitle: 'الاسم والبريد والمدينة',
+            icon: Icons.person_outline_rounded,
+            onTap: () => _openAfterAuth(
+              context,
+              (s) async => context.push(AppRoutes.editProfile(s)),
+            ),
+          ),
+          _AccountTile(
+            title: 'العناوين',
+            subtitle: 'عناوين التوصيل المحفوظة',
+            icon: Icons.location_on_outlined,
+            onTap: () => _openAfterAuth(
+              context,
+              (s) async => context.push(AppRoutes.addresses(s)),
+            ),
+          ),
+          _AccountTile(
+            title: 'طرق الدفع',
+            subtitle: 'البطاقات المحفوظة بأمان',
+            icon: Icons.credit_card_outlined,
+            onTap: () => _openAfterAuth(
+              context,
+              (s) async => context.push(AppRoutes.paymentMethods(s)),
+            ),
+          ),
+          _AccountTile(
+            title: 'الإشعارات',
+            subtitle: 'تحديثات الطلبات والعروض',
+            icon: Icons.notifications_none_rounded,
+            onTap: () => _openAfterAuth(
+              context,
+              (s) async => context.push(AppRoutes.notificationSettings(s)),
+            ),
+          ),
+          const SizedBox(height: NmdSpacing.lg),
+          NmdSectionHeader(
+            title: 'الثقة والدعم',
+            padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
+          ),
+          _AccountTile(
+            title: 'المساعدة والدعم',
+            subtitle: 'واتساب، اتصال، والأسئلة الشائعة',
+            icon: Icons.help_outline_rounded,
+            onTap: () => _openAfterAuth(
+              context,
+              (s) async => context.push(AppRoutes.help(s)),
+            ),
+          ),
+          if (!loggedIn) ...[
+            const SizedBox(height: NmdSpacing.md),
+            NmdButton(
+              label: 'تسجيل الدخول',
+              onPressed: () => _signIn(context),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _IdentityHeader extends StatelessWidget {
+  const _IdentityHeader({
+    required this.loggedIn,
+    required this.phone,
+    required this.onSignIn,
+  });
+
+  final bool loggedIn;
+  final String phone;
+  final VoidCallback onSignIn;
+
+  @override
+  Widget build(BuildContext context) {
+    return NmdSurface(
+      mode: NmdSurfaceMode.alive,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: NmdColors.brandPrimary,
+              border: Border.all(
+                color: NmdColors.brandSecondary.withValues(alpha: 0.5),
+                width: 2,
+              ),
+              boxShadow: NmdShadows.brandGlow(alpha: 0.2),
+            ),
+            child: Icon(
+              loggedIn ? Icons.person_rounded : Icons.person_outline_rounded,
+              color: NmdColors.textOnBrand,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: NmdSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  loggedIn ? 'أهلاً بك' : 'مرحباً بك في Now Market',
+                  style: NmdTypography.h3,
+                ),
+                const SizedBox(height: NmdSpacing.xxs),
+                Text(
+                  loggedIn && phone.isNotEmpty
+                      ? phone
+                      : 'سجّل دخولك برقم الجوال — سريع وآمن',
+                  style: NmdTypography.bodySmall,
+                ),
+                if (loggedIn) ...[
+                  const SizedBox(height: NmdSpacing.xs),
+                  NmdBadge(
+                    label: 'عضو Now Market',
+                    tone: NmdBadgeTone.brand,
+                    compact: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (!loggedIn)
+            NmdButton(
+              label: 'دخول',
+              size: NmdButtonSize.compact,
+              expand: false,
+              onPressed: onSignIn,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoinsCard extends StatelessWidget {
+  const _CoinsCard({
+    required this.balance,
+    required this.loading,
+    required this.onRefresh,
+    this.onRewards,
+  });
+
+  final int? balance;
+  final bool loading;
+  final VoidCallback onRefresh;
+  final VoidCallback? onRewards;
+
+  @override
+  Widget build(BuildContext context) {
+    return NmdCard(
+      variant: NmdCardVariant.community,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: NmdColors.accentGold.withValues(alpha: 0.2),
+            ),
+            child: const Icon(
+              Icons.monetization_on_outlined,
+              color: NmdColors.accentGold,
+            ),
+          ),
+          const SizedBox(width: NmdSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   'رصيد عملات NMD',
-                  style: GoogleFonts.cairo(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                  style: NmdTypography.label.copyWith(
+                    color: NmdColors.textOnDark.withValues(alpha: 0.75),
                   ),
                 ),
-                subtitle: coins.loading
-                    ? const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
+                const SizedBox(height: NmdSpacing.xxs),
+                loading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: NmdColors.accentGold,
                         ),
                       )
                     : Text(
-                        '${coins.balance ?? 0} عملة',
-                        style: GoogleFonts.cairo(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 22,
+                        '${balance ?? 0} عملة',
+                        style: NmdTypography.h2.copyWith(
+                          color: NmdColors.accentGold,
                         ),
                       ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: () => context.read<CoinsBalanceCubit>().refresh(),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onRefresh,
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: NmdColors.textOnDark.withValues(alpha: 0.85),
+            ),
+          ),
+          if (onRewards != null)
+            TextButton(
+              onPressed: onRewards,
+              child: Text(
+                'المكافآت',
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.accentGold,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
-          ),
-        _AccountTile(
-          title: 'الملف الشخصي',
-          icon: Icons.person_outline,
-          onTap: () => _openAfterAuth(
-            context,
-            (slug) async => context.push(AppRoutes.editProfile(slug)),
-          ),
-        ),
-        _AccountTile(
-          title: 'العناوين',
-          icon: Icons.location_on_outlined,
-          onTap: () => _openAfterAuth(
-            context,
-            (slug) async => context.push(AppRoutes.addresses(slug)),
-          ),
-        ),
-        _AccountTile(
-          title: 'طرق الدفع',
-          icon: Icons.credit_card_outlined,
-          onTap: () => _openAfterAuth(
-            context,
-            (slug) async => context.push(AppRoutes.paymentMethods(slug)),
-          ),
-        ),
-        _AccountTile(
-          title: 'الإشعارات',
-          icon: Icons.notifications_none,
-          onTap: () => _openAfterAuth(
-            context,
-            (slug) async => context.push(AppRoutes.notificationSettings(slug)),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionsRow extends StatelessWidget {
+  const _QuickActionsRow({
+    required this.onProfile,
+    required this.onAddresses,
+  });
+
+  final VoidCallback onProfile;
+  final VoidCallback onAddresses;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickActionCard(
+            icon: Icons.edit_outlined,
+            label: 'الملف',
+            onTap: onProfile,
           ),
         ),
-        _AccountTile(
-          title: 'المساعدة والدعم',
-          icon: Icons.help_outline,
-          onTap: () => _openAfterAuth(
-            context,
-            (slug) async => context.push(AppRoutes.help(slug)),
+        const SizedBox(width: NmdSpacing.sm),
+        Expanded(
+          child: _QuickActionCard(
+            icon: Icons.home_work_outlined,
+            label: 'العناوين',
+            onTap: onAddresses,
           ),
         ),
       ],
@@ -120,36 +343,96 @@ class AccountPage extends StatelessWidget {
   }
 }
 
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return NmdCard(
+      variant: NmdCardVariant.outlined,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(
+        vertical: NmdSpacing.md,
+        horizontal: NmdSpacing.sm,
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: NmdColors.brandPrimary, size: 26),
+          const SizedBox(height: NmdSpacing.xs),
+          Text(
+            label,
+            style: NmdTypography.label.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AccountTile extends StatelessWidget {
   const _AccountTile({
     required this.title,
+    required this.subtitle,
     required this.icon,
     required this.onTap,
   });
 
   final String title;
+  final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final cardColor = Theme.of(context).cardColor;
-
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: cardColor,
-        elevation: 1,
-        shadowColor: Colors.black.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: ListTile(
-            leading: Icon(icon, color: const Color(0xFF0F766E)),
-            title: Text(title),
-            trailing: const Icon(Icons.chevron_right),
-          ),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
+      child: NmdCard(
+        variant: NmdCardVariant.outlined,
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(
+          horizontal: NmdSpacing.md,
+          vertical: NmdSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: NmdColors.tintAliveSoft,
+                borderRadius: NmdRadius.borderSm,
+              ),
+              child: Icon(icon, color: NmdColors.brandPrimary, size: 22),
+            ),
+            const SizedBox(width: NmdSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: NmdTypography.label.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: NmdTypography.bodySmall),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_left_rounded,
+              color: NmdColors.textTertiary,
+            ),
+          ],
         ),
       ),
     );

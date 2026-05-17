@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../app/theme/app_colors.dart';
 import '../../../../core/support/open_privacy_policy.dart';
 import '../../../../core/support/open_support_whatsapp.dart';
+import '../../../../design_system/design_system.dart';
 import '../widgets/account_sub_scaffold.dart';
 
 class HelpSupportPage extends StatelessWidget {
@@ -19,125 +18,123 @@ class HelpSupportPage extends StatelessWidget {
     return AccountSubScaffold(
       title: 'المساعدة والدعم',
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.sm,
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.xxl,
+        ),
         children: [
-          Text(
-            'تواصل معنا',
-            style: GoogleFonts.cairo(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
+          NmdSectionHeader(
+            title: 'تواصل معنا',
+            subtitle: 'فريق Now Market بجانبك',
+            padding: EdgeInsets.zero,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: NmdSpacing.sm),
           Row(
             children: [
               Expanded(
-                child: FilledButton.icon(
+                child: NmdButton(
+                  label: 'واتساب',
+                  icon: const Icon(Icons.chat_outlined,
+                      size: 20, color: NmdColors.textOnBrand),
+                  size: NmdButtonSize.medium,
                   onPressed: () async {
                     await launchNmdSupportWhatsApp(
                       messenger: ScaffoldMessenger.maybeOf(context),
                     );
                   },
-                  icon: const Icon(Icons.chat_outlined, size: 20),
-                  label: Text('واتساب',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryTeal,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: NmdSpacing.sm),
               Expanded(
-                child: OutlinedButton.icon(
+                child: NmdButton(
+                  label: 'اتصال',
+                  variant: NmdButtonVariant.secondary,
+                  icon: const Icon(Icons.call_outlined,
+                      size: 20, color: NmdColors.brandPrimary),
+                  size: NmdButtonSize.medium,
                   onPressed: () async {
                     await launchNmdSupportPhoneCall(
                       messenger: ScaffoldMessenger.maybeOf(context),
                     );
                   },
-                  icon: const Icon(Icons.call_outlined, size: 20),
-                  label: Text('اتصال',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primaryTeal,
-                    side: const BorderSide(
-                        color: AppColors.primaryTeal, width: 1.4),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
                 ),
               ),
             ],
           ),
           if (!hasWa && !hasPhone)
             Padding(
-              padding: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.only(top: NmdSpacing.sm),
               child: Text(
                 'يمكن ضبط أرقام الدعم عند البناء عبر NMD_SUPPORT_WHATSAPP و NMD_SUPPORT_PHONE.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.cairo(
-                    fontSize: 12, color: const Color(0xFF64748B)),
+                style: NmdTypography.bodySmall,
               ),
             ),
-          const SizedBox(height: 28),
-          Text(
-            'حول التطبيق',
-            style: GoogleFonts.cairo(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
+          const SizedBox(height: NmdSpacing.xl),
+          NmdSectionHeader(
+            title: 'حول التطبيق',
+            padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
+          ),
+          NmdCard(
+            variant: NmdCardVariant.outlined,
+            onTap: () async {
+              await launchNmdPrivacyPolicy(
+                messenger: ScaffoldMessenger.maybeOf(context),
+              );
+            },
+            padding: const EdgeInsets.symmetric(
+              horizontal: NmdSpacing.md,
+              vertical: NmdSpacing.xs,
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.privacy_tip_outlined,
+                    color: NmdColors.brandPrimary),
+                const SizedBox(width: NmdSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'سياسة الخصوصية',
+                        style: NmdTypography.label.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        kNmdPrivacyPolicyUrl.trim().isEmpty
+                            ? 'ضع الرابط عبر NMD_PRIVACY_POLICY_URL عند البناء.'
+                            : kNmdPrivacyPolicyUrl,
+                        style: NmdTypography.micro,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.open_in_new_rounded,
+                    size: 18, color: NmdColors.textTertiary),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Color(0xFFE2E8F0)),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.privacy_tip_outlined,
-                  color: AppColors.primaryTeal),
-              title: Text(
-                'سياسة الخصوصية',
-                style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                kNmdPrivacyPolicyUrl.trim().isEmpty
-                    ? 'ضع الرابط عبر NMD_PRIVACY_POLICY_URL عند البناء.'
-                    : kNmdPrivacyPolicyUrl,
-                style: GoogleFonts.cairo(fontSize: 12),
-              ),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: () async {
-                await launchNmdPrivacyPolicy(
-                  messenger: ScaffoldMessenger.maybeOf(context),
-                );
-              },
-            ),
+          const SizedBox(height: NmdSpacing.lg),
+          NmdSectionHeader(
+            title: 'أسئلة شائعة',
+            padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'أسئلة شائعة',
-            style: GoogleFonts.cairo(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _FaqTile(
+          const _FaqTile(
             title: 'التوصيل',
             body:
                 'نوصل طلباتك من المتاجر المشاركة في سوقك. وقت التوصيل يعتمد على المسافة وحالة الطلب. يمكنك متابعة حالة الطلب من صفحة «طلباتي».',
           ),
-          _FaqTile(
+          const _FaqTile(
             title: 'الدفع',
             body:
                 'يدعم التطبيق طرق دفع متعددة حسب المتجر. يمكنك حفظ بطاقة بشكل آمن (نخزن آخر 4 أرقام فقط). لا نشارك بيانات الدفع مع أطراف غير مصرّحة.',
           ),
-          _FaqTile(
+          const _FaqTile(
             title: 'الطلبات',
             body:
                 'بعد تأكيد الطلب يصل للمتجر للتحضير. يمكنك إلغاء أو تعديل الطلب وفق سياسة المتجر قبل التجهيز. لأي مشكلة تواصل معنا عبر واتساب أو الاتصال.',
@@ -156,41 +153,41 @@ class _FaqTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          iconColor: AppColors.primaryTeal,
-          collapsedIconColor: AppColors.primaryTeal,
-          title: Text(
-            title,
-            style: GoogleFonts.cairo(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
+      child: NmdCard(
+        variant: NmdCardVariant.outlined,
+        padding: EdgeInsets.zero,
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: NmdSpacing.md,
+              vertical: NmdSpacing.xxs,
             ),
-          ),
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                body,
-                textAlign: TextAlign.right,
-                style: GoogleFonts.cairo(
-                  height: 1.45,
-                  fontSize: 14,
-                  color: const Color(0xFF475569),
+            childrenPadding: const EdgeInsets.fromLTRB(
+              NmdSpacing.md,
+              0,
+              NmdSpacing.md,
+              NmdSpacing.md,
+            ),
+            iconColor: NmdColors.brandPrimary,
+            collapsedIconColor: NmdColors.brandPrimary,
+            title: Text(
+              title,
+              style: NmdTypography.label.copyWith(fontWeight: FontWeight.w800),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  body,
+                  textAlign: TextAlign.right,
+                  style: NmdTypography.bodySmall.copyWith(height: 1.45),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

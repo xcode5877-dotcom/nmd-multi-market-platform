@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../../widgets/nmd_text_field.dart';
 import '../../utils/card_validation.dart';
 import '../widgets/account_sub_scaffold.dart';
@@ -47,10 +47,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Directionality(
           textDirection: TextDirection.rtl,
@@ -58,171 +55,169 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
             padding: EdgeInsets.only(
               bottom: MediaQuery.viewInsetsOf(ctx).bottom,
             ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'إضافة بطاقة',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.cairo(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: NmdColors.surfaceBase,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  NmdSpacing.screenHorizontal,
+                  NmdSpacing.md,
+                  NmdSpacing.screenHorizontal,
+                  NmdSpacing.xl,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('إضافة بطاقة',
+                        textAlign: TextAlign.center, style: NmdTypography.h3),
+                    const SizedBox(height: NmdSpacing.xs),
+                    Text(
+                      'لا نخزن رقم البطاقة كاملاً — يُحفظ آخر 4 أرقام فقط.',
+                      textAlign: TextAlign.center,
+                      style: NmdTypography.bodySmall,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'لا نخزن رقم البطاقة كاملاً — يُحفظ آخر 4 أرقام فقط.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.cairo(
-                        fontSize: 12, color: const Color(0xFF64748B)),
-                  ),
-                  const SizedBox(height: 16),
-                  NmdTextField(
-                    label: 'رقم البطاقة',
-                    controller: panCtrl,
-                    keyboardType: TextInputType.number,
-                    requiredField: true,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(19),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  NmdTextField(
-                    label: 'اسم حامل البطاقة',
-                    controller: holderCtrl,
-                    requiredField: true,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: NmdTextField(
-                          label: 'الشهر',
-                          controller: monthCtrl,
-                          hint: 'MM',
-                          keyboardType: TextInputType.number,
-                          requiredField: true,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(2),
-                          ],
+                    const SizedBox(height: 16),
+                    NmdTextField(
+                      label: 'رقم البطاقة',
+                      controller: panCtrl,
+                      keyboardType: TextInputType.number,
+                      requiredField: true,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(19),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    NmdTextField(
+                      label: 'اسم حامل البطاقة',
+                      controller: holderCtrl,
+                      requiredField: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: NmdTextField(
+                            label: 'الشهر',
+                            controller: monthCtrl,
+                            hint: 'MM',
+                            keyboardType: TextInputType.number,
+                            requiredField: true,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(2),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: NmdTextField(
-                          label: 'السنة',
-                          controller: yearCtrl,
-                          hint: 'YY أو YYYY',
-                          keyboardType: TextInputType.number,
-                          requiredField: true,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(4),
-                          ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: NmdTextField(
+                            label: 'السنة',
+                            controller: yearCtrl,
+                            hint: 'YY أو YYYY',
+                            keyboardType: TextInputType.number,
+                            requiredField: true,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(4),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  NmdTextField(
-                    label: 'CVV',
-                    controller: cvvCtrl,
-                    keyboardType: TextInputType.number,
-                    obscureText: true,
-                    requiredField: true,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(4),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      final pan = panCtrl.text.trim();
-                      final holder = holderCtrl.text.trim();
-                      final m = int.tryParse(monthCtrl.text.trim());
-                      var y = int.tryParse(yearCtrl.text.trim());
-                      final cvv = cvvCtrl.text.trim();
-                      if (holder.isEmpty || pan.isEmpty) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('أكمل الحقول المطلوبة')),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    NmdTextField(
+                      label: 'CVV',
+                      controller: cvvCtrl,
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      requiredField: true,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(4),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    NmdButton(
+                      label: 'حفظ البطاقة',
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final pan = panCtrl.text.trim();
+                        final holder = holderCtrl.text.trim();
+                        final m = int.tryParse(monthCtrl.text.trim());
+                        var y = int.tryParse(yearCtrl.text.trim());
+                        final cvv = cvvCtrl.text.trim();
+                        if (holder.isEmpty || pan.isEmpty) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                                content: Text('أكمل الحقول المطلوبة')),
+                          );
+                          return;
+                        }
+                        if (!luhnCheck(pan)) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                                content: Text('رقم البطاقة غير صالح')),
+                          );
+                          return;
+                        }
+                        if (m == null || m < 1 || m > 12) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('الشهر غير صالح')),
+                          );
+                          return;
+                        }
+                        if (y == null) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('السنة غير صالحة')),
+                          );
+                          return;
+                        }
+                        if (y < 100) y += 2000;
+                        final need = expectedCvvLength(pan);
+                        if (cvv.length != need) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                                content: Text('CVV يجب أن يكون $need أرقام')),
+                          );
+                          return;
+                        }
+                        final end = DateTime(y, m + 1, 0, 23, 59, 59);
+                        if (end.isBefore(DateTime.now())) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('البطاقة منتهية')),
+                          );
+                          return;
+                        }
+                        final dio = context.read<Dio>();
+                        final res =
+                            await StorefrontApi(dio).postCustomerPaymentMethod(
+                          cardNumber: pan,
+                          holderName: holder,
+                          expiryMonth: m,
+                          expiryYear: y,
+                          cvv: cvv,
                         );
-                        return;
-                      }
-                      if (!luhnCheck(pan)) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('رقم البطاقة غير صالح')),
-                        );
-                        return;
-                      }
-                      if (m == null || m < 1 || m > 12) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('الشهر غير صالح')),
-                        );
-                        return;
-                      }
-                      if (y == null) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('السنة غير صالحة')),
-                        );
-                        return;
-                      }
-                      if (y < 100) y += 2000;
-                      final need = expectedCvvLength(pan);
-                      if (cvv.length != need) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                              content: Text('CVV يجب أن يكون $need أرقام')),
-                        );
-                        return;
-                      }
-                      final end = DateTime(y, m + 1, 0, 23, 59, 59);
-                      if (end.isBefore(DateTime.now())) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('البطاقة منتهية')),
-                        );
-                        return;
-                      }
-                      final dio = context.read<Dio>();
-                      final res =
-                          await StorefrontApi(dio).postCustomerPaymentMethod(
-                        cardNumber: pan,
-                        holderName: holder,
-                        expiryMonth: m,
-                        expiryYear: y,
-                        cvv: cvv,
-                      );
-                      if (!context.mounted) return;
-                      if (res != null) {
-                        Navigator.pop(ctx);
-                        await _load();
                         if (!context.mounted) return;
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('تمت إضافة البطاقة')),
-                        );
-                      } else {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('تعذر الحفظ')),
-                        );
-                      }
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primaryTeal,
-                      minimumSize: const Size.fromHeight(52),
+                        if (res != null) {
+                          Navigator.pop(ctx);
+                          await _load();
+                          if (!context.mounted) return;
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('تمت إضافة البطاقة')),
+                          );
+                        } else {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('تعذر الحفظ')),
+                          );
+                        }
+                      },
                     ),
-                    child: Text(
-                      'حفظ البطاقة',
-                      style: GoogleFonts.cairo(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -280,25 +275,27 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
       title: 'طرق الدفع',
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddCard,
-        backgroundColor: AppColors.primaryTeal,
-        foregroundColor: Colors.white,
+        backgroundColor: NmdColors.brandPrimary,
+        foregroundColor: NmdColors.textOnBrand,
         icon: const Icon(Icons.add_card_outlined),
-        label: Text('إضافة بطاقة',
-            style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+        label: Text(
+          'إضافة بطاقة',
+          style: NmdTypography.label.copyWith(
+            color: NmdColors.textOnBrand,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryTeal))
+          ? const NmdLoading(message: 'جاري تحميل البطاقات…')
           : _cards.isEmpty
-              ? Center(
-                  child: Text(
-                    'لا توجد بطاقات محفوظة.\nاضغط «إضافة بطاقة».',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.cairo(color: const Color(0xFF64748B)),
-                  ),
+              ? const NmdEmptyState(
+                  title: 'لا توجد بطاقات محفوظة',
+                  message: 'أضف بطاقة لتسريع الدفع — نحفظ آخر 4 أرقام فقط',
+                  icon: Icons.credit_card_outlined,
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(NmdSpacing.screenHorizontal),
                   itemCount: _cards.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 14),
                   itemBuilder: (context, i) {
@@ -316,20 +313,13 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                     if (yDisp > 99) yDisp = yDisp % 100;
                     return Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: NmdRadius.borderMd,
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF0F766E), Color(0xFF0D5C56)],
+                          colors: [NmdColors.brandPrimary, NmdColors.brandDeep],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                AppColors.primaryTeal.withValues(alpha: 0.35),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+                        boxShadow: NmdShadows.brandGlow(alpha: 0.3),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(20),

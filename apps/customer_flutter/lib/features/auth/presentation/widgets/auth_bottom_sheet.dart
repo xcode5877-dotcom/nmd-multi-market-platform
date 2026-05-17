@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pinput/pinput.dart';
 
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../bloc/auth_bloc.dart';
 
 Future<bool> showAuthBottomSheet(BuildContext context) async {
@@ -79,6 +78,13 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
     }
   }
 
+  int _stepIndex(AuthStep step) => switch (step) {
+        AuthStep.phone => 0,
+        AuthStep.otp => 1,
+        AuthStep.profile => 2,
+        AuthStep.done => 3,
+      };
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -96,13 +102,19 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
               maxHeight: MediaQuery.sizeOf(context).height * 0.92,
             ),
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: NmdColors.surfaceBase,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: NmdShadows.lg,
             ),
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                padding: const EdgeInsets.fromLTRB(
+                  NmdSpacing.screenHorizontal,
+                  NmdSpacing.sm,
+                  NmdSpacing.screenHorizontal,
+                  NmdSpacing.lg,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -112,21 +124,24 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFCBD5E1),
-                          borderRadius: BorderRadius.circular(999),
+                          color: NmdColors.borderSubtle,
+                          borderRadius: NmdRadius.borderPill,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: NmdSpacing.md),
                     SvgPicture.asset(
                       'assets/branding/logo-nowmarket.svg',
                       height: 34,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: NmdSpacing.md),
+                    if (state.step != AuthStep.done)
+                      _AuthStepIndicator(activeIndex: _stepIndex(state.step)),
                     if (state.error != null) ...[
+                      const SizedBox(height: NmdSpacing.sm),
                       _ErrorBanner(message: state.error!),
-                      const SizedBox(height: 14),
                     ],
+                    const SizedBox(height: NmdSpacing.sm),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 320),
                       switchInCurve: Curves.easeOutCubic,
@@ -196,6 +211,55 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
   }
 }
 
+class _AuthStepIndicator extends StatelessWidget {
+  const _AuthStepIndicator({required this.activeIndex});
+
+  final int activeIndex;
+
+  static const _labels = ['الجوال', 'الرمز', 'الملف'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(_labels.length, (i) {
+        final active = i == activeIndex;
+        final done = i < activeIndex;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: i == 0 ? 0 : 4,
+              end: i == _labels.length - 1 ? 0 : 4,
+            ),
+            child: Column(
+              children: [
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: done || active
+                        ? NmdColors.brandPrimary
+                        : NmdColors.borderSubtle,
+                    borderRadius: NmdRadius.borderPill,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _labels[i],
+                  style: NmdTypography.micro.copyWith(
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    color: active
+                        ? NmdColors.brandPrimary
+                        : NmdColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});
 
@@ -203,22 +267,28 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFECACA)),
-      ),
-      child: Text(
-        message,
-        textAlign: TextAlign.right,
-        style: GoogleFonts.cairo(
-          color: const Color(0xFFB91C1C),
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          height: 1.4,
-        ),
+    return NmdSurface(
+      mode: NmdSurfaceMode.muted,
+      padding: const EdgeInsets.all(NmdSpacing.sm),
+      borderRadius: NmdRadius.borderMd,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: NmdColors.error, size: 20),
+          const SizedBox(width: NmdSpacing.xs),
+          Expanded(
+            child: Text(
+              message,
+              textAlign: TextAlign.right,
+              style: NmdTypography.bodySmall.copyWith(
+                color: NmdColors.error,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -243,146 +313,56 @@ class _PhoneStep extends StatelessWidget {
         Text(
           'تسجيل الدخول',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: const Color(0xFF0F172A),
-          ),
+          style: NmdTypography.h2,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: NmdSpacing.xs),
         Text(
-          'أدخل رقم جوالك لإرسال رمز التحقق عبر واتساب',
+          'أدخل رقم جوالك — نرسل لك رمز التحقق عبر واتساب بأمان',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.45,
-          ),
+          style: NmdTypography.bodySmall.copyWith(height: 1.45),
         ),
-        const SizedBox(height: 20),
-        TextField(
+        const SizedBox(height: NmdSpacing.lg),
+        NmdInput(
           controller: controller,
+          label: 'رقم الجوال',
+          hint: '05xxxxxxxx',
           keyboardType: TextInputType.phone,
-          textAlign: TextAlign.right,
-          style: GoogleFonts.cairo(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-          decoration: InputDecoration(
-            labelText: 'رقم الجوال',
-            hintText: '05xxxxxxxx',
-            alignLabelWithHint: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: AppColors.primaryTeal,
-                width: 2,
-              ),
-            ),
-          ),
+          textInputAction: TextInputAction.done,
           onSubmitted: (_) => onSubmit(),
         ),
-        const SizedBox(height: 18),
-        SizedBox(
-          height: 54,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [
-                  AppColors.shellTeal,
-                  AppColors.primaryTeal,
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryTeal.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: loading ? null : onSubmit,
-                borderRadius: BorderRadius.circular(16),
-                child: Center(
-                  child: loading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'إرسال الرمز',
-                          style: GoogleFonts.cairo(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 17,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
+        const SizedBox(height: NmdSpacing.md),
+        NmdButton(
+          label: 'إرسال الرمز',
+          loading: loading,
+          onPressed: loading ? null : onSubmit,
         ),
-        const SizedBox(height: 14),
-        _WhatsAppTrustBadge(),
+        const SizedBox(height: NmdSpacing.md),
+        const _WhatsAppTrustBadge(),
       ],
     );
   }
 }
 
 class _WhatsAppTrustBadge extends StatelessWidget {
+  const _WhatsAppTrustBadge();
+
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0FDF4),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: const Color(0xFF25D366).withValues(alpha: 0.25),
+      child: NmdChip(
+        label: 'تحقق عبر واتساب',
+        variant: NmdChipVariant.status,
+        backgroundColor: const Color(0xFFF0FDF4),
+        foregroundColor: const Color(0xFF166534),
+        leading: Container(
+          width: 22,
+          height: 22,
+          decoration: const BoxDecoration(
+            color: Color(0xFF25D366),
+            shape: BoxShape.circle,
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          textDirection: TextDirection.rtl,
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: const BoxDecoration(
-                color: Color(0xFF25D366),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.chat_rounded,
-                size: 13,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Verified by WhatsApp',
-              style: GoogleFonts.cairo(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF166534),
-              ),
-            ),
-          ],
+          alignment: Alignment.center,
+          child: const Icon(Icons.chat_rounded, size: 13, color: Colors.white),
         ),
       ),
     );
@@ -408,37 +388,25 @@ class _OtpStep extends StatelessWidget {
   final bool loading;
   final void Function(String code) onContinue;
 
-  static const _pinBorder = Color(0xFFE2E8F0);
-
   @override
   Widget build(BuildContext context) {
     final defaultPin = PinTheme(
       width: 46,
       height: 52,
-      textStyle: GoogleFonts.cairo(
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
-        color: const Color(0xFF0F172A),
-      ),
+      textStyle: NmdTypography.h3.copyWith(fontWeight: FontWeight.w800),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _pinBorder, width: 1.2),
-        color: const Color(0xFFF8FAFC),
+        borderRadius: NmdRadius.borderSm,
+        border: Border.all(color: NmdColors.borderSubtle, width: 1.2),
+        color: NmdColors.surfaceMuted,
       ),
     );
 
     final focusedPin = defaultPin.copyWith(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.primaryTeal, width: 2),
-        color: const Color(0xFFF8FAFC),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryTeal.withValues(alpha: 0.18),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: NmdRadius.borderSm,
+        border: Border.all(color: NmdColors.brandPrimary, width: 2),
+        color: NmdColors.surfaceMuted,
+        boxShadow: NmdShadows.brandGlow(alpha: 0.15),
       ),
     );
 
@@ -448,24 +416,16 @@ class _OtpStep extends StatelessWidget {
         Text(
           'رمز التحقق',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: const Color(0xFF0F172A),
-          ),
+          style: NmdTypography.h2,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: NmdSpacing.xs),
         Text(
           'أدخل الرمز المرسل إلى $phone'
           '${sentVia != null && sentVia!.contains('whatsapp') ? ' عبر واتساب' : ''}',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.45,
-          ),
+          style: NmdTypography.bodySmall.copyWith(height: 1.45),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: NmdSpacing.lg),
         Directionality(
           textDirection: TextDirection.ltr,
           child: Pinput(
@@ -484,55 +444,22 @@ class _OtpStep extends StatelessWidget {
           ),
         ),
         if (devCode != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: NmdSpacing.sm),
           Text(
             'رمز التطوير: $devCode',
             textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-              fontSize: 12,
+            style: NmdTypography.micro.copyWith(
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryTeal,
+              color: NmdColors.brandPrimary,
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        SizedBox(
-          height: 52,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primaryTeal.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Material(
-              color: const Color(0xFFF0FDFA),
-              child: InkWell(
-                onTap:
-                    loading ? null : () => onContinue(controller.text.trim()),
-                borderRadius: BorderRadius.circular(14),
-                child: Center(
-                  child: loading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: AppColors.primaryTeal,
-                          ),
-                        )
-                      : Text(
-                          'متابعة',
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryTeal,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
+        const SizedBox(height: NmdSpacing.lg),
+        NmdButton(
+          label: 'متابعة',
+          variant: NmdButtonVariant.secondary,
+          loading: loading,
+          onPressed: loading ? null : () => onContinue(controller.text.trim()),
         ),
       ],
     );
@@ -560,97 +487,44 @@ class _ProfileStep extends StatelessWidget {
         Text(
           'أكمل ملفك',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: const Color(0xFF0F172A),
-          ),
+          style: NmdTypography.h2,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: NmdSpacing.xs),
         Text(
           'مرحباً بك! أدخل اسمك الظاهر في الطلبات',
           textAlign: TextAlign.center,
-          style: GoogleFonts.cairo(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.45,
-          ),
+          style: NmdTypography.bodySmall.copyWith(height: 1.45),
         ),
-        const SizedBox(height: 22),
-        TextField(
-          controller: controller,
-          focusNode: focusNode,
-          textAlign: TextAlign.right,
-          textCapitalization: TextCapitalization.words,
-          style: GoogleFonts.cairo(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-          ),
-          decoration: InputDecoration(
-            labelText: 'الاسم الكامل',
-            hintText: 'مثال: أحمد محمد',
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+        const SizedBox(height: NmdSpacing.lg),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          textDirection: TextDirection.rtl,
+          children: [
+            Text(
+              'الاسم الكامل',
+              textAlign: TextAlign.right,
+              style:
+                  NmdTypography.label.copyWith(color: NmdColors.textSecondary),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: AppColors.primaryTeal,
-                width: 2,
+            const SizedBox(height: NmdSpacing.xxs),
+            TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              textAlign: TextAlign.right,
+              textCapitalization: TextCapitalization.words,
+              style: NmdTypography.body,
+              decoration: const InputDecoration(
+                hintText: 'مثال: أحمد محمد',
               ),
+              onFieldSubmitted: (_) => onSubmit(),
             ),
-          ),
-          onSubmitted: (_) => onSubmit(),
+          ],
         ),
-        const SizedBox(height: 18),
-        SizedBox(
-          height: 54,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [
-                  AppColors.shellTeal,
-                  AppColors.primaryTeal,
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryTeal.withValues(alpha: 0.3),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: loading ? null : onSubmit,
-                borderRadius: BorderRadius.circular(16),
-                child: Center(
-                  child: loading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'إنشاء الحساب',
-                          style: GoogleFonts.cairo(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 17,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
+        const SizedBox(height: NmdSpacing.md),
+        NmdButton(
+          label: 'إنشاء الحساب',
+          loading: loading,
+          onPressed: loading ? null : onSubmit,
         ),
       ],
     );
@@ -661,7 +535,7 @@ class _SuccessPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: NmdSpacing.lg),
       child: Column(
         children: [
           Lottie.asset(
@@ -671,24 +545,17 @@ class _SuccessPanel extends StatelessWidget {
             fit: BoxFit.contain,
             repeat: false,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: NmdSpacing.xs),
           Text(
             'تم بنجاح',
             textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF0F172A),
-            ),
+            style: NmdTypography.h2,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: NmdSpacing.xxs),
           Text(
             'جاري تسجيل الدخول…',
             textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-              fontSize: 14,
-              color: const Color(0xFF64748B),
-            ),
+            style: NmdTypography.bodySmall,
           ),
         ],
       ),

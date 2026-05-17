@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 
 /// Account sub-routes use this instead of the shell [GlobalNmdHeader] (see [MainLayout]).
 class AccountSubScaffold extends StatelessWidget {
@@ -23,32 +22,34 @@ class AccountSubScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+    final slug = GoRouterState.of(context).pathParameters['slug'] ?? '';
+
+    return ColoredBox(
+      color: NmdColors.surfaceMuted,
+      child: Scaffold(
+        backgroundColor: NmdColors.surfaceMuted,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            NmdAppHeader(
+              title: title,
+              leading: NmdAppHeader.backLeading(
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/market/$slug/account');
+                  }
+                },
+              ),
+            ),
+            Expanded(child: body),
+          ],
         ),
-        backgroundColor: AppColors.primaryTeal,
-        foregroundColor: AppColors.textOnTeal,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go(
-                  '/market/${GoRouterState.of(context).pathParameters['slug'] ?? ''}/account');
-            }
-          },
-        ),
+        bottomNavigationBar: bottomNavigationBar,
+        floatingActionButton: floatingActionButton,
+        floatingActionButtonLocation: floatingActionButtonLocation,
       ),
-      body: body,
-      bottomNavigationBar: bottomNavigationBar,
-      floatingActionButton: floatingActionButton,
-      floatingActionButtonLocation: floatingActionButtonLocation,
     );
   }
 }

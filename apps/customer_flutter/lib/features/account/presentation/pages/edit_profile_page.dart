@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../../core/support/open_support_whatsapp.dart';
 import '../../../../widgets/nmd_text_field.dart';
 import '../../data/profile_cities.dart';
@@ -121,78 +121,80 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.55,
-            minChildSize: 0.35,
-            maxChildSize: 0.92,
-            builder: (context, scrollController) {
-              return Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Text(
-                      'اختر المدينة',
-                      style: GoogleFonts.cairo(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+        return Container(
+          decoration: const BoxDecoration(
+            color: NmdColors.surfaceBase,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.55,
+              minChildSize: 0.35,
+              maxChildSize: 0.92,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    const SizedBox(height: NmdSpacing.sm),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: NmdColors.borderSubtle,
+                        borderRadius: NmdRadius.borderPill,
                       ),
                     ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: kNmdProfileCities.length,
-                      itemBuilder: (context, i) {
-                        final city = kNmdProfileCities[i];
-                        final selected = _selectedCity == city;
-                        return ListTile(
-                          title: Text(
-                            city,
-                            style: GoogleFonts.cairo(
-                              fontWeight:
-                                  selected ? FontWeight.w700 : FontWeight.w500,
-                              color: selected
-                                  ? AppColors.primaryTeal
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
-                          trailing: selected
-                              ? const Icon(Icons.check,
-                                  color: AppColors.primaryTeal)
-                              : null,
-                          onTap: () {
-                            setState(() {
-                              _selectedCity = city;
-                              _cityCtrl.text = city;
-                            });
-                            Navigator.of(context).pop();
-                          },
-                        );
-                      },
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        NmdSpacing.screenHorizontal,
+                        NmdSpacing.md,
+                        NmdSpacing.screenHorizontal,
+                        NmdSpacing.xs,
+                      ),
+                      child: Text('اختر المدينة', style: NmdTypography.h3),
                     ),
-                  ),
-                ],
-              );
-            },
+                    const Divider(height: 1, color: NmdColors.borderSubtle),
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: kNmdProfileCities.length,
+                        itemBuilder: (context, i) {
+                          final city = kNmdProfileCities[i];
+                          final selected = _selectedCity == city;
+                          return ListTile(
+                            title: Text(
+                              city,
+                              style: NmdTypography.label.copyWith(
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: selected
+                                    ? NmdColors.brandPrimary
+                                    : NmdColors.textPrimary,
+                              ),
+                            ),
+                            trailing: selected
+                                ? const Icon(Icons.check_rounded,
+                                    color: NmdColors.brandPrimary)
+                                : null,
+                            onTap: () {
+                              setState(() {
+                                _selectedCity = city;
+                                _cityCtrl.text = city;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         );
       },
@@ -246,21 +248,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (_loading) {
       return const AccountSubScaffold(
         title: 'الملف الشخصي',
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primaryTeal),
-        ),
+        body: NmdLoading(message: 'جاري تحميل الملف…'),
       );
     }
 
     return AccountSubScaffold(
       title: 'الملف الشخصي',
-      bottomNavigationBar: _SaveGradientBar(
+      bottomNavigationBar: _SaveBar(
         onPressed: _saving ? null : _save,
         loading: _saving,
         bottomInset: bottomInset,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.xs,
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.xl,
+        ),
         child: Form(
           key: _formKey,
           child: Column(
@@ -316,9 +321,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                   child: Text(
                     'حذف الحساب',
-                    style: GoogleFonts.cairo(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                    style: NmdTypography.bodySmall.copyWith(
+                      color: NmdColors.error.withValues(alpha: 0.88),
                     ),
                   ),
                 ),
@@ -354,7 +358,7 @@ class _AvatarHeader extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
+            border: Border.all(color: NmdColors.borderSubtle, width: 2),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.06),
@@ -379,7 +383,7 @@ class _AvatarHeader extends StatelessWidget {
           bottom: 2,
           end: 2,
           child: Material(
-            color: AppColors.primaryTeal,
+            color: NmdColors.brandPrimary,
             shape: const CircleBorder(),
             elevation: 2,
             child: InkWell(
@@ -407,20 +411,20 @@ class _AvatarFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFFF1F5F9),
+      color: NmdColors.surfaceMuted,
       child: Center(
         child: Icon(
           Icons.person_rounded,
           size: 56,
-          color: AppColors.primaryTeal.withValues(alpha: 0.65),
+          color: NmdColors.brandPrimary.withValues(alpha: 0.65),
         ),
       ),
     );
   }
 }
 
-class _SaveGradientBar extends StatelessWidget {
-  const _SaveGradientBar({
+class _SaveBar extends StatelessWidget {
+  const _SaveBar({
     required this.onPressed,
     required this.loading,
     required this.bottomInset,
@@ -433,59 +437,20 @@ class _SaveGradientBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: NmdColors.surfaceBase,
       elevation: 8,
       shadowColor: Colors.black26,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + bottomInset),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: <Color>[
-                Color(0xFF0F766E),
-                Color(0xFF14B8A6),
-              ],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryTeal.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onPressed,
-              borderRadius: BorderRadius.circular(999),
-              child: SizedBox(
-                height: 52,
-                child: Center(
-                  child: loading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'حفظ التغييرات',
-                          style: GoogleFonts.cairo(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
+        padding: EdgeInsets.fromLTRB(
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.sm,
+          NmdSpacing.screenHorizontal,
+          NmdSpacing.sm + bottomInset,
+        ),
+        child: NmdButton(
+          label: 'حفظ التغييرات',
+          loading: loading,
+          onPressed: onPressed,
         ),
       ),
     );
