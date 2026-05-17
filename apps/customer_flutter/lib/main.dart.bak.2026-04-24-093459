@@ -1,0 +1,24 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'app/app.dart';
+import 'app/app_scroll_behavior.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF0F6F6B),
+      systemNavigationBarColor: Color(0xFF0F6F6B),
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+  runApp(
+    ScrollConfiguration(
+      behavior: const NmdAppScrollBehavior(),
+      child: const NowMarketApp(),
+    ),
+  );
+}

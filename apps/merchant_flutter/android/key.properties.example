@@ -1,0 +1,5 @@
+storeFile=upload-keystore.jks
+storeType=PKCS12
+storePassword=replace-with-secure-store-password
+keyAlias=nmd_merchant_upload
+keyPassword=replace-with-secure-store-password-for-pkcs12
