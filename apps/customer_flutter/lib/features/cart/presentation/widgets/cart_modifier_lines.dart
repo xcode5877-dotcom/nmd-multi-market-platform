@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../api/models/pizza_placement.dart';
+import '../../../../design_system/design_system.dart';
 import '../../domain/cart_selected_option.dart';
 import 'pizza_side_indicator.dart';
 
@@ -180,10 +180,9 @@ class ModifierLinesColumn extends StatelessWidget {
                   textAlign: TextAlign.right,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.cairo(
+                  style: NmdTypography.label.copyWith(
                     fontSize: compact ? 11.5 : 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    color: NmdColors.textSecondary,
                     height: 1.25,
                   ),
                 ),
