@@ -5,16 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../design_system/design_system.dart';
+import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
 import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
-import '../../../../widgets/global_nmd_header.dart';
+import '../widgets/home_community_highlight.dart';
+import '../widgets/home_store_card.dart';
 import '../../../../widgets/nmd_search_bar.dart';
 
 /// Matches route `?pillar=` to pillar chip id from GET `/pillars` (trimmed string equality).
@@ -165,9 +167,16 @@ class _HomePageState extends State<HomePage> {
         .toList();
 
     return _HomeLayoutPayload(
+      marketName: _marketDisplayName(market),
       banners: banners,
       sections: sections,
     );
+  }
+
+  String _marketDisplayName(Map<String, dynamic> market) {
+    final ar = (market['nameAr'] ?? market['name_ar'] ?? '').toString().trim();
+    if (ar.isNotEmpty) return ar;
+    return (market['name'] ?? market['title'] ?? '').toString().trim();
   }
 
   /// Web parity: `ContestPopUp` loads when `onMarketPage` (here: `/market/:slug` home).
@@ -190,15 +199,39 @@ class _HomePageState extends State<HomePage> {
     _scheduleTenantSyncFromRoute(context);
 
     return ColoredBox(
-      color: Colors.white,
+      color: NmdColors.surfaceBase,
       child: Column(
         children: [
-          GlobalNmdHeader(
-            marketSlug: widget.slug,
-            onLeadingPressed: () => context.go('/main'),
+          NmdAppHeader(
+            center: SvgPicture.asset(
+              'assets/branding/logo-nowmarket.svg',
+              height: 26,
+            ),
+            leading: NmdAppHeader.backLeading(
+              onPressed: () => context.go('/main'),
+            ),
+            actions: [
+              NmdAppHeader.profileAction(
+                onPressed: () async {
+                  final ok = await ensureCustomerAuth(context);
+                  if (!context.mounted || !ok) return;
+                  context.go('/market/${widget.slug}/account');
+                },
+              ),
+              GlobalCartIcon(
+                marketSlug: widget.slug,
+                iconColor: NmdColors.textOnBrand,
+                style: NmdAppHeader.plainIconStyle(),
+              ),
+            ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              NmdSpacing.screenHorizontal,
+              NmdSpacing.sm,
+              NmdSpacing.screenHorizontal,
+              NmdSpacing.xs,
+            ),
             child: NmdSearchBar(
               controller: _searchController,
               focusNode: _searchFocus,
@@ -211,49 +244,30 @@ class _HomePageState extends State<HomePage> {
               future: _layoutFuture,
               builder: (context, snap) {
                 if (!snap.hasData) {
-                  return const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primaryTeal));
+                  return const NmdLoading(message: 'جاري تحميل السوق...');
                 }
                 final layout = snap.data!;
                 _scheduleContestPopupAfterLayoutReady();
                 return BlocBuilder<HomeCubit, HomeCubitState>(
                   builder: (context, cState) {
                     if (cState.tenantsStatus == TenantsStatus.failure) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                cState.tenantsErrorMessage ??
-                                    'تعذر تحميل المحلات',
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              TextButton(
-                                onPressed: () {
-                                  _tenantSyncToken = null;
-                                  final pillar = GoRouterState.of(context)
-                                      .uri
-                                      .queryParameters['pillar'];
-                                  final sub = GoRouterState.of(context)
-                                      .uri
-                                      .queryParameters['sub'];
-                                  context
-                                      .read<HomeCubit>()
-                                      .syncTenantsForMarket(
-                                        widget.slug,
-                                        pillarId: pillar?.trim(),
-                                        subCategoryId: sub?.trim(),
-                                      );
-                                },
-                                child: const Text('إعادة المحاولة'),
-                              ),
-                            ],
-                          ),
-                        ),
+                      return NmdErrorState(
+                        title: 'تعذر تحميل المحلات',
+                        message: cState.tenantsErrorMessage,
+                        onRetry: () {
+                          _tenantSyncToken = null;
+                          final pillar = GoRouterState.of(context)
+                              .uri
+                              .queryParameters['pillar'];
+                          final sub = GoRouterState.of(context)
+                              .uri
+                              .queryParameters['sub'];
+                          context.read<HomeCubit>().syncTenantsForMarket(
+                                widget.slug,
+                                pillarId: pillar?.trim(),
+                                subCategoryId: sub?.trim(),
+                              );
+                        },
                       );
                     }
                     if (cState.tenantsStatus == TenantsStatus.loading ||
@@ -261,6 +275,7 @@ class _HomePageState extends State<HomePage> {
                       return CustomScrollView(
                         primary: true,
                         slivers: [
+                          _communityHighlightSliver(layout, cState),
                           if (layout.banners.isNotEmpty)
                             SliverToBoxAdapter(
                                 child:
@@ -340,6 +355,7 @@ class _HomePageState extends State<HomePage> {
                       return CustomScrollView(
                         primary: true,
                         slivers: [
+                          _communityHighlightSliver(layout, cState),
                           if (layout.banners.isNotEmpty)
                             SliverToBoxAdapter(
                                 child:
@@ -358,19 +374,10 @@ class _HomePageState extends State<HomePage> {
                           ),
                           if (flatStores.isEmpty)
                             SliverToBoxAdapter(
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                                child: Text(
-                                  'لا توجد محلات في هذا القسم.',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                        color: const Color(0xFF6B7280),
-                                      ),
-                                ),
+                              child: NmdEmptyState(
+                                title: 'لا توجد محلات',
+                                message: 'لا توجد محلات في هذا القسم حالياً.',
+                                icon: Icons.storefront_outlined,
                               ),
                             ),
                           const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -397,6 +404,7 @@ class _HomePageState extends State<HomePage> {
                     return CustomScrollView(
                       primary: true,
                       slivers: [
+                        _communityHighlightSliver(layout, cState),
                         if (layout.banners.isNotEmpty)
                           SliverToBoxAdapter(
                               child: _BannerCarousel(banners: layout.banners)),
@@ -418,19 +426,11 @@ class _HomePageState extends State<HomePage> {
                         ),
                         if (layout.sections.isNotEmpty && !hasVisibleStore)
                           SliverToBoxAdapter(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(24, 32, 24, 16),
-                              child: Text(
-                                'لا توجد محلات في هذا التصنيف ضمن أقسام الصفحة.',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: const Color(0xFF6B7280),
-                                    ),
-                              ),
+                            child: NmdEmptyState(
+                              title: 'لا توجد نتائج',
+                              message:
+                                  'لا توجد محلات تطابق بحثك ضمن أقسام الصفحة.',
+                              icon: Icons.search_off_rounded,
                             ),
                           ),
                         const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -445,6 +445,26 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  SliverToBoxAdapter _communityHighlightSliver(
+    _HomeLayoutPayload layout,
+    HomeCubitState cState,
+  ) {
+    final storeCount = cState.tenantsStatus == TenantsStatus.loaded
+        ? cState.tenantMaps.length
+        : null;
+    final pillarCount = cState.pillarStatus == HomeCategoriesStatus.loaded
+        ? cState.pillars.length
+        : null;
+    return SliverToBoxAdapter(
+      child: HomeCommunityHighlight(
+        marketSlug: widget.slug,
+        marketName: layout.marketName,
+        pillarCount: pillarCount,
+        storeCount: storeCount,
+      ),
+    );
+  }
 }
 
 /// Horizontal chips matching pillar row height — shown while GET `/pillars` loads.
@@ -454,7 +474,7 @@ class _PillarStripShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: Colors.white,
+      color: NmdColors.surfaceBase,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Padding(
@@ -474,27 +494,27 @@ class _PillarStripShimmer extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Shimmer.fromColors(
-                    baseColor: const Color(0xFFE5E7EB),
-                    highlightColor: Colors.white,
+                    baseColor: NmdColors.borderSubtle,
+                    highlightColor: NmdColors.surfaceBase,
                     child: Container(
                       width: 58,
                       height: 58,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFE5E7EB),
+                        color: NmdColors.borderSubtle,
                         shape: BoxShape.circle,
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Shimmer.fromColors(
-                    baseColor: const Color(0xFFE5E7EB),
-                    highlightColor: Colors.white,
+                    baseColor: NmdColors.borderSubtle,
+                    highlightColor: NmdColors.surfaceBase,
                     child: Container(
                       width: 56,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7EB),
-                        borderRadius: BorderRadius.circular(6),
+                        color: NmdColors.borderSubtle,
+                        borderRadius: NmdRadius.borderXs,
                       ),
                     ),
                   ),
@@ -514,25 +534,25 @@ class _HomeStoresShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Shimmer.fromColors(
-            baseColor: const Color(0xFFE5E7EB),
-            highlightColor: Colors.white,
+            baseColor: NmdColors.borderSubtle,
+            highlightColor: NmdColors.surfaceBase,
             child: Container(
               height: 18,
               width: 140,
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(6),
+                color: NmdColors.borderSubtle,
+                borderRadius: NmdRadius.borderXs,
               ),
             ),
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 212,
+            height: HomeStoreCard.logoAreaHeight + 72,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               primary: false,
@@ -541,13 +561,13 @@ class _HomeStoresShimmer extends StatelessWidget {
               itemCount: 4,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, __) => Shimmer.fromColors(
-                baseColor: const Color(0xFFE5E7EB),
-                highlightColor: Colors.white,
+                baseColor: NmdColors.borderSubtle,
+                highlightColor: NmdColors.surfaceBase,
                 child: Container(
-                  width: 144,
+                  width: HomeStoreCard.cardWidth,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE5E7EB),
-                    borderRadius: BorderRadius.circular(12),
+                    color: NmdColors.borderSubtle,
+                    borderRadius: NmdRadius.borderMd,
                   ),
                 ),
               ),
@@ -576,14 +596,11 @@ class _PillarNavStrip extends StatelessWidget {
         }
         if (state.pillarStatus == HomeCategoriesStatus.failure) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.all(NmdSpacing.md),
             child: Text(
-              state.pillarErrorMessage ?? 'تعذر تحميل الأعمدة',
+              state.pillarErrorMessage ?? 'تعذر تحميل الأقسام',
               textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFFDC2626)),
+              style: NmdTypography.bodySmall.copyWith(color: NmdColors.error),
             ),
           );
         }
@@ -591,7 +608,7 @@ class _PillarNavStrip extends StatelessWidget {
           return const SizedBox.shrink();
         }
         return ColoredBox(
-          color: Colors.white,
+          color: NmdColors.surfaceBase,
           child: Directionality(
             textDirection: TextDirection.rtl,
             child: Padding(
@@ -603,7 +620,6 @@ class _PillarNavStrip extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   primary: false,
                   shrinkWrap: true,
-                  // RTL: start = physical right — first pillar flush to the right edge.
                   padding: const EdgeInsetsDirectional.only(start: 0, end: 16),
                   physics: const BouncingScrollPhysics(),
                   itemCount: state.pillars.length,
@@ -630,7 +646,7 @@ class _PillarNavStrip extends StatelessWidget {
                           context.go(
                               '/market/$marketSlug?pillar=${Uri.encodeComponent(item.id.trim())}');
                         },
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: NmdRadius.borderSm,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
                           child: Column(
@@ -640,24 +656,16 @@ class _PillarNavStrip extends StatelessWidget {
                                 width: 58,
                                 height: 58,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: NmdColors.surfaceBase,
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     width: selected ? 2.5 : 1,
                                     color: selected
-                                        ? AppColors.primaryTeal
-                                        : const Color(0xFFE5E7EB),
+                                        ? NmdColors.brandPrimary
+                                        : NmdColors.borderSubtle,
                                   ),
-                                  boxShadow: selected
-                                      ? [
-                                          BoxShadow(
-                                            color: AppColors.primaryTeal
-                                                .withValues(alpha: 0.28),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 3),
-                                          ),
-                                        ]
-                                      : null,
+                                  boxShadow:
+                                      selected ? NmdShadows.brandGlow() : null,
                                 ),
                                 child: ClipOval(
                                   child: _PillarDiskIcon(item: item),
@@ -671,15 +679,15 @@ class _PillarNavStrip extends StatelessWidget {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
-                                  style: GoogleFonts.cairo(
+                                  style: NmdTypography.micro.copyWith(
                                     fontWeight: selected
                                         ? FontWeight.w800
                                         : FontWeight.w600,
                                     fontSize: 11,
                                     height: 1.15,
                                     color: selected
-                                        ? AppColors.primaryTeal
-                                        : const Color(0xFF111827),
+                                        ? NmdColors.brandPrimary
+                                        : NmdColors.textPrimary,
                                   ),
                                 ),
                               ),
@@ -733,7 +741,7 @@ class _SubCategoryNavStrip extends StatelessWidget {
         }
 
         return ColoredBox(
-          color: const Color(0xFFF8FAFC),
+          color: NmdColors.surfaceMuted,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
             child: Directionality(
@@ -747,11 +755,11 @@ class _SubCategoryNavStrip extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     textDirection: TextDirection.rtl,
                     children: [
-                      _SubCategoryChip(
+                      NmdChip(
                         label: 'الكل',
                         selected: selectedSubId == null ||
                             selectedSubId.trim().isEmpty,
-                        compact: true,
+                        variant: NmdChipVariant.filter,
                         onTap: () {
                           context
                               .read<HomeCubit>()
@@ -763,11 +771,11 @@ class _SubCategoryNavStrip extends StatelessWidget {
                       ...state.subCategories.expand(
                         (sub) => [
                           const SizedBox(width: 8),
-                          _SubCategoryChip(
+                          NmdChip(
                             label: sub.titleAr,
-                            compact: true,
                             selected:
                                 (selectedSubId ?? '').trim() == sub.id.trim(),
+                            variant: NmdChipVariant.filter,
                             onTap: () {
                               context
                                   .read<HomeCubit>()
@@ -799,7 +807,7 @@ class _SubCategoryShimmerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFFF8FAFC),
+      color: NmdColors.surfaceMuted,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
         child: Directionality(
@@ -808,8 +816,8 @@ class _SubCategoryShimmerBar extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             child: Shimmer.fromColors(
-              baseColor: const Color(0xFFE5E7EB),
-              highlightColor: Colors.white,
+              baseColor: NmdColors.borderSubtle,
+              highlightColor: NmdColors.surfaceBase,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 textDirection: TextDirection.rtl,
@@ -821,62 +829,13 @@ class _SubCategoryShimmerBar extends StatelessWidget {
                       width: 64,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7EB),
-                        borderRadius: BorderRadius.circular(999),
+                        color: NmdColors.borderSubtle,
+                        borderRadius: NmdRadius.borderPill,
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SubCategoryChip extends StatelessWidget {
-  const _SubCategoryChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.compact = false,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-              horizontal: compact ? 12 : 14, vertical: compact ? 6 : 8),
-          constraints: const BoxConstraints(minHeight: 32),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors.primaryTeal.withValues(alpha: 0.12)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? AppColors.primaryTeal.withValues(alpha: 0.35)
-                  : const Color(0xFFE5E7EB),
-            ),
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.cairo(
-              fontSize: compact ? 11.5 : 12.5,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? AppColors.primaryTeal : const Color(0xFF374151),
             ),
           ),
         ),
@@ -907,7 +866,7 @@ class _PillarDiskIcon extends StatelessWidget {
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppColors.primaryTeal),
+                  strokeWidth: 2, color: NmdColors.brandPrimary),
             ),
           ),
         );
@@ -926,7 +885,7 @@ class _PillarDiskIcon extends StatelessWidget {
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.primaryTeal),
+                strokeWidth: 2, color: NmdColors.brandPrimary),
           ),
         ),
         errorWidget: (_, __, ___) =>
@@ -959,13 +918,13 @@ class _BannerCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 12, 8),
       child: CarouselSlider.builder(
         itemCount: banners.length,
         itemBuilder: (_, i, __) {
           final b = banners[i];
           return ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: NmdRadius.borderLg,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -975,29 +934,31 @@ class _BannerCarousel extends StatelessWidget {
                     b.imageUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) =>
-                        Container(color: AppColors.primaryTeal),
+                        const ColoredBox(color: NmdColors.brandPrimary),
                   ),
                 ),
-                Container(
-                  decoration: const BoxDecoration(
+                DecoratedBox(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x20000000), Color(0xB0000000)],
+                      colors: [
+                        Colors.black.withValues(alpha: 0.08),
+                        Colors.black.withValues(alpha: 0.55),
+                      ],
                     ),
                   ),
                 ),
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.only(bottom: NmdSpacing.md),
                     child: Text(
                       b.title,
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
+                      textAlign: TextAlign.center,
+                      style: NmdTypography.h2.copyWith(
+                        color: NmdColors.textOnBrand,
+                      ),
                     ),
                   ),
                 ),
@@ -1006,9 +967,9 @@ class _BannerCarousel extends StatelessWidget {
           );
         },
         options: CarouselOptions(
-          height: 190,
+          height: 184,
           viewportFraction: 1,
-          autoPlay: true,
+          autoPlay: banners.length > 1,
           autoPlayInterval: const Duration(seconds: 5),
         ),
       ),
@@ -1031,23 +992,13 @@ class _FilteredPillarStoreList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(
-              sectionTitle,
-              textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: const Color(0xFF111827),
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-          ),
+          NmdSectionHeader(title: sectionTitle),
           SizedBox(
-            height: 212,
+            height: HomeStoreCard.logoAreaHeight + 72,
             child: Directionality(
               textDirection: TextDirection.rtl,
               child: ListView.separated(
@@ -1058,8 +1009,17 @@ class _FilteredPillarStoreList extends StatelessWidget {
                 padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
                 itemCount: stores.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, i) =>
-                    _StoreCard(marketSlug: marketSlug, store: stores[i]),
+                itemBuilder: (context, i) {
+                  final s = stores[i];
+                  return HomeStoreCard(
+                    marketSlug: marketSlug,
+                    storeId: s.id,
+                    storeName: s.name,
+                    categoryLabel: homeStoreCategoryLabel(s.category),
+                    logoUrl: s.logoUrl,
+                    openStatus: s.openStatus,
+                  );
+                },
               ),
             ),
           ),
@@ -1095,23 +1055,13 @@ class _StoreSection extends StatelessWidget {
     if (stores.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: Text(
-              section.title,
-              textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: const Color(0xFF111827),
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-          ),
+          NmdSectionHeader(title: section.title),
           SizedBox(
-            height: 212,
+            height: HomeStoreCard.logoAreaHeight + 72,
             child: Directionality(
               textDirection: TextDirection.rtl,
               child: ListView.separated(
@@ -1122,121 +1072,21 @@ class _StoreSection extends StatelessWidget {
                 padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
                 itemCount: stores.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, i) => _StoreCard(
-                  marketSlug: marketSlug,
-                  store: stores[i],
-                ),
+                itemBuilder: (context, i) {
+                  final s = stores[i];
+                  return HomeStoreCard(
+                    marketSlug: marketSlug,
+                    storeId: s.id,
+                    storeName: s.name,
+                    categoryLabel: homeStoreCategoryLabel(s.category),
+                    logoUrl: s.logoUrl,
+                    openStatus: s.openStatus,
+                  );
+                },
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _StoreCard extends StatelessWidget {
-  const _StoreCard({required this.marketSlug, required this.store});
-  final String marketSlug;
-  final _StoreItem store;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = _storeStatusMeta(store.openStatus);
-
-    return SizedBox(
-      width: 144,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.push('/market/$marketSlug/store/${store.id}'),
-          borderRadius: BorderRadius.circular(12),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x08000000),
-                    blurRadius: 4,
-                    offset: Offset(0, 1)),
-              ],
-            ),
-            child: Column(
-              children: [
-                Container(
-                  height: 108,
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(12)),
-                  ),
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: Hero(
-                          tag: 'store-logo-${store.id}',
-                          child: Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: const Color(0xFFE5E7EB)),
-                            ),
-                            child: ClipOval(
-                              child: Image.network(
-                                store.logoUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    const ColoredBox(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 6,
-                        top: 6,
-                        child: _StoreStatusBadge(
-                          label: status.$1,
-                          color: status.$2,
-                          pulsing: store.openStatus.toLowerCase() == 'open',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
-                  child: Text(
-                    store.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    _categoryLabel(store.category),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF6B7280),
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1248,102 +1098,17 @@ bool _matchesStoreQuery(_StoreItem s, String query) {
   if (s.name.toLowerCase().contains(q)) return true;
   final cat = s.category.toLowerCase();
   if (cat.contains(q)) return true;
-  if (_categoryLabel(s.category).toLowerCase().contains(q)) return true;
+  if (homeStoreCategoryLabel(s.category).toLowerCase().contains(q)) return true;
   return false;
-}
-
-(String, Color) _storeStatusMeta(String raw) {
-  switch (raw.toLowerCase()) {
-    case 'open':
-      return ('مفتوح الآن', const Color(0xFF16A34A));
-    case 'busy':
-      return ('مشغول - قد يتأخر الطلب', const Color(0xFFF59E0B));
-    default:
-      return ('مغلق حالياً', const Color(0xFFDC2626));
-  }
-}
-
-class _StoreStatusBadge extends StatefulWidget {
-  const _StoreStatusBadge({
-    required this.label,
-    required this.color,
-    required this.pulsing,
-  });
-
-  final String label;
-  final Color color;
-  final bool pulsing;
-
-  @override
-  State<_StoreStatusBadge> createState() => _StoreStatusBadgeState();
-}
-
-class _StoreStatusBadgeState extends State<_StoreStatusBadge>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dot = Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
-    );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          widget.pulsing
-              ? AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (_, __) => Transform.scale(
-                    scale: 0.9 + (_pulse.value * 0.2),
-                    child: dot,
-                  ),
-                )
-              : dot,
-          const SizedBox(width: 5),
-          Text(
-            widget.label,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 10),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _categoryLabel(String raw) {
-  final code = raw.toUpperCase();
-  if (code == 'FOOD') return 'مطاعم';
-  if (code == 'CLOTHING') return 'ملابس';
-  if (code == 'GROCERIES') return 'خضار';
-  if (code == 'BUTCHER') return 'ملحمة';
-  if (code == 'OFFERS') return 'عروض';
-  if (raw.isEmpty) return 'عام';
-  return raw;
 }
 
 class _HomeLayoutPayload {
   const _HomeLayoutPayload({
+    required this.marketName,
     required this.banners,
     required this.sections,
   });
+  final String marketName;
   final List<_BannerItem> banners;
   final List<_SectionItem> sections;
 }

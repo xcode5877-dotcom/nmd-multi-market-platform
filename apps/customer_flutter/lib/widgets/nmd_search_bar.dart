@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app/theme/app_colors.dart';
+import '../design_system/design_system.dart';
 
 class NmdSearchBar extends StatelessWidget {
   const NmdSearchBar({
@@ -8,7 +8,7 @@ class NmdSearchBar extends StatelessWidget {
     this.controller,
     this.focusNode,
     this.onChanged,
-    this.hintText = 'Search products, stores, categories...',
+    this.hintText = 'بحث باسم المحل...',
   });
 
   final TextEditingController? controller;
@@ -21,31 +21,29 @@ class NmdSearchBar extends StatelessWidget {
     return Container(
       height: 52,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0x330F766E), width: 2),
+        color: NmdColors.surfaceBase,
+        borderRadius: NmdRadius.borderPill,
+        border: Border.all(color: NmdColors.borderBrand, width: 1.5),
+        boxShadow: NmdShadows.sm,
       ),
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         onChanged: onChanged,
         textDirection: TextDirection.rtl,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF0F172A),
-              fontWeight: FontWeight.w600,
-            ),
+        style: NmdTypography.body,
         decoration: InputDecoration(
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: NmdSpacing.md,
+          ),
           hintText: hintText,
-          hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF94A3B8),
-                fontWeight: FontWeight.w500,
-              ),
+          hintStyle:
+              NmdTypography.bodySmall.copyWith(color: NmdColors.textTertiary),
           suffixIcon: const Padding(
             padding: EdgeInsets.only(right: 8),
-            child: Icon(Icons.search, color: AppColors.primaryTeal),
+            child: Icon(Icons.search_rounded, color: NmdColors.brandPrimary),
           ),
           suffixIconConstraints:
               const BoxConstraints(minWidth: 40, minHeight: 40),
