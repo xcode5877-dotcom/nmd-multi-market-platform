@@ -5,15 +5,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
-import '../../../../widgets/global_nmd_header.dart';
+import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../application/service_lead_actions.dart';
 import '../../domain/service_inquiry_message.dart';
 import '../../data/pillar_kind.dart';
@@ -216,7 +216,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     return Directionality(
         textDirection: TextDirection.rtl,
         child: ColoredBox(
-          color: Colors.white,
+          color: NmdColors.surfaceBase,
           child: FutureBuilder<_StoreDetailPayload>(
             future: _future,
             builder: (context, snap) {
@@ -224,20 +224,12 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    GlobalNmdHeader(
-                      marketSlug: widget.marketSlug,
-                      onLeadingPressed: () => context.pop(),
-                    ),
+                    _storeAppHeader(context, showCart: true),
                     Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            snap.error.toString(),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
+                      child: NmdErrorState(
+                        title: 'تعذر تحميل المتجر',
+                        message: snap.error.toString(),
+                        onRetry: () => setState(() => _future = _load()),
                       ),
                     ),
                   ],
@@ -247,14 +239,9 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    GlobalNmdHeader(
-                      marketSlug: widget.marketSlug,
-                      onLeadingPressed: () => context.pop(),
-                    ),
+                    _storeAppHeader(context, showCart: true),
                     const Expanded(
-                      child: Center(
-                          child: CircularProgressIndicator(
-                              color: AppColors.primaryTeal)),
+                      child: NmdLoading(message: 'جاري تحميل المتجر...'),
                     ),
                   ],
                 );
@@ -275,15 +262,20 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                   .where((s) => s.products.isNotEmpty)
                   .toList();
               if (sections.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'لا توجد منتجات حالياً',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                return Column(
+                  children: [
+                    _storeAppHeader(
+                      context,
+                      showCart: !data.isServicesStore,
                     ),
-                  ),
+                    const Expanded(
+                      child: NmdEmptyState(
+                        title: 'لا توجد منتجات',
+                        message: 'لا توجد منتجات في هذا المتجر حالياً.',
+                        icon: Icons.inventory_2_outlined,
+                      ),
+                    ),
+                  ],
                 );
               }
 
@@ -309,11 +301,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                     sections.expand((s) => s.products).toList();
                 return Column(
                   children: [
-                    GlobalNmdHeader(
-                      marketSlug: widget.marketSlug,
-                      onLeadingPressed: () => context.pop(),
-                      showCart: false,
-                    ),
+                    _storeAppHeader(context, showCart: false),
                     Expanded(
                       child: Stack(
                         clipBehavior: Clip.none,
@@ -324,6 +312,13 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                               SliverToBoxAdapter(
                                 child: _ImmersiveStoreHero(
                                   storeName: data.storeName,
+                                  logoUrl: data.logoUrl,
+                                  operatingStatus: data.operatingStatus,
+                                  isAdminClosed: data.isAdminClosed,
+                                  openTime: data.openTime,
+                                  closeTime: data.closeTime,
+                                  addressLine: data.addressLine,
+                                  pillarTag: data.pillarTag,
                                   marketSlug: widget.marketSlug,
                                   searchController: _searchController,
                                   searchFocus: _searchFocus,
@@ -335,23 +330,10 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                                   bannerUrl: data.bannerUrl,
                                 ),
                               ),
-                              if (data.operatingStatus == 'closed')
-                                SliverToBoxAdapter(
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 10),
-                                    color: const Color(0xFFFEE2E2),
-                                    child: Text(
-                                      'المحل مغلق حالياً، يمكنك تصفح المنتجات فقط',
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.cairo(
-                                        color: const Color(0xFF991B1B),
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
+                              if (data.operatingStatus == 'closed' ||
+                                  data.isAdminClosed)
+                                const SliverToBoxAdapter(
+                                  child: _StoreClosedBanner(),
                                 ),
                               SliverToBoxAdapter(
                                 child: ProfessionalStoreInfoSection(
@@ -368,42 +350,22 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                                 ),
                               ),
                               SliverToBoxAdapter(
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'خدماتنا',
-                                        textAlign: TextAlign.right,
-                                        style: GoogleFonts.cairo(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w900,
-                                          color: const Color(0xFF111827),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Container(
-                                          height: 1,
-                                          color: const Color(0xFFE5E7EB)),
-                                    ],
+                                child: NmdSectionHeader(
+                                  title: 'خدماتنا',
+                                  padding: const EdgeInsetsDirectional.fromSTEB(
+                                    20,
+                                    NmdSpacing.sm,
+                                    20,
+                                    NmdSpacing.xs,
                                   ),
                                 ),
                               ),
                               if (serviceProducts.isEmpty)
-                                SliverToBoxAdapter(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Text(
-                                      'لا توجد خدمات مطابقة',
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.cairo(
-                                        fontSize: 15,
-                                        color: const Color(0xFF64748B),
-                                      ),
-                                    ),
+                                const SliverToBoxAdapter(
+                                  child: NmdEmptyState(
+                                    title: 'لا توجد خدمات',
+                                    message: 'لا توجد خدمات مطابقة لبحثك.',
+                                    icon: Icons.handyman_outlined,
                                   ),
                                 )
                               else
@@ -437,13 +399,19 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
 
               return Column(
                 children: [
-                  GlobalNmdHeader(
-                    marketSlug: widget.marketSlug,
-                    onLeadingPressed: () => context.pop(),
+                  _storeAppHeader(
+                    context,
                     showCart: !data.isServicesStore,
                   ),
                   _ImmersiveStoreHero(
                     storeName: data.storeName,
+                    logoUrl: data.logoUrl,
+                    operatingStatus: data.operatingStatus,
+                    isAdminClosed: data.isAdminClosed,
+                    openTime: data.openTime,
+                    closeTime: data.closeTime,
+                    addressLine: data.addressLine,
+                    pillarTag: data.pillarTag,
                     marketSlug: widget.marketSlug,
                     searchController: _searchController,
                     searchFocus: _searchFocus,
@@ -454,22 +422,8 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                         setState(() => _query = v.trim().toLowerCase()),
                     bannerUrl: data.bannerUrl,
                   ),
-                  if (data.operatingStatus == 'closed')
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      color: const Color(0xFFFEE2E2),
-                      child: Text(
-                        'المحل مغلق حالياً، يمكنك تصفح المنتجات فقط',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.cairo(
-                          color: const Color(0xFF991B1B),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
+                  if (data.operatingStatus == 'closed' || data.isAdminClosed)
+                    const _StoreClosedBanner(),
                   _CategoryTabs(
                     sections: sections,
                     activeIndex: _activeCategoryIndex,
@@ -509,6 +463,53 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
             },
           ),
         ));
+  }
+
+  Widget _storeAppHeader(BuildContext context, {required bool showCart}) {
+    return NmdAppHeader(
+      title: '',
+      center: const SizedBox.shrink(),
+      leading: NmdAppHeader.backLeading(onPressed: () => context.pop()),
+      actions: [
+        NmdAppHeader.profileAction(
+          onPressed: () async {
+            final ok = await ensureCustomerAuth(context);
+            if (!context.mounted || !ok) return;
+            context.go('/market/${widget.marketSlug}/account');
+          },
+        ),
+        if (showCart)
+          GlobalCartIcon(
+            marketSlug: widget.marketSlug,
+            iconColor: NmdColors.textOnBrand,
+            style: NmdAppHeader.plainIconStyle(),
+          ),
+      ],
+    );
+  }
+}
+
+class _StoreClosedBanner extends StatelessWidget {
+  const _StoreClosedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: NmdSpacing.md,
+        vertical: NmdSpacing.sm,
+      ),
+      color: NmdColors.errorSoft,
+      child: Text(
+        'المحل مغلق حالياً — يمكنك تصفح المنتجات فقط',
+        textAlign: TextAlign.center,
+        style: NmdTypography.bodyBold.copyWith(
+          color: NmdColors.error,
+          fontSize: 14,
+        ),
+      ),
+    );
   }
 }
 
@@ -587,12 +588,15 @@ class _CategorySectionWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final listHeight = isServicesStore ? 248.0 : 205.0;
+    final listHeight = isServicesStore
+        ? ServiceProductCard.cardHeight
+        : RetailProductCard.cardHeight;
 
     Widget productTile(int i) {
       final p = products[i];
       final heroTag = 'product-$storeId-${p.id}';
       final available = p.canAddToCart && !storeClosed;
+      final desc = p.description.trim();
       void onTap() =>
           context.push('/market/$marketSlug/store/$storeId/product/${p.id}');
       if (isServicesStore) {
@@ -602,75 +606,37 @@ class _CategorySectionWidget extends StatelessWidget {
           imageUrl: p.imageUrl,
           available: available,
           heroTag: heroTag,
+          description: desc.isEmpty ? null : desc,
           onOpenDetail: () => context.push(
             '/market/$marketSlug/store/$storeId/product/${p.id}',
           ),
         );
       }
       return RetailProductCard(
-        width: 122,
+        width: 128,
         name: p.name,
         price: p.basePrice,
         imageUrl: p.imageUrl,
         available: available,
         heroTag: heroTag,
+        description: desc.isEmpty ? null : desc,
         onTap: onTap,
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    textAlign: TextAlign.right,
-                    style: GoogleFonts.cairo(
-                      color: const Color(0xFF111827),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 22,
-                    ),
-                  ),
-                ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () => context.push(
-                    '/market/$marketSlug/store/$storeId/category/$categoryId?title=${Uri.encodeComponent(title)}',
-                  ),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      textDirection: TextDirection.rtl,
-                      children: [
-                        const Icon(Icons.arrow_back_ios_new_rounded,
-                            size: 16, color: AppColors.primaryTeal),
-                        const SizedBox(width: 4),
-                        Text(
-                          'عرض الكل',
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryTeal,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+          NmdSectionHeader(
+            title: title,
+            actionLabel: 'عرض الكل',
+            onAction: () => context.push(
+              '/market/$marketSlug/store/$storeId/category/$categoryId?title=${Uri.encodeComponent(title)}',
             ),
           ),
-          SizedBox(height: isServicesStore ? 10 : 12),
+          const SizedBox(height: NmdSpacing.xxs),
           SizedBox(
             height: listHeight,
             child: Directionality(
@@ -697,6 +663,13 @@ class _CategorySectionWidget extends StatelessWidget {
 class _ImmersiveStoreHero extends StatelessWidget {
   const _ImmersiveStoreHero({
     required this.storeName,
+    required this.logoUrl,
+    required this.operatingStatus,
+    required this.isAdminClosed,
+    required this.openTime,
+    required this.closeTime,
+    this.addressLine,
+    this.pillarTag,
     required this.marketSlug,
     required this.searchController,
     required this.searchFocus,
@@ -708,6 +681,13 @@ class _ImmersiveStoreHero extends StatelessWidget {
   });
 
   final String storeName;
+  final String logoUrl;
+  final String operatingStatus;
+  final bool isAdminClosed;
+  final String openTime;
+  final String closeTime;
+  final String? addressLine;
+  final String? pillarTag;
   final String marketSlug;
   final TextEditingController searchController;
   final FocusNode searchFocus;
@@ -716,6 +696,22 @@ class _ImmersiveStoreHero extends StatelessWidget {
   final VoidCallback onSearchClose;
   final ValueChanged<String> onQueryChanged;
   final String bannerUrl;
+
+  String get _statusLabel {
+    if (isAdminClosed) return 'مغلق من الإدارة';
+    return NmdSemantic.storeStatusLabelAr(
+      NmdSemantic.storeStatusFromApi(operatingStatus),
+    );
+  }
+
+  NmdBadgeTone get _statusTone {
+    if (isAdminClosed) return NmdBadgeTone.error;
+    return switch (NmdSemantic.storeStatusFromApi(operatingStatus)) {
+      NmdStoreStatus.open => NmdBadgeTone.success,
+      NmdStoreStatus.busy => NmdBadgeTone.warning,
+      _ => NmdBadgeTone.neutral,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -823,17 +819,14 @@ class _ImmersiveStoreHero extends StatelessWidget {
                                       controller: searchController,
                                       focusNode: searchFocus,
                                       onChanged: onQueryChanged,
-                                      style: GoogleFonts.cairo(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
+                                      style: NmdTypography.body.copyWith(
+                                        color: NmdColors.textOnBrand,
                                       ),
                                       decoration: InputDecoration(
                                         hintText: 'ابحث داخل $storeName',
-                                        hintStyle: GoogleFonts.cairo(
-                                          color: const Color(0xCCFFFFFF),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 15,
+                                        hintStyle: NmdTypography.body.copyWith(
+                                          color: NmdColors.textOnBrand
+                                              .withValues(alpha: 0.75),
                                         ),
                                         border: InputBorder.none,
                                         isDense: true,
@@ -853,31 +846,96 @@ class _ImmersiveStoreHero extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: 16,
-                right: 16,
-                bottom: 16,
-                child: Align(
-                  alignment: Alignment.bottomRight,
-                  child: Text(
-                    storeName.toUpperCase(),
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.cairo(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                      shadows: const [
-                        Shadow(
-                            color: Color(0xCC000000),
-                            blurRadius: 16,
-                            offset: Offset(0, 2)),
-                        Shadow(
-                            color: Color(0x88000000),
-                            blurRadius: 6,
-                            offset: Offset(0, 1)),
-                      ],
-                    ),
+                left: NmdSpacing.md,
+                right: NmdSpacing.md,
+                bottom: NmdSpacing.md,
+                child: Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (logoUrl.isNotEmpty)
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: NmdColors.surfaceBase,
+                            border: Border.all(
+                              color: NmdColors.surfaceBase,
+                              width: 2,
+                            ),
+                            boxShadow: NmdShadows.md,
+                          ),
+                          child: ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: logoUrl,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => ColoredBox(
+                                color: NmdColors.tintAliveSoft,
+                                child: Icon(
+                                  Icons.storefront_rounded,
+                                  color: NmdColors.brandPrimary
+                                      .withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (logoUrl.isNotEmpty)
+                        const SizedBox(width: NmdSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              storeName,
+                              textAlign: TextAlign.right,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: NmdTypography.h1.copyWith(
+                                color: NmdColors.textOnBrand,
+                                shadows: const [
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 12,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: NmdSpacing.xxs),
+                            Wrap(
+                              spacing: NmdSpacing.xxs,
+                              runSpacing: NmdSpacing.xxs,
+                              alignment: WrapAlignment.end,
+                              children: [
+                                NmdBadge(
+                                    label: _statusLabel, tone: _statusTone),
+                                NmdChip(
+                                  label: '$openTime – $closeTime',
+                                  variant: NmdChipVariant.status,
+                                ),
+                                if (pillarTag != null &&
+                                    pillarTag!.trim().isNotEmpty)
+                                  NmdChip(
+                                    label: pillarTag!.trim(),
+                                    variant: NmdChipVariant.filter,
+                                    selected: true,
+                                  ),
+                                if (addressLine != null &&
+                                    addressLine!.trim().isNotEmpty)
+                                  NmdChip(
+                                    label: addressLine!.trim(),
+                                    variant: NmdChipVariant.status,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -896,32 +954,24 @@ class _FallbackHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.network(
-            'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1600&q=80',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.white),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [NmdColors.brandDeep, NmdColors.brandPrimary],
+        ),
+      ),
+      child: Align(
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.all(NmdSpacing.md),
+          child: Text(
+            fallbackText,
+            textAlign: TextAlign.right,
+            style: NmdTypography.h1.copyWith(color: NmdColors.textOnBrand),
           ),
-          Container(color: const Color(0x22000000)),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-              child: Text(
-                fallbackText,
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -940,121 +990,39 @@ class _CategoryTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 96,
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsetsDirectional.only(
-              start: 16, end: 16, top: 8, bottom: 8),
-          child: Row(
-            children: [
-              ...List.generate(sections.length, (index) {
-                final title = sections[index].title;
-                final isActive = activeIndex == index;
-                return Padding(
-                  padding: EdgeInsetsDirectional.only(
-                      start: index == sections.length - 1 ? 0 : 10),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: () => onTabSelected(index),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      width: 82,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        color:
-                            isActive ? const Color(0xFFE6FFFB) : Colors.white,
-                        border: Border.all(
-                          color: isActive
-                              ? const Color(0xFF14B8A6)
-                              : const Color(0x1F0F172A),
-                        ),
-                        boxShadow: [
-                          if (isActive)
-                            const BoxShadow(
-                              color: Color(0x5514B8A6),
-                              blurRadius: 18,
-                              spreadRadius: 2,
-                              offset: Offset(0, 3),
-                            )
-                          else
-                            const BoxShadow(
-                              color: Color(0x0F000000),
-                              blurRadius: 8,
-                              offset: Offset(0, 2),
-                            ),
-                        ],
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final iconWrapSize =
-                              (constraints.maxHeight * 0.40).clamp(24.0, 30.0);
-                          final iconSize =
-                              (constraints.maxHeight * 0.22).clamp(15.0, 18.0);
-                          final titleSize =
-                              (constraints.maxHeight * 0.14).clamp(9.0, 10.5);
-                          return Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Container(
-                                width: iconWrapSize,
-                                height: iconWrapSize,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: isActive
-                                          ? const Color(0x6614B8A6)
-                                          : const Color(0x22000000),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  _categoryIconForTitle(title),
-                                  size: iconSize,
-                                  color: isActive
-                                      ? AppColors.primaryTeal
-                                      : const Color(0xFF475569),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Expanded(
-                                child: Center(
-                                  child: Text(
-                                    title,
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textScaler: const TextScaler.linear(1),
-                                    style: GoogleFonts.cairo(
-                                      fontSize: titleSize,
-                                      fontWeight: FontWeight.w700,
-                                      color: isActive
-                                          ? AppColors.primaryTeal
-                                          : const Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                );
-              }),
-              const SizedBox(width: 16),
-            ],
+    return ColoredBox(
+      color: NmdColors.surfaceBase,
+      child: SizedBox(
+        height: 52,
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsetsDirectional.only(
+              start: NmdSpacing.screenHorizontal,
+              end: NmdSpacing.screenHorizontal,
+              top: NmdSpacing.xs,
+              bottom: NmdSpacing.xs,
+            ),
+            itemCount: sections.length,
+            separatorBuilder: (_, __) => const SizedBox(width: NmdSpacing.xs),
+            itemBuilder: (context, index) {
+              final title = sections[index].title;
+              final isActive = activeIndex == index;
+              return NmdChip(
+                label: title,
+                selected: isActive,
+                variant: NmdChipVariant.choice,
+                leading: Icon(
+                  _categoryIconForTitle(title),
+                  size: 16,
+                  color:
+                      isActive ? NmdColors.textOnBrand : NmdColors.brandPrimary,
+                ),
+                onTap: () => onTabSelected(index),
+              );
+            },
           ),
         ),
       ),

@@ -1,11 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 
-/// Vertical service tile — **leads / contact** only (no cart). خدمات pillar.
-/// Fixed height matches store horizontal strip (`StoreDetail` list height 248).
+/// Service tile — same visual family as [RetailProductCard]; opens detail on tap.
 class ServiceProductCard extends StatelessWidget {
   const ServiceProductCard({
     super.key,
@@ -16,28 +14,29 @@ class ServiceProductCard extends StatelessWidget {
     required this.available,
     required this.heroTag,
     required this.onOpenDetail,
+    this.description,
   });
 
-  /// When null (store horizontal strip), uses [cardWidth]. Pass grid cell width in category grids.
   final double? width;
-
   final String name;
   final double price;
   final String imageUrl;
   final bool available;
   final String heroTag;
-
-  /// Opens product / booking detail (no WhatsApp on card — product policy).
   final VoidCallback onOpenDetail;
+  final String? description;
 
   static const double cardWidth = 162;
-  static const double cardHeight = 248;
-  static const double imageHeight = 156;
+  static const double cardHeight = 210;
+  static const double imageHeight = 118;
   static const double priceRowHeight = 26;
 
   @override
   Widget build(BuildContext context) {
     final priceStr = price.toStringAsFixed(2);
+    final desc = (description ?? '').trim();
+    final showDesc = desc.isNotEmpty;
+
     return SizedBox(
       width: width ?? cardWidth,
       height: cardHeight,
@@ -45,175 +44,175 @@ class ServiceProductCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: available ? onOpenDetail : null,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: NmdRadius.borderMd,
           child: Ink(
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x0A0F172A),
-                    blurRadius: 16,
-                    offset: Offset(0, 6)),
-              ],
+              color: NmdColors.surfaceBase,
+              borderRadius: NmdRadius.borderMd,
+              border: const Border.fromBorderSide(
+                BorderSide(color: NmdColors.borderSubtle),
+              ),
+              boxShadow: NmdShadows.sm,
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final resolvedImageHeight =
-                    (constraints.maxHeight * 0.62).clamp(136.0, imageHeight);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      height: resolvedImageHeight,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(15)),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Positioned.fill(
-                              child: ColorFiltered(
-                                colorFilter: available
-                                    ? const ColorFilter.mode(
-                                        Colors.transparent, BlendMode.dst)
-                                    : const ColorFilter.matrix(<double>[
-                                        0.2126,
-                                        0.7152,
-                                        0.0722,
-                                        0,
-                                        0,
-                                        0.2126,
-                                        0.7152,
-                                        0.0722,
-                                        0,
-                                        0,
-                                        0.2126,
-                                        0.7152,
-                                        0.0722,
-                                        0,
-                                        0,
-                                        0,
-                                        0,
-                                        0,
-                                        1,
-                                        0,
-                                      ]),
-                                child: Hero(
-                                  tag: heroTag,
-                                  child: imageUrl.isEmpty
-                                      ? const ColoredBox(
-                                          color: Color(0xFFE2E8F0))
-                                      : CachedNetworkImage(
-                                          imageUrl: imageUrl,
-                                          fit: BoxFit.cover,
-                                          errorWidget: (_, __, ___) =>
-                                              const ColoredBox(
-                                                  color: Color(0xFFE2E8F0)),
-                                          placeholder: (_, __) =>
-                                              const ColoredBox(
-                                                  color: Color(0xFFF1F5F9)),
-                                        ),
-                                ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: imageHeight,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(NmdRadius.md),
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ColorFiltered(
+                          colorFilter: available
+                              ? const ColorFilter.mode(
+                                  Colors.transparent, BlendMode.dst)
+                              : const ColorFilter.matrix(<double>[
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ]),
+                          child: Hero(
+                            tag: heroTag,
+                            child: imageUrl.isEmpty
+                                ? ColoredBox(color: NmdColors.tintAliveMuted)
+                                : CachedNetworkImage(
+                                    imageUrl: imageUrl,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration: NmdMotion.fast,
+                                    errorWidget: (_, __, ___) => ColoredBox(
+                                      color: NmdColors.tintAliveMuted,
+                                    ),
+                                    placeholder: (_, __) => ColoredBox(
+                                      color: NmdColors.tintAliveSoft,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        PositionedDirectional(
+                          start: NmdSpacing.xs,
+                          bottom: NmdSpacing.xs,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              borderRadius: NmdRadius.borderPill,
+                            ),
+                            child: Text(
+                              'تفاصيل',
+                              style: NmdTypography.micro.copyWith(
+                                color: NmdColors.textOnBrand,
                               ),
                             ),
-                            if (!available)
-                              PositionedDirectional(
-                                end: 8,
-                                top: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xE6454B5C),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'غير متاح',
-                                    style: GoogleFonts.cairo(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                          ),
                         ),
-                      ),
+                        if (!available)
+                          PositionedDirectional(
+                            end: NmdSpacing.xs,
+                            top: NmdSpacing.xs,
+                            child: const NmdBadge(
+                              label: 'غير متاح',
+                              tone: NmdBadgeTone.neutral,
+                              compact: true,
+                            ),
+                          ),
+                      ],
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        child: ClipRect(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.topRight,
+                            child: Text(
+                              name,
+                              textAlign: TextAlign.right,
+                              maxLines: showDesc ? 1 : 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: NmdTypography.bodyBold.copyWith(
+                                fontSize: 14,
+                                color: available
+                                    ? NmdColors.textPrimary
+                                    : NmdColors.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (showDesc) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            desc,
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: NmdTypography.micro.copyWith(
+                              color: NmdColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: priceRowHeight,
+                          child: Row(
+                            textDirection: TextDirection.rtl,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.topRight,
-                                  child: Text(
-                                    name,
-                                    textAlign: TextAlign.right,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textScaler: const TextScaler.linear(1),
-                                    style: GoogleFonts.cairo(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14.5,
-                                      height: 1.2,
-                                      color: const Color(0xFF0F172A),
-                                    ),
+                              Flexible(
+                                child: Text(
+                                  priceStr,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  style: NmdTypography.h3.copyWith(
+                                    fontSize: 16,
+                                    color: available
+                                        ? NmdColors.brandPrimary
+                                        : NmdColors.textTertiary,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              SizedBox(
-                                height: priceRowHeight,
-                                child: Row(
-                                  textDirection: TextDirection.rtl,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        priceStr,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.fade,
-                                        softWrap: false,
-                                        textScaler: const TextScaler.linear(1),
-                                        style: GoogleFonts.cairo(
-                                          color: available
-                                              ? AppColors.primaryTeal
-                                              : const Color(0xFF94A3B8),
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                          letterSpacing: 0.2,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '₪',
-                                      textScaler: const TextScaler.linear(1),
-                                      style: GoogleFonts.cairo(
-                                        color: const Color(0xFF64748B),
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                              Text(
+                                '₪',
+                                style: NmdTypography.label.copyWith(
+                                  color: NmdColors.textSecondary,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
