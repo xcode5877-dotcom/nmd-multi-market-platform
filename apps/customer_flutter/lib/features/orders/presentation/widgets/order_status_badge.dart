@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../domain/customer_order_vm.dart';
 
 /// Visual tokens for mock-api order `status`.
 ///
-/// [isServiceLead]: service / lead rows — static badge only (no «قيد التنفيذ» spinner).
+/// [isServiceLead]: service / lead rows — static badge only (no spinner).
 ({String label, Color bg, Color fg, Color border, bool showSpinner})
     orderStatusVisual(
   String? status,
@@ -18,8 +17,8 @@ import '../../domain/customer_order_vm.dart';
     if (s == 'CANCELLED' || s == 'CANCELED') {
       return (
         label: 'ملغي',
-        bg: const Color(0xFFFEE2E2),
-        fg: const Color(0xFF991B1B),
+        bg: NmdColors.errorSoft,
+        fg: NmdColors.error,
         border: const Color(0xFFFECACA),
         showSpinner: false,
       );
@@ -27,16 +26,16 @@ import '../../domain/customer_order_vm.dart';
     if (s == 'DELIVERED' || s == 'COMPLETED') {
       return (
         label: 'مكتمل',
-        bg: const Color(0xFFD1FAE5),
-        fg: const Color(0xFF047857),
+        bg: NmdColors.successSoft,
+        fg: NmdColors.success,
         border: const Color(0xFF6EE7B7),
         showSpinner: false,
       );
     }
     return (
-      label: 'تم الطلب',
-      bg: const Color(0xFFE8FDF5),
-      fg: const Color(0xFF0F766E),
+      label: 'تم استلام الطلب',
+      bg: NmdColors.tintAliveSoft,
+      fg: NmdColors.brandPrimary,
       border: const Color(0xFF99F6E4),
       showSpinner: false,
     );
@@ -44,17 +43,17 @@ import '../../domain/customer_order_vm.dart';
   if (s == 'CANCELLED' || s == 'CANCELED') {
     return (
       label: 'ملغي',
-      bg: const Color(0xFFFEE2E2),
-      fg: const Color(0xFF991B1B),
+      bg: NmdColors.errorSoft,
+      fg: NmdColors.error,
       border: const Color(0xFFFECACA),
       showSpinner: false,
     );
   }
   if (s == 'DELIVERED' || s == 'COMPLETED') {
     return (
-      label: fulfillment == 'PICKUP' ? 'تم الاستلام' : 'تم التوصيل',
-      bg: const Color(0xFFD1FAE5),
-      fg: const Color(0xFF047857),
+      label: fulfillment == 'PICKUP' ? 'تم الاستلام' : 'مكتمل',
+      bg: NmdColors.successSoft,
+      fg: NmdColors.success,
       border: const Color(0xFF6EE7B7),
       showSpinner: false,
     );
@@ -62,31 +61,49 @@ import '../../domain/customer_order_vm.dart';
   if (s == 'READY') {
     return (
       label: 'جاهز',
-      bg: const Color(0xFFE0F2FE),
-      fg: const Color(0xFF0369A1),
+      bg: NmdColors.infoSoft,
+      fg: NmdColors.info,
       border: const Color(0xFF7DD3FC),
       showSpinner: false,
     );
   }
+  if (s == 'PREPARING') {
+    return (
+      label: 'قيد التحضير',
+      bg: NmdColors.tintAliveSoft,
+      fg: NmdColors.brandPrimary,
+      border: const Color(0xFF99F6E4),
+      showSpinner: true,
+    );
+  }
+  if (s == 'CONFIRMED' || s == 'PENDING' || s == 'NEW') {
+    return (
+      label: 'تم استلام الطلب',
+      bg: NmdColors.tintAliveSoft,
+      fg: NmdColors.brandPrimary,
+      border: const Color(0xFF99F6E4),
+      showSpinner: true,
+    );
+  }
 
-  /// Courier has the order — same UX as ON_THE_WAY (store/market delivery only; never [isServiceLead]).
+  /// Courier has the order — same UX as ON_THE_WAY (store/market delivery only).
   if (s == 'ON_THE_WAY' ||
       s == 'OUT_FOR_DELIVERY' ||
       s == 'PICKED_UP' ||
       s == 'RECEIVED_FROM_STORE' ||
       s == 'IN_PROGRESS') {
     return (
-      label: 'في الطريق إليك',
-      bg: const Color(0xFFE8FDF5),
-      fg: const Color(0xFF0F766E),
+      label: 'في الطريق',
+      bg: NmdColors.tintAliveSoft,
+      fg: NmdColors.brandPrimary,
       border: const Color(0xFF5EEAD4),
       showSpinner: true,
     );
   }
   return (
-    label: 'قيد التنفيذ',
-    bg: const Color(0xFFE8FDF5),
-    fg: const Color(0xFF0F766E),
+    label: 'قيد التحضير',
+    bg: NmdColors.tintAliveSoft,
+    fg: NmdColors.brandPrimary,
     border: const Color(0xFF99F6E4),
     showSpinner: true,
   );
@@ -122,9 +139,9 @@ double trackingHandshakeFactor(CustomerOrderVm o) {
   final base = orderStatusVisual(o.status, o.fulfillmentType);
   final t = trackingHandshakeFactor(o);
   return (
-    bg: Color.lerp(base.bg, const Color(0xFFFFFBEB), t * 0.35)!,
-    fg: Color.lerp(base.fg, const Color(0xFFB45309), t * 0.22)!,
-    border: Color.lerp(base.border, const Color(0xFFFBBF24), t * 0.55)!,
+    bg: Color.lerp(base.bg, NmdColors.warningSoft, t * 0.35)!,
+    fg: Color.lerp(base.fg, NmdColors.warning, t * 0.22)!,
+    border: Color.lerp(base.border, NmdColors.accentGold, t * 0.55)!,
   );
 }
 
@@ -274,24 +291,21 @@ class _LeadReceivedStaticBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 11,
-        vertical: compact ? 4 : 6,
+        horizontal: compact ? NmdSpacing.xs : NmdSpacing.sm,
+        vertical: compact ? NmdSpacing.xxs : NmdSpacing.xxs + 2,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(999),
+        color: NmdColors.tintAliveSoft,
+        borderRadius: NmdRadius.borderPill,
         border: Border.all(
-          color: AppColors.primaryTeal.withValues(alpha: 0.4),
-          width: 1,
+          color: NmdColors.brandPrimary.withValues(alpha: 0.35),
         ),
       ),
       child: Text(
         'تم استلام الطلب',
-        style: GoogleFonts.cairo(
-          fontSize: compact ? 11 : 12.5,
+        style: (compact ? NmdTypography.micro : NmdTypography.label).copyWith(
           fontWeight: FontWeight.w800,
-          color: AppColors.primaryTeal,
-          height: 1.1,
+          color: NmdColors.brandPrimary,
         ),
       ),
     );
@@ -323,12 +337,12 @@ class _StatusChipBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 11,
-        vertical: compact ? 4 : 6,
+        horizontal: compact ? NmdSpacing.xs : NmdSpacing.sm,
+        vertical: compact ? NmdSpacing.xxs : NmdSpacing.xxs + 2,
       ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: NmdRadius.borderPill,
         border: Border.all(
           color: border,
           width: pulse ? 1.4 : 1,
@@ -341,7 +355,7 @@ class _StatusChipBody extends StatelessWidget {
           ),
           if (pulse)
             BoxShadow(
-              color: AppColors.secondaryTeal.withValues(alpha: 0.12),
+              color: NmdColors.brandSecondary.withValues(alpha: 0.12),
               blurRadius: 10 + glowSpread,
               spreadRadius: 0.5,
               offset: const Offset(0, 1),
@@ -364,8 +378,8 @@ class _StatusChipBody extends StatelessWidget {
           ],
           Text(
             label,
-            style: GoogleFonts.cairo(
-              fontSize: compact ? 11 : 12.5,
+            style:
+                (compact ? NmdTypography.micro : NmdTypography.label).copyWith(
               fontWeight: FontWeight.w800,
               color: fg,
               height: 1.1,

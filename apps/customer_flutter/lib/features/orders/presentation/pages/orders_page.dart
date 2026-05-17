@@ -6,8 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 
-import '../../../../app/theme/app_colors.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../../core/network/token_storage.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../cart/application/cart_cubit.dart';
@@ -20,8 +20,6 @@ import '../../domain/customer_order_vm.dart';
 import '../widgets/order_status_badge.dart';
 import '../widgets/order_timeline_sheet.dart';
 import '../widgets/store_order_tracking_panel.dart';
-
-const double _kCardRadius = 16;
 
 const _arMonths = [
   '',
@@ -106,6 +104,27 @@ String shortOrderId(String id) {
   if (alnum.isEmpty) return '#—';
   final tail = alnum.length <= 6 ? alnum : alnum.substring(alnum.length - 6);
   return '#${tail.toUpperCase()}';
+}
+
+String? _paymentMethodLabelAr(CustomerOrderVm order) {
+  final p = (order.raw['paymentMethod'] ?? order.raw['payment']?['method'])
+      ?.toString()
+      .toUpperCase();
+  if (p == null || p.isEmpty) return null;
+  if (p == 'CARD') return 'بطاقة';
+  if (p == 'CASH') return 'نقداً';
+  return null;
+}
+
+String _fulfillmentLabelAr(String? fulfillmentType) {
+  final t = (fulfillmentType ?? '').toUpperCase();
+  return t == 'PICKUP' ? 'استلام' : 'توصيل';
+}
+
+String _formatOrderDate(CustomerOrderVm? order) {
+  if (order == null || !order.hasReliableCreatedAt) return '';
+  final d = order.createdAt!;
+  return '${d.day}/${d.month}/${d.year}';
 }
 
 String _stickyDateLabel(DateTime day, DateTime now) {
@@ -281,9 +300,9 @@ class _OrdersPageState extends State<OrdersPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: ColoredBox(
-        color: const Color(0xFFF8FAFC),
+        color: NmdColors.surfaceMuted,
         child: Scaffold(
-          backgroundColor: const Color(0xFFF8FAFC),
+          backgroundColor: NmdColors.surfaceMuted,
           body: BlocListener<OrdersCubit, OrdersState>(
             listenWhen: (p, c) =>
                 c.status == OrdersStatus.success &&
@@ -295,9 +314,10 @@ class _OrdersPageState extends State<OrdersPage> {
               builder: (context, state) {
                 if (state.status == OrdersStatus.initial ||
                     state.status == OrdersStatus.loading) {
-                  return const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primaryTeal));
+                  return const NmdLoading(
+                    fullscreen: true,
+                    message: 'جاري تحميل طلباتك...',
+                  );
                 }
                 if (state.status == OrdersStatus.unauthorized) {
                   return _Unauthorized(
@@ -310,14 +330,15 @@ class _OrdersPageState extends State<OrdersPage> {
                   );
                 }
                 if (state.status == OrdersStatus.error) {
-                  return _ErrorState(
-                    message: state.message ?? 'خطأ',
+                  return NmdErrorState(
+                    title: 'تعذّر تحميل الطلبات',
+                    message: state.message ?? 'حاول مرة أخرى بعد قليل',
                     onRetry: () => context.read<OrdersCubit>().load(),
                   );
                 }
                 if (state.status == OrdersStatus.empty) {
                   return RefreshIndicator(
-                    color: AppColors.primaryTeal,
+                    color: NmdColors.brandPrimary,
                     onRefresh: () async {
                       await context.read<OrdersCubit>().load();
                       if (!context.mounted) return;
@@ -334,7 +355,7 @@ class _OrdersPageState extends State<OrdersPage> {
                           onShop: () => context.go('/market/$slug'),
                           title: 'لا توجد طلبات بعد',
                           subtitle:
-                              'ابدأ التسوق وستظهر طلباتك هنا بكل ترتيب ووضوح.',
+                              'ابدأ التسوق وستظهر طلباتك هنا — نرافقك في كل خطوة.',
                           showCta: true,
                         ),
                       ),
@@ -348,8 +369,23 @@ class _OrdersPageState extends State<OrdersPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const NmdSectionHeader(
+                        title: 'طلباتي',
+                        subtitle: 'تابع طلباتك بكل وضوح واطمئنان',
+                        padding: EdgeInsets.fromLTRB(
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.sm,
+                          NmdSpacing.screenHorizontal,
+                          0,
+                        ),
+                      ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.xs,
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.sm,
+                        ),
                         child: _OrdersTabBar(),
                       ),
                       Expanded(
@@ -409,39 +445,27 @@ class _OrdersPageState extends State<OrdersPage> {
 class _OrdersTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+    return NmdSurface(
+      mode: NmdSurfaceMode.commerce,
+      padding: const EdgeInsets.all(4),
       child: TabBar(
         indicatorSize: TabBarIndicatorSize.tab,
-        indicatorPadding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+        indicatorPadding: const EdgeInsets.all(4),
         labelPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
         indicator: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: AppColors.primaryTeal.withValues(alpha: 0.14),
+          borderRadius: NmdRadius.borderSm,
+          color: NmdColors.tintAliveSoft,
+          border: Border.all(
+            color: NmdColors.brandPrimary.withValues(alpha: 0.2),
+          ),
         ),
-        splashBorderRadius: BorderRadius.circular(12),
+        splashBorderRadius: NmdRadius.borderSm,
         overlayColor: WidgetStateProperty.all(Colors.transparent),
-        labelColor: AppColors.primaryTeal,
-        unselectedLabelColor: const Color(0xFF64748B),
-        labelStyle: GoogleFonts.cairo(
-          fontWeight: FontWeight.w900,
-          fontSize: 13,
-        ),
-        unselectedLabelStyle: GoogleFonts.cairo(
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-        ),
+        labelColor: NmdColors.brandPrimary,
+        unselectedLabelColor: NmdColors.textSecondary,
+        labelStyle: NmdTypography.label.copyWith(fontWeight: FontWeight.w900),
+        unselectedLabelStyle:
+            NmdTypography.label.copyWith(fontWeight: FontWeight.w600),
         dividerColor: Colors.transparent,
         tabs: const [
           Tab(text: 'نشطة'),
@@ -480,7 +504,7 @@ class _OrdersCategoryScroll extends StatelessWidget {
   Widget build(BuildContext context) {
     if (groups.isEmpty) {
       return RefreshIndicator(
-        color: AppColors.primaryTeal,
+        color: NmdColors.brandPrimary,
         onRefresh: onLoad,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -518,7 +542,12 @@ class _OrdersCategoryScroll extends StatelessWidget {
       }
       slivers.add(
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          padding: const EdgeInsets.fromLTRB(
+            NmdSpacing.screenHorizontal,
+            0,
+            NmdSpacing.screenHorizontal,
+            4,
+          ),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, i) {
@@ -540,35 +569,53 @@ class _OrdersCategoryScroll extends StatelessWidget {
                         if (!context.mounted) return;
                         await showModalBottomSheet<void>(
                           context: context,
-                          shape: const RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.vertical(top: Radius.circular(16)),
-                          ),
-                          builder: (ctx) => SafeArea(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Text(
-                                    'اختر المتجر للتواصل',
-                                    style: GoogleFonts.cairo(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16),
+                          backgroundColor: Colors.transparent,
+                          builder: (ctx) => Container(
+                            decoration: const BoxDecoration(
+                              color: NmdColors.surfaceBase,
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(24),
+                              ),
+                            ),
+                            child: SafeArea(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(height: NmdSpacing.sm),
+                                  Container(
+                                    width: 40,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: NmdColors.borderSubtle,
+                                      borderRadius: NmdRadius.borderPill,
+                                    ),
                                   ),
-                                ),
-                                for (final o in g.orders)
-                                  ListTile(
-                                    leading:
-                                        const Icon(Icons.storefront_outlined),
-                                    title: Text(o.tenantName ?? 'متجر',
-                                        style: GoogleFonts.cairo()),
-                                    onTap: () async {
-                                      Navigator.pop(ctx);
-                                      await onContactStore(o);
-                                    },
+                                  Padding(
+                                    padding: const EdgeInsets.all(
+                                        NmdSpacing.screenHorizontal),
+                                    child: Text(
+                                      'اختر المتجر للتواصل',
+                                      style: NmdTypography.h3,
+                                    ),
                                   ),
-                              ],
+                                  for (final o in g.orders)
+                                    ListTile(
+                                      leading: Icon(
+                                        Icons.storefront_outlined,
+                                        color: NmdColors.brandPrimary,
+                                      ),
+                                      title: Text(
+                                        o.tenantName ?? 'متجر',
+                                        style: NmdTypography.label,
+                                      ),
+                                      onTap: () async {
+                                        Navigator.pop(ctx);
+                                        await onContactStore(o);
+                                      },
+                                    ),
+                                  const SizedBox(height: NmdSpacing.sm),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -587,7 +634,7 @@ class _OrdersCategoryScroll extends StatelessWidget {
     slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 100)));
 
     return RefreshIndicator(
-      color: AppColors.primaryTeal,
+      color: NmdColors.brandPrimary,
       onRefresh: onLoad,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(
@@ -611,15 +658,15 @@ class _StickyDayHeaderDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return Container(
-      color: const Color(0xFFF8FAFC),
+      color: NmdColors.surfaceMuted,
       padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
       alignment: Alignment.centerRight,
       child: Text(
         label,
-        style: GoogleFonts.cairo(
+        style: NmdTypography.label.copyWith(
           fontSize: 12.5,
           fontWeight: FontWeight.w800,
-          color: const Color(0xFF64748B),
+          color: NmdColors.textSecondary,
           letterSpacing: 0.3,
         ),
       ),
@@ -668,316 +715,177 @@ class _OrderGroupCard extends StatelessWidget {
     final sid = primary != null ? shortOrderId(primary.id) : '#—';
     final simpleServiceCompleted =
         bucket == _OrderBucket.completed && group.isServiceOnlyGroup;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(_kCardRadius),
-        onTap: onOpenDetail,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_kCardRadius),
-            border: Border.all(color: const Color(0xFFE8EDF2)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-              BoxShadow(
-                color: AppColors.primaryTeal.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+    final dateLabel = _formatOrderDate(primary);
+    final paymentLabel =
+        primary != null ? _paymentMethodLabelAr(primary) : null;
+    final fulfillmentLabel = _fulfillmentLabelAr(primary?.fulfillmentType);
+
+    return NmdCard(
+      variant: NmdCardVariant.elevated,
+      onTap: onOpenDetail,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _LogoRow(orders: group.orders),
+              const SizedBox(width: NmdSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _LogoRow(orders: group.orders),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.isMultiStore
-                                ? 'طلب مجمع'
-                                : (primary?.tenantName ?? 'طلب'),
-                            style: GoogleFonts.cairo(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                              color: AppColors.textPrimary,
-                              height: 1.25,
-                            ),
-                          ),
-                          if (group.isMultiStore)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                group.orders
-                                    .map((e) => e.tenantName ?? '')
-                                    .where((s) => s.isNotEmpty)
-                                    .join(' • '),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12,
-                                  color: const Color(0xFF64748B),
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Text(
-                                'طلب $sid',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF475569),
-                                ),
-                              ),
-                              if (!simpleServiceCompleted &&
-                                  _timeLine(primary).isNotEmpty) ...[
-                                Text(
-                                  ' · ',
-                                  style: GoogleFonts.cairo(
-                                      color: const Color(0xFFCBD5E1)),
-                                ),
-                                Text(
-                                  _timeLine(primary),
-                                  style: GoogleFonts.cairo(
-                                    fontSize: 13,
-                                    color: const Color(0xFF94A3B8),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
+                    Text(
+                      group.isMultiStore
+                          ? 'طلب مجمع'
+                          : (primary?.tenantName ?? 'طلب'),
+                      style: NmdTypography.h3.copyWith(
+                        fontWeight: FontWeight.w900,
+                        height: 1.25,
                       ),
                     ),
-                    if (primary != null)
-                      simpleServiceCompleted
-                          ? OrderStatusChip(
-                              status: primary.status,
-                              fulfillmentType: primary.fulfillmentType,
-                              compact: true,
-                              isServiceLead: true,
-                            )
-                          : (trackingOrder != null ||
-                                  primary.suppressesDeliveryTracking)
-                              ? OrderTrackingStatusChip(
-                                  order: trackingOrder ?? primary,
-                                  compact: true,
-                                )
-                              : OrderStatusChip(
-                                  status: primary.status,
-                                  fulfillmentType: primary.fulfillmentType,
-                                  compact: true,
-                                  isServiceLead: false,
-                                ),
-                  ],
-                ),
-                if (!simpleServiceCompleted) ...[
-                  if (trackingOrder != null) ...[
-                    const SizedBox(height: 12),
-                    StoreOrderTrackingPanel(order: trackingOrder),
-                  ],
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
+                    if (group.isMultiStore)
+                      Padding(
+                        padding: const EdgeInsets.only(top: NmdSpacing.xxs),
                         child: Text(
-                          _itemTotal(group) > 0
-                              ? '${_itemTotal(group)} منتجات'
-                              : 'ملخص الطلب',
-                          style: GoogleFonts.cairo(
-                            fontSize: 13,
-                            color: const Color(0xFF475569),
+                          group.orders
+                              .map((e) => e.tenantName ?? '')
+                              .where((s) => s.isNotEmpty)
+                              .join(' • '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: NmdTypography.bodySmall,
+                        ),
+                      ),
+                    const SizedBox(height: NmdSpacing.xxs),
+                    Text(
+                      [
+                        'طلب $sid',
+                        if (!simpleServiceCompleted &&
+                            _timeLine(primary).isNotEmpty)
+                          _timeLine(primary),
+                        if (dateLabel.isNotEmpty) dateLabel,
+                      ].join(' · '),
+                      style: NmdTypography.bodySmall.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: NmdSpacing.xs),
+                    Wrap(
+                      spacing: NmdSpacing.xs,
+                      runSpacing: NmdSpacing.xxs,
+                      children: [
+                        NmdChip(
+                          label: fulfillmentLabel,
+                          variant: NmdChipVariant.status,
+                          backgroundColor: NmdColors.infoSoft,
+                          foregroundColor: NmdColors.info,
+                        ),
+                        if (paymentLabel != null)
+                          NmdChip(
+                            label: paymentLabel,
+                            variant: NmdChipVariant.status,
+                            backgroundColor: NmdColors.surfaceMuted,
+                            foregroundColor: NmdColors.textSecondary,
                           ),
-                        ),
-                      ),
-                      Text(
-                        '₪${group.combinedTotal.toStringAsFixed(2)}',
-                        style: GoogleFonts.cairo(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: AppColors.primaryTeal,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _GradientPrimaryButton(
-                          onPressed: onReorder,
-                          icon: Icons.replay_rounded,
-                          label: 'إعادة طلب',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _GradientOutlineButton(
-                          onPressed: onContact,
-                          icon: Icons.chat_rounded,
-                          label: 'تواصل',
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Spacer(),
-                      Text(
-                        '₪${group.combinedTotal.toStringAsFixed(2)}',
-                        style: GoogleFonts.cairo(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: AppColors.primaryTeal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (primary != null)
+                simpleServiceCompleted
+                    ? OrderStatusChip(
+                        status: primary.status,
+                        fulfillmentType: primary.fulfillmentType,
+                        compact: true,
+                        isServiceLead: true,
+                      )
+                    : (trackingOrder != null ||
+                            primary.suppressesDeliveryTracking)
+                        ? OrderTrackingStatusChip(
+                            order: trackingOrder ?? primary,
+                            compact: true,
+                          )
+                        : OrderStatusChip(
+                            status: primary.status,
+                            fulfillmentType: primary.fulfillmentType,
+                            compact: true,
+                            isServiceLead: false,
+                          ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GradientPrimaryButton extends StatelessWidget {
-  const _GradientPrimaryButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-  });
-
-  final VoidCallback onPressed;
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.shellTeal,
-            AppColors.primaryTeal,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryTeal.withValues(alpha: 0.32),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          if (!simpleServiceCompleted) ...[
+            if (trackingOrder != null) ...[
+              const SizedBox(height: NmdSpacing.sm),
+              StoreOrderTrackingPanel(order: trackingOrder),
+            ],
+            const SizedBox(height: NmdSpacing.md),
+            Row(
               children: [
-                Icon(icon, size: 18, color: Colors.white),
-                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _itemTotal(group) > 0
+                        ? '${_itemTotal(group)} منتجات'
+                        : 'ملخص الطلب',
+                    style: NmdTypography.bodySmall,
+                  ),
+                ),
                 Text(
-                  label,
-                  style: GoogleFonts.cairo(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                    color: Colors.white,
+                  '₪${group.combinedTotal.toStringAsFixed(2)}',
+                  style: NmdTypography.h2.copyWith(
+                    color: NmdColors.brandPrimary,
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GradientOutlineButton extends StatelessWidget {
-  const _GradientOutlineButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-  });
-
-  final VoidCallback onPressed;
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            AppColors.primaryTeal.withValues(alpha: 0.06),
-          ],
-        ),
-        border: Border.all(
-          color: AppColors.primaryTeal.withValues(alpha: 0.35),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: NmdSpacing.md),
+            Row(
               children: [
-                Icon(icon, size: 18, color: AppColors.primaryTeal),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: GoogleFonts.cairo(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                    color: AppColors.primaryTeal,
+                Expanded(
+                  child: NmdButton(
+                    label: 'إعادة طلب',
+                    size: NmdButtonSize.compact,
+                    icon: const Icon(
+                      Icons.replay_rounded,
+                      size: 18,
+                      color: NmdColors.textOnBrand,
+                    ),
+                    onPressed: onReorder,
+                  ),
+                ),
+                const SizedBox(width: NmdSpacing.sm),
+                Expanded(
+                  child: NmdButton(
+                    label: 'تواصل',
+                    size: NmdButtonSize.compact,
+                    variant: NmdButtonVariant.secondary,
+                    icon: Icon(
+                      Icons.chat_rounded,
+                      size: 18,
+                      color: NmdColors.brandPrimary,
+                    ),
+                    onPressed: onContact,
                   ),
                 ),
               ],
             ),
-          ),
-        ),
+          ] else ...[
+            const SizedBox(height: NmdSpacing.sm),
+            Row(
+              children: [
+                const Spacer(),
+                Text(
+                  '₪${group.combinedTotal.toStringAsFixed(2)}',
+                  style: NmdTypography.h2.copyWith(
+                    color: NmdColors.brandPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1001,17 +909,21 @@ class _LogoRow extends StatelessWidget {
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: const Color(0xFFE0F2F1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFCCFBF1)),
+          color: NmdColors.tintAliveSoft,
+          borderRadius: NmdRadius.borderMd,
+          border: Border.all(
+            color: NmdColors.brandPrimary.withValues(alpha: 0.15),
+          ),
         ),
-        child:
-            const Icon(Icons.storefront_outlined, color: AppColors.primaryTeal),
+        child: const Icon(
+          Icons.storefront_outlined,
+          color: NmdColors.brandPrimary,
+        ),
       );
     }
     if (urls.length == 1) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: NmdRadius.borderMd,
         child: SizedBox(
           width: 52,
           height: 52,
@@ -1019,7 +931,7 @@ class _LogoRow extends StatelessWidget {
             imageUrl: urls.first,
             fit: BoxFit.cover,
             errorWidget: (_, __, ___) =>
-                const ColoredBox(color: Color(0xFFE2E8F0)),
+                ColoredBox(color: NmdColors.borderSubtle),
           ),
         ),
       );
@@ -1053,7 +965,7 @@ class _LogoRow extends StatelessWidget {
                       imageUrl: urls[i],
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) =>
-                          const ColoredBox(color: Color(0xFFE2E8F0)),
+                          ColoredBox(color: NmdColors.borderSubtle),
                     ),
                   ),
                 ),
@@ -1082,7 +994,7 @@ class _EmptyOrders extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(NmdSpacing.xl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1094,66 +1006,25 @@ class _EmptyOrders extends StatelessWidget {
                 repeat: true,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: NmdSpacing.xs),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
-              ),
+              style: NmdTypography.h2,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: NmdSpacing.sm),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
-                fontSize: 15,
-                height: 1.55,
-                color: const Color(0xFF64748B),
-              ),
+              style: NmdTypography.bodySmall.copyWith(height: 1.55),
             ),
             if (showCta) ...[
-              const SizedBox(height: 26),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: const LinearGradient(
-                    colors: [
-                      AppColors.shellTeal,
-                      AppColors.primaryTeal,
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryTeal.withValues(alpha: 0.28),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onShop,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 14,
-                      ),
-                      child: Text(
-                        'تسوق الآن',
-                        style: GoogleFonts.cairo(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              const SizedBox(height: NmdSpacing.xl),
+              NmdButton(
+                label: 'تسوق الآن',
+                onPressed: onShop,
+                expand: false,
+                size: NmdButtonSize.medium,
               ),
             ],
           ],
@@ -1174,85 +1045,40 @@ class _Unauthorized extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.lock_outline_rounded,
-                size: 56, color: AppColors.primaryTeal.withValues(alpha: 0.85)),
-            const SizedBox(height: 16),
-            Text(
-              'يرجى تسجيل الدخول',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'سجّل دخولك لعرض طلباتك ومتابعة حالتها.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
-                  fontSize: 14, height: 1.45, color: const Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () async => onLogin(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryTeal,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text('تسجيل الدخول',
-                    style: GoogleFonts.cairo(fontWeight: FontWeight.w800)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: onShop,
-              child: Text('العودة للرئيسية',
-                  style: GoogleFonts.cairo(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryTeal)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(message,
-                textAlign: TextAlign.center, style: GoogleFonts.cairo()),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onRetry,
-              child: Text('إعادة المحاولة',
-                  style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-            ),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.all(NmdSpacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 56,
+            color: NmdColors.brandPrimary.withValues(alpha: 0.85),
+          ),
+          const SizedBox(height: NmdSpacing.md),
+          Text(
+            'يرجى تسجيل الدخول',
+            textAlign: TextAlign.center,
+            style: NmdTypography.h2,
+          ),
+          const SizedBox(height: NmdSpacing.xs),
+          Text(
+            'سجّل دخولك لعرض طلباتك ومتابعة حالتها بكل وضوح.',
+            textAlign: TextAlign.center,
+            style: NmdTypography.bodySmall.copyWith(height: 1.45),
+          ),
+          const SizedBox(height: NmdSpacing.xl),
+          NmdButton(
+            label: 'تسجيل الدخول',
+            onPressed: () async => onLogin(),
+          ),
+          const SizedBox(height: NmdSpacing.sm),
+          NmdButton(
+            label: 'العودة للرئيسية',
+            variant: NmdButtonVariant.ghost,
+            onPressed: onShop,
+          ),
+        ],
       ),
     );
   }

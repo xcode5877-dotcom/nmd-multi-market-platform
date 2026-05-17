@@ -1,8 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/cart_modifier_lines.dart';
 import '../../domain/customer_order_vm.dart';
 import 'order_status_badge.dart';
@@ -23,49 +22,55 @@ void showOrderTimelineSheet(
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (ctx) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: allLeadOrService ? 0.52 : 0.72,
       minChildSize: 0.4,
       maxChildSize: 0.95,
-      builder: (_, scroll) => SingleChildScrollView(
-        controller: scroll,
-        primary: false,
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(999),
+      builder: (_, scroll) => Container(
+        decoration: const BoxDecoration(
+          color: NmdColors.surfaceBase,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: NmdShadows.lg,
+        ),
+        child: SingleChildScrollView(
+          controller: scroll,
+          primary: false,
+          padding: const EdgeInsets.fromLTRB(
+            NmdSpacing.screenHorizontal,
+            NmdSpacing.sm,
+            NmdSpacing.screenHorizontal,
+            NmdSpacing.xxl,
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: NmdSpacing.md),
+                    decoration: BoxDecoration(
+                      color: NmdColors.borderSubtle,
+                      borderRadius: NmdRadius.borderPill,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                textAlign: TextAlign.right,
-                style: GoogleFonts.cairo(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 18),
-              for (var i = 0; i < orders.length; i++) ...[
-                if (i > 0) const SizedBox(height: 22),
-                _OrderBlock(order: orders[i]),
+                NmdSectionHeader(
+                  title: title,
+                  subtitle: 'كل التفاصيل في مكان واحد',
+                  padding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: NmdSpacing.sm),
+                for (var i = 0; i < orders.length; i++) ...[
+                  if (i > 0) const SizedBox(height: NmdSpacing.md),
+                  _OrderBlock(order: orders[i]),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -80,80 +85,134 @@ class _OrderBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: (order.tenantLogoUrl != null &&
-                            order.tenantLogoUrl!.isNotEmpty)
-                        ? CachedNetworkImage(
-                            imageUrl: order.tenantLogoUrl!,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) =>
-                                const ColoredBox(color: Color(0xFFE2E8F0)),
-                          )
-                        : const ColoredBox(
-                            color: Color(0xFFE2E8F0),
-                            child: Icon(Icons.storefront_outlined,
-                                color: Color(0xFF64748B)),
+    return NmdCard(
+      variant: NmdCardVariant.outlined,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: NmdRadius.borderSm,
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: (order.tenantLogoUrl != null &&
+                          order.tenantLogoUrl!.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: order.tenantLogoUrl!,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => ColoredBox(
+                            color: NmdColors.surfaceMuted,
+                            child: Icon(
+                              Icons.storefront_outlined,
+                              color: NmdColors.textTertiary,
+                            ),
                           ),
-                  ),
+                        )
+                      : ColoredBox(
+                          color: NmdColors.surfaceMuted,
+                          child: Icon(
+                            Icons.storefront_outlined,
+                            color: NmdColors.textTertiary,
+                          ),
+                        ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.tenantName ?? 'متجر',
-                        style: GoogleFonts.cairo(
-                            fontWeight: FontWeight.w800, fontSize: 15),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'رقم الطلب: ${order.id.length > 10 ? order.id.substring(0, 8) : order.id}',
-                        style: GoogleFonts.cairo(
-                            fontSize: 12, color: const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ),
-                OrderStatusBadge(
-                  status: order.status,
-                  fulfillmentType: order.fulfillmentType,
-                  isServiceLead: order.suppressesDeliveryTracking,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (order.items != null && order.items!.isNotEmpty)
-              _OrderLineItemsBlock(items: order.items!),
-            if (order.items != null && order.items!.isNotEmpty)
-              const SizedBox(height: 14),
-            if (order.suppressesDeliveryTracking)
-              _ServiceOrderSummaryBody(order: order)
-            else
-              _TimelineStrip(
-                status: order.status,
-                fulfillment: order.fulfillmentType,
               ),
-          ],
-        ),
+              const SizedBox(width: NmdSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.tenantName ?? 'متجر',
+                      style: NmdTypography.h3,
+                    ),
+                    const SizedBox(height: NmdSpacing.xxs),
+                    Text(
+                      'رقم الطلب: ${order.id.length > 10 ? order.id.substring(0, 8) : order.id}',
+                      style: NmdTypography.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              OrderStatusBadge(
+                status: order.status,
+                fulfillmentType: order.fulfillmentType,
+                isServiceLead: order.suppressesDeliveryTracking,
+              ),
+            ],
+          ),
+          const SizedBox(height: NmdSpacing.md),
+          _OrderMetaRow(order: order),
+          const SizedBox(height: NmdSpacing.md),
+          if (order.items != null && order.items!.isNotEmpty)
+            _OrderLineItemsBlock(items: order.items!),
+          if (order.items != null && order.items!.isNotEmpty)
+            const SizedBox(height: NmdSpacing.md),
+          if (order.suppressesDeliveryTracking)
+            _ServiceOrderSummaryBody(order: order)
+          else
+            _TimelineStrip(
+              status: order.status,
+              fulfillment: order.fulfillmentType,
+            ),
+        ],
       ),
+    );
+  }
+}
+
+class _OrderMetaRow extends StatelessWidget {
+  const _OrderMetaRow({required this.order});
+
+  final CustomerOrderVm order;
+
+  String? _paymentLabel() {
+    final raw = order.raw;
+    final p = (raw['paymentMethod'] ?? raw['payment']?['method'])
+        ?.toString()
+        .toUpperCase();
+    if (p == null || p.isEmpty) return null;
+    if (p == 'CARD') return 'بطاقة';
+    if (p == 'CASH') return 'نقداً';
+    return null;
+  }
+
+  String _fulfillmentLabel() {
+    final t = (order.fulfillmentType ?? '').toUpperCase();
+    return t == 'PICKUP' ? 'استلام من المتجر' : 'توصيل';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final payment = _paymentLabel();
+    return Wrap(
+      spacing: NmdSpacing.xs,
+      runSpacing: NmdSpacing.xs,
+      children: [
+        NmdChip(
+          label: _fulfillmentLabel(),
+          variant: NmdChipVariant.status,
+          backgroundColor: NmdColors.infoSoft,
+          foregroundColor: NmdColors.info,
+        ),
+        if (payment != null)
+          NmdChip(
+            label: payment,
+            variant: NmdChipVariant.status,
+            backgroundColor: NmdColors.surfaceMuted,
+            foregroundColor: NmdColors.textSecondary,
+          ),
+        if (order.total != null)
+          NmdChip(
+            label: '₪${order.total!.toStringAsFixed(2)}',
+            variant: NmdChipVariant.status,
+            backgroundColor: NmdColors.tintAliveSoft,
+            foregroundColor: NmdColors.brandPrimary,
+          ),
+      ],
     );
   }
 }
@@ -170,15 +229,14 @@ class _OrderLineItemsBlock extends StatelessWidget {
       children: [
         Text(
           'الأصناف',
-          style: GoogleFonts.cairo(
-            fontSize: 13,
+          style: NmdTypography.label.copyWith(
             fontWeight: FontWeight.w900,
-            color: const Color(0xFF475569),
+            color: NmdColors.textSecondary,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: NmdSpacing.xs),
         for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
+          if (i > 0) const SizedBox(height: NmdSpacing.sm),
           _OrderLineItemRow(raw: items[i]),
         ],
       ],
@@ -199,29 +257,24 @@ class _OrderLineItemRow extends StatelessWidget {
         ? m['productName'].toString().trim()
         : 'منتج';
     final qty = (m['quantity'] is num) ? (m['quantity'] as num).toInt() : 1;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+    return NmdSurface(
+      mode: NmdSurfaceMode.muted,
+      padding: const EdgeInsets.fromLTRB(
+        NmdSpacing.sm,
+        NmdSpacing.xs,
+        NmdSpacing.sm,
+        NmdSpacing.xs,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '$qty × $name',
-              textAlign: TextAlign.right,
-              style: GoogleFonts.cairo(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            OrderItemModifierLines(item: m, compact: true),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$qty × $name',
+            textAlign: TextAlign.right,
+            style: NmdTypography.label.copyWith(fontWeight: FontWeight.w800),
+          ),
+          OrderItemModifierLines(item: m, compact: true),
+        ],
       ),
     );
   }
@@ -240,44 +293,32 @@ class _ServiceOrderSummaryBody extends StatelessWidget {
       children: [
         Text(
           order.isServiceOrder ? 'طلب خدمة' : 'ملخص الطلب',
-          style: GoogleFonts.cairo(
-            fontSize: 14,
+          style: NmdTypography.label.copyWith(
             fontWeight: FontWeight.w900,
-            color: AppColors.primaryTeal,
+            color: NmdColors.brandPrimary,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: NmdSpacing.xs),
         Text(
           order.isServiceOrder
-              ? 'تم استلام طلبك. سيتواصل معك مقدّم الخدمة قريباً. لا يوجد تتبع توصيل لهذا النوع من الطلبات.'
-              : 'تم استلام طلبك. سيتواصل معك المتجر قريباً. لا يوجد تتبع توصيل لهذا الطلب.',
-          style: GoogleFonts.cairo(
-            fontSize: 14,
-            height: 1.5,
-            color: const Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
+              ? 'تم استلام طلبك. سيتواصل معك مقدّم الخدمة قريباً — نحن بجانبك.'
+              : 'تم استلام طلبك. سيتواصل معك المتجر قريباً — شكراً لصبرك.',
+          style: NmdTypography.bodySmall.copyWith(height: 1.5),
         ),
         if (order.total != null) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: NmdSpacing.md),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'المبلغ',
-                style: GoogleFonts.cairo(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF475569),
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.textSecondary,
                 ),
               ),
               Text(
                 '₪${order.total!.toStringAsFixed(2)}',
-                style: GoogleFonts.cairo(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.primaryTeal,
-                ),
+                style: NmdTypography.h3.copyWith(color: NmdColors.brandPrimary),
               ),
             ],
           ),
@@ -293,10 +334,9 @@ class _TimelineStrip extends StatelessWidget {
   final String? status;
   final String? fulfillment;
 
-  /// How many timeline steps are completed (1…n). `0` = cancelled / unknown.
   int _filledSteps(int stepCount) {
     final s = (status ?? '').toUpperCase();
-    if (s == 'CANCELLED') return 0;
+    if (s == 'CANCELLED' || s == 'CANCELED') return 0;
     final pickup = fulfillment == 'PICKUP';
     if (pickup) {
       if (s == 'DELIVERED' || s == 'COMPLETED') return stepCount;
@@ -316,22 +356,38 @@ class _TimelineStrip extends StatelessWidget {
     final steps = pickup
         ? <({String t, IconData i})>[
             (t: 'تم استلام الطلب', i: Icons.receipt_long_outlined),
-            (t: 'جاري التحضير', i: Icons.restaurant_outlined),
+            (t: 'قيد التحضير', i: Icons.restaurant_outlined),
             (t: 'جاهز للاستلام', i: Icons.storefront_outlined),
+            (t: 'مكتمل', i: Icons.check_circle_outline),
           ]
         : <({String t, IconData i})>[
             (t: 'تم استلام الطلب', i: Icons.receipt_long_outlined),
-            (t: 'جاري التحضير', i: Icons.restaurant_outlined),
+            (t: 'قيد التحضير', i: Icons.restaurant_outlined),
             (t: 'في الطريق', i: Icons.delivery_dining_outlined),
-            (t: 'تم التوصيل', i: Icons.check_circle_outline),
+            (t: 'مكتمل', i: Icons.check_circle_outline),
           ];
 
     final filled = _filledSteps(steps.length);
-    if ((status ?? '').toUpperCase() == 'CANCELLED') {
-      return Text(
-        'تم إلغاء هذا الطلب',
-        style: GoogleFonts.cairo(
-            color: const Color(0xFFB91C1C), fontWeight: FontWeight.w700),
+    final s = (status ?? '').toUpperCase();
+    if (s == 'CANCELLED' || s == 'CANCELED') {
+      return NmdSurface(
+        mode: NmdSurfaceMode.muted,
+        padding: const EdgeInsets.all(NmdSpacing.sm),
+        child: Row(
+          children: [
+            const Icon(Icons.cancel_outlined, color: NmdColors.error, size: 20),
+            const SizedBox(width: NmdSpacing.xs),
+            Expanded(
+              child: Text(
+                'تم إلغاء هذا الطلب',
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.error,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
@@ -347,23 +403,28 @@ class _TimelineStrip extends StatelessWidget {
             children: [
               Column(
                 children: [
-                  Container(
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: stepDone ? AppColors.primaryTeal : Colors.white,
+                      color: stepDone
+                          ? NmdColors.brandPrimary
+                          : NmdColors.surfaceBase,
                       border: Border.all(
                         color: active
-                            ? AppColors.secondaryTeal
-                            : const Color(0xFFCBD5E1),
+                            ? NmdColors.brandSecondary
+                            : NmdColors.borderSubtle,
                         width: active ? 2 : 1,
                       ),
                     ),
                     child: Icon(
                       steps[idx].i,
                       size: 16,
-                      color: stepDone ? Colors.white : const Color(0xFF94A3B8),
+                      color: stepDone
+                          ? NmdColors.textOnBrand
+                          : NmdColors.textTertiary,
                     ),
                   ),
                   if (idx < steps.length - 1)
@@ -372,25 +433,24 @@ class _TimelineStrip extends StatelessWidget {
                       height: 18,
                       margin: const EdgeInsets.only(top: 2),
                       color: filled > idx + 1
-                          ? AppColors.primaryTeal.withValues(alpha: 0.45)
-                          : const Color(0xFFE2E8F0),
+                          ? NmdColors.brandPrimary.withValues(alpha: 0.45)
+                          : NmdColors.borderSubtle,
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: NmdSpacing.sm),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     steps[idx].t,
-                    style: GoogleFonts.cairo(
+                    style: NmdTypography.label.copyWith(
                       fontWeight: stepDone || active
                           ? FontWeight.w800
                           : FontWeight.w600,
-                      fontSize: 14,
                       color: stepDone
-                          ? AppColors.primaryTeal
-                          : const Color(0xFF64748B),
+                          ? NmdColors.brandPrimary
+                          : NmdColors.textSecondary,
                     ),
                   ),
                 ),
