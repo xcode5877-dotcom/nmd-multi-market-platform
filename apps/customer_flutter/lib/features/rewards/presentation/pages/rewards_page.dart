@@ -4,16 +4,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shimmer/shimmer.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/rewards_cubit.dart';
 import '../../data/reward_item.dart';
-
-const Color _kRewardsGold = Color(0xFFD4AF37);
 
 class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});
@@ -59,17 +57,35 @@ class _RewardsBody extends StatelessWidget {
         switch (state.status) {
           case RewardsStatus.initial:
           case RewardsStatus.loading:
-            return _RewardsShimmer();
+            return const ColoredBox(
+              color: NmdColors.surfaceCommunity,
+              child: NmdLoading(
+                fullscreen: true,
+                message: 'جاري تحميل المكافآت...',
+                size: NmdLoadingSize.large,
+              ),
+            );
           case RewardsStatus.failure:
-            return _ErrorState(
-              message: state.errorMessage ?? 'خطأ',
-              onRetry: () => context.read<RewardsCubit>().load(),
+            return ColoredBox(
+              color: NmdColors.surfaceCommunity,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(NmdSpacing.xl),
+                  child: NmdCard(
+                    child: NmdErrorState(
+                      title: 'تعذّر تحميل المكافآت',
+                      message: state.errorMessage,
+                      onRetry: () => context.read<RewardsCubit>().load(),
+                    ),
+                  ),
+                ),
+              ),
             );
           case RewardsStatus.loaded:
             return ColoredBox(
-              color: const Color(0xFF0A0E14),
+              color: NmdColors.surfaceCommunity,
               child: RefreshIndicator(
-                color: AppColors.primaryTeal,
+                color: NmdColors.brandPrimary,
                 onRefresh: () async {
                   await Future.wait([
                     context.read<RewardsCubit>().load(),
@@ -82,15 +98,33 @@ class _RewardsBody extends StatelessWidget {
                     parent: BouncingScrollPhysics(),
                   ),
                   slivers: [
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.md,
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.xs,
+                        ),
+                        child: _RewardsCommunityHeader(),
+                      ),
+                    ),
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.xs,
+                          NmdSpacing.screenHorizontal,
+                          NmdSpacing.sm,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: const [
                             _PremiumGlassBalanceCard(),
-                            SizedBox(height: 14),
+                            SizedBox(height: NmdSpacing.sm),
                             _LoyaltyTierProgressSection(),
+                            SizedBox(height: NmdSpacing.sm),
+                            _CommunityParticipationStrip(),
                           ],
                         ),
                       ),
@@ -101,10 +135,30 @@ class _RewardsBody extends StatelessWidget {
                         onSelect: context.read<RewardsCubit>().setFilter,
                       ),
                     ),
+                    if (state.filteredRewards.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            NmdSpacing.screenHorizontal,
+                            NmdSpacing.xs,
+                            NmdSpacing.screenHorizontal,
+                            NmdSpacing.xs,
+                          ),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: NmdBadge(
+                              label:
+                                  '${state.filteredRewards.length} مكافأة متاحة',
+                              tone: NmdBadgeTone.neutral,
+                              compact: true,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (state.filteredRewards.isEmpty)
                       SliverFillRemaining(
                         hasScrollBody: false,
-                        child: _RoyalEmptyState(filter: state.filter),
+                        child: _RewardsFilteredEmptyState(filter: state.filter),
                       )
                     else
                       SliverPadding(
@@ -142,81 +196,99 @@ class _RewardsBody extends StatelessWidget {
   }
 }
 
-class _RewardsShimmer extends StatelessWidget {
-  static const _canvas = Color(0xFF0A0E14);
-  static const _skel = Color(0xFF12171E);
-  static const _skelBorder = Color(0x18FFFFFF);
+/// Community identity header — emotional copy, no fabricated balances.
+class _RewardsCommunityHeader extends StatelessWidget {
+  const _RewardsCommunityHeader();
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _canvas,
-      child: Shimmer.fromColors(
-        baseColor: const Color(0xFF0E131A),
-        highlightColor: const Color(0xFF1A222C),
-        child: ListView(
-          primary: true,
-          padding: const EdgeInsets.all(16),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'مجتمع المكافآت',
+            style: NmdTypography.h1.copyWith(color: NmdColors.textOnDark),
+            textAlign: TextAlign.right,
+          ),
+          const SizedBox(height: NmdSpacing.xxs),
+          Text(
+            'كل طلب وكل مشاركة تقرّبك من مكافآت حقيقية في سوقك المحلي',
+            style: NmdTypography.bodySmall.copyWith(
+              color: NmdColors.textOnDark.withValues(alpha: 0.72),
+            ),
+            textAlign: TextAlign.right,
+          ),
+          const SizedBox(height: NmdSpacing.sm),
+          const Wrap(
+            spacing: NmdSpacing.xs,
+            runSpacing: NmdSpacing.xs,
+            alignment: WrapAlignment.end,
+            children: [
+              NmdBadge(
+                label: 'مجتمع Now Market',
+                tone: NmdBadgeTone.brand,
+                compact: true,
+              ),
+              NmdBadge(
+                label: 'عملات قابلة للاستبدال',
+                tone: NmdBadgeTone.gold,
+                compact: true,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Participation copy only — explains earning without inventing transactions.
+class _CommunityParticipationStrip extends StatelessWidget {
+  const _CommunityParticipationStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return NmdCard(
+      variant: NmdCardVariant.community,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              height: 232,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: _skel,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: _skelBorder),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x40000000),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  ),
-                ],
+                shape: BoxShape.circle,
+                color: NmdColors.brandPrimary.withValues(alpha: 0.35),
+              ),
+              child: const Icon(
+                Icons.groups_rounded,
+                color: NmdColors.brandSecondary,
+                size: 26,
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                shrinkWrap: true,
-                children: List.generate(
-                  4,
-                  (_) => Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 10),
-                    child: Container(
-                      height: 40,
-                      width: 96,
-                      decoration: BoxDecoration(
-                        color: _skel,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: _skelBorder),
-                      ),
+            const SizedBox(width: NmdSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'شارك واحصل',
+                    style:
+                        NmdTypography.h3.copyWith(color: NmdColors.textOnDark),
+                  ),
+                  const SizedBox(height: NmdSpacing.xxs),
+                  Text(
+                    'تجمّع العملات من التسوق والنشاط في السوق — واستبدلها بعروض حصرية للمجتمع.',
+                    style: NmdTypography.bodySmall.copyWith(
+                      color: NmdColors.textOnDark.withValues(alpha: 0.7),
                     ),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ...List.generate(
-              4,
-              (_) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Container(
-                  height: 124,
-                  decoration: BoxDecoration(
-                    color: _skel,
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: _skelBorder),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x38000000),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ),
             ),
           ],
@@ -226,36 +298,26 @@ class _RewardsShimmer extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
+class _RewardsFilteredEmptyState extends StatelessWidget {
+  const _RewardsFilteredEmptyState({required this.filter});
 
-  final String message;
-  final VoidCallback onRetry;
+  final RewardFilter filter;
 
   @override
   Widget build(BuildContext context) {
+    final scope = _filterScopeLabelAr(filter);
     return ColoredBox(
-      color: const Color(0xFF0A0E14),
+      color: NmdColors.surfaceCommunity,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.cairo(color: Colors.white70),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: onRetry,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryTeal,
-                ),
-                child: Text('إعادة المحاولة', style: GoogleFonts.cairo()),
-              ),
-            ],
+          padding: const EdgeInsets.all(NmdSpacing.xl),
+          child: NmdCard(
+            child: NmdEmptyState(
+              icon: Icons.auto_awesome_outlined,
+              title: 'القاعة تنتظر جوائزك',
+              message:
+                  'لا توجد مكافآت في «$scope» حالياً — استمر بجمع العملات، وستُضاف عروض جديدة قريباً.',
+            ),
           ),
         ),
       ),
@@ -267,9 +329,9 @@ class _ErrorState extends StatelessWidget {
 class _PremiumGlassBalanceCard extends StatelessWidget {
   const _PremiumGlassBalanceCard();
 
-  static const _gold = Color(0xFFD4AF37);
+  static const _gold = NmdColors.accentGold;
   static const _slate = Color(0xFF0C1222);
-  static const _teal = Color(0xFF0F766E);
+  static const _teal = NmdColors.brandPrimary;
 
   @override
   Widget build(BuildContext context) {
@@ -416,83 +478,32 @@ class _PremiumGlassBalanceCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Loyalty badge — physical top-right
             Positioned(
               top: 16,
               right: 16,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFFFEF9C3),
-                          Color(0xFFFDE68A),
-                          Color(0xFFFBBF24),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: Colors.amber.shade200.withValues(alpha: 0.5),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.brown.withValues(alpha: 0.35),
-                          blurRadius: 14,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.workspace_premium_rounded,
-                          size: 17,
-                          color: Colors.amber.shade900,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'نادي الولاء',
-                          style: GoogleFonts.cairo(
-                            color: const Color(0xFF422006),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 15,
-                          color: Colors.amber.shade800,
-                        ),
-                      ],
-                    ),
+                  const NmdBadge(
+                    label: 'نادي الولاء',
+                    tone: NmdBadgeTone.gold,
+                    compact: true,
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: NmdSpacing.xxs),
                   Text(
                     'NMD',
-                    style: GoogleFonts.cairo(
-                      color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                    style: NmdTypography.micro.copyWith(
+                      color: NmdColors.textOnDark.withValues(alpha: 0.45),
                     ),
                   ),
-                  if (tier != null)
-                    Text(
-                      tier,
-                      style: GoogleFonts.cairo(
-                        color: Colors.amber.shade100.withValues(alpha: 0.75),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  if (tier != null) ...[
+                    const SizedBox(height: 2),
+                    NmdBadge(
+                      label: tier,
+                      tone: NmdBadgeTone.neutral,
+                      compact: true,
                     ),
+                  ],
                 ],
               ),
             ),
@@ -599,72 +610,58 @@ class _LoyaltyTierProgressSection extends StatelessWidget {
     }
     final b = coins.balance ?? 0;
     final p = loyaltyTierProgressForBalance(b);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF12171E),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x28000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              textDirection: TextDirection.rtl,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'التقدّم للمستوى التالي',
-                  style: GoogleFonts.cairo(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
+    return NmdSurface(
+      mode: NmdSurfaceMode.community,
+      padding: const EdgeInsets.fromLTRB(
+        NmdSpacing.md,
+        NmdSpacing.sm,
+        NmdSpacing.md,
+        NmdSpacing.md,
+      ),
+      borderRadius: NmdRadius.borderMd,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            textDirection: TextDirection.rtl,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'التقدّم للمستوى التالي',
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.textOnDark.withValues(alpha: 0.85),
                 ),
-                Text(
-                  p.isMaxTier ? 'أعلى مستوى' : '${(p.fraction * 100).round()}%',
-                  style: GoogleFonts.cairo(
-                    color: _kRewardsGold,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: p.isMaxTier ? 1.0 : p.fraction.clamp(0.0, 1.0),
-                minHeight: 8,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
-                color: AppColors.primaryTeal,
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              p.isMaxTier
-                  ? 'أنت في مستوى VIP'
-                  : 'المستوى الحالي: ${p.currentTierAr} — باقي ${p.coinsToNext} عملة للوصول إلى ${p.nextTierAr} (${p.nextThreshold} عملة)',
-              textAlign: TextAlign.right,
-              style: GoogleFonts.cairo(
-                color: Colors.white54,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
+              NmdBadge(
+                label: p.isMaxTier
+                    ? 'أعلى مستوى'
+                    : '${(p.fraction * 100).round()}%',
+                tone: NmdBadgeTone.gold,
+                compact: true,
               ),
+            ],
+          ),
+          const SizedBox(height: NmdSpacing.sm),
+          ClipRRect(
+            borderRadius: NmdRadius.borderPill,
+            child: LinearProgressIndicator(
+              value: p.isMaxTier ? 1.0 : p.fraction.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              color: NmdColors.brandSecondary,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: NmdSpacing.sm),
+          Text(
+            p.isMaxTier
+                ? 'أنت في مستوى VIP — شكراً لمشاركتك في مجتمع Now Market'
+                : 'المستوى الحالي: ${p.currentTierAr} — باقي ${p.coinsToNext} عملة للوصول إلى ${p.nextTierAr} (${p.nextThreshold} عملة)',
+            textAlign: TextAlign.right,
+            style: NmdTypography.bodySmall.copyWith(
+              color: NmdColors.textOnDark.withValues(alpha: 0.55),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -927,15 +924,16 @@ class _FilterChipsRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Padding(
-            padding:
-                const EdgeInsetsDirectional.only(start: 16, end: 16, bottom: 8),
+            padding: const EdgeInsetsDirectional.only(
+              start: NmdSpacing.screenHorizontal,
+              end: NmdSpacing.screenHorizontal,
+              bottom: NmdSpacing.xs,
+            ),
             child: Text(
-              'تصفية حسب النوع',
-              style: GoogleFonts.cairo(
-                color: AppColors.secondaryTeal.withValues(alpha: 0.85),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
+              'اكتشف مكافآت المجتمع',
+              textAlign: TextAlign.right,
+              style: NmdTypography.label.copyWith(
+                color: NmdColors.brandSecondary.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -1115,226 +1113,6 @@ class _GlowTealFilterPill extends StatelessWidget {
   }
 }
 
-/// Royal hall empty state — illustration + encouraging copy (web parity).
-class _RoyalEmptyState extends StatelessWidget {
-  const _RoyalEmptyState({required this.filter});
-
-  final RewardFilter filter;
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = _filterScopeLabelAr(filter);
-    return ColoredBox(
-      color: const Color(0xFF0A0E14),
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.amber.shade400.withValues(alpha: 0.22),
-              ),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF1E293B).withValues(alpha: 0.95),
-                  const Color(0xFF020617),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  blurRadius: 40,
-                  offset: const Offset(0, 16),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(0, -0.65),
-                          radius: 1.2,
-                          colors: [
-                            _kRewardsGold.withValues(alpha: 0.12),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          height: 168,
-                          child: CustomPaint(
-                            painter: _RoyalHallIllustrationPainter(),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'القاعة الملكية تنتظر جوائزك',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.cairo(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            height: 1.35,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'لا توجد مكافآت في «$scope» حالياً — استمر بجمع العملات، وستُضاف عروض جديدة قريباً.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.cairo(
-                            color: Colors.white.withValues(alpha: 0.78),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            height: 1.55,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.auto_awesome,
-                              size: 16,
-                              color: Colors.amber.shade200,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'أنت في نادي الولاء — المكان الصحيح للمكافآت',
-                              style: GoogleFonts.cairo(
-                                color: Colors.amber.shade200
-                                    .withValues(alpha: 0.85),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Lightweight SVG-style illustration: arch, crown, sparkles (matches web spirit).
-class _RoyalHallIllustrationPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cx = w / 2;
-
-    final arch = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..shader = LinearGradient(
-        colors: [
-          const Color(0xFFFDE68A),
-          _kRewardsGold,
-          const Color(0xFF92400E),
-        ],
-      ).createShader(Rect.fromLTWH(0, h * 0.2, w, h * 0.5));
-
-    final archPath = Path()
-      ..moveTo(w * 0.08, h * 0.72)
-      ..quadraticBezierTo(cx, h * 0.12, w * 0.92, h * 0.72);
-    canvas.drawPath(archPath, arch);
-
-    final glowOval = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          AppColors.secondaryTeal.withValues(alpha: 0.25),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromCenter(
-        center: Offset(cx, h * 0.62),
-        width: w * 0.62,
-        height: h * 0.38,
-      ));
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx, h * 0.62),
-        width: w * 0.62,
-        height: h * 0.36,
-      ),
-      glowOval,
-    );
-
-    final crown = Path()
-      ..moveTo(cx - 52, h * 0.52)
-      ..lineTo(cx - 36, h * 0.22)
-      ..lineTo(cx - 20, h * 0.36)
-      ..lineTo(cx, h * 0.14)
-      ..lineTo(cx + 20, h * 0.36)
-      ..lineTo(cx + 36, h * 0.22)
-      ..lineTo(cx + 52, h * 0.52)
-      ..close();
-
-    final crownFill = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          const Color(0xFFFEF9C3),
-          _kRewardsGold,
-          const Color(0xFF92400E),
-        ],
-      ).createShader(Rect.fromLTWH(cx - 54, h * 0.12, 108, h * 0.45));
-
-    canvas.drawPath(crown, crownFill);
-
-    final gem = Paint()..color = const Color(0xFFFEF3C7);
-    canvas.drawCircle(Offset(cx - 28, h * 0.56), 3.2, gem);
-    canvas.drawCircle(Offset(cx, h * 0.58), 3.8, gem);
-    canvas.drawCircle(Offset(cx + 28, h * 0.56), 3.2, gem);
-
-    void sparkle(double x, double y, double r, Color c) {
-      final p = Paint()..color = c;
-      final star = Path()
-        ..moveTo(x, y - r)
-        ..lineTo(x + r * 0.25, y - r * 0.25)
-        ..lineTo(x + r, y)
-        ..lineTo(x + r * 0.25, y + r * 0.25)
-        ..lineTo(x, y + r)
-        ..lineTo(x - r * 0.25, y + r * 0.25)
-        ..lineTo(x - r, y)
-        ..lineTo(x - r * 0.25, y - r * 0.25)
-        ..close();
-      canvas.drawPath(star, p);
-    }
-
-    sparkle(w * 0.88, h * 0.2, 5, const Color(0xFFFDE68A));
-    sparkle(
-        w * 0.1, h * 0.26, 4, AppColors.secondaryTeal.withValues(alpha: 0.95));
-    sparkle(cx, h * 0.08, 5, const Color(0xFFFCD34D));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 /// Admin image on top; teal gradient fallback when missing.
 class _RewardTicketHeroImage extends StatelessWidget {
   const _RewardTicketHeroImage({required this.imageUrl});
@@ -1379,9 +1157,9 @@ class _RewardImagePlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.primaryTeal.withValues(alpha: 0.55),
-            const Color(0xFF0F172A),
-            AppColors.secondaryTeal.withValues(alpha: 0.45),
+            NmdColors.brandPrimary.withValues(alpha: 0.55),
+            NmdColors.surfaceCommunitySoft,
+            NmdColors.brandSecondary.withValues(alpha: 0.45),
           ],
         ),
       ),
@@ -1415,6 +1193,7 @@ class _TicketRewardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.titleAr.isNotEmpty ? item.titleAr : item.titleEn;
     final categoryLine = rewardCategoryHeaderAr(item.type);
+    final valueLine = valueLabelFor(item);
     final canAfford =
         isAuthenticated && balance != null && balance! >= item.coinsCost;
     final canRedeem = canAfford && !item.locked;
@@ -1433,7 +1212,7 @@ class _TicketRewardCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(_ticketRadius),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryTeal.withValues(alpha: 0.12),
+                color: NmdColors.brandPrimary.withValues(alpha: 0.12),
                 blurRadius: 24,
                 offset: const Offset(0, 10),
                 spreadRadius: -4,
@@ -1511,24 +1290,25 @@ class _TicketRewardCard extends StatelessWidget {
                                         height: 1.25,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: NmdSpacing.xs),
+                                    NmdBadge(
+                                      label: categoryLine,
+                                      tone: NmdBadgeTone.brand,
+                                      compact: true,
+                                    ),
+                                    const SizedBox(height: NmdSpacing.xs),
                                     Text(
-                                      categoryLine,
-                                      style: GoogleFonts.cairo(
-                                        color: AppColors.secondaryTeal,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.2,
+                                      valueLine,
+                                      style: NmdTypography.bodySmall.copyWith(
+                                        color: NmdColors.textOnDark
+                                            .withValues(alpha: 0.75),
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '${item.coinsCost} عملة',
-                                      style: GoogleFonts.cairo(
-                                        color: Colors.white54,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    const SizedBox(height: NmdSpacing.xs),
+                                    NmdBadge(
+                                      label: '${item.coinsCost} عملة',
+                                      tone: NmdBadgeTone.gold,
+                                      compact: true,
                                     ),
                                   ],
                                 ),
@@ -1549,20 +1329,18 @@ class _TicketRewardCard extends StatelessWidget {
                                 children: [
                                   if (item.locked)
                                     Text(
-                                      item.lockReason == 'EXPIRED'
-                                          ? 'منتهي'
-                                          : item.lockReason == 'SOLD_OUT'
-                                              ? 'نفدت الكمية'
-                                              : 'غير متاح',
+                                      lockLabel,
                                       textAlign: TextAlign.center,
-                                      style: GoogleFonts.cairo(
-                                        color: Colors.white38,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
+                                      style: NmdTypography.micro.copyWith(
+                                        color: NmdColors.textOnDark
+                                            .withValues(alpha: 0.45),
                                       ),
                                     )
                                   else if (!isAuthenticated)
-                                    FilledButton(
+                                    NmdButton(
+                                      label: 'دخول',
+                                      size: NmdButtonSize.compact,
+                                      expand: false,
                                       onPressed: () async {
                                         final ok =
                                             await ensureCustomerAuth(context);
@@ -1574,25 +1352,14 @@ class _TicketRewardCard extends StatelessWidget {
                                               .load(),
                                         ]);
                                       },
-                                      style: FilledButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 10,
-                                        ),
-                                        backgroundColor: AppColors.primaryTeal,
-                                        shape: const StadiumBorder(),
-                                        minimumSize: Size.zero,
-                                      ),
-                                      child: Text(
-                                        'دخول',
-                                        style: GoogleFonts.cairo(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
                                     )
                                   else
-                                    FilledButton(
+                                    NmdButton(
+                                      label:
+                                          canRedeem ? 'استبدال' : 'أكمل النقاط',
+                                      size: NmdButtonSize.compact,
+                                      expand: false,
+                                      loading: redeeming,
                                       onPressed: canRedeem && !redeeming
                                           ? () async {
                                               final err = await context
@@ -1640,39 +1407,9 @@ class _TicketRewardCard extends StatelessWidget {
                                               }
                                             }
                                           : null,
-                                      style: FilledButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 10,
-                                        ),
-                                        backgroundColor: canRedeem
-                                            ? AppColors.primaryTeal
-                                            : Colors.white12,
-                                        disabledBackgroundColor: Colors.white12,
-                                        shape: const StadiumBorder(),
-                                        minimumSize: Size.zero,
-                                      ),
-                                      child: redeeming
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.white,
-                                              ),
-                                            )
-                                          : Text(
-                                              canRedeem
-                                                  ? 'استبدال'
-                                                  : 'أكمل النقاط',
-                                              style: GoogleFonts.cairo(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w800,
-                                                color: canRedeem
-                                                    ? Colors.white
-                                                    : Colors.white38,
-                                              ),
-                                            ),
+                                      variant: canRedeem
+                                          ? NmdButtonVariant.primary
+                                          : NmdButtonVariant.secondary,
                                     ),
                                 ],
                               ),
