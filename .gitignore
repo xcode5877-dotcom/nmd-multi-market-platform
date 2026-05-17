@@ -9,5 +9,19 @@ coverage
 .vscode
 .DS_Store
 
+# Tooling / local caches (never commit)
+.pnpm-store/
+.gradle-local/
+*.pid
+.tmp-*.html
+
+# Apple code signing — private keys must never be committed
+certs/**/ios_distribution_private.key
+*.p12
+certs/**/*.base64.txt
+*.mobileprovision
+
 # Full backup lives on disk only (see BACKUP_MARCH_2026/README.md if present)
 BACKUP_MARCH_2026/
+node_modules
+node_modules
