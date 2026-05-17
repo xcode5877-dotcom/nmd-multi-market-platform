@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../api/models/pizza_placement.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 
 /// Tristate control: full pizza / left half / right half (web `PizzaAddonsSelector` order L–W–R in LTR).
 class PizzaSideToggle extends StatelessWidget {
@@ -30,8 +30,8 @@ class PizzaSideToggle extends StatelessWidget {
             child: _HalfCirclePainterWidget(
               side: _HalfSide.left,
               ink: v == PizzaPlacement.left
-                  ? Colors.white
-                  : const Color(0xFF0F766E),
+                  ? NmdColors.textOnBrand
+                  : NmdColors.brandPrimary,
             ),
           ),
           const SizedBox(width: 4),
@@ -41,8 +41,8 @@ class PizzaSideToggle extends StatelessWidget {
             child: _HalfCirclePainterWidget(
               side: _HalfSide.full,
               ink: v == PizzaPlacement.whole
-                  ? Colors.white
-                  : const Color(0xFF0F766E),
+                  ? NmdColors.textOnBrand
+                  : NmdColors.brandPrimary,
             ),
           ),
           const SizedBox(width: 4),
@@ -52,8 +52,8 @@ class PizzaSideToggle extends StatelessWidget {
             child: _HalfCirclePainterWidget(
               side: _HalfSide.right,
               ink: v == PizzaPlacement.right
-                  ? Colors.white
-                  : const Color(0xFF0F766E),
+                  ? NmdColors.textOnBrand
+                  : NmdColors.brandPrimary,
             ),
           ),
         ],
@@ -75,9 +75,8 @@ class _SideButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final teal = AppColors.primaryTeal;
     return Material(
-      color: selected ? teal : Colors.transparent,
+      color: selected ? NmdColors.brandPrimary : NmdColors.surfaceMuted,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
@@ -85,8 +84,10 @@ class _SideButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: IconTheme(
-            data:
-                IconThemeData(color: selected ? Colors.white : teal, size: 22),
+            data: IconThemeData(
+              color: selected ? NmdColors.textOnBrand : NmdColors.brandPrimary,
+              size: 22,
+            ),
             child: child,
           ),
         ),

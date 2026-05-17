@@ -1,12 +1,13 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/models/product.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../cart/application/cart_cubit.dart';
 
-/// Product quick view with Add to cart (Now Market teal actions).
+/// Product quick view with Add to cart (Now Market design system).
 Future<void> showProductDetailsBottomSheet(
   BuildContext context, {
   required String tenantId,
@@ -58,6 +59,75 @@ class _ProductSheetBody extends StatefulWidget {
 class _ProductSheetBodyState extends State<_ProductSheetBody> {
   int _qty = 1;
 
+  void _addToCart({
+    required BuildContext context,
+    required Product parsed,
+    required String productId,
+    required String name,
+    required double price,
+    required String imageUrl,
+  }) {
+    final cart = context.read<CartCubit>();
+    if (cart.hasDifferentTenant(widget.tenantId)) {
+      showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('متجر مختلف', style: NmdTypography.h3),
+          content: Text(
+            'سلتك تحتوي على منتجات من متجر آخر. هل تريد إفراغ السلة والبدء بالطلب من هذا المتجر؟',
+            textAlign: TextAlign.right,
+            style: NmdTypography.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('إلغاء', style: NmdTypography.label),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('إفراغ السلة والبدء مجدداً'),
+            ),
+          ],
+        ),
+      ).then((ok) {
+        if (ok != true || !context.mounted) return;
+        cart.clear();
+        cart.addOrIncrement(
+          tenantId: widget.tenantId,
+          productId: productId,
+          name: name,
+          unitPrice: price,
+          imageUrl: imageUrl,
+          addQty: _qty,
+          optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
+        );
+        Navigator.of(context).pop();
+      });
+      return;
+    }
+    cart.addOrIncrement(
+      tenantId: widget.tenantId,
+      productId: productId,
+      name: name,
+      unitPrice: price,
+      imageUrl: imageUrl,
+      addQty: _qty,
+      optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
+    );
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'تمت الإضافة للسلة',
+          style: NmdTypography.body.copyWith(color: NmdColors.textOnBrand),
+        ),
+        backgroundColor: NmdColors.brandPrimary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: NmdRadius.borderSm),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.product;
@@ -67,221 +137,167 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
     final price = parsed.basePrice;
     final productId = p['id']?.toString() ?? '';
     final imageUrl = productImageUrl(p);
+    final lineTotal = price * _qty;
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final canAdd = parsed.canAddToCart;
 
     return AnimatedPadding(
-      duration: const Duration(milliseconds: 120),
-      curve: Curves.easeOut,
+      duration: NmdMotion.fast,
+      curve: NmdMotion.standard,
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(context).height * 0.88,
         ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: NmdColors.surfaceBase,
+          borderRadius: NmdRadius.borderTopSheet,
+          boxShadow: NmdShadows.lg,
         ),
         child: SafeArea(
           top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 10),
+              const SizedBox(height: NmdSpacing.sm),
               Container(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
-                  borderRadius: BorderRadius.circular(999),
+                  color: NmdColors.borderSubtle,
+                  borderRadius: NmdRadius.borderPill,
                 ),
               ),
               Flexible(
                 child: SingleChildScrollView(
                   primary: false,
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    NmdSpacing.md,
+                    NmdSpacing.md,
+                    NmdSpacing.md,
+                    NmdSpacing.sm,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       AspectRatio(
                         aspectRatio: 1,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: _heroImage(
-                            heroTag: widget.heroTag,
-                            imageUrl: imageUrl,
-                            productId: productId,
+                          borderRadius: NmdRadius.borderLg,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _heroImage(
+                                heroTag: widget.heroTag,
+                                imageUrl: imageUrl,
+                                productId: productId,
+                              ),
+                              if (!canAdd)
+                                PositionedDirectional(
+                                  top: NmdSpacing.sm,
+                                  end: NmdSpacing.sm,
+                                  child: const NmdBadge(
+                                    label: 'غير متوفر',
+                                    tone: NmdBadgeTone.neutral,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: NmdSpacing.md),
                       Text(
                         name,
                         textAlign: TextAlign.right,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF0A0A0A),
-                            ),
+                        style: NmdTypography.h2,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '₪${price.toStringAsFixed(2)}',
-                        textAlign: TextAlign.right,
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: AppColors.primaryTeal,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                      const SizedBox(height: NmdSpacing.xxs),
+                      Row(
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          Text(
+                            '₪${price.toStringAsFixed(2)}',
+                            style: NmdTypography.h1.copyWith(
+                              color: NmdColors.brandPrimary,
+                              fontSize: 22,
+                            ),
+                          ),
+                          if (_qty > 1) ...[
+                            const SizedBox(width: NmdSpacing.sm),
+                            Text(
+                              '· الإجمالي ₪${lineTotal.toStringAsFixed(2)}',
+                              style: NmdTypography.bodySmall,
+                            ),
+                          ],
+                        ],
                       ),
                       if (description.isNotEmpty) ...[
-                        const SizedBox(height: 10),
+                        const SizedBox(height: NmdSpacing.sm),
                         Text(
                           description,
                           textAlign: TextAlign.right,
-                          maxLines: 4,
+                          maxLines: 6,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: const Color(0xFF475569),
-                                  ),
+                          style: NmdTypography.body.copyWith(
+                            color: NmdColors.textSecondary,
+                            height: 1.55,
+                          ),
                         ),
                       ],
                     ],
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Row(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0x330F766E)),
-                        borderRadius: BorderRadius.circular(999),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: NmdColors.surfaceBase,
+                  border: Border(
+                    top: BorderSide(
+                        color: NmdColors.borderSubtle.withValues(alpha: 0.9)),
+                  ),
+                  boxShadow: NmdShadows.sm,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    NmdSpacing.md,
+                    NmdSpacing.sm,
+                    NmdSpacing.md,
+                    NmdSpacing.md,
+                  ),
+                  child: Row(
+                    children: [
+                      _QtyStepper(
+                        qty: _qty,
+                        onDecrement: () =>
+                            setState(() => _qty = _qty > 1 ? _qty - 1 : 1),
+                        onIncrement: () => setState(() => _qty++),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: () =>
-                                setState(() => _qty = _qty > 1 ? _qty - 1 : 1),
-                            icon: const Text('−',
-                                style: TextStyle(
-                                    color: AppColors.primaryTeal,
-                                    fontSize: 18)),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              '$_qty',
-                              style: const TextStyle(
-                                color: AppColors.primaryTeal,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => setState(() => _qty++),
-                            icon: const Text('+',
-                                style: TextStyle(
-                                    color: AppColors.primaryTeal,
-                                    fontSize: 18)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SizedBox(
-                        height: 52,
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.primaryTeal,
-                            foregroundColor: AppColors.textOnTeal,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
+                      const SizedBox(width: NmdSpacing.sm),
+                      Expanded(
+                        child: NmdButton(
+                          label: canAdd ? 'أضف للسلة' : 'غير متوفر حالياً',
                           onPressed: productId.isEmpty || !canAdd
                               ? null
-                              : () {
-                                  final cart = context.read<CartCubit>();
-                                  if (cart
-                                      .hasDifferentTenant(widget.tenantId)) {
-                                    showDialog<bool>(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text('متجر مختلف'),
-                                        content: const Text(
-                                          'سلتك تحتوي على منتجات من متجر آخر. هل تريد إفراغ السلة والبدء بالطلب من هذا المتجر؟',
-                                          textAlign: TextAlign.right,
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(context)
-                                                    .pop(false),
-                                            child: const Text('إلغاء'),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () =>
-                                                Navigator.of(context).pop(true),
-                                            child: const Text(
-                                                'إفراغ السلة والبدء مجدداً'),
-                                          ),
-                                        ],
-                                      ),
-                                    ).then((ok) {
-                                      if (ok != true || !context.mounted)
-                                        return;
-                                      cart.clear();
-                                      cart.addOrIncrement(
-                                        tenantId: widget.tenantId,
-                                        productId: productId,
-                                        name: name,
-                                        unitPrice: price,
-                                        imageUrl: imageUrl,
-                                        addQty: _qty,
-                                        optionGroupsJson:
-                                            optionGroupsToOrderJson(
-                                                parsed.optionGroups),
-                                      );
-                                      Navigator.of(context).pop();
-                                    });
-                                    return;
-                                  }
-                                  cart.addOrIncrement(
-                                    tenantId: widget.tenantId,
+                              : () => _addToCart(
+                                    context: context,
+                                    parsed: parsed,
                                     productId: productId,
                                     name: name,
-                                    unitPrice: price,
+                                    price: price,
                                     imageUrl: imageUrl,
-                                    addQty: _qty,
-                                    optionGroupsJson: optionGroupsToOrderJson(
-                                        parsed.optionGroups),
-                                  );
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'تمت الإضافة للسلة',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(color: Colors.white),
-                                      ),
-                                      backgroundColor: AppColors.primaryTeal,
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                },
-                          child:
-                              Text(canAdd ? 'أضف للسلة' : 'غير متوفر حالياً'),
+                                  ),
+                          icon: canAdd
+                              ? const Icon(
+                                  Icons.add_shopping_cart_rounded,
+                                  size: 20,
+                                  color: NmdColors.textOnBrand,
+                                )
+                              : null,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -297,11 +313,66 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
     required String productId,
   }) {
     final child = imageUrl.isEmpty
-        ? const ColoredBox(color: Color(0xFFF1F5F9))
-        : Image.network(imageUrl, fit: BoxFit.cover);
+        ? ColoredBox(
+            color: NmdColors.tintAliveSoft,
+            child: Icon(
+              Icons.fastfood_outlined,
+              size: 48,
+              color: NmdColors.brandPrimary.withValues(alpha: 0.4),
+            ),
+          )
+        : CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.cover,
+            fadeInDuration: NmdMotion.fast,
+          );
     if (heroTag != null && heroTag.isNotEmpty) {
       return Hero(tag: heroTag, child: child);
     }
     return child;
+  }
+}
+
+class _QtyStepper extends StatelessWidget {
+  const _QtyStepper({
+    required this.qty,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  final int qty;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: NmdColors.borderBrand),
+        borderRadius: NmdRadius.borderPill,
+        color: NmdColors.tintAliveMuted,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: onDecrement,
+            icon:
+                const Icon(Icons.remove_rounded, color: NmdColors.brandPrimary),
+            visualDensity: VisualDensity.compact,
+          ),
+          Text(
+            '$qty',
+            style:
+                NmdTypography.bodyBold.copyWith(color: NmdColors.brandPrimary),
+          ),
+          IconButton(
+            onPressed: onIncrement,
+            icon: const Icon(Icons.add_rounded, color: NmdColors.brandPrimary),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
   }
 }

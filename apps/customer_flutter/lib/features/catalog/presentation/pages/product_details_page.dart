@@ -5,15 +5,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../api/models/pizza_placement.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
-import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../../features/cart/domain/cart_selected_option.dart';
-import '../../../../widgets/global_nmd_header.dart';
+import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../data/pillar_kind.dart';
 import '../../data/tenant_contact_info.dart';
 import '../widgets/pizza_side_toggle.dart';
@@ -331,9 +330,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                           ? Container(
                               width: size,
                               height: size,
-                              color: AppColors.primaryTeal,
+                              color: NmdColors.brandPrimary,
                               alignment: Alignment.center,
-                              child: const Icon(Icons.add, color: Colors.white),
+                              child: const Icon(
+                                Icons.add,
+                                color: NmdColors.textOnBrand,
+                              ),
                             )
                           : CachedNetworkImage(
                               imageUrl: imageUrl,
@@ -374,40 +376,16 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         builder: (context, snap) {
           if (snap.hasError) {
             return Scaffold(
-              backgroundColor: Colors.white,
+              backgroundColor: NmdColors.surfaceBase,
               body: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  GlobalNmdHeader(
-                    marketSlug: widget.marketSlug,
-                    onLeadingPressed: () => context.pop(),
-                  ),
+                  _productHeader(context, showCart: true),
                   Expanded(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.store_outlined,
-                                size: 50, color: AppColors.primaryTeal),
-                            const SizedBox(height: 12),
-                            Text(
-                              'تعذر تحميل المنتج',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 10),
-                            OutlinedButton(
-                              onPressed: () =>
-                                  setState(() => _future = _load()),
-                              child: const Text('إعادة المحاولة'),
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: NmdErrorState(
+                      title: 'تعذر تحميل المنتج',
+                      message: snap.error.toString(),
+                      onRetry: () => setState(() => _future = _load()),
                     ),
                   ),
                 ],
@@ -417,19 +395,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 
           if (!snap.hasData) {
             return Scaffold(
-              backgroundColor: Colors.white,
+              backgroundColor: NmdColors.surfaceBase,
               body: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  GlobalNmdHeader(
-                    marketSlug: widget.marketSlug,
-                    onLeadingPressed: () => context.pop(),
-                  ),
+                  _productHeader(context, showCart: true),
                   const Expanded(
-                    child: Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primaryTeal),
-                    ),
+                    child: NmdLoading(message: 'جاري تحميل المنتج...'),
                   ),
                 ],
               ),
@@ -452,15 +424,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           final bottomPadding = MediaQuery.of(context).padding.bottom;
 
           return Scaffold(
-            backgroundColor: Colors.white,
+            backgroundColor: NmdColors.surfaceBase,
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                GlobalNmdHeader(
-                  marketSlug: widget.marketSlug,
-                  cartIconKey: isServices ? null : _cartIconKey,
-                  onLeadingPressed: () => context.pop(),
+                _productHeader(
+                  context,
                   showCart: !isServices,
+                  cartIconKey: isServices ? null : _cartIconKey,
                 ),
                 Expanded(
                   child: CustomScrollView(
@@ -481,17 +452,20 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                     child: SizedBox(
                                       key: _imageKey,
                                       child: product.imageUrl.isEmpty
-                                          ? const ColoredBox(
-                                              color: Colors.white)
+                                          ? ColoredBox(
+                                              color: NmdColors.tintAliveSoft)
                                           : CachedNetworkImage(
                                               imageUrl: product.imageUrl,
                                               fit: BoxFit.cover,
+                                              fadeInDuration: NmdMotion.fast,
                                               placeholder: (_, __) =>
-                                                  const ColoredBox(
-                                                      color: Colors.white),
+                                                  ColoredBox(
+                                                color: NmdColors.tintAliveMuted,
+                                              ),
                                               errorWidget: (_, __, ___) =>
-                                                  const ColoredBox(
-                                                      color: Colors.white),
+                                                  ColoredBox(
+                                                color: NmdColors.tintAliveMuted,
+                                              ),
                                             ),
                                     ),
                                   ),
@@ -522,7 +496,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       ),
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
+                          padding: const EdgeInsets.fromLTRB(
+                            NmdSpacing.md,
+                            NmdSpacing.lg,
+                            NmdSpacing.md,
+                            NmdSpacing.md,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -536,44 +515,41 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.right,
-                                      style: GoogleFonts.cairo(
-                                        fontWeight: FontWeight.w900,
+                                      style: NmdTypography.h1.copyWith(
                                         fontSize: 20,
-                                        color: const Color(0xFF0A0A0A),
                                         height: 1.25,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    '₪${product.basePrice.toStringAsFixed(2)}',
-                                    style: GoogleFonts.cairo(
-                                      color: AppColors.primaryTeal,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 18,
-                                    ),
+                                  const SizedBox(width: NmdSpacing.sm),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '₪${computedUnitPrice.toStringAsFixed(2)}',
+                                        style: NmdTypography.h2.copyWith(
+                                          color: NmdColors.brandPrimary,
+                                        ),
+                                      ),
+                                      if (computedUnitPrice !=
+                                          product.basePrice)
+                                        Text(
+                                          'أساسي ₪${product.basePrice.toStringAsFixed(2)}',
+                                          style: NmdTypography.micro.copyWith(
+                                            color: NmdColors.textTertiary,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
                               if (storeClosed || !product.canAddToCart) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE5E7EB),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    storeClosed
-                                        ? 'المحل مغلق حالياً'
-                                        : 'غير متوفر حالياً',
-                                    style: GoogleFonts.cairo(
-                                      color: const Color(0xFF374151),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                    ),
-                                  ),
+                                const SizedBox(height: NmdSpacing.xs),
+                                NmdBadge(
+                                  label: storeClosed
+                                      ? 'المحل مغلق حالياً'
+                                      : 'غير متوفر حالياً',
+                                  tone: NmdBadgeTone.neutral,
                                 ),
                               ],
                               if (desc.isNotEmpty) ...[
@@ -586,36 +562,29 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                       const SizedBox(height: 12),
                                       Text(
                                         shownDesc,
-                                        style: GoogleFonts.cairo(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w400,
-                                          color: const Color(0xFF4B5563),
-                                          height: 1.55,
+                                        style: NmdTypography.bodySmall.copyWith(
+                                          height: 1.6,
                                         ),
                                       ),
                                       if (shouldReadMore) ...[
-                                        const SizedBox(height: 8),
+                                        const SizedBox(height: NmdSpacing.xs),
                                         GestureDetector(
                                           onTap: () => setState(() =>
                                               _descExpanded = !_descExpanded),
                                           child: Text(
                                             _descExpanded
-                                                ? 'Read Less'
-                                                : 'Read More',
-                                            style: TextStyle(
-                                              color: AppColors.primaryTeal,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12,
+                                                ? 'عرض أقل'
+                                                : 'عرض المزيد',
+                                            style: NmdTypography.label.copyWith(
+                                              color: NmdColors.brandPrimary,
                                             ),
                                           ),
                                         ),
                                       ],
-                                      const SizedBox(height: 8),
-                                      Divider(
+                                      const SizedBox(height: NmdSpacing.sm),
+                                      const Divider(
                                         height: 1,
-                                        thickness: 0.8,
-                                        color: const Color(0xFFE5E7EB)
-                                            .withValues(alpha: 0.9),
+                                        color: NmdColors.divider,
                                       ),
                                     ],
                                   ),
@@ -674,7 +643,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
             bottomNavigationBar: isServices
                 ? null
                 : Padding(
-                    padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 24),
+                    padding: EdgeInsets.fromLTRB(
+                      NmdSpacing.md,
+                      0,
+                      NmdSpacing.md,
+                      bottomPadding + NmdSpacing.lg,
+                    ),
                     child: AnimatedBuilder(
                       animation: _dockScale,
                       builder: (context, child) => Transform.scale(
@@ -682,57 +656,48 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                         child: child,
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: NmdRadius.borderPill,
                         child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                          child: Container(
-                            height: 66,
-                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0x26D5FAF5),
-                              border:
-                                  Border.all(color: Colors.white24, width: 0.5),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x26000000),
-                                  blurRadius: 16,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
+                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                          child: NmdSurface(
+                            mode: NmdSurfaceMode.alive,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: NmdSpacing.sm,
+                              vertical: NmdSpacing.xs,
                             ),
+                            borderRadius: NmdRadius.borderPill,
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Container(
-                                  width: 54,
-                                  height: 54,
+                                  width: 56,
+                                  height: 56,
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xDD0F172A),
+                                    color: NmdColors.brandPrimary,
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: const Color(0x335EEAD4)),
+                                    boxShadow: NmdShadows.brandGlow(alpha: 0.2),
                                   ),
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
                                     child: Text(
-                                      '${computedUnitPrice.toStringAsFixed(2)}₪',
-                                      style: GoogleFonts.cairo(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 11.5,
-                                        color: Colors.white,
+                                      '₪${computedUnitPrice.toStringAsFixed(2)}',
+                                      style: NmdTypography.label.copyWith(
+                                        color: NmdColors.textOnBrand,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                _GlassAddToCartFabButton(
-                                  disabled:
-                                      storeClosed || !product.canAddToCart,
-                                  onPressed: () => _handleAddToCart(
-                                    product: product,
-                                    computedUnitPrice: computedUnitPrice,
-                                    storeClosed: storeClosed,
+                                const SizedBox(width: NmdSpacing.sm),
+                                Expanded(
+                                  child: _GlassAddToCartFabButton(
+                                    disabled:
+                                        storeClosed || !product.canAddToCart,
+                                    onPressed: () => _handleAddToCart(
+                                      product: product,
+                                      computedUnitPrice: computedUnitPrice,
+                                      storeClosed: storeClosed,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -745,6 +710,27 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           );
         },
       ),
+    );
+  }
+
+  Widget _productHeader(
+    BuildContext context, {
+    required bool showCart,
+    GlobalKey? cartIconKey,
+  }) {
+    return NmdAppHeader(
+      title: '',
+      center: const SizedBox.shrink(),
+      leading: NmdAppHeader.backLeading(onPressed: () => context.pop()),
+      actions: [
+        if (showCart)
+          GlobalCartIcon(
+            marketSlug: widget.marketSlug,
+            iconKey: cartIconKey,
+            iconColor: NmdColors.textOnBrand,
+            style: NmdAppHeader.plainIconStyle(),
+          ),
+      ],
     );
   }
 }
@@ -780,120 +766,15 @@ class _GlassAddToCartFabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gradient = disabled
-        ? const LinearGradient(
-            colors: [Color(0xFF9CA3AF), Color(0xFF6B7280)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-        : const LinearGradient(
-            colors: [Color(0xFF14B8A6), Color(0xFF0F766E)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          );
-
-    return Opacity(
-      opacity: disabled ? 0.78 : 1,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x5514B8A6),
-              spreadRadius: 0,
-              blurRadius: 8,
-              offset: Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: disabled ? null : onPressed,
-            borderRadius: BorderRadius.circular(999),
-            child: Ink(
-              decoration: BoxDecoration(
-                gradient: gradient,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.shopping_cart_outlined,
-                        size: 16, color: Colors.white),
-                    const SizedBox(width: 6),
-                    _ShimmerText(
-                      text: 'أضف للسلة',
-                      style: GoogleFonts.cairo(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+    return NmdButton(
+      label: 'أضف للسلة',
+      onPressed: disabled ? null : onPressed,
+      icon: const Icon(
+        Icons.shopping_cart_outlined,
+        size: 20,
+        color: NmdColors.textOnBrand,
       ),
-    );
-  }
-}
-
-class _ShimmerText extends StatefulWidget {
-  const _ShimmerText({
-    required this.text,
-    required this.style,
-  });
-
-  final String text;
-  final TextStyle style;
-
-  @override
-  State<_ShimmerText> createState() => _ShimmerTextState();
-}
-
-class _ShimmerTextState extends State<_ShimmerText>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final t = _controller.value;
-        return ShaderMask(
-          shaderCallback: (rect) {
-            return LinearGradient(
-              begin: Alignment(-1 + (2 * t), 0),
-              end: Alignment(1 + (2 * t), 0),
-              colors: const [
-                Color(0xCCFFFFFF),
-                Colors.white,
-                Color(0xCCFFFFFF),
-              ],
-              stops: const [0.2, 0.5, 0.8],
-            ).createShader(rect);
-          },
-          blendMode: BlendMode.srcATop,
-          child: Text(widget.text, style: widget.style),
-        );
-      },
+      size: NmdButtonSize.medium,
     );
   }
 }
@@ -923,144 +804,132 @@ class _OptionGroupChips extends StatelessWidget {
     final items = group.items;
     final hasHalf = productGroupHasHalfOptions(group);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          group.name,
-          style: GoogleFonts.cairo(
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF0F766E),
-            fontSize: 15,
-            letterSpacing: 0.35,
+    return NmdCard(
+      variant: NmdCardVariant.outlined,
+      padding: const EdgeInsets.all(NmdSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            group.name,
+            textAlign: TextAlign.right,
+            style: NmdTypography.h3.copyWith(color: NmdColors.brandPrimary),
           ),
-        ),
-        const SizedBox(height: 12),
-        if (hasHalf) ...[
-          for (final item in items) ...[
-            if (productOptionSupportsHalf(item, group))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _PizzaHalfModifierRow(
-                  item: item,
-                  formatDelta: formatDelta,
-                  selected: selectedItemIds.contains(item.id),
-                  side: (placements[item.id] ?? PizzaPlacement.defaultPlacement)
-                      .toUpperCase(),
-                  onSide: (p) => onPlacement(item.id, p),
-                  onRemove: () => onRemoveHalf(item.id),
+          const SizedBox(height: NmdSpacing.sm),
+          if (hasHalf) ...[
+            for (final item in items) ...[
+              if (productOptionSupportsHalf(item, group))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PizzaHalfModifierRow(
+                    item: item,
+                    formatDelta: formatDelta,
+                    selected: selectedItemIds.contains(item.id),
+                    side:
+                        (placements[item.id] ?? PizzaPlacement.defaultPlacement)
+                            .toUpperCase(),
+                    onSide: (p) => onPlacement(item.id, p),
+                    onRemove: () => onRemoveHalf(item.id),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _TagChip(
+                      label: item.name,
+                      deltaLabel: formatDelta(item.priceDelta),
+                      selected: selectedItemIds.contains(item.id),
+                      enabled: selectedItemIds.contains(item.id) ||
+                          selectedItemIds.length < group.maxSelected,
+                      onTap: () {
+                        final selected = selectedItemIds.contains(item.id);
+                        final next = {...selectedItemIds};
+                        if (selected) {
+                          next.remove(item.id);
+                        } else {
+                          next.add(item.id);
+                        }
+                        onSelectionChanged(next);
+                      },
+                    ),
+                  ),
                 ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _TagChip(
+            ],
+          ] else if (isSingle)
+            SizedBox(
+              height: 62,
+              child: ListView.separated(
+                reverse: true,
+                scrollDirection: Axis.horizontal,
+                primary: false,
+                shrinkWrap: true,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final selected = selectedItemIds.contains(item.id);
+                  return _TagChip(
                     label: item.name,
                     deltaLabel: formatDelta(item.priceDelta),
-                    selected: selectedItemIds.contains(item.id),
-                    enabled: selectedItemIds.contains(item.id) ||
-                        selectedItemIds.length < group.maxSelected,
-                    onTap: () {
-                      final selected = selectedItemIds.contains(item.id);
-                      final next = {...selectedItemIds};
-                      if (selected) {
-                        next.remove(item.id);
-                      } else {
-                        next.add(item.id);
-                      }
-                      onSelectionChanged(next);
-                    },
-                  ),
-                ),
+                    selected: selected,
+                    enabled: true,
+                    onTap: () => onSelectionChanged({item.id}),
+                  );
+                },
               ),
-          ],
-        ] else if (isSingle)
-          SizedBox(
-            height: 62,
-            child: ListView.separated(
-              reverse: true,
-              scrollDirection: Axis.horizontal,
-              primary: false,
-              shrinkWrap: true,
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final selected = selectedItemIds.contains(item.id);
-                final chipColor =
-                    selected ? AppColors.primaryTeal : Colors.white;
-                final textColor =
-                    selected ? Colors.white : const Color(0xFF111827);
-                return InkWell(
-                  onTap: () => onSelectionChanged({item.id}),
-                  borderRadius: BorderRadius.circular(999),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: chipColor,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.primaryTeal
-                            : const Color(0xFFD1D5DB),
-                        width: selected ? 1.5 : 1,
+            )
+          else ...[
+            Builder(
+              builder: (context) {
+                final freeItems =
+                    items.where((i) => i.priceDelta == 0).toList();
+                final paidItems =
+                    items.where((i) => i.priceDelta != 0).toList();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (freeItems.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: freeItems.map((item) {
+                          final selected = selectedItemIds.contains(item.id);
+                          return _TagChip(
+                            label: item.name,
+                            deltaLabel: formatDelta(item.priceDelta),
+                            selected: selected,
+                            enabled: selected ||
+                                selectedItemIds.length < group.maxSelected,
+                            onTap: () {
+                              final next = {...selectedItemIds};
+                              if (selected) {
+                                next.remove(item.id);
+                              } else {
+                                next.add(item.id);
+                              }
+                              onSelectionChanged(next);
+                            },
+                          );
+                        }).toList(),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: GoogleFonts.cairo(
-                            color: textColor,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          formatDelta(item.priceDelta),
-                          style: GoogleFonts.cairo(
-                            color: selected
-                                ? Colors.white.withValues(alpha: 0.95)
-                                : const Color(0xFF6B7280),
-                            fontWeight: FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          )
-        else ...[
-          Builder(
-            builder: (context) {
-              final freeItems = items.where((i) => i.priceDelta == 0).toList();
-              final paidItems = items.where((i) => i.priceDelta != 0).toList();
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (freeItems.isNotEmpty) ...[
+                      if (paidItems.isNotEmpty) const SizedBox(height: 12),
+                    ],
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
-                      children: freeItems.map((item) {
+                      children: paidItems.map((item) {
                         final selected = selectedItemIds.contains(item.id);
+                        final disabled = !selected &&
+                            selectedItemIds.length >= group.maxSelected;
                         return _TagChip(
                           label: item.name,
                           deltaLabel: formatDelta(item.priceDelta),
                           selected: selected,
-                          enabled: selected ||
-                              selectedItemIds.length < group.maxSelected,
+                          enabled: !disabled,
                           onTap: () {
+                            if (disabled) return;
                             final next = {...selectedItemIds};
                             if (selected) {
                               next.remove(item.id);
@@ -1072,39 +941,13 @@ class _OptionGroupChips extends StatelessWidget {
                         );
                       }).toList(),
                     ),
-                    if (paidItems.isNotEmpty) const SizedBox(height: 12),
                   ],
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: paidItems.map((item) {
-                      final selected = selectedItemIds.contains(item.id);
-                      final disabled = !selected &&
-                          selectedItemIds.length >= group.maxSelected;
-                      return _TagChip(
-                        label: item.name,
-                        deltaLabel: formatDelta(item.priceDelta),
-                        selected: selected,
-                        enabled: !disabled,
-                        onTap: () {
-                          if (disabled) return;
-                          final next = {...selectedItemIds};
-                          if (selected) {
-                            next.remove(item.id);
-                          } else {
-                            next.add(item.id);
-                          }
-                          onSelectionChanged(next);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
-              );
-            },
-          ),
+                );
+              },
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -1130,13 +973,13 @@ class _PizzaHalfModifierRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final priceStr =
         item.priceDelta > 0 ? ' ${formatDelta(item.priceDelta)}' : '';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0x3311766E)),
+    return NmdSurface(
+      mode: NmdSurfaceMode.muted,
+      padding: const EdgeInsets.symmetric(
+        horizontal: NmdSpacing.sm,
+        vertical: NmdSpacing.sm,
       ),
+      borderRadius: NmdRadius.borderPill,
       child: Row(
         textDirection: TextDirection.rtl,
         children: [
@@ -1150,11 +993,7 @@ class _PizzaHalfModifierRow extends StatelessWidget {
               ),
               child: Text(
                 'إزالة',
-                style: GoogleFonts.cairo(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFB91C1C),
-                ),
+                style: NmdTypography.micro.copyWith(color: NmdColors.error),
               ),
             ),
           Expanded(
@@ -1164,27 +1003,23 @@ class _PizzaHalfModifierRow extends StatelessWidget {
                 Text(
                   '${item.name}$priceStr',
                   textAlign: TextAlign.right,
-                  style: GoogleFonts.cairo(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: const Color(0xFF0A0A0A),
-                  ),
+                  style: NmdTypography.bodyBold.copyWith(fontSize: 13),
                 ),
                 if (selected && side != PizzaPlacement.whole) ...[
                   const SizedBox(height: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle,
-                          size: 6,
-                          color: AppColors.primaryTeal.withValues(alpha: 0.8)),
+                      Icon(
+                        Icons.circle,
+                        size: 6,
+                        color: NmdColors.brandPrimary.withValues(alpha: 0.8),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         pizzaSideLabelAr(side),
-                        style: GoogleFonts.cairo(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryTeal,
+                        style: NmdTypography.micro.copyWith(
+                          color: NmdColors.brandPrimary,
                         ),
                       ),
                     ],
@@ -1193,7 +1028,7 @@ class _PizzaHalfModifierRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: NmdSpacing.xs),
           PizzaSideToggle(
             value: side,
             enabled: true,
@@ -1222,48 +1057,53 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = selected ? AppColors.primaryTeal : Colors.white;
-    final border = selected ? AppColors.primaryTeal : const Color(0xFFD1D5DB);
-    final text = selected ? Colors.white : const Color(0xFF111827);
-    final delta = selected
-        ? Colors.white.withValues(alpha: 0.95)
-        : const Color(0xFF6B7280);
-
     return Opacity(
       opacity: enabled ? 1 : 0.5,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(999),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: border, width: selected ? 1.5 : 1),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: GoogleFonts.cairo(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                  color: text,
-                ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: NmdRadius.borderPill,
+          child: AnimatedContainer(
+            duration: NmdMotion.fast,
+            curve: NmdMotion.standard,
+            padding: const EdgeInsets.symmetric(
+              horizontal: NmdSpacing.sm + 2,
+              vertical: NmdSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: selected ? NmdColors.brandPrimary : NmdColors.surfaceBase,
+              borderRadius: NmdRadius.borderPill,
+              border: Border.all(
+                color:
+                    selected ? NmdColors.brandPrimary : NmdColors.borderSubtle,
+                width: selected ? 1.5 : 1,
               ),
-              const SizedBox(height: 2),
-              Text(
-                deltaLabel,
-                style: GoogleFonts.cairo(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 12,
-                  color: delta,
+              boxShadow: selected ? NmdShadows.brandGlow(alpha: 0.15) : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: NmdTypography.label.copyWith(
+                    color: selected
+                        ? NmdColors.textOnBrand
+                        : NmdColors.textPrimary,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  deltaLabel,
+                  style: NmdTypography.micro.copyWith(
+                    color: selected
+                        ? NmdColors.textOnBrand.withValues(alpha: 0.9)
+                        : NmdColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
