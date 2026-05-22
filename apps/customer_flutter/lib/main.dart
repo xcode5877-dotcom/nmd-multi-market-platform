@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/services.dart';
 
 import 'app/app.dart';
@@ -7,7 +6,8 @@ import 'app/app_scroll_behavior.dart';
 
 void main() {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  // Hold LaunchScreen until SplashPage calls allowFirstFrame (same as flutter_native_splash on iOS).
+  widgetsBinding.deferFirstFrame();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,

@@ -31,7 +31,6 @@ dependencies:
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   webview_flutter: ^4.10.0
-  flutter_native_splash: ^2.4.6
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +54,10 @@ flutter_launcher_icons:
   adaptive_icon_monochrome: "assets/branding/nowmarket_foreground_1024.png"
   remove_alpha_ios: true
 
+# Splash assets are committed under android/ and ios/. To regenerate:
+#   dart pub add --dev flutter_native_splash
+#   dart run flutter_native_splash:create
+#   dart pub remove flutter_native_splash
 flutter_native_splash:
   color: "#0F6F6B"
   image: assets/branding/splash_logo_white.png

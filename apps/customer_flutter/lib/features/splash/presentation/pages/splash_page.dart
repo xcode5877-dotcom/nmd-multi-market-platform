@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../api/storefront_api.dart';
@@ -75,7 +74,7 @@ class _SplashPageState extends State<SplashPage> {
     context.go('/main');
     // Remove native splash only after the first frame of the next route is rendered.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      FlutterNativeSplash.remove();
+      WidgetsBinding.instance.allowFirstFrame();
     });
   }
 
