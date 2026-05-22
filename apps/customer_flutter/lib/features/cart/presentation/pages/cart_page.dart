@@ -76,8 +76,8 @@ class CartPage extends StatelessWidget {
                       _CartCheckoutBar(
                         total: total,
                         onCheckout: () async {
-                          final ok = await ensureCustomerAuth(context);
-                          if (!context.mounted || !ok) return;
+                          await ensureCustomerAuth(context);
+                          if (!context.mounted) return;
                           context.push('/market/$slug/checkout');
                         },
                       ),

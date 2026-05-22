@@ -11,4 +11,7 @@ abstract interface class AuthRepository {
 
   /// Returns profile when `customer` JWT is present and valid; otherwise `null`.
   Future<CustomerMeResult?> fetchCurrentCustomer();
+
+  /// Updates display name after OTP verification (existing `/customer/profile`).
+  Future<void> updateCustomerName(String name);
 }

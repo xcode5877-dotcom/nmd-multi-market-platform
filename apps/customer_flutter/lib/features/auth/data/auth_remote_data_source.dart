@@ -73,7 +73,9 @@ class AuthRemoteDataSource {
     if (name != null && name.trim().isNotEmpty) {
       payload['name'] = name.trim();
     }
-    nmdDebugLog('[AuthRemoteDataSource] verifyOtp request body: $payload');
+    nmdDebugLog(
+      '[AuthRemoteDataSource] verifyOtp phone=${payload['phone']} (code redacted)',
+    );
 
     final response = await _dio.post<Map<String, dynamic>>(
       '/auth/verify-otp',
@@ -95,6 +97,16 @@ class AuthRemoteDataSource {
     return OtpVerifyResult(
       token: token,
       isNewUser: data['isNewUser'] == true,
+    );
+  }
+
+  Future<void> updateCustomerName(String name) async {
+    await _dio.patch<Map<String, dynamic>>(
+      '/customer/profile',
+      data: <String, dynamic>{'name': name.trim()},
+      options: Options(
+        headers: const {'Accept': 'application/json, text/plain, */*'},
+      ),
     );
   }
 }

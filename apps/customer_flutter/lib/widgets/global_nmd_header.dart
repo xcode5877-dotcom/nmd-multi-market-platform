@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../app/theme/app_colors.dart';
@@ -104,11 +103,8 @@ class GlobalNmdHeader extends StatelessWidget {
                     if (showProfile)
                       IconButton(
                         style: _plainIconStyle(),
-                        onPressed: () async {
-                          final ok = await ensureCustomerAuth(context);
-                          if (!context.mounted || !ok) return;
-                          context.go('/market/$marketSlug/account');
-                        },
+                        onPressed: () =>
+                            openCustomerAccount(context, marketSlug),
                         icon: const Icon(
                           Icons.person_outline,
                           size: _iconSize,

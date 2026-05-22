@@ -76,9 +76,16 @@
 		<string>We need access to your photos so you can choose and update your profile picture. / نحتاج الوصول إلى الصور لتتمكن من اختيار وتحديث صورة ملفك الشخصي.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>We may save generated receipts or profile images to your photo library when you choose to do so. / قد نحفظ الإيصالات أو صور الملف الشخصي في معرض الصور عند اختيارك ذلك.</string>
-		<key>NSNotificationsUsageDescription</key>
-		<string>We use notifications to update you about order status, delivery progress, and important account alerts. / نستخدم الإشعارات لإبلاغك بحالة الطلب والتوصيل والتنبيهات المهمة.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>whatsapp</string>
+			<string>tel</string>
+			<string>https</string>
+			<string>http</string>
+		</array>
 	</dict>
 </plist>

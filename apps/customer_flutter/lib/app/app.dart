@@ -39,6 +39,8 @@ class _NowMarketAppState extends State<NowMarketApp> {
     );
     _authBloc = AuthBloc(_authRepository);
     _cartCubit = CartCubit();
+    // Warm session before first tap (coalesced with splash restore).
+    _authBloc.restoreSession();
   }
 
   @override

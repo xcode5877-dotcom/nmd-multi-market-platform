@@ -8,19 +8,31 @@ import 'package:pinput/pinput.dart';
 import '../../../../design_system/design_system.dart';
 import '../bloc/auth_bloc.dart';
 
+bool _authSheetOpen = false;
+
 Future<bool> showAuthBottomSheet(BuildContext context) async {
+  if (_authSheetOpen) return false;
+  _authSheetOpen = true;
   final authBloc = context.read<AuthBloc>();
   authBloc.add(const AuthResetRequested());
 
-  final result = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => BlocProvider.value(
-      value: authBloc,
-      child: const _AuthBottomSheetView(),
-    ),
-  );
+  bool? result;
+  try {
+    result = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BlocProvider.value(
+        value: authBloc,
+        child: const _AuthBottomSheetView(),
+      ),
+    );
+  } finally {
+    _authSheetOpen = false;
+  }
 
   return result == true;
 }
@@ -56,10 +68,13 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
   }
 
   void _onAuthState(BuildContext context, AuthState state) {
-    if (state.step == AuthStep.otp && state.pendingOtpCode == null) {
-      _otpController.clear();
-    }
     if (state.step == AuthStep.otp) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _otpFocus.requestFocus();
+      });
+    }
+    if (state.step == AuthStep.otp && state.error != null) {
+      _otpController.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _otpFocus.requestFocus();
       });
@@ -73,7 +88,7 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
       _successTimerStarted = true;
       Future<void>.delayed(const Duration(milliseconds: 1700), () {
         if (!context.mounted) return;
-        Navigator.of(context).pop(true);
+        Navigator.of(context, rootNavigator: true).pop(true);
       });
     }
   }
@@ -90,7 +105,9 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return BlocConsumer<AuthBloc, AuthState>(
       listenWhen: (prev, next) =>
-          prev.step != next.step || prev.pendingOtpCode != next.pendingOtpCode,
+          prev.step != next.step ||
+          prev.error != next.error ||
+          prev.loading != next.loading,
       listener: _onAuthState,
       builder: (context, state) {
         return AnimatedPadding(
@@ -137,7 +154,7 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
                     const SizedBox(height: NmdSpacing.md),
                     if (state.step != AuthStep.done)
                       _AuthStepIndicator(activeIndex: _stepIndex(state.step)),
-                    if (state.error != null) ...[
+                    if (state.error != null && state.step != AuthStep.otp) ...[
                       const SizedBox(height: NmdSpacing.sm),
                       _ErrorBanner(message: state.error!),
                     ],
@@ -159,9 +176,7 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
                         );
                       },
                       child: KeyedSubtree(
-                        key: ValueKey(
-                          '${state.step}_${state.phone}_${state.pendingOtpCode ?? ''}',
-                        ),
+                        key: ValueKey('${state.step}_${state.phone}'),
                         child: _stepChild(context, state),
                       ),
                     ),
@@ -191,10 +206,13 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
         return _OtpStep(
           phone: state.phone,
           sentVia: state.sentVia,
-          devCode: state.devCode,
           controller: _otpController,
           focusNode: _otpFocus,
           loading: state.loading,
+          errorMessage: state.error,
+          onResend: () => context.read<AuthBloc>().add(
+                AuthPhoneSubmitted(state.phone),
+              ),
           onContinue: (code) =>
               context.read<AuthBloc>().add(AuthOtpContinue(code)),
         );
@@ -373,19 +391,21 @@ class _OtpStep extends StatelessWidget {
   const _OtpStep({
     required this.phone,
     required this.sentVia,
-    required this.devCode,
     required this.controller,
     required this.focusNode,
     required this.loading,
+    this.errorMessage,
+    required this.onResend,
     required this.onContinue,
   });
 
   final String phone;
   final String? sentVia;
-  final String? devCode;
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool loading;
+  final String? errorMessage;
+  final VoidCallback onResend;
   final void Function(String code) onContinue;
 
   @override
@@ -440,26 +460,27 @@ class _OtpStep extends StatelessWidget {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            onCompleted: onContinue,
+            onCompleted: loading ? null : onContinue,
           ),
         ),
-        if (devCode != null) ...[
+        if (errorMessage != null) ...[
           const SizedBox(height: NmdSpacing.sm),
-          Text(
-            'رمز التطوير: $devCode',
-            textAlign: TextAlign.center,
-            style: NmdTypography.micro.copyWith(
-              fontWeight: FontWeight.w700,
-              color: NmdColors.brandPrimary,
-            ),
-          ),
+          _ErrorBanner(message: errorMessage!),
         ],
-        const SizedBox(height: NmdSpacing.lg),
+        const SizedBox(height: NmdSpacing.md),
         NmdButton(
           label: 'متابعة',
           variant: NmdButtonVariant.secondary,
           loading: loading,
           onPressed: loading ? null : () => onContinue(controller.text.trim()),
+        ),
+        const SizedBox(height: NmdSpacing.sm),
+        TextButton(
+          onPressed: loading ? null : onResend,
+          child: Text(
+            'إعادة إرسال الرمز',
+            style: NmdTypography.label.copyWith(color: NmdColors.brandPrimary),
+          ),
         ),
       ],
     );

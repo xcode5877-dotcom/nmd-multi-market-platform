@@ -41,4 +41,9 @@ class AuthRepositoryImpl implements AuthRepository {
     if (t == null || t.trim().isEmpty) return null;
     return _remote.fetchCurrentCustomer();
   }
+
+  @override
+  Future<void> updateCustomerName(String name) {
+    return _remote.updateCustomerName(name);
+  }
 }

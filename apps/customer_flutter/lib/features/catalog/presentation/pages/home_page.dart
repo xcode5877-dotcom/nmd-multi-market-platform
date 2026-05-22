@@ -15,7 +15,6 @@ import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
 import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
-import '../widgets/home_community_highlight.dart';
 import '../widgets/home_store_card.dart';
 import '../../../../widgets/nmd_search_bar.dart';
 
@@ -212,11 +211,8 @@ class _HomePageState extends State<HomePage> {
             ),
             actions: [
               NmdAppHeader.profileAction(
-                onPressed: () async {
-                  final ok = await ensureCustomerAuth(context);
-                  if (!context.mounted || !ok) return;
-                  context.go('/market/${widget.slug}/account');
-                },
+                onPressed: () =>
+                    openCustomerAccount(context, widget.slug),
               ),
               GlobalCartIcon(
                 marketSlug: widget.slug,
@@ -275,7 +271,6 @@ class _HomePageState extends State<HomePage> {
                       return CustomScrollView(
                         primary: true,
                         slivers: [
-                          _communityHighlightSliver(layout, cState),
                           if (layout.banners.isNotEmpty)
                             SliverToBoxAdapter(
                                 child:
@@ -355,7 +350,6 @@ class _HomePageState extends State<HomePage> {
                       return CustomScrollView(
                         primary: true,
                         slivers: [
-                          _communityHighlightSliver(layout, cState),
                           if (layout.banners.isNotEmpty)
                             SliverToBoxAdapter(
                                 child:
@@ -404,7 +398,6 @@ class _HomePageState extends State<HomePage> {
                     return CustomScrollView(
                       primary: true,
                       slivers: [
-                        _communityHighlightSliver(layout, cState),
                         if (layout.banners.isNotEmpty)
                           SliverToBoxAdapter(
                               child: _BannerCarousel(banners: layout.banners)),
@@ -446,25 +439,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  SliverToBoxAdapter _communityHighlightSliver(
-    _HomeLayoutPayload layout,
-    HomeCubitState cState,
-  ) {
-    final storeCount = cState.tenantsStatus == TenantsStatus.loaded
-        ? cState.tenantMaps.length
-        : null;
-    final pillarCount = cState.pillarStatus == HomeCategoriesStatus.loaded
-        ? cState.pillars.length
-        : null;
-    return SliverToBoxAdapter(
-      child: HomeCommunityHighlight(
-        marketSlug: widget.slug,
-        marketName: layout.marketName,
-        pillarCount: pillarCount,
-        storeCount: storeCount,
-      ),
-    );
-  }
 }
 
 /// Horizontal chips matching pillar row height — shown while GET `/pillars` loads.

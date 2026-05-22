@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -17,6 +19,27 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   final AuthRepository _repo;
+
+  Completer<bool>? _sessionRestoreCompleter;
+
+  /// Coalesced session restore for cold start and auth gates (avoids stream races).
+  Future<bool> restoreSession() {
+    if (state.step == AuthStep.done) return Future.value(true);
+    if (_sessionRestoreCompleter != null) {
+      return _sessionRestoreCompleter!.future;
+    }
+    _sessionRestoreCompleter = Completer<bool>();
+    add(const AuthSessionRestored());
+    return _sessionRestoreCompleter!.future;
+  }
+
+  void _finishSessionRestore(bool ok) {
+    final pending = _sessionRestoreCompleter;
+    _sessionRestoreCompleter = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(ok);
+    }
+  }
 
   String _normalizePhone(String phone) => phone.replaceAll(RegExp(r'\D'), '');
 
@@ -51,6 +74,25 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     if (text.contains('401')) return 'غير مصرح. أعد تسجيل الدخول.';
     if (text.contains('404')) return 'الخدمة غير متاحة حالياً.';
     return fallback;
+  }
+
+  static const _wrongOtpMessage = 'رمز التحقق غير صحيح، حاول مرة أخرى';
+
+  String _otpVerificationError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401 || status == 429) return _wrongOtpMessage;
+      final data = error.response?.data;
+      if (data is Map) {
+        final code = data['code']?.toString();
+        if (code == 'OTP_INVALID' ||
+            code == 'OTP_EXPIRED' ||
+            code == 'OTP_LOCKED') {
+          return _wrongOtpMessage;
+        }
+      }
+    }
+    return _readError(error, fallback: _wrongOtpMessage);
   }
 
   Future<void> _onPhoneSubmitted(
@@ -92,7 +134,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           step: AuthStep.otp,
           phoneExists: check.exists,
           sentVia: start.sentVia,
-          devCode: start.devCode,
+          clearDevCode: true,
         ),
       );
     } catch (e) {
@@ -132,19 +174,45 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       } catch (e) {
         emit(state.copyWith(
           loading: false,
-          error: _readError(e, fallback: 'فشل التحقق من الرمز.'),
+          step: AuthStep.otp,
+          error: _otpVerificationError(e),
         ));
       }
       return;
     }
 
-    emit(
-      state.copyWith(
-        step: AuthStep.profile,
-        pendingOtpCode: code,
-        clearError: true,
-      ),
-    );
+    emit(state.copyWith(loading: true, clearError: true));
+    try {
+      final result = await _repo.verifyOtp(
+        phone: state.phone,
+        code: code,
+        name: null,
+      );
+      if (result.isNewUser) {
+        emit(
+          state.copyWith(
+            loading: false,
+            step: AuthStep.profile,
+            clearPendingOtp: true,
+            isNewUser: true,
+          ),
+        );
+        return;
+      }
+      emit(
+        state.copyWith(
+          loading: false,
+          step: AuthStep.done,
+          isNewUser: false,
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(
+        loading: false,
+        step: AuthStep.otp,
+        error: _otpVerificationError(e),
+      ));
+    }
   }
 
   Future<void> _onProfileSubmit(
@@ -156,28 +224,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(state.copyWith(error: 'أدخل اسمك'));
       return;
     }
-    final pending = state.pendingOtpCode;
-    if (pending == null || pending.length != 6) {
-      emit(state.copyWith(
-        error: 'انتهت الجلسة. ارجع لإدخال الرمز مرة أخرى.',
-        step: AuthStep.otp,
-        clearPendingOtp: true,
-      ));
-      return;
-    }
-
     emit(state.copyWith(loading: true, clearError: true));
     try {
-      final result = await _repo.verifyOtp(
-        phone: state.phone,
-        code: pending,
-        name: name,
-      );
+      await _repo.updateCustomerName(name);
       emit(
         state.copyWith(
           loading: false,
           step: AuthStep.done,
-          isNewUser: result.isNewUser,
+          isNewUser: true,
         ),
       );
     } catch (e) {
@@ -199,19 +253,28 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthSessionRestored event,
     Emitter<AuthState> emit,
   ) async {
+    if (state.step == AuthStep.done) {
+      _finishSessionRestore(true);
+      return;
+    }
+    var ok = false;
     try {
       final me = await _repo.fetchCurrentCustomer();
-      if (me == null) return;
-      emit(
-        state.copyWith(
-          step: AuthStep.done,
-          loading: false,
-          phone: me.phone,
-          clearError: true,
-        ),
-      );
+      if (me != null) {
+        emit(
+          state.copyWith(
+            step: AuthStep.done,
+            loading: false,
+            phone: me.phone,
+            clearError: true,
+          ),
+        );
+        ok = true;
+      }
     } catch (_) {
-      // ignore — stay logged out
+      // Stay logged out; caller may show OTP sheet.
+    } finally {
+      _finishSessionRestore(ok);
     }
   }
 }

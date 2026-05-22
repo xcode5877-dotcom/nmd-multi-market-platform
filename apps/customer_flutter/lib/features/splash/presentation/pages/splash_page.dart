@@ -31,13 +31,14 @@ class _SplashPageState extends State<SplashPage> {
     if (!mounted) return;
     final authBloc = context.read<AuthBloc>();
     final dio = context.read<Dio>();
-    authBloc.add(const AuthSessionRestored());
-    try {
-      await authBloc.stream
-          .firstWhere((s) => s.step == AuthStep.done || !s.loading)
-          .timeout(const Duration(milliseconds: 900));
-    } catch (_) {
-      // Best effort: proceed even if no auth state change yet.
+    if (authBloc.state.step != AuthStep.done) {
+      try {
+        await authBloc
+            .restoreSession()
+            .timeout(const Duration(seconds: 5), onTimeout: () => false);
+      } catch (_) {
+        // Best effort: proceed even if no session (guest).
+      }
     }
 
     try {
