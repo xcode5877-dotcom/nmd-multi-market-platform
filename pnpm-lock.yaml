@@ -376,6 +376,18 @@ importers:
         specifier: ^5.4.5
         version: 5.9.3
 
+  packages/customer-auth:
+    dependencies:
+      '@nmd/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+
   packages/mock:
     dependencies:
       '@nmd/core':
