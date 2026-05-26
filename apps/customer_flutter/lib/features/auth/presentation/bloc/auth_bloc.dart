@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/auth/app_review_demo_access.dart';
 import '../../domain/auth_repository.dart';
 
 part 'auth_event.dart';
@@ -116,6 +117,31 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       clearDevCode: true,
       clearPendingOtp: true,
     ));
+
+    /// Apple App Review demo access only — register reviewer OTP server-side
+    /// (delivery skipped for this line); UI stays fully in-app, no WhatsApp app.
+    if (isAppReviewDemoAccount(phone)) {
+      try {
+        final check = await _repo.checkPhone(phone);
+        await _repo.startOtp(phone);
+        emit(
+          state.copyWith(
+            loading: false,
+            step: AuthStep.otp,
+            phoneExists: check.exists,
+            sentVia: 'app_review',
+            clearError: true,
+          ),
+        );
+      } catch (e) {
+        emit(state.copyWith(
+          loading: false,
+          error: _readError(e, fallback: 'تعذر تجهيز رمز المراجعة. حاول مرة أخرى.'),
+        ));
+      }
+      return;
+    }
+
     try {
       final check = await _repo.checkPhone(phone);
       final start = await _repo.startOtp(phone);
@@ -152,6 +178,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final code = event.code.trim();
     if (code.length != 6) {
       emit(state.copyWith(error: 'أدخل الرمز الستّة أرقام'));
+      return;
+    }
+
+    /// Apple App Review demo access only — reject wrong code locally; no outbound OTP channel.
+    if (isAppReviewDemoAccount(state.phone) && !isAppReviewDemoOtp(code)) {
+      emit(state.copyWith(
+        loading: false,
+        step: AuthStep.otp,
+        error: _wrongOtpMessage,
+      ));
       return;
     }
 

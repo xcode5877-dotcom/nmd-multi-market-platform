@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pinput/pinput.dart';
 
+import '../../../../core/auth/app_review_demo_access.dart';
 import '../../../../design_system/design_system.dart';
 import '../bloc/auth_bloc.dart';
 
@@ -325,38 +326,48 @@ class _PhoneStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'تسجيل الدخول',
-          textAlign: TextAlign.center,
-          style: NmdTypography.h2,
-        ),
-        const SizedBox(height: NmdSpacing.xs),
-        Text(
-          'أدخل رقم جوالك — نرسل لك رمز التحقق عبر واتساب بأمان',
-          textAlign: TextAlign.center,
-          style: NmdTypography.bodySmall.copyWith(height: 1.45),
-        ),
-        const SizedBox(height: NmdSpacing.lg),
-        NmdInput(
-          controller: controller,
-          label: 'رقم الجوال',
-          hint: '05xxxxxxxx',
-          keyboardType: TextInputType.phone,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => onSubmit(),
-        ),
-        const SizedBox(height: NmdSpacing.md),
-        NmdButton(
-          label: 'إرسال الرمز',
-          loading: loading,
-          onPressed: loading ? null : onSubmit,
-        ),
-        const SizedBox(height: NmdSpacing.md),
-        const _WhatsAppTrustBadge(),
-      ],
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final reviewDemo = isAppReviewDemoAccount(controller.text);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'تسجيل الدخول',
+              textAlign: TextAlign.center,
+              style: NmdTypography.h2,
+            ),
+            const SizedBox(height: NmdSpacing.xs),
+            Text(
+              reviewDemo
+                  ? 'أدخل رقم المراجعة — الرمز يُدخل داخل التطبيق (لا حاجة لواتساب)'
+                  : 'أدخل رقم جوالك — نرسل لك رمز التحقق عبر واتساب بأمان',
+              textAlign: TextAlign.center,
+              style: NmdTypography.bodySmall.copyWith(height: 1.45),
+            ),
+            const SizedBox(height: NmdSpacing.lg),
+            NmdInput(
+              controller: controller,
+              label: 'رقم الجوال',
+              hint: '05xxxxxxxx',
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => onSubmit(),
+            ),
+            const SizedBox(height: NmdSpacing.md),
+            NmdButton(
+              label: reviewDemo ? 'متابعة' : 'إرسال الرمز',
+              loading: loading,
+              onPressed: loading ? null : onSubmit,
+            ),
+            if (!reviewDemo) ...[
+              const SizedBox(height: NmdSpacing.md),
+              const _WhatsAppTrustBadge(),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -410,6 +421,9 @@ class _OtpStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reviewDemo = isAppReviewDemoAccount(phone) ||
+        sentVia == 'app_review' ||
+        sentVia == 'play_review';
     final defaultPin = PinTheme(
       width: 46,
       height: 52,
@@ -440,8 +454,10 @@ class _OtpStep extends StatelessWidget {
         ),
         const SizedBox(height: NmdSpacing.xs),
         Text(
-          'أدخل الرمز المرسل إلى $phone'
-          '${sentVia != null && sentVia!.contains('whatsapp') ? ' عبر واتساب' : ''}',
+          reviewDemo
+              ? 'أدخل رمز المراجعة داخل التطبيق ($kAppReviewDemoOtp) — لا حاجة لواتساب أو رسائل'
+              : 'أدخل الرمز المرسل إلى $phone'
+                  '${sentVia != null && sentVia!.contains('whatsapp') ? ' عبر واتساب' : ''}',
           textAlign: TextAlign.center,
           style: NmdTypography.bodySmall.copyWith(height: 1.45),
         ),
