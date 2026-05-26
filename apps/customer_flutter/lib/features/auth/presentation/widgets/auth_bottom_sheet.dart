@@ -329,7 +329,7 @@ class _PhoneStep extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final reviewDemo = isAppReviewDemoAccount(controller.text);
+        final reviewDemo = isAppReviewDemoPhoneInput(controller.text);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -350,7 +350,7 @@ class _PhoneStep extends StatelessWidget {
             NmdInput(
               controller: controller,
               label: 'رقم الجوال',
-              hint: '05xxxxxxxx',
+              hint: reviewDemo ? '0500000000' : '05xxxxxxxx',
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => onSubmit(),

@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart' show debugPrint;
+
+import '../../../core/auth/app_review_demo_access.dart';
 import '../../../core/network/token_storage.dart';
 import '../domain/auth_repository.dart';
 import '../domain/models.dart';
@@ -15,11 +18,22 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<CheckPhoneResult> checkPhone(String phone) {
+    if (isAppReviewDemoAccount(phone)) {
+      logAppleReviewAuthBypass('checkPhone skipped');
+      return Future.value(const CheckPhoneResult(exists: true));
+    }
     return _remote.checkPhone(phone);
   }
 
+  /// Apple App Review demo access only — never hit OTP delivery (WhatsApp/SMS).
   @override
   Future<OtpStartResult> startOtp(String phone) {
+    if (isAppReviewDemoAccount(phone)) {
+      logAppleReviewAuthBypass('startOtp skipped');
+      return Future.value(
+        const OtpStartResult(ok: true, sentVia: 'app_review'),
+      );
+    }
     return _remote.startOtp(phone);
   }
 
@@ -29,10 +43,26 @@ class AuthRepositoryImpl implements AuthRepository {
     required String code,
     String? name,
   }) async {
-    final result =
-        await _remote.verifyOtp(phone: phone, code: code, name: name);
-    await _tokenStorage.saveCustomerToken(result.token);
-    return result;
+    final apiPhone = isAppReviewDemoAccount(phone)
+        ? normalizeAppReviewDemoPhone(phone)
+        : phone;
+    if (isAppReviewDemoAccount(phone)) {
+      logAppleReviewAuthBypass('verifyOtp apiPhone=$apiPhone');
+    }
+    try {
+      final result = await _remote.verifyOtp(
+        phone: apiPhone,
+        code: code,
+        name: name,
+      );
+      await _tokenStorage.saveCustomerToken(result.token);
+      return result;
+    } catch (e, st) {
+      if (isAppReviewDemoAccount(phone)) {
+        debugPrint('APPLE_REVIEW_BYPASS verifyOtp failed: $e\n$st');
+      }
+      rethrow;
+    }
   }
 
   @override

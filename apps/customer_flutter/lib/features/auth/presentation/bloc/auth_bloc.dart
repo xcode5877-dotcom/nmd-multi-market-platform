@@ -49,6 +49,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return digits.length == 10 && digits.startsWith('05');
   }
 
+  bool _isValidPhoneInput(String phone) {
+    if (isAppReviewDemoPhoneInput(phone)) return true;
+    return _isValidIsraelPhone(phone);
+  }
+
+  String _phoneForAuthState(String phone) {
+    if (isAppReviewDemoAccount(phone)) {
+      return normalizeAppReviewDemoPhone(phone);
+    }
+    return phone.trim();
+  }
+
   String _readError(Object error, {required String fallback}) {
     if (error is DioException) {
       final data = error.response?.data;
@@ -105,40 +117,34 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(state.copyWith(error: 'أدخل رقم الجوال'));
       return;
     }
-    if (!_isValidIsraelPhone(phone)) {
+    if (!_isValidPhoneInput(phone)) {
       emit(state.copyWith(error: 'رقم الجوال بصيغة إسرائيلية (05x-xxxxxxx)'));
       return;
     }
 
+    final authPhone = _phoneForAuthState(phone);
+
     emit(state.copyWith(
       loading: true,
-      phone: phone,
+      phone: authPhone,
       clearError: true,
       clearDevCode: true,
       clearPendingOtp: true,
     ));
 
-    /// Apple App Review demo access only — register reviewer OTP server-side
-    /// (delivery skipped for this line); UI stays fully in-app, no WhatsApp app.
+    /// Apple App Review demo access only — OTP step in-app; no /start delivery channel.
     if (isAppReviewDemoAccount(phone)) {
-      try {
-        final check = await _repo.checkPhone(phone);
-        await _repo.startOtp(phone);
-        emit(
-          state.copyWith(
-            loading: false,
-            step: AuthStep.otp,
-            phoneExists: check.exists,
-            sentVia: 'app_review',
-            clearError: true,
-          ),
-        );
-      } catch (e) {
-        emit(state.copyWith(
+      logAppleReviewAuthBypass('phoneSubmitted');
+      emit(
+        state.copyWith(
           loading: false,
-          error: _readError(e, fallback: 'تعذر تجهيز رمز المراجعة. حاول مرة أخرى.'),
-        ));
-      }
+          step: AuthStep.otp,
+          phone: authPhone,
+          phoneExists: true,
+          sentVia: 'app_review',
+          clearError: true,
+        ),
+      );
       return;
     }
 
@@ -182,21 +188,45 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
 
     /// Apple App Review demo access only — reject wrong code locally; no outbound OTP channel.
-    if (isAppReviewDemoAccount(state.phone) && !isAppReviewDemoOtp(code)) {
-      emit(state.copyWith(
-        loading: false,
-        step: AuthStep.otp,
-        error: _wrongOtpMessage,
-      ));
+    if (isAppReviewDemoAccount(state.phone)) {
+      if (!isAppReviewDemoOtp(code)) {
+        emit(state.copyWith(
+          loading: false,
+          step: AuthStep.otp,
+          error: _wrongOtpMessage,
+        ));
+        return;
+      }
+      logAppleReviewAuthBypass('otpSubmitted');
+      await _completeOtpVerification(
+        emit: emit,
+        phone: normalizeAppReviewDemoPhone(state.phone),
+        code: code,
+        phoneExists: state.phoneExists == true,
+      );
       return;
     }
 
     final exists = state.phoneExists == true;
-    if (exists) {
+    await _completeOtpVerification(
+      emit: emit,
+      phone: state.phone,
+      code: code,
+      phoneExists: exists,
+    );
+  }
+
+  Future<void> _completeOtpVerification({
+    required Emitter<AuthState> emit,
+    required String phone,
+    required String code,
+    required bool phoneExists,
+  }) async {
+    if (phoneExists) {
       emit(state.copyWith(loading: true, clearError: true));
       try {
         final result = await _repo.verifyOtp(
-          phone: state.phone,
+          phone: phone,
           code: code,
           name: null,
         );
@@ -204,6 +234,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           state.copyWith(
             loading: false,
             step: AuthStep.done,
+            phone: phone,
             isNewUser: result.isNewUser,
           ),
         );
@@ -220,7 +251,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(state.copyWith(loading: true, clearError: true));
     try {
       final result = await _repo.verifyOtp(
-        phone: state.phone,
+        phone: phone,
         code: code,
         name: null,
       );
@@ -229,6 +260,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           state.copyWith(
             loading: false,
             step: AuthStep.profile,
+            phone: phone,
             clearPendingOtp: true,
             isNewUser: true,
           ),
@@ -239,6 +271,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         state.copyWith(
           loading: false,
           step: AuthStep.done,
+          phone: phone,
           isNewUser: false,
         ),
       );
