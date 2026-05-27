@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/auth/app_review_demo_access.dart';
+import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../domain/auth_repository.dart';
 
 part 'auth_event.dart';
@@ -238,6 +239,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             isNewUser: result.isNewUser,
           ),
         );
+        nmdPostLoginTrace('AUTH_SUCCESS', 'verifyOtp existing user');
       } catch (e) {
         emit(state.copyWith(
           loading: false,
@@ -275,6 +277,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isNewUser: false,
         ),
       );
+      nmdPostLoginTrace('AUTH_SUCCESS', 'verifyOtp new user with existing profile');
     } catch (e) {
       emit(state.copyWith(
         loading: false,
@@ -303,6 +306,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isNewUser: true,
         ),
       );
+      nmdPostLoginTrace('AUTH_SUCCESS', 'profile submit');
     } catch (e) {
       emit(state.copyWith(
         loading: false,
@@ -339,6 +343,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           ),
         );
         ok = true;
+        nmdPostLoginTrace('AUTH_SESSION_RESTORED');
       }
     } catch (_) {
       // Stay logged out; caller may show OTP sheet.

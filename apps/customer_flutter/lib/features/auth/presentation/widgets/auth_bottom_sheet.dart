@@ -6,6 +6,7 @@ import 'package:lottie/lottie.dart';
 import 'package:pinput/pinput.dart';
 
 import '../../../../core/auth/app_review_demo_access.dart';
+import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
 import '../bloc/auth_bloc.dart';
 
@@ -87,8 +88,13 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
     }
     if (state.step == AuthStep.done && !_successTimerStarted) {
       _successTimerStarted = true;
+      nmdPostLoginTrace('POST_LOGIN_START', 'auth sheet success animation');
       Future<void>.delayed(const Duration(milliseconds: 1700), () {
-        if (!context.mounted) return;
+        if (!context.mounted) {
+          nmdPostLoginTrace('AUTH_SHEET_POP_SKIPPED_UNMOUNTED');
+          return;
+        }
+        nmdPostLoginTrace('AUTH_SHEET_POP_SUCCESS');
         Navigator.of(context, rootNavigator: true).pop(true);
       });
     }

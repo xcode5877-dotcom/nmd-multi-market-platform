@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../network/token_storage.dart';
+import '../debug/nmd_post_login_trace.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/widgets/auth_bottom_sheet.dart';
 
@@ -27,28 +28,72 @@ Future<bool> isCustomerSessionActive(BuildContext context) async {
 /// Returns true when the customer has a valid session (token + [AuthBloc] synced)
 /// or completes OTP in the auth bottom sheet.
 Future<bool> ensureCustomerAuth(BuildContext context) async {
+  nmdPostLoginTrace('POST_LOGIN_ENSURE_START');
   if (await isCustomerSessionActive(context)) {
+    nmdPostLoginTrace('POST_LOGIN_ENSURE_ALREADY_ACTIVE');
     return true;
   }
   if (!context.mounted) return false;
-  return showNmdAuthBottomSheet(context);
+
+  final ok = await showNmdAuthBottomSheet(context);
+
+  /// Large iPad form sheets sometimes deactivate the initiating [Element]
+  /// earlier than callers expect — [GoRouter] is still valid via [router].
+  if (!context.mounted) {
+    nmdPostLoginTrace('AUTH_SHEET_CLOSED_UNMOUNTED_ENSURE', 'ok=$ok');
+    return ok;
+  }
+
+  if (ok) {
+    nmdPostLoginTrace('POST_LOGIN_ENSURE_OK');
+  }
+  return ok;
 }
 
 /// Account tab: logged-in users go to account; guests get the OTP sheet (then account on success).
 Future<void> openCustomerAccount(BuildContext context, String marketSlug) async {
-  final base = '/market/$marketSlug/account';
+  nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_START marketSlug=$marketSlug');
+
+  final slug = GoRouterState.of(context).pathParameters['slug'] ?? marketSlug;
+  final trimmedSlug = slug.trim();
+  final target = '/market/$trimmedSlug/account';
+
+  GoRouter router;
+  try {
+    router = GoRouter.of(context);
+  } catch (e, st) {
+    nmdPostLoginTrace('ROUTER_LOOKUP_FAILED_ACCOUNT', '$e\n$st');
+    rethrow;
+  }
+
+  if (trimmedSlug.isEmpty) {
+    nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_SKIP_NO_MARKET_SLUG');
+    return;
+  }
+
   if (await isCustomerSessionActive(context)) {
-    if (!context.mounted) return;
-    context.go(base);
+    nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_SESSION_ACTIVE_NAV', target);
+    if (!context.mounted) {
+      nmdPostLoginTrace('NAVIGATING_TO_HOME_ACCOUNT_ROUTER_FALLBACK mounted=false');
+      router.go(target);
+      return;
+    }
+    context.go(target);
     return;
   }
   if (!context.mounted) return;
-  final ok = await showNmdAuthBottomSheet(context);
-  if (!context.mounted) return;
-  if (ok) {
-    context.go(base);
-  } else {
-    // Still navigate so the tab never feels dead; page shows sign-in UI.
-    context.go(base);
+
+  nmdPostLoginTrace('SHOW_AUTH_BOTTOM_SHEET');
+  await showNmdAuthBottomSheet(context);
+
+  /// Always route to account once the sheet is closed so the UX never stalls.
+  /// On iPad, [context.mounted] can be false right after dismissal even though routing is OK.
+  if (!context.mounted) {
+    nmdPostLoginTrace('NAVIGATING_TO_ACCOUNT_ROUTER_FALLBACK mounted=false → $target');
+    router.go(target);
+    return;
   }
+
+  nmdPostLoginTrace('NAVIGATING_TO_ACCOUNT', target);
+  context.go(target);
 }

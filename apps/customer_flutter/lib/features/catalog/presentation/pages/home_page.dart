@@ -10,6 +10,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
@@ -89,6 +90,7 @@ class _HomePageState extends State<HomePage> {
 
   /// Token `${slug}|pillar|sub` — includes sub-category filter.
   String? _tenantSyncToken;
+  bool _homeRenderedLogged = false;
 
   @override
   void initState() {
@@ -125,51 +127,58 @@ class _HomePageState extends State<HomePage> {
 
   /// Banners + layout sections; tenants from [HomeCubit] (`pillar_id` + optional `sub_category_id`).
   Future<_HomeLayoutPayload> _fetchLayout() async {
-    final api = StorefrontApi(context.read<Dio>());
-    final slug = widget.slug;
-    final market = await api.getMarketBySlug(slug);
-    final marketId = market['id']?.toString();
-    if (marketId == null || marketId.isEmpty) throw Exception('Market missing');
+    nmdPostLoginTrace('HOME_API_START slug=${widget.slug}');
+    try {
+      final api = StorefrontApi(context.read<Dio>());
+      final slug = widget.slug;
+      final market = await api.getMarketBySlug(slug);
+      final marketId = market['id']?.toString();
+      if (marketId == null || marketId.isEmpty) throw Exception('Market missing');
 
-    final sectionsRaw = await api.getMarketLayout(slug);
-    final bannersRaw = await api.getMarketBanners(slug);
-    final campaigns = <Map<String, dynamic>>[];
+      final sectionsRaw = await api.getMarketLayout(slug);
+      final bannersRaw = await api.getMarketBanners(slug);
+      final campaigns = <Map<String, dynamic>>[];
 
-    final campaignBanners = campaigns
-        .map((c) => _BannerItem(
-              title: (c['name']?.toString() ?? 'Now Market').trim(),
-              imageUrl: resolveImageUrl(
-                  c['imageUrl']?.toString() ?? c['bannerUrl']?.toString()),
-            ))
-        .where((b) => b.imageUrl.isNotEmpty)
-        .toList();
-    final marketBanners = bannersRaw
-        .map((b) => _BannerItem(
-              title: (b['title']?.toString() ?? 'Now Market').trim(),
-              imageUrl: resolveImageUrl(b['imageUrl']?.toString()),
-            ))
-        .where((b) => b.imageUrl.isNotEmpty)
-        .toList();
-    final banners =
-        campaignBanners.isNotEmpty ? campaignBanners : marketBanners;
+      final campaignBanners = campaigns
+          .map((c) => _BannerItem(
+                title: (c['name']?.toString() ?? 'Now Market').trim(),
+                imageUrl: resolveImageUrl(
+                    c['imageUrl']?.toString() ?? c['bannerUrl']?.toString()),
+              ))
+          .where((b) => b.imageUrl.isNotEmpty)
+          .toList();
+      final marketBanners = bannersRaw
+          .map((b) => _BannerItem(
+                title: (b['title']?.toString() ?? 'Now Market').trim(),
+                imageUrl: resolveImageUrl(b['imageUrl']?.toString()),
+              ))
+          .where((b) => b.imageUrl.isNotEmpty)
+          .toList();
+      final banners =
+          campaignBanners.isNotEmpty ? campaignBanners : marketBanners;
 
-    final sections = sectionsRaw
-        .map(
-          (s) => _SectionItem(
-            title: (s['title']?.toString() ?? '').trim(),
-            storeIds: ((s['storeIds'] as List?) ?? const [])
-                .map((e) => e.toString())
-                .toList(),
-          ),
-        )
-        .where((s) => s.title.isNotEmpty && s.storeIds.isNotEmpty)
-        .toList();
+      final sections = sectionsRaw
+          .map(
+            (s) => _SectionItem(
+              title: (s['title']?.toString() ?? '').trim(),
+              storeIds: ((s['storeIds'] as List?) ?? const [])
+                  .map((e) => e.toString())
+                  .toList(),
+            ),
+          )
+          .where((s) => s.title.isNotEmpty && s.storeIds.isNotEmpty)
+          .toList();
 
-    return _HomeLayoutPayload(
-      marketName: _marketDisplayName(market),
-      banners: banners,
-      sections: sections,
-    );
+      nmdPostLoginTrace('HOME_API_SUCCESS slug=$slug');
+      return _HomeLayoutPayload(
+        marketName: _marketDisplayName(market),
+        banners: banners,
+        sections: sections,
+      );
+    } catch (e, st) {
+      nmdPostLoginTrace('HOME_API_FAILED', '$e\n$st');
+      rethrow;
+    }
   }
 
   String _marketDisplayName(Map<String, dynamic> market) {
@@ -239,10 +248,25 @@ class _HomePageState extends State<HomePage> {
             child: FutureBuilder<_HomeLayoutPayload>(
               future: _layoutFuture,
               builder: (context, snap) {
-                if (!snap.hasData) {
+                if (snap.connectionState != ConnectionState.done) {
                   return const NmdLoading(message: 'جاري تحميل السوق...');
                 }
+                if (snap.hasError) {
+                  return NmdErrorState(
+                    title: 'تعذر تحميل السوق',
+                    message: snap.error.toString(),
+                    onRetry: () {
+                      setState(() {
+                        _layoutFuture = _fetchLayout();
+                      });
+                    },
+                  );
+                }
                 final layout = snap.data!;
+                if (!_homeRenderedLogged) {
+                  _homeRenderedLogged = true;
+                  nmdPostLoginTrace('HOME_SCREEN_RENDERED slug=${widget.slug}');
+                }
                 _scheduleContestPopupAfterLayoutReady();
                 return BlocBuilder<HomeCubit, HomeCubitState>(
                   builder: (context, cState) {

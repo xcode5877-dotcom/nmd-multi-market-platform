@@ -1,6 +1,8 @@
+
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../core/auth/app_review_demo_access.dart';
+import '../../../core/debug/nmd_post_login_trace.dart';
 import '../../../core/network/token_storage.dart';
 import '../domain/auth_repository.dart';
 import '../domain/models.dart';
@@ -56,6 +58,7 @@ class AuthRepositoryImpl implements AuthRepository {
         name: name,
       );
       await _tokenStorage.saveCustomerToken(result.token);
+      nmdPostLoginTrace('TOKEN_SAVED');
       return result;
     } catch (e, st) {
       if (isAppReviewDemoAccount(phone)) {

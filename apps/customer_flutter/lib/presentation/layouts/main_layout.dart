@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/ensure_customer_auth.dart';
+import '../../core/debug/nmd_post_login_trace.dart';
 import '../../widgets/global_nmd_header.dart';
 import '../../widgets/nmd_bottom_nav.dart';
 
@@ -114,8 +115,15 @@ class _MainLayoutState extends State<MainLayout> {
           await openCustomerAccount(context, widget.marketSlug);
           return;
         case MainTab.orders:
+          final router = GoRouter.of(context);
           final ok = await ensureCustomerAuth(context);
-          if (!context.mounted) return;
+          if (!context.mounted) {
+            if (ok) {
+              nmdPostLoginTrace('NAVIGATING_TO_ORDERS_ROUTER_FALLBACK', '$base/orders');
+              router.go('$base/orders');
+            }
+            return;
+          }
           if (ok) context.go('$base/orders');
           return;
       }

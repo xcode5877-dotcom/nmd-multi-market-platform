@@ -70,6 +70,15 @@ class _NowMarketAppState extends State<NowMarketApp> {
           theme: AppTheme.light,
           scrollBehavior: const NmdAppScrollBehavior(),
           routerConfig: appRouter,
+          builder: (context, child) {
+            if (child == null) {
+              return const ColoredBox(
+                color: Colors.white,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            return child;
+          },
         ),
       ),
     );
