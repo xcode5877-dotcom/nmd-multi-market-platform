@@ -43,6 +43,12 @@ const LuckyWheelAdmin = lazy(() => import('./pages/LuckyWheelAdmin'));
 const PushNotificationsPage = lazy(() => import('./pages/PushNotificationsPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const ExternalOrdersAdminPage = lazy(() => import('./pages/ExternalOrdersAdminPage'));
+const DriversSectionLayout = lazy(() => import('./components/drivers/DriversSectionLayout'));
+const DriversHubPage = lazy(() => import('./pages/drivers/DriversHubPage'));
+const DriversReportsHubPage = lazy(() => import('./pages/drivers/DriversReportsHubPage'));
+const DriversFinanceHubPage = lazy(() => import('./pages/drivers/DriversFinanceHubPage'));
+const DriversMarketsHubPage = lazy(() => import('./pages/drivers/DriversMarketsHubPage'));
+const DriversCouriersPage = lazy(() => import('./pages/drivers/DriversCouriersPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const LOADING = <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -102,7 +108,16 @@ function Content() {
         <Route path="coupons" element={<RootOnlyRoute><CouponsPage /></RootOnlyRoute>} />
         <Route path="lucky-wheel" element={<RootOnlyRoute><LuckyWheelAdmin /></RootOnlyRoute>} />
         <Route path="rewards" element={<RootOnlyRoute><RewardsPage /></RootOnlyRoute>} />
-        <Route path="external-orders" element={<RootOnlyRoute><ExternalOrdersAdminPage /></RootOnlyRoute>} />
+        <Route path="drivers" element={<RootOnlyRoute><DriversSectionLayout /></RootOnlyRoute>}>
+          <Route index element={<DriversHubPage />} />
+          <Route path="couriers" element={<DriversCouriersPage />} />
+          <Route path="reports" element={<DriversReportsHubPage />} />
+          <Route path="finance" element={<DriversFinanceHubPage />} />
+          <Route path="markets" element={<DriversMarketsHubPage />} />
+        </Route>
+        <Route path="external-orders" element={<RootOnlyRoute><DriversSectionLayout /></RootOnlyRoute>}>
+          <Route index element={<ExternalOrdersAdminPage />} />
+        </Route>
         <Route path="push-notifications" element={<RootOnlyRoute><PushNotificationsPage /></RootOnlyRoute>} />
         <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
           {tenantRouteElements}

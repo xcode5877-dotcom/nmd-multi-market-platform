@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck, Bell, BellOff, Volume2, LayoutGrid, Trophy, Tag, AlertCircle, DollarSign, Send } from 'lucide-react';
+import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck, Bell, BellOff, Volume2, LayoutGrid, Trophy, Tag, Gift, AlertCircle, DollarSign, Send, Radio, Wallet, BarChart3, UserCog } from 'lucide-react';
 import StoreStatusToggle from '../components/StoreStatusToggle';
 import { setEmergencyHeaders, TOKEN_KEY } from '../api';
 import { MockApiClient } from '@nmd/mock';
@@ -117,12 +117,22 @@ export default function AdminLayout() {
       ]
     : [];
 
+  const driversNav = [
+    { to: '/drivers', icon: LayoutDashboard, label: 'لوحة التوصيل', end: true },
+    { to: '/drivers/couriers', icon: UserCog, label: 'إدارة السائقين', end: true },
+    { to: '/drivers/markets', icon: Radio, label: 'الأسواق والتوصيل', end: true },
+    { to: '/drivers/reports', icon: BarChart3, label: 'التقارير', end: true },
+    { to: '/drivers/finance', icon: Wallet, label: 'التسويات المالية', end: true },
+    { to: '/external-orders', icon: Package, label: 'الطلبات الخارجية', end: true },
+  ];
+
   const rootNav = [
     { to: '/markets', icon: Store, label: 'Markets', end: true },
     { to: '/tenants', icon: Building2, label: 'Global Tenants', end: true },
     { to: '/categories', icon: FolderTree, label: 'إدارة التصنيفات', end: true },
     { to: '/pillars', icon: LayoutGrid, label: 'الأعمدة والتصنيفات', end: true },
     { to: '/contests', icon: Trophy, label: 'المسابقات', end: true },
+    { to: '/rewards', icon: Gift, label: 'المكافآت والبطولات', end: true },
     { to: '/coupons', icon: Tag, label: 'أكواد الخصم', end: true },
     { to: '/push-notifications', icon: Send, label: 'إشعارات Push', end: true },
     { to: '/customers', icon: Users, label: 'المشتركون', end: true },
@@ -266,6 +276,28 @@ export default function AdminLayout() {
                   {item.label}
                 </NavLink>
               ))}
+              {isRootAdmin && driversNav.length > 0 ? (
+                <>
+                  <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    السائقون والتوصيل
+                  </p>
+                  {driversNav.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={appendTenant(item.to)}
+                      end={item.end}
+                      className={({ isActive }) =>
+                        `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                          isActive ? 'bg-teal-600 text-white' : 'text-gray-300 hover:bg-[#334155] hover:text-white'
+                        }`
+                      }
+                    >
+                      <item.icon className="w-5 h-5" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </>
+              ) : null}
             </>
           )}
         </nav>
