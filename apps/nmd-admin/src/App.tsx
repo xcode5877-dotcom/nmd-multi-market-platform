@@ -39,7 +39,10 @@ const LeadsPage = lazy(() => import('./pages/LeadsPage'));
 const CustomersPage = lazy(() => import('./pages/CustomersPage'));
 const ContestsPage = lazy(() => import('./pages/ContestsPage').then((m) => ({ default: m.ContestsPageWithGuard })));
 const CouponsPage = lazy(() => import('./pages/CouponsPage'));
+const LuckyWheelAdmin = lazy(() => import('./pages/LuckyWheelAdmin'));
 const PushNotificationsPage = lazy(() => import('./pages/PushNotificationsPage'));
+const RewardsPage = lazy(() => import('./pages/RewardsPage'));
+const ExternalOrdersAdminPage = lazy(() => import('./pages/ExternalOrdersAdminPage'));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const LOADING = <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -92,10 +95,14 @@ function Content() {
         <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
         <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
         <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
-        <Route path="leads" element={<LeadsPage />} />
+        <Route path="delivery-leads" element={<LeadsPage />} />
+        <Route path="leads" element={<Navigate to="/delivery-leads" replace />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="contests" element={<ContestsPage />} />
         <Route path="coupons" element={<RootOnlyRoute><CouponsPage /></RootOnlyRoute>} />
+        <Route path="lucky-wheel" element={<RootOnlyRoute><LuckyWheelAdmin /></RootOnlyRoute>} />
+        <Route path="rewards" element={<RootOnlyRoute><RewardsPage /></RootOnlyRoute>} />
+        <Route path="external-orders" element={<RootOnlyRoute><ExternalOrdersAdminPage /></RootOnlyRoute>} />
         <Route path="push-notifications" element={<RootOnlyRoute><PushNotificationsPage /></RootOnlyRoute>} />
         <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
           {tenantRouteElements}

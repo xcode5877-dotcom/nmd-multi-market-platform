@@ -30,6 +30,20 @@ function getActionLabel(type: string, contactType?: string): string {
   return 'CTA';
 }
 
+function getLeadSource(type: string, contactType?: string): 'WhatsApp' | 'Call' | 'Other' {
+  if (type === 'call' || contactType === 'call') return 'Call';
+  if (type === 'whatsapp' || contactType === 'whatsapp' || contactType === 'whatsapp_order') return 'WhatsApp';
+  return 'Other';
+}
+
+/** Delivery/contact leads only — excludes generic CTA clicks. */
+function isDeliveryLead(lead: { type?: string; contactType?: string }): boolean {
+  const type = String(lead.type ?? '');
+  if (type === 'whatsapp' || type === 'call' || type === 'PROFESSIONAL_CONTACT') return true;
+  const ct = String(lead.contactType ?? '');
+  return ct === 'whatsapp' || ct === 'call' || ct === 'whatsapp_order';
+}
+
 function getWhoDisplay(metadata?: Record<string, unknown>): string {
   const customerName = (metadata?.customerName as string)?.trim();
   if (customerName) return customerName;
@@ -46,7 +60,7 @@ export default function LeadsPage() {
   const effectiveTenantSlug = urlTenant ?? (me?.role === 'TENANT_ADMIN' ? authTenantSlug : undefined);
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', effectiveTenantSlug ?? ''],
-    queryFn: () => api.listLeads(effectiveTenantSlug),
+    queryFn: () => api.listLeads(effectiveTenantSlug, { scope: 'delivery' }),
     enabled: !!MOCK_API_URL,
   });
 
@@ -59,9 +73,10 @@ export default function LeadsPage() {
   const tenantMap = new Map<string, Tenant>();
   (tenants as { id: string; name: string; slug: string; marketId?: string }[]).forEach((t) => tenantMap.set(t.id, t));
 
+  const deliveryLeads = leads.filter((l) => isDeliveryLead(l));
   const todayStart = getTodayStart().getTime();
-  const leadsToday = leads.filter((l) => new Date(l.timestamp).getTime() >= todayStart);
-  const sortedLeads = [...leads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const leadsToday = deliveryLeads.filter((l) => new Date(l.timestamp).getTime() >= todayStart);
+  const sortedLeads = [...deliveryLeads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   if (!MOCK_API_URL) {
     return (
@@ -76,7 +91,7 @@ export default function LeadsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">سجل الطلبات</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">طلبات واتساب / اتصال</h1>
       {effectiveTenantSlug && (
         <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
           عرض بيانات متجر واحد فقط: <strong>{effectiveTenantSlug}</strong>
@@ -93,10 +108,13 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">Lead ID</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">المتجر</th>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">المصدر</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">نوع الإجراء</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">من</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">رقم الهاتف</th>
+                  <th className="px-4 py-3 text-start font-medium text-gray-700">الحالة</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">التاريخ والوقت</th>
                   <th className="px-4 py-3 text-start font-medium text-gray-700">رابط</th>
                 </tr>
@@ -104,7 +122,7 @@ export default function LeadsPage() {
             <tbody>
               {sortedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                     لا توجد طلبات
                   </td>
                 </tr>
@@ -122,9 +140,13 @@ export default function LeadsPage() {
                   const meta = (l as { metadata?: Record<string, unknown> }).metadata;
                   const whoDisplay = getWhoDisplay(meta);
                   const phone = (meta?.customerPhone as string)?.trim() || '—';
+                  const source = getLeadSource(l.type, (l as { contactType?: string }).contactType);
+                  const status = (l as { status?: string }).status?.trim() || 'NEW';
                   return (
                     <tr key={l.id} className="border-t border-gray-100">
+                      <td className="px-4 py-3 font-mono text-xs">{l.id}</td>
                       <td className="px-4 py-3 font-medium">{storeName}</td>
+                      <td className="px-4 py-3">{source}</td>
                       <td className="px-4 py-3">{getActionLabel(l.type, (l as { contactType?: string }).contactType)}</td>
                       <td className="px-4 py-3 text-gray-600" title={meta?.userAgent as string}>{whoDisplay}</td>
                       <td className="px-4 py-3 text-gray-600">
@@ -136,6 +158,7 @@ export default function LeadsPage() {
                           phone
                         )}
                       </td>
+                      <td className="px-4 py-3 text-gray-700">{status}</td>
                       <td className="px-4 py-3 text-gray-600">
                         {formatDateTimeGregorian(l.timestamp)}
                       </td>

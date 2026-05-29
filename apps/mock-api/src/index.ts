@@ -4,7 +4,7 @@ import cors from 'cors';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import { join, resolve, dirname, basename } from 'path';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'fs';
 import sharp from 'sharp';
 import type { RequestHandler } from 'express';
 import {
@@ -19,6 +19,8 @@ import {
   setStaff,
   getGlobalCategories,
   setGlobalCategories,
+  getGlobalConfig,
+  setGlobalConfig,
   getLeads,
   appendLead,
   type RegistryTenant,
@@ -58,12 +60,21 @@ import {
   newCardId,
   normalizeNotificationPatch,
 } from './customer-account-extras.js';
-import { getBannersForMarket, getLayoutForMarket, setBannersForMarket, setLayoutForMarket, type MarketBanner, type MarketSection } from './market-config.js';
+import {
+  getBannersForMarket,
+  getLayoutForMarket,
+  setBannersForMarket,
+  setLayoutForMarket,
+  normalizeMarketSlugForConfig,
+  type MarketBanner,
+  type MarketSection,
+} from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { PrismaClient } from '@prisma/client';
 import { createOtp, verifyOtp } from './customer-auth.js';
+import { isGooglePlayReviewPhone } from './google-play-review.js';
 import { normalizeInternationalPhoneDigits } from './utils/phone.js';
 import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
 import { sendWhatsAppNotification } from './services/CouponService.js';
@@ -339,6 +350,186 @@ const DABBURIYYA_MARKET_ID = 'market-dabburiyya';
 const IKSAL_MARKET_ID = 'market-iksal';
 const ROOT_ADMIN_ID = 'user-root-admin';
 
+/** Rich market rows from data.json (tenantIds, stores) are not persisted on Market in PostgreSQL — merge from DATA_FILE / repo data.json so listings match seeded JSON. */
+type JsonMarketOverlay = { id?: string; slug?: string; tenantIds?: string[]; stores?: { id?: string }[] };
+
+let dataFilePayloadCache: { path: string; mtimeMs: number; payload: { markets: JsonMarketOverlay[]; tenants: { id?: string; marketId?: string }[] } } | null = null;
+
+function dataFilePathCandidates(): string[] {
+  const list = [
+    process.env.SEED_JSON_PATH,
+    // Prefer monorepo root data.json in dev (often richer than apps/mock-api/data.json or an empty Docker stub).
+    join(process.cwd(), '..', '..', 'data', 'data.json'),
+    process.env.DATA_FILE,
+    join(process.cwd(), 'data', 'data.json'),
+    join(process.cwd(), 'data.json'),
+  ].filter((p): p is string => Boolean(p));
+  const seen = new Set<string>();
+  return list.filter((p) => {
+    if (seen.has(p)) return false;
+    seen.add(p);
+    return true;
+  });
+}
+
+function parseDataFilePayload(): { markets: JsonMarketOverlay[]; tenants: { id?: string; marketId?: string }[] } | null {
+  for (const p of dataFilePathCandidates()) {
+    try {
+      if (!existsSync(p)) continue;
+      const st = statSync(p);
+      if (dataFilePayloadCache && dataFilePayloadCache.path === p && dataFilePayloadCache.mtimeMs === st.mtimeMs) {
+        return dataFilePayloadCache.payload;
+      }
+      const raw = readFileSync(p, 'utf-8');
+      if (!raw.trim()) continue;
+      const data = JSON.parse(raw) as { markets?: JsonMarketOverlay[]; tenants?: { id?: string; marketId?: string }[] };
+      const markets = Array.isArray(data.markets) ? data.markets : [];
+      const tenants = Array.isArray(data.tenants) ? data.tenants : [];
+      // Skip Docker entrypoint stub `{}` so a richer file later in the list (e.g. repo data/data.json in dev) can load.
+      if (markets.length === 0 && tenants.length === 0) continue;
+      const payload = { markets, tenants };
+      dataFilePayloadCache = { path: p, mtimeMs: st.mtimeMs, payload };
+      return payload;
+    } catch {
+      /* try next path */
+    }
+  }
+  return null;
+}
+
+function findJsonMarketOverlay(
+  markets: JsonMarketOverlay[],
+  resolvedMarketId: string,
+  marketSlug: string | undefined,
+  paramMarketId: string
+): JsonMarketOverlay | undefined {
+  const slugNorm = paramMarketId.toLowerCase().replace(/^market-/, '');
+  return markets.find((om) => {
+    if (om.id && om.id === resolvedMarketId) return true;
+    if (marketSlug && om.slug === marketSlug) return true;
+    if (om.slug && (om.slug === paramMarketId || om.slug === slugNorm)) return true;
+    if (om.slug === 'dabburiyya' && (paramMarketId === 'daburiyya' || paramMarketId === 'dabburiyya')) return true;
+    return false;
+  });
+}
+
+function tenantIdsFromJsonMarketOverlay(om: JsonMarketOverlay | undefined): Set<string> {
+  const ids = new Set<string>();
+  if (!om) return ids;
+  for (const id of om.tenantIds ?? []) {
+    if (typeof id === 'string' && id) ids.add(id);
+  }
+  for (const s of om.stores ?? []) {
+    const id = s?.id;
+    if (typeof id === 'string' && id) ids.add(id);
+  }
+  return ids;
+}
+
+function tenantIdsFromJsonTenantsArray(
+  tenantRows: { id?: string; marketId?: string }[],
+  resolvedMarketId: string,
+  marketSlug: string | undefined
+): Set<string> {
+  const ids = new Set<string>();
+  for (const t of tenantRows) {
+    const mid = (t.marketId ?? '').trim();
+    const id = t.id;
+    if (!id || !mid) continue;
+    if (mid === resolvedMarketId) ids.add(id);
+    if (marketSlug && mid === marketSlug) ids.add(id);
+    if (
+      marketSlug === 'dabburiyya' &&
+      (mid === 'daburiyya' || mid === 'dabburiyya' || mid === 'market-daburiyya' || mid === 'market-dabburiyya')
+    ) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function buildMarketTenantIdSet(
+  marketRow: { tenantIds?: string[] },
+  resolvedMarketId: string,
+  marketSlug: string | undefined,
+  paramMarketId: string
+): Set<string> {
+  const set = new Set<string>(marketRow.tenantIds ?? []);
+  const payload = parseDataFilePayload();
+  if (!payload) return set;
+  const om = findJsonMarketOverlay(payload.markets, resolvedMarketId, marketSlug, paramMarketId);
+  for (const id of tenantIdsFromJsonMarketOverlay(om)) set.add(id);
+  for (const id of tenantIdsFromJsonTenantsArray(payload.tenants, resolvedMarketId, marketSlug)) set.add(id);
+  return set;
+}
+
+/**
+ * Canonical keys for matching `tenant.marketId` against a market: DB id (UUID or market-*), slug param,
+ * and known typos (e.g. daburiyya ↔ dabburiyya).
+ */
+function buildMarketKeyAliasSet(resolvedMarketId: string, marketSlug: string | undefined, paramMarketId: string): Set<string> {
+  const aliases = new Set<string>();
+  const add = (v: string | undefined | null) => {
+    const x = (v ?? '').trim();
+    if (x) aliases.add(x);
+  };
+  add(resolvedMarketId);
+  add(paramMarketId);
+  add(marketSlug);
+  const paramLower = paramMarketId.toLowerCase();
+  add(paramLower);
+  add(paramLower.replace(/^market-/, ''));
+  const slug = (marketSlug ?? '').trim().toLowerCase();
+  const rid = resolvedMarketId.toLowerCase();
+  if (slug) {
+    add(marketSlug);
+    add(slug);
+  }
+  if (
+    slug === 'dabburiyya' ||
+    paramLower === 'dabburiyya' ||
+    paramLower === 'daburiyya' ||
+    rid.includes('dabburiyya') ||
+    rid.includes('daburiyya')
+  ) {
+    add('dabburiyya');
+    add('daburiyya');
+    add('market-dabburiyya');
+    add('market-daburiyya');
+    add(DABBURIYYA_MARKET_ID);
+  }
+  if (slug === 'iksal' || paramLower === 'iksal' || rid.includes('iksal')) {
+    add('iksal');
+    add('market-iksal');
+    add(IKSAL_MARKET_ID);
+  }
+  return aliases;
+}
+
+function tenantMarketIdMatchesAlias(mid: string, aliases: Set<string>): boolean {
+  if (aliases.has(mid)) return true;
+  const lower = mid.toLowerCase();
+  for (const a of aliases) {
+    if (!a) continue;
+    if (lower === a.toLowerCase()) return true;
+  }
+  return false;
+}
+
+function tenantMatchesMarketMembership(
+  t: { id: string; marketId?: string },
+  resolvedMarketId: string,
+  paramMarketId: string,
+  marketSlug: string | undefined,
+  marketTenantIds: Set<string>
+): boolean {
+  if (marketTenantIds.has(t.id)) return true;
+  const mid = (t.marketId ?? '').trim();
+  if (!mid) return false;
+  const aliases = buildMarketKeyAliasSet(resolvedMarketId, marketSlug, paramMarketId);
+  return tenantMarketIdMatchesAlias(mid, aliases);
+}
+
 /** ROOT_ADMIN and SUPER_ADMIN both have platform-wide access (e.g. delivery settings, emergency mode). */
 function isPlatformAdmin(role: string | undefined): boolean {
   return role === 'ROOT_ADMIN' || role === 'SUPER_ADMIN';
@@ -412,13 +603,20 @@ async function seedMarketsIfNeeded(): Promise<void> {
 async function seedTenantMarketIdsIfNeeded(): Promise<void> {
   const markets = (await repos.markets.findAll()) as { id: string; slug?: string; stores?: { id: string }[]; tenantIds?: string[] }[];
   const tenants = await repos.tenants.findAll();
+  const payload = parseDataFilePayload();
   let changed = false;
   for (const t of tenants) {
     if (!(t as { marketId?: string }).marketId && t.id) {
       for (const m of markets) {
-        const stores = m.stores ?? [];
-        const ids = m.tenantIds ?? [];
-        if (stores.some((s) => s.id === t.id) || ids.includes(t.id)) {
+        const ids = new Set<string>();
+        for (const x of m.tenantIds ?? []) ids.add(x);
+        for (const s of m.stores ?? []) ids.add(s.id);
+        if (payload) {
+          const om = findJsonMarketOverlay(payload.markets, m.id, m.slug, m.slug ?? '');
+          for (const x of tenantIdsFromJsonMarketOverlay(om)) ids.add(x);
+          for (const x of tenantIdsFromJsonTenantsArray(payload.tenants, m.id, m.slug)) ids.add(x);
+        }
+        if (ids.has(t.id)) {
           (t as { marketId?: string }).marketId = m.id;
           changed = true;
           break;
@@ -642,25 +840,81 @@ async function compressNewUploadToWebP(filePath: string): Promise<string> {
 
 // Serve /uploads with maximum compression-friendly headers: long cache, immutable for versioned filenames
 const UPLOADS_CACHE = 'public, max-age=31536000, immutable';
+const UPLOADS_ROOT = resolve(UPLOADS_DIR);
+/** Prefer these subdirs when a bare filename is requested (e.g. /uploads/x.webp → /uploads/banners/x.webp). */
+const UPLOAD_FALLBACK_SUBDIRS = ['banners', 'tenants', 'markets', 'merchants'] as const;
+
+function isSafeUploadPath(abs: string): boolean {
+  return abs.startsWith(UPLOADS_ROOT) && !abs.slice(UPLOADS_ROOT.length).includes('..');
+}
+
+/**
+ * If rel is a single path segment (file at "root" of /uploads) but missing, try banners/ tenants/ etc.
+ * Also case-insensitive match on basename within each tried directory.
+ */
+function findUploadFileForRequest(rel: string): string | null {
+  const normalized = rel.replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!normalized || normalized.includes('..')) return null;
+  const direct = resolve(join(UPLOADS_DIR, normalized));
+  if (!isSafeUploadPath(direct)) return null;
+  if (existsSync(direct) && statSync(direct).isFile()) return direct;
+
+  const dir = dirname(direct);
+  const base = basename(direct);
+  if (existsSync(dir)) {
+    const lower = base.toLowerCase();
+    const found = readdirSync(dir).find((f) => f.toLowerCase() === lower);
+    if (found) {
+      const target = join(dir, found);
+      if (statSync(target).isFile()) return target;
+    }
+  }
+
+  // Bare filename: /uploads/foo.webp not found → try uploads/banners/foo.webp, uploads/tenants/foo.webp, …
+  if (!normalized.includes('/')) {
+    const lower = normalized.toLowerCase();
+    for (const sub of UPLOAD_FALLBACK_SUBDIRS) {
+      const candidate = resolve(join(UPLOADS_DIR, sub, normalized));
+      if (!isSafeUploadPath(candidate)) continue;
+      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      const subDir = join(UPLOADS_DIR, sub);
+      if (!existsSync(subDir)) continue;
+      const hit = readdirSync(subDir).find((f) => f.toLowerCase() === lower);
+      if (hit) {
+        const p = join(subDir, hit);
+        if (statSync(p).isFile()) return p;
+      }
+    }
+    // Any other first-level subdirectory under UPLOADS_DIR
+    if (existsSync(UPLOADS_DIR)) {
+      for (const ent of readdirSync(UPLOADS_DIR, { withFileTypes: true })) {
+        if (!ent.isDirectory() || UPLOAD_FALLBACK_SUBDIRS.includes(ent.name as (typeof UPLOAD_FALLBACK_SUBDIRS)[number])) continue;
+        const candidate = resolve(join(UPLOADS_DIR, ent.name, normalized));
+        if (!isSafeUploadPath(candidate)) continue;
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+        const subDir = join(UPLOADS_DIR, ent.name);
+        const hit = readdirSync(subDir).find((f) => f.toLowerCase() === lower);
+        if (hit) {
+          const p = join(subDir, hit);
+          if (statSync(p).isFile()) return p;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 app.use('/uploads', cors({ origin: '*', methods: ['GET', 'HEAD', 'OPTIONS'] }), (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   const rel = (req.path.replace(/^\/uploads\/?/, '') || '').replace(/^\/+/, '');
   if (!rel) return next();
-  const full = resolve(join(UPLOADS_DIR, rel));
-  if (!full.startsWith(resolve(UPLOADS_DIR))) return res.status(400).end();
-  if (existsSync(full)) return next(); // let express.static serve it
-  const dir = dirname(full);
-  const base = basename(full);
-  if (!existsSync(dir)) return next();
-  const lower = base.toLowerCase();
-  const found = readdirSync(dir).find((f) => f.toLowerCase() === lower);
-  if (found) {
-    const target = join(dir, found);
+  const resolved = findUploadFileForRequest(rel);
+  if (resolved) {
     res.setHeader('Cache-Control', UPLOADS_CACHE);
-    res.sendFile(target, { maxAge: 31536000 }, (err) => { if (err) next(); });
-  } else {
-    next();
+    res.sendFile(resolved, { maxAge: 31536000 }, (err) => { if (err) next(); });
+    return;
   }
+  next();
 }, express.static(UPLOADS_DIR, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', UPLOADS_CACHE) }));
 
 app.use((req, res, next) => {
@@ -738,6 +992,7 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/contest\/active$/ },
   { method: 'GET', path: /^\/lucky-wheel\/prizes$/ },
   { method: 'GET', path: /^\/rewards$/ },
+  { method: 'GET', path: /^\/config\/payment-methods$/ },
   /** Hyp hosted payment return (browser redirect from CreditGuard). */
   { method: 'GET', path: /^\/payments\/hyp\/return$/ },
   /** Mock-api–served Hyp HTML (WebView cannot send Bearer on redirects; must be public). */
@@ -1382,6 +1637,14 @@ app.post('/customer/auth/start', async (req, res) => {
     console.log('[customer/auth/start] 429:', result.error, result.code);
     return res.status(429).json({ error: result.error, code: result.code });
   }
+  const playReview =
+    ('playReview' in result && result.playReview === true) ||
+    isGooglePlayReviewPhone(phoneDigits);
+  if (playReview) {
+    console.log(
+      '[customer/auth/start] Google Play review phone — OTP delivery skipped (use app-access credentials)',
+    );
+  }
   const externalApiUrl = (process.env.WHATSAPP_API_URL || '').trim().replace(/\/$/, '');
   const externalToken = (process.env.WHATSAPP_TOKEN || '').trim();
   let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
@@ -1393,13 +1656,13 @@ app.post('/customer/auth/start', async (req, res) => {
 
   let whatsAppSent = false;
   let whatsAppError: string | undefined;
-  if (externalApiUrl && externalToken && result.codeForSending) {
+  if (!playReview && externalApiUrl && externalToken && result.codeForSending) {
     const ext = await sendOtpViaExternalWhatsAppApi(externalApiUrl, externalToken, phoneDigits, result.codeForSending);
     whatsAppSent = ext.sent;
     if (!ext.sent && ext.providerError) {
       console.error('[customer/auth/start] External WhatsApp API error (exact provider message):', ext.providerError);
     }
-  } else if (useLegacyGateway && gatewayUrl && waApiKey && result.codeForSending) {
+  } else if (!playReview && useLegacyGateway && gatewayUrl && waApiKey && result.codeForSending) {
     const sendResult = await sendOtpViaGateway(gatewayUrl, waApiKey, phoneDigits, result.codeForSending, 0);
     whatsAppSent = sendResult.sent;
     if (!sendResult.sent && sendResult.error) {
@@ -1418,7 +1681,7 @@ app.post('/customer/auth/start', async (req, res) => {
 
   // If WhatsApp failed or was not configured, try SMS (custom gateway first, then Twilio).
   let smsSent = false;
-  if (!whatsAppSent && result.codeForSending) {
+  if (!playReview && !whatsAppSent && result.codeForSending) {
     const smsGatewayUrl = (process.env.SMS_GATEWAY_URL || '').replace(/\/$/, '');
     const smsApiKey = process.env.SMS_API_KEY ?? '';
     if (smsGatewayUrl && smsApiKey) {
@@ -1443,15 +1706,23 @@ app.post('/customer/auth/start', async (req, res) => {
   if (!whatsAppSent && smsSent) {
     console.warn('[customer/auth/start] WhatsApp delivery failed; SMS delivered the OTP.');
   }
-  if (!whatsAppSent && !smsSent && result.codeForSending) {
+  if (!playReview && !whatsAppSent && !smsSent && result.codeForSending) {
     logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_and_sms_failed');
   }
 
   if (result.devCode) console.log('[customer/auth/start] 200 → OTP sent (see [OTP] log above or client toast)');
-  const sentVia = whatsAppSent && smsSent ? 'both' : whatsAppSent ? 'whatsapp' : smsSent ? 'sms' : 'none';
+  const sentVia = playReview
+    ? 'play_review'
+    : whatsAppSent && smsSent
+      ? 'both'
+      : whatsAppSent
+        ? 'whatsapp'
+        : smsSent
+          ? 'sms'
+          : 'none';
   const deliveryOk = whatsAppSent || smsSent;
   const mockOrDevCode = Boolean(result.devCode);
-  const clientSeesSuccess = deliveryOk || mockOrDevCode;
+  const clientSeesSuccess = deliveryOk || mockOrDevCode || playReview;
   res.json({
     ok: true,
     whatsAppSent: clientSeesSuccess, // true if WA/SMS worked OR dev/fixed MOCK_OTP exposes devCode
@@ -2955,6 +3226,20 @@ app.post('/customer/payments/hyp/session', wrapAsync(async (req, res) => {
       String((o as { customerId?: string }).customerId ?? '') === customer.id
   );
   if (mine.length === 0) return res.status(404).json({ error: 'No orders for this group or access denied' });
+  const allTenants = await repos.tenants.findAll();
+  const cardDisabledTenant = mine.find((o) => {
+    const tid = String((o as { tenantId?: string }).tenantId ?? '');
+    const tenant = allTenants.find((t) => t.id === tid);
+    if (!tenant) return false;
+    const payment = resolvePaymentMethodsForTenant(tenant);
+    return payment.card !== true;
+  });
+  if (cardDisabledTenant) {
+    return res.status(403).json({
+      error: 'CARD_PAYMENT_DISABLED',
+      details: 'Card payment is disabled globally or for this store.',
+    });
+  }
 
   let totalAg = 0;
   for (const o of mine) {
@@ -2974,7 +3259,6 @@ app.post('/customer/payments/hyp/session', wrapAsync(async (req, res) => {
   const errorUrl = `nmdcustomer://payment-cancel?orderGroupId=${encodeURIComponent(orderGroupId)}&paymentStatus=error`;
   const cancelUrl = `nmdcustomer://payment-cancel?orderGroupId=${encodeURIComponent(orderGroupId)}&paymentStatus=cancel`;
 
-  const allTenants = await repos.tenants.findAll();
   const tenantInstallmentOptions = mine
     .map((o) => String((o as { tenantId?: string }).tenantId ?? ''))
     .map((tid) => allTenants.find((t) => t.id === tid))
@@ -4241,6 +4525,28 @@ function normalizeHero(h: StorefrontHero | undefined): StorefrontHero {
 const DEFAULT_OPEN_TIME = '08:00';
 const DEFAULT_CLOSE_TIME = '17:00';
 
+type PaymentMethodsToggle = { cash: boolean; card: boolean; installments: boolean };
+
+function resolvePaymentMethodsForTenant(t: RegistryTenant): PaymentMethodsToggle {
+  const globalPayment = getGlobalConfig()?.paymentMethods ?? { cash: true, card: true, installments: true };
+  const market = t.marketId ? getData().markets.find((m) => m.id === t.marketId) : undefined;
+  const marketPayment = market?.paymentMethods ?? {
+    cash: (market?.paymentCapabilities?.cash ?? true) !== false,
+    card: market?.paymentCapabilities?.card === true,
+    installments: Boolean((market?.paymentCapabilities as { allowInstallments?: boolean } | undefined)?.allowInstallments),
+  };
+  const tenantPayment = t.paymentMethods ?? {
+    cash: (t.paymentCapabilities?.cash ?? true) !== false,
+    card: t.paymentCapabilities?.card === true,
+    installments: Boolean((t.paymentCapabilities as { allowInstallments?: boolean } | undefined)?.allowInstallments),
+  };
+  return {
+    cash: globalPayment.cash !== false && marketPayment.cash !== false && tenantPayment.cash !== false,
+    card: globalPayment.card !== false && marketPayment.card !== false && tenantPayment.card !== false,
+    installments: globalPayment.installments !== false && marketPayment.installments !== false && tenantPayment.installments !== false,
+  };
+}
+
 /** Returns full tenant including name, about, officeHours - used by GET /tenants/by-slug and PUT responses. Banners/arrays fallback to []. openTime/closeTime fallback to 08:00/17:00. */
 function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
   const type = (t.type === 'CLOTHING' || t.type === 'FOOD') ? t.type : 'GENERAL';
@@ -4256,6 +4562,7 @@ function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
     openTime,
     closeTime,
     forceClosed,
+    paymentMethods: resolvePaymentMethodsForTenant(t),
   } as RegistryTenant;
 }
 
@@ -4371,6 +4678,10 @@ app.get('/leads', wrapAsync(async (req, res) => {
     }
   }
   let leads = getLeads();
+  const scope = String(req.query.scope ?? '').trim().toLowerCase();
+  if (scope === 'delivery') {
+    leads = leads.filter((l) => isDeliveryLeadRecord(l));
+  }
   if (isPlatformAdmin(caller.role)) {
     if (filterTenantId) {
       const t = tenants.find((x) => x.id === filterTenantId);
@@ -4778,6 +5089,25 @@ app.post('/tenants/:tenantId/create-admin', async (req, res) => {
 // --- Global Categories (platform-level, for mall homepage) ---
 app.get('/global-categories', (_req, res) => {
   res.json(getGlobalCategories());
+});
+
+app.get('/config/payment-methods', (_req, res) => {
+  const cfg = getGlobalConfig()?.paymentMethods ?? { cash: true, card: true, installments: true };
+  res.json({ paymentMethods: cfg });
+});
+
+app.put('/config/payment-methods', (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = req.body as { paymentMethods?: Partial<PaymentMethodsToggle> };
+  const current = getGlobalConfig()?.paymentMethods ?? { cash: true, card: true, installments: true };
+  const next: PaymentMethodsToggle = {
+    cash: body.paymentMethods?.cash ?? current.cash,
+    card: body.paymentMethods?.card ?? current.card,
+    installments: body.paymentMethods?.installments ?? current.installments,
+  };
+  setGlobalConfig({ paymentMethods: next });
+  res.json({ paymentMethods: next });
 });
 
 /** Alias for Big Admin / tenant select: same data as /global-categories */
@@ -5207,7 +5537,8 @@ app.put('/markets/:id', async (req, res) => {
 });
 
 app.get('/markets/by-slug/:slug', async (req, res) => {
-  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
   if (!market) return res.status(404).json({ error: 'Market not found' });
   if (!market.isActive) return res.status(404).json({ error: 'Market not found' });
   res.json(market);
@@ -5216,43 +5547,51 @@ app.get('/markets/by-slug/:slug', async (req, res) => {
 app.get('/markets/by-slug/:slug/banners', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  const banners = getBannersForMarket(req.params.slug);
+  const banners = getBannersForMarket(slugNorm);
   res.json(banners);
 });
 
 app.get('/markets/by-slug/:slug/layout', async (req, res) => {
-  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  const layout = getLayoutForMarket(req.params.slug);
+  const layout = getLayoutForMarket(slugNorm);
   res.json(layout);
 });
 
 app.put('/markets/by-slug/:slug/banners', async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
-  if (!market) return res.status(404).json({ error: 'Market not found' });
   const banners = req.body as unknown;
   if (!Array.isArray(banners)) {
-    return res.json(getBannersForMarket(req.params.slug));
+    return res.json(getBannersForMarket(slugNorm));
   }
-  setBannersForMarket(req.params.slug, banners);
+  setBannersForMarket(slugNorm, banners);
   res.json(banners);
 });
 
 app.put('/markets/by-slug/:slug/layout', async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== (await repos.markets.findAll()).find((m) => m.slug === req.params.slug)?.id)) {
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const market = (await repos.markets.findAll()).find((m) => m.slug === req.params.slug);
-  if (!market) return res.status(404).json({ error: 'Market not found' });
   const raw = req.body as unknown;
   let layout: MarketSection[];
   if (Array.isArray(raw)) {
@@ -5270,7 +5609,7 @@ app.put('/markets/by-slug/:slug/layout', async (req, res) => {
     ...s,
     type: (s as MarketSection & { type?: string }).type === 'MARKET_GROUP' ? 'MARKET_GROUP' : 'SLIDER',
   }));
-  setLayoutForMarket(req.params.slug, normalizedLayout);
+  setLayoutForMarket(slugNorm, normalizedLayout);
 
   const storeIdsInMarketGroup = new Set<string>();
   for (const section of normalizedLayout) {
@@ -5431,11 +5770,16 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && req.user.marketId !== resolvedMarketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const marketTenantIds = new Set((market as { tenantIds?: string[] }).tenantIds ?? []);
+  const marketTenantIds = buildMarketTenantIdSet(
+    market as { tenantIds?: string[] },
+    resolvedMarketId,
+    market.slug,
+    marketId
+  );
   const allTenants = await repos.tenants.findAll();
   let tenants = allTenants.filter(
     (t) =>
-      (t.marketId === resolvedMarketId || t.marketId === marketId || marketTenantIds.has(t.id)) &&
+      tenantMatchesMarketMembership(t, resolvedMarketId, marketId, market.slug, marketTenantIds) &&
       t.enabled !== false &&
       (t.isListedInMarket !== false)
   );
@@ -5517,6 +5861,13 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
         categoryName: resolveTenantCategoryName(t) ?? null,
       };
     });
+  console.log('[GET /markets/:marketId/tenants]', {
+    marketIdParam: marketId,
+    resolvedMarketId,
+    marketSlug: market.slug,
+    totalTenantsInDb: allTenants.length,
+    returning: tenants.length,
+  });
   res.json(tenants);
 });
 
@@ -5565,6 +5916,7 @@ app.post('/markets/:marketId/tenants', async (req, res) => {
     allowMarketCourierFallback: input.allowMarketCourierFallback ?? true,
     financialConfig: input.financialConfig ?? { commissionType: 'PERCENTAGE', commissionValue: 10, deliveryFeeModel: 'TENANT' },
     paymentCapabilities: input.paymentCapabilities ?? { cash: true, card: false, allowInstallments: false, installmentOptions: [3, 6, 12] },
+    paymentMethods: input.paymentMethods ?? { cash: true, card: false, installments: false },
     collections: input.collections ?? [],
   };
   if (adminEmail && adminPassword && adminPassword.length >= 6) {
@@ -6027,6 +6379,7 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     supportsWeightSelling?: boolean;
     allowInstallments?: boolean;
     installmentOptions?: number[];
+    paymentMethods?: Partial<PaymentMethodsToggle>;
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
@@ -6070,6 +6423,18 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (body.addressLine !== undefined) (tenants[idx] as RegistryTenant).addressLine = body.addressLine;
   if (body.location !== undefined) (tenants[idx] as RegistryTenant).location = body.location;
   if (body.supportsWeightSelling !== undefined) (tenants[idx] as RegistryTenant).supportsWeightSelling = body.supportsWeightSelling;
+  if (body.paymentMethods !== undefined) {
+    const current = (tenants[idx] as RegistryTenant).paymentMethods ?? {
+      cash: ((tenants[idx] as RegistryTenant).paymentCapabilities?.cash ?? true) !== false,
+      card: (tenants[idx] as RegistryTenant).paymentCapabilities?.card === true,
+      installments: Boolean(((tenants[idx] as RegistryTenant).paymentCapabilities as { allowInstallments?: boolean } | undefined)?.allowInstallments),
+    };
+    (tenants[idx] as RegistryTenant).paymentMethods = {
+      cash: body.paymentMethods.cash ?? current.cash,
+      card: body.paymentMethods.card ?? current.card,
+      installments: body.paymentMethods.installments ?? current.installments,
+    };
+  }
   if (body.allowInstallments !== undefined || body.installmentOptions !== undefined) {
     const current = ((tenants[idx] as RegistryTenant).paymentCapabilities ?? { cash: true, card: true }) as {
       cash: boolean;
@@ -6084,6 +6449,15 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
       ...current,
       allowInstallments: body.allowInstallments ?? current.allowInstallments ?? false,
       installmentOptions: normalizedOptions,
+    };
+    const pm = (tenants[idx] as RegistryTenant).paymentMethods ?? {
+      cash: current.cash !== false,
+      card: current.card === true,
+      installments: Boolean(current.allowInstallments),
+    };
+    (tenants[idx] as RegistryTenant).paymentMethods = {
+      ...pm,
+      installments: body.allowInstallments ?? pm.installments,
     };
   }
   const before = { ...tenants[idx] };
@@ -6302,6 +6676,23 @@ app.post('/tenants/:tenantId/option-templates', wrapAsync(async (req, res) => {
 }));
 
 // --- Orders ---
+/** Real customer orders only — excludes accidental/migrated lead-* rows from order listings. */
+function isRealCustomerOrder(order: { id?: string }): boolean {
+  const id = String(order.id ?? '').trim();
+  return id !== '' && !id.startsWith('lead-');
+}
+
+function onlyRealCustomerOrders<T extends { id?: string }>(orders: T[]): T[] {
+  return orders.filter(isRealCustomerOrder);
+}
+
+function isDeliveryLeadRecord(lead: { type?: string; contactType?: string }): boolean {
+  const type = String(lead.type ?? '');
+  if (type === 'whatsapp' || type === 'call' || type === 'PROFESSIONAL_CONTACT') return true;
+  const contactType = String(lead.contactType ?? '');
+  return contactType === 'whatsapp' || contactType === 'call' || contactType === 'whatsapp_order';
+}
+
 async function getMarketTenantIds(marketId: string): Promise<Set<string>> {
   const tenants = await repos.tenants.findAll();
   return new Set(tenants.filter((t) => t.marketId === marketId).map((t) => t.id));
@@ -6309,7 +6700,7 @@ async function getMarketTenantIds(marketId: string): Promise<Set<string>> {
 
 app.get('/orders', wrapAsync(async (req, res) => {
   const tenantId = req.query.tenantId as string | undefined;
-  let orders = (await repos.orders.findAll()) as { tenantId?: string }[];
+  let orders = onlyRealCustomerOrders((await repos.orders.findAll()) as { id?: string; tenantId?: string }[]);
   if (req.user?.role === 'TENANT_ADMIN') {
     const ownTenantId = req.user.tenantId;
     if (!ownTenantId) return res.status(403).json({ error: 'Forbidden' });
@@ -6339,7 +6730,9 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
   if (req.user?.role === 'MARKET_ADMIN' && tenant.marketId !== req.user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  let orders = ((await repos.orders.findAll()) as { tenantId?: string; createdAt?: string; customerName?: string; customerPhone?: string }[]).filter((o) => o.tenantId === tenantId);
+  let orders = onlyRealCustomerOrders(
+    (await repos.orders.findAll()) as { id?: string; tenantId?: string; createdAt?: string; customerName?: string; customerPhone?: string }[]
+  ).filter((o) => o.tenantId === tenantId);
   if (from || to) {
     const fromMs = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
     const toMs = to ? new Date(to).setHours(23, 59, 59, 999) : Number.MAX_SAFE_INTEGER;
@@ -7685,9 +8078,9 @@ app.get('/markets/:marketId/orders', wrapAsync(async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const tenantIds = await getMarketTenantIds(marketId);
-  const orders = ((await repos.orders.findAll()) as { tenantId?: string }[]).filter(
-    (o) => o.tenantId && tenantIds.has(o.tenantId)
-  );
+  const orders = onlyRealCustomerOrders(
+    (await repos.orders.findAll()) as { id?: string; tenantId?: string }[]
+  ).filter((o) => o.tenantId && tenantIds.has(o.tenantId));
   orders.forEach(enrichOrderWithMerchantAmount);
   const couriers = (await repos.couriers.findAll()) as { id?: string; name?: string; phone?: string }[];
   for (const o of orders) {

@@ -13,6 +13,7 @@ import { listCampaigns } from './campaign-store';
 import { getDeliverySettings as getDeliverySettingsStore } from './delivery-store';
 import { getDeliveryZones as getDeliveryZonesStore } from './delivery-zones-store';
 import type { RegistryTenant, MarketCourier, MarketCourierWithStats, CategoryPolicy } from './types';
+import type { MerchantStatsPayload } from './merchant-stats-local';
 
 const MOCK_API_URL_RAW =
   (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_MOCK_API_URL) ||
@@ -23,9 +24,17 @@ const PROD_API_BASE = 'https://nmd.marketing/api';
 const MOCK_API_URL = (() => {
   const s = typeof MOCK_API_URL_RAW === 'string' ? MOCK_API_URL_RAW.trim().replace(/\/$/, '') : '';
   if (s) return s;
-  const prod = typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, boolean> }).env?.PROD;
-  return prod ? PROD_API_BASE : '';
+  const env = typeof import.meta !== 'undefined' ? (import.meta as { env?: Record<string, unknown> }).env : undefined;
+  const isDev = !!env?.DEV;
+  if (isDev) return '';
+  /** Production AAB/APK / mis-built .env: never leave API base empty outside Vite dev. */
+  return PROD_API_BASE;
 })();
+
+/** True when client will use HTTP (env or production fallback), not in-memory mock only. */
+export function isRemoteApiConfigured(): boolean {
+  return MOCK_API_URL.length > 0;
+}
 
 /** Build absolute API URL so requests never go to /merchant/auth/me when app is served at /merchant/. */
 function apiBaseUrl(): string {
@@ -131,6 +140,11 @@ function registryToTenant(r: RegistryTenant & { hero?: import('@nmd/core').Store
     marketCategory: r.marketCategory ?? 'GENERAL',
     marketId: r.marketId ?? null,
     paymentCapabilities: r.paymentCapabilities ?? { cash: true, card: false },
+    paymentMethods: r.paymentMethods ?? {
+      cash: (r.paymentCapabilities?.cash ?? true) !== false,
+      card: r.paymentCapabilities?.card === true,
+      installments: Boolean((r.paymentCapabilities as { allowInstallments?: boolean } | undefined)?.allowInstallments),
+    },
     branding: {
       logoUrl: r.logoUrl ?? '',
       primaryColor: r.primaryColor ?? '#0f766e',
@@ -184,7 +198,7 @@ async function publicFetch<T>(path: string): Promise<T> {
 }
 
 /** Public paths: no JWT required. Storefront guests can access these without login. */
-const PUBLIC_PATHS = ['/tenants', '/markets', '/catalog', '/campaigns', '/delivery', '/public', '/auth/login'];
+const PUBLIC_PATHS = ['/tenants', '/markets', '/catalog', '/campaigns', '/delivery', '/public', '/auth/login', '/lucky-wheel', '/rewards'];
 
 function isPublicRoute(method: string, path: string): boolean {
   const m = (method ?? 'GET').toUpperCase();
@@ -470,6 +484,168 @@ export class MockApiClient implements ApiClient {
     return [];
   }
 
+  /** Spin Lucky Wheel: deduct coins, weighted random, return prize. Requires customer auth. */
+  async spinLuckyWheel(): Promise<{
+    prizeIndex: number;
+    prize: { id: string; label: string; type: string; value: number };
+    balance: number;
+  }> {
+    if (this.useApi) {
+      return apiFetch('/customer/lucky-wheel/spin', { method: 'POST' });
+    }
+    await delay(80);
+    throw new Error('API required for spin');
+  }
+
+  /** Redeem Lucky Wheel prize. Requires customer auth. PERCENT/FIXED → coupon; COINS → add coins. */
+  async redeemLuckyWheelPrize(prize: { id: string; type: string; value?: number }): Promise<
+    | { ok: true; type: 'NO_WIN' }
+    | { ok: true; type: 'COINS'; balance: number }
+    | { ok: true; type: 'COUPON'; code: string }
+  > {
+    if (this.useApi) {
+      return apiFetch('/customer/lucky-wheel/redeem', {
+        method: 'POST',
+        body: JSON.stringify({
+          prizeId: prize.id,
+          prizeType: prize.type,
+          prizeValue: prize.value ?? 0,
+        }),
+      });
+    }
+    await delay(80);
+    if (prize.type === 'COINS' && typeof prize.value === 'number' && prize.value > 0) {
+      const res = await this.addCustomerCoins(prize.value);
+      return { ok: true, type: 'COINS', balance: res.balance };
+    }
+    return { ok: true, type: 'NO_WIN' };
+  }
+
+  /** Admin: List all wheel prizes. Platform admin only. */
+  async getAdminWheelPrizes(): Promise<Array<{ id: string; label: string; type: string; value: number; chanceWeight: number; isActive: boolean; sortOrder: number }>> {
+    if (this.useApi) {
+      return apiFetch<Array<{ id: string; label: string; type: string; value: number; chanceWeight: number; isActive: boolean; sortOrder: number }>>('/admin/wheel-prizes');
+    }
+    await delay(80);
+    return [];
+  }
+
+  /** Admin: Create or update wheel prize. Platform admin only. */
+  async upsertWheelPrize(body: {
+    id?: string;
+    label: string;
+    type: string;
+    value?: number;
+    chanceWeight?: number;
+    isActive?: boolean;
+    sortOrder?: number;
+  }): Promise<{ id: string; label: string; type: string; value: number; chanceWeight: number; isActive: boolean; sortOrder: number }> {
+    if (this.useApi) {
+      return apiFetch('/admin/wheel-prizes', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    }
+    throw new Error('API required');
+  }
+
+  /** Lucky Wheel prizes. Public - no auth required. */
+  async getWheelPrizes(): Promise<Array<{ id: string; label: string; type: string; value: number; chanceWeight: number; isActive: boolean; sortOrder: number }>> {
+    if (this.useApi) {
+      try {
+        return apiFetch<Array<{ id: string; label: string; type: string; value: number; chanceWeight: number; isActive: boolean; sortOrder: number }>>('/lucky-wheel/prizes');
+      } catch {
+        return [];
+      }
+    }
+    await delay(80);
+    return [];
+  }
+
+  /** Customer Now Coins (Lucky Wheel). Requires customer auth. */
+  async getCustomerCoins(): Promise<{ balance: number; spinCost: number }> {
+    if (this.useApi) {
+      return apiFetch<{ balance: number; spinCost: number }>('/customer/coins');
+    }
+    await delay(80);
+    return { balance: 50, spinCost: 10 };
+  }
+
+  /** Sync coins from localStorage (one-time migration). Requires customer auth. */
+  async syncCustomerCoins(localBalance: number): Promise<{ balance: number; synced: boolean }> {
+    if (this.useApi) {
+      return apiFetch<{ balance: number; synced: boolean }>('/customer/coins/sync', {
+        method: 'POST',
+        body: JSON.stringify({ balance: localBalance }),
+      });
+    }
+    await delay(80);
+    return { balance: localBalance, synced: false };
+  }
+
+  /**
+   * Add coins (restricted server-side). Customers cannot self-mint; use platform admin JWT,
+   * `x-api-key` (API_KEY), or `x-internal-secret` with body `{ phone, amount }`.
+   */
+  async addCustomerCoins(amount: number, opts?: { phone?: string }): Promise<{ balance: number }> {
+    if (this.useApi) {
+      return apiFetch<{ balance: number }>('/customer/coins/add', {
+        method: 'POST',
+        body: JSON.stringify({ amount, phone: opts?.phone }),
+      });
+    }
+    await delay(80);
+    return { balance: 50 + amount };
+  }
+
+  /** Deduct coins. Requires customer auth. Returns balance or throws on insufficient. */
+  async deductCustomerCoins(amount: number): Promise<{ balance: number }> {
+    if (this.useApi) {
+      return apiFetch<{ balance: number }>('/customer/coins/deduct', {
+        method: 'POST',
+        body: JSON.stringify({ amount }),
+      });
+    }
+    await delay(80);
+    return { balance: 40 };
+  }
+
+  /** Public global rewards catalog (GET /rewards). No auth. */
+  async listPublicRewards(): Promise<
+    Array<{
+      id: string;
+      title_ar: string;
+      title_en: string;
+      description?: string;
+      image_url?: string;
+      type: string;
+      coins_cost: number;
+      stock_limit: number;
+      expiry_date?: string;
+      is_active: boolean;
+      created_at: string;
+      locked?: boolean;
+      lock_reason?: 'EXPIRED' | 'SOLD_OUT' | null;
+    }>
+  > {
+    if (this.useApi) {
+      return apiFetch('/rewards');
+    }
+    await delay(80);
+    return [];
+  }
+
+  /** Redeem a global reward (coins deducted server-side). Requires customer auth. */
+  async redeemGlobalReward(rewardId: string): Promise<{ id: string; rewardId: string; status: string; coinsSpent: number; balance: number; redeemedAt: string }> {
+    if (this.useApi) {
+      return apiFetch(`/customer/rewards/${encodeURIComponent(rewardId)}/redeem`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    }
+    throw new Error('API required');
+  }
+
   /** List coupons (platform admin). */
   async getCoupons(): Promise<Array<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }>> {
     if (this.useApi) {
@@ -642,10 +818,16 @@ export class MockApiClient implements ApiClient {
   }
 
   /** List leads (ROOT_ADMIN: all; MARKET_ADMIN: market tenants; TENANT_ADMIN: own tenant). Pass tenantSlug for store admin to filter by tenant. */
-  async listLeads(tenantSlug?: string): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]> {
+  async listLeads(
+    tenantSlug?: string,
+    options?: { scope?: 'delivery' }
+  ): Promise<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown>; status?: string; contactType?: string }[]> {
     if (!this.useApi) return [];
-    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : '';
-    return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown> }[]>(`/leads${q}`);
+    const params = new URLSearchParams();
+    if (tenantSlug) params.set('tenantSlug', tenantSlug);
+    if (options?.scope) params.set('scope', options.scope);
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch<{ id: string; tenantId: string; type: string; timestamp: string; metadata?: Record<string, unknown>; status?: string; contactType?: string }[]>(`/leads${q}`);
   }
 
   /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
@@ -802,7 +984,7 @@ export class MockApiClient implements ApiClient {
     return apiFetch(`/markets/${marketId}/leaderboard?period=${period}`);
   }
 
-  async createMarketCourier(marketId: string, data: { name?: string; phone?: string }): Promise<MarketCourier> {
+  async createMarketCourier(marketId: string, data: { name?: string; email?: string; phone?: string; password?: string; allowedStoreIds?: string[] }): Promise<MarketCourier> {
     return apiFetch<MarketCourier>(`/markets/${marketId}/couriers`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -812,7 +994,7 @@ export class MockApiClient implements ApiClient {
   async patchMarketCourier(
     marketId: string,
     courierId: string,
-    updates: { name?: string; phone?: string; isActive?: boolean; isOnline?: boolean; isAvailable?: boolean; capacity?: number }
+    updates: { name?: string; email?: string; phone?: string; isActive?: boolean; isOnline?: boolean; isAvailable?: boolean; capacity?: number; allowedStoreIds?: string[] }
   ): Promise<MarketCourier> {
     return apiFetch<MarketCourier>(`/markets/${marketId}/couriers/${courierId}`, {
       method: 'PATCH',
@@ -820,10 +1002,31 @@ export class MockApiClient implements ApiClient {
     });
   }
 
-  async deleteMarketCourier(marketId: string, courierId: string): Promise<MarketCourier> {
-    return apiFetch<MarketCourier>(`/markets/${marketId}/couriers/${courierId}`, {
+  async deleteMarketCourier(marketId: string, courierId: string, cascade = false): Promise<MarketCourier & { cascade?: boolean }> {
+    const q = cascade ? '?cascade=true' : '';
+    return apiFetch<MarketCourier & { cascade?: boolean }>(`/markets/${marketId}/couriers/${courierId}${q}`, {
       method: 'DELETE',
     });
+  }
+
+  async changeMarketCourierPassword(marketId: string, courierId: string, newPassword: string): Promise<{ ok: boolean }> {
+    return apiFetch<{ ok: boolean }>(`/markets/${marketId}/couriers/${courierId}/change-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+  }
+
+  async getMarketCourierFinancialStats(
+    marketId: string,
+    courierId: string,
+    from?: string,
+    to?: string
+  ): Promise<{ courierId: string; marketId: string; from: string | null; to: string | null; appRevenue: number; externalRevenue: number; expenses: number; net: number }> {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/markets/${marketId}/couriers/${courierId}/stats${q}`);
   }
 
   /** Market finance summary. Aggregates orders in date range. */
@@ -1083,19 +1286,46 @@ export class MockApiClient implements ApiClient {
 
   async listOrdersByTenant(
     tenantId: string,
-    options?: { from?: string; to?: string; search?: string }
+    options?: { from?: string; to?: string; search?: string; paymentMethod?: 'ALL' | 'CASH' | 'CARD' }
   ): Promise<Order[]> {
     if (this.useApi) {
       const params = new URLSearchParams();
       if (options?.from) params.set('from', options.from);
       if (options?.to) params.set('to', options.to);
       if (options?.search?.trim()) params.set('search', options.search.trim());
+      if (options?.paymentMethod && options.paymentMethod !== 'ALL') {
+        params.set('paymentMethod', options.paymentMethod);
+      }
       const qs = params.toString();
       const url = `/tenants/${encodeURIComponent(tenantId)}/orders` + (qs ? `?${qs}` : '');
       return apiFetch<Order[]>(url);
     }
     const { listOrdersByTenant: lot } = await import('./orders-store');
-    return lot(tenantId);
+    let rows = lot(tenantId) as unknown as Record<string, unknown>[];
+    const pm = options?.paymentMethod;
+    if (pm && pm !== 'ALL') {
+      const { orderPaymentChannel } = await import('./merchant-stats-local');
+      rows = rows.filter((o) => {
+        const ch = orderPaymentChannel(o);
+        if (pm === 'CASH') return ch === 'CASH';
+        if (pm === 'CARD') return ch === 'CARD';
+        return true;
+      });
+    }
+    return rows as unknown as Order[];
+  }
+
+  async getMerchantStats(
+    tenantId: string,
+    timeRange: 'day' | 'week' | 'month' = 'day'
+  ): Promise<MerchantStatsPayload> {
+    if (this.useApi) {
+      return apiFetch<MerchantStatsPayload>(`/merchant/stats?timeRange=${encodeURIComponent(timeRange)}`);
+    }
+    const { listOrdersByTenant: lot } = await import('./orders-store');
+    const { aggregateMerchantStats } = await import('./merchant-stats-local');
+    const orders = lot(tenantId) as unknown as Record<string, unknown>[];
+    return aggregateMerchantStats(orders, timeRange);
   }
 
   async getCategoryPolicies(): Promise<CategoryPolicy[]> {
@@ -1194,6 +1424,16 @@ export class MockApiClient implements ApiClient {
     }
     const { updateOrderStatus: uos } = await import('./orders-store');
     return uos(orderId, status);
+  }
+
+  /** Manually trigger loyalty coin award for an order (mock-api POST). Requires useApi + auth. */
+  async forceLoyaltyAwardOrder(orderId: string): Promise<unknown> {
+    if (!this.useApi) {
+      throw new Error('forceLoyaltyAwardOrder requires VITE_MOCK_API_URL (remote API)');
+    }
+    return apiFetch<unknown>(`/orders/${encodeURIComponent(orderId)}/loyalty-force-award`, {
+      method: 'POST',
+    });
   }
 
   /** Hard delete order (SUPER_ADMIN only). Requires useApi. */
@@ -1346,6 +1586,8 @@ export class MockApiClient implements ApiClient {
       addressLine?: string;
       location?: { lat: number; lng: number };
       supportsWeightSelling?: boolean;
+      allowInstallments?: boolean;
+      installmentOptions?: number[];
     }
   ): Promise<void> {
     if (this.useApi) {

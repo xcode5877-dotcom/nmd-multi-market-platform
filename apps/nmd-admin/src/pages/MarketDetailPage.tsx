@@ -3,13 +3,29 @@ import { useParams, useNavigate, useLocation, NavLink, Link } from 'react-router
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
-import { formatDateGregorian } from '@nmd/core';
+import { formatAddonNameWithPlacement, formatDateGregorian } from '@nmd/core';
 import { ArrowLeft, KeyRound, Upload, Trash2, Eye } from 'lucide-react';
 import { apiHeaders, apiFetch, apiUpload, listCategories } from '../api';
 import MarketBannersTab from './MarketBannersTab';
 import MarketLayoutTab from './MarketLayoutTab';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+
+function PizzaSideIndicator({ placement }: { placement: 'WHOLE' | 'LEFT' | 'RIGHT' }) {
+  const teal = '#14b8a6';
+  const size = 14;
+  return (
+    <span
+      className="relative inline-flex shrink-0 overflow-hidden rounded-full border border-slate-300"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      {placement === 'WHOLE' && <span className="absolute inset-0" style={{ background: teal }} />}
+      {placement === 'LEFT' && <span className="absolute inset-y-0 left-0 w-1/2" style={{ background: teal }} />}
+      {placement === 'RIGHT' && <span className="absolute inset-y-0 right-0 w-1/2" style={{ background: teal }} />}
+    </span>
+  );
+}
 
 interface CategoryOption {
   id: string;
@@ -52,15 +68,6 @@ interface OrderRow {
   createdAt?: string;
 }
 
-interface LeadRow {
-  id: string;
-  tenantId: string;
-  type: string;
-  status?: string;
-  contactType?: string;
-  timestamp: string;
-}
-
 const api = new MockApiClient();
 
 export default function MarketDetailPage() {
@@ -79,12 +86,19 @@ export default function MarketDetailPage() {
     if (pathname.endsWith('/layout')) return 'layout';
     return 'details';
   }, [id, pathname]);
+
+  useEffect(() => {
+    if (activeTab === 'orders') {
+      console.log('NMD-TARGET-ACQUIRED: This is the Tenant Orders Page!');
+    }
+  }, [activeTab]);
+
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedTenantIds, setSelectedTenantIds] = useState<Set<string>>(new Set());
   const [resetPasswordTarget, setResetPasswordTarget] = useState<{ tenantId: string; tenantName: string; admin: { id: string; email: string } } | null>(null);
   const [createAccountTarget, setCreateAccountTarget] = useState<{ tenantId: string; tenantName: string } | null>(null);
-  const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string; tenantId?: string; isLead?: boolean } | null>(null);
+  const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string; tenantId?: string } | null>(null);
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
   const [orderHardDeleting, setOrderHardDeleting] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -139,38 +153,6 @@ export default function MarketDetailPage() {
     enabled: !!MOCK_API_URL && !!id,
   });
 
-  const { data: allLeads = [] } = useQuery({
-    queryKey: ['leads'],
-    queryFn: () => api.listLeads(),
-    enabled: !!MOCK_API_URL && !!id && canManageTenants,
-  });
-
-  const marketLeads = useMemo(() => {
-    const tenantIds = new Set(marketTenants.map((t) => t.id));
-    return (allLeads as LeadRow[]).filter(
-      (l) => l.type === 'PROFESSIONAL_CONTACT' && tenantIds.has(l.tenantId)
-    );
-  }, [allLeads, marketTenants]);
-
-  const ordersAndLeads = useMemo(() => {
-    const orderRows: { id?: string; tenantId?: string; total?: number; status?: string; createdAt?: string; isLead?: boolean; contactType?: string }[] = marketOrders.map((o) => ({
-      ...o,
-      isLead: false,
-    }));
-    const leadRows = marketLeads.map((l) => ({
-      id: l.id,
-      tenantId: l.tenantId,
-      total: undefined,
-      status: 'PROFESSIONAL_CONTACT',
-      createdAt: l.timestamp,
-      isLead: true,
-      contactType: l.contactType,
-    }));
-    return [...orderRows, ...leadRows].sort(
-      (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
-    );
-  }, [marketOrders, marketLeads]);
-
   const { data: allMarkets = [] } = useQuery({
     queryKey: ['markets'],
     queryFn: () => fetch(`${MOCK_API_URL}/markets?all=true`, { headers: apiHeaders() }).then((r) => r.json()),
@@ -223,10 +205,19 @@ export default function MarketDetailPage() {
   });
 
   const handleHardDeleteOrder = async () => {
-    if (!orderDeleteTarget?.id || orderDeleteTarget.isLead) return;
+    if (!orderDeleteTarget?.id) return;
     setOrderHardDeleting(true);
     try {
-      await api.hardDeleteOrder(orderDeleteTarget.id);
+      const base = (import.meta.env.VITE_MOCK_API_URL ?? '/api').replace(/\/$/, '');
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('nmd-access-token') : null;
+      const res = await fetch(`${base}/orders/${encodeURIComponent(orderDeleteTarget.id)}/hard-delete`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || String(res.status));
+      }
       queryClient.invalidateQueries({ queryKey: ['market-orders', id] });
       setOrderDeleteTarget(null);
       addToast('تم حذف الطلب نهائياً', 'success');
@@ -545,13 +536,16 @@ export default function MarketDetailPage() {
       {activeTab === 'orders' && (
           <>
           <Card>
-            <div className="p-4 border-b border-gray-100">
-              <span className="text-sm text-gray-600">طلبات وطلبات التوصيل</span>
+            <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm text-gray-600">طلبات العملاء الحقيقية فقط</span>
+              <Link to="/delivery-leads" className="text-sm text-primary hover:underline">
+                عرض طلبات واتساب / اتصال
+              </Link>
             </div>
             {ordersLoading ? (
               <div className="p-12 text-center text-gray-500">جاري التحميل...</div>
-            ) : ordersAndLeads.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">لا توجد طلبات أو طلبات</div>
+            ) : marketOrders.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">لا توجد طلبات</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -566,33 +560,21 @@ export default function MarketDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ordersAndLeads.map((o) => {
-                      const isLead = (o as { isLead?: boolean }).isLead;
-                      const contactType = (o as { contactType?: string }).contactType;
-                      const statusLabel = isLead
-                        ? (contactType === 'call' ? 'طلب توصيل (عبر اتصال)' : 'طلب توصيل (واتساب)')
-                        : (o.status ?? '-');
+                    {marketOrders.map((o) => {
                       const storeName = marketTenants.find((t) => t.id === o.tenantId)?.name ?? o.tenantId;
                       return (
-                        <tr key={o.id ?? o.tenantId} className={`border-t border-gray-100 ${isLead ? 'bg-emerald-50/50' : ''}`}>
+                        <tr key={o.id ?? o.tenantId} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</td>
                           <td className="px-4 py-3">
                             {storeName}
-                            {isLead && (
-                              <span className="mr-1 text-xs text-emerald-600" title="طلب توصيل">
-                                (عبر اتصال)
-                              </span>
-                            )}
                           </td>
-                          <td className="px-4 py-3">{isLead ? '-' : `${o.total ?? 0} ر.س`}</td>
+                          <td className="px-4 py-3">{`${o.total ?? 0} ر.س`}</td>
                           <td className="px-4 py-3">
-                            <span className={isLead ? 'text-emerald-700 font-medium' : ''}>
-                              {statusLabel}
-                            </span>
+                            <span>{o.status ?? '-'}</span>
                           </td>
                           <td className="px-4 py-3 text-gray-500">{o.createdAt ? formatDateGregorian(o.createdAt) : '-'}</td>
                           <td className="px-4 py-3">
-                            {!isLead && o.id && (
+                            {o.id && (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -603,16 +585,15 @@ export default function MarketDetailPage() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </button>
-                                {isSuperAdmin && (
-                                  <button
-                                    type="button"
-                                    className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
-                                    onClick={() => setOrderDeleteTarget({ ...o, isLead: false })}
-                                    aria-label="حذف الطلب نهائياً"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                                  onClick={() => setOrderDeleteTarget(o)}
+                                  aria-label="حذف الطلب نهائياً"
+                                  title="حذف نهائياً"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             )}
                           </td>
@@ -629,7 +610,7 @@ export default function MarketDetailPage() {
             onClose={() => setOrderDeleteTarget(null)}
             onConfirm={handleHardDeleteOrder}
             title="حذف الطلب نهائياً"
-            message={orderDeleteTarget ? 'هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.' : ''}
+            message={orderDeleteTarget ? 'هل أنت متأكد من حذف هذا الطلب؟' : ''}
             confirmLabel="حذف نهائياً"
             variant="danger"
             loading={orderHardDeleting}
@@ -1036,14 +1017,60 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants }: OrderDetailsDra
                   </tr>
                 </thead>
                 <tbody>
-                  {(order.items ?? []).map((item: { id?: string; productName?: string; quantity?: number; basePrice?: number; totalPrice?: number }) => (
-                    <tr key={item.id ?? item.productName} className="border-t border-gray-100">
-                      <td className="px-3 py-2">{item.productName ?? '—'}</td>
-                      <td className="px-3 py-2 text-end">{item.quantity ?? 0}</td>
-                      <td className="px-3 py-2 text-end">{item.basePrice ?? 0} {currency}</td>
-                      <td className="px-3 py-2 text-end font-medium">{item.totalPrice ?? 0} {currency}</td>
-                    </tr>
-                  ))}
+                  {(order.items ?? []).map(
+                    (
+                      item: {
+                        id?: string;
+                        productName?: string;
+                        quantity?: number;
+                        basePrice?: number;
+                        totalPrice?: number;
+                        selectedOptions?: {
+                          optionGroupId?: string;
+                          optionItemIds?: string[];
+                          optionPlacements?: Record<string, string>;
+                        }[];
+                        optionGroups?: { id?: string; items?: { id?: string; name?: string }[] }[];
+                      }
+                    ) => (
+                      <tr key={item.id ?? item.productName} className="border-t border-gray-100">
+                        <td className="px-3 py-2 align-top">
+                          <div className="font-medium">{item.productName ?? '—'}</div>
+                          {(item.selectedOptions?.length ?? 0) > 0 && (
+                            <ul className="mt-1.5 space-y-1 text-xs text-gray-600">
+                              {(item.selectedOptions ?? []).map((s, gIdx) => {
+                                const g = item.optionGroups?.find((x) => x.id === s.optionGroupId);
+                                const ids = s.optionItemIds ?? [];
+                                const placements = s.optionPlacements ?? {};
+                                return (
+                                  <li key={`${s.optionGroupId ?? gIdx}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 justify-end text-end">
+                                    {ids.map((id, idx) => {
+                                      const name = g?.items?.find((opt) => opt.id === id)?.name ?? id;
+                                      const placement = (placements[id] ?? 'WHOLE') as 'WHOLE' | 'LEFT' | 'RIGHT';
+                                      return (
+                                        <span key={id} className="inline-flex items-center gap-1">
+                                          {idx > 0 && <span className="text-gray-400">/</span>}
+                                          <span>{formatAddonNameWithPlacement(name, placement)}</span>
+                                          <PizzaSideIndicator placement={placement} />
+                                        </span>
+                                      );
+                                    })}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-end align-top">{item.quantity ?? 0}</td>
+                        <td className="px-3 py-2 text-end align-top">
+                          {item.basePrice ?? 0} {currency}
+                        </td>
+                        <td className="px-3 py-2 text-end font-medium align-top">
+                          {item.totalPrice ?? 0} {currency}
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
               {(order.items ?? []).length === 0 && (

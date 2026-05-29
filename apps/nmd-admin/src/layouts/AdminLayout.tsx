@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck, Bell, BellOff, Volume2, LayoutGrid, Trophy, Tag, AlertCircle, DollarSign, Send } from 'lucide-react';
@@ -73,6 +73,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const emergency = useEmergencyMode();
   const { isNativeApp } = useNativeBridge();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   /** Ultimate Auth Sync: Admin logout — remove only nmd-access-token, then redirect. Do not clear nmd-customer-token (storefront). */
   const handleLogout = () => {
@@ -112,7 +113,7 @@ export default function AdminLayout() {
         { to: `/markets/${marketId}/tenants`, icon: Building2, label: 'Tenants', end: false },
         { to: `/markets/${marketId}/orders`, icon: Store, label: 'Orders', end: false },
         { to: '/customers', icon: Users, label: 'المشتركون', end: true },
-        { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
+        { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
       ]
     : [];
 
@@ -125,7 +126,7 @@ export default function AdminLayout() {
     { to: '/coupons', icon: Tag, label: 'أكواد الخصم', end: true },
     { to: '/push-notifications', icon: Send, label: 'إشعارات Push', end: true },
     { to: '/customers', icon: Users, label: 'المشتركون', end: true },
-    { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
+    { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
     { to: '/settings', icon: Settings, label: 'Settings', end: false },
     { to: '/audit', icon: FileText, label: 'Audit', end: true },
   ];
@@ -136,7 +137,7 @@ export default function AdminLayout() {
     { to: '/tenant/delivery-zones', icon: MapPin, label: 'مناطق التوصيل', end: false },
     { to: '/tenant/orders', icon: ShoppingCart, label: 'الطلبات', end: false },
     { to: '/tenant/customers', icon: Users, label: 'العملاء', end: false },
-    { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', end: true },
+    { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
     { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false },
   ];
 
@@ -153,6 +154,9 @@ export default function AdminLayout() {
   const appendTenant = (path: string) => (tenantParam ? `${path}${path.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(tenantParam)}` : path);
 
   const isIndex = location.pathname === '/' || location.pathname === '';
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   const nativeNavItems = [
     { to: '/', end: true, label: 'الرئيسية', icon: LayoutDashboard },
@@ -194,8 +198,20 @@ export default function AdminLayout() {
 
   return (
     <MarketOrderAlarmProvider marketId={marketIdFromUrl}>
-    <div className="min-h-screen flex">
-      <aside className="w-56 bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col">
+    <div className="min-h-screen flex bg-[#F8FAFC]">
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="إغلاق القائمة"
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      <aside
+        className={`fixed top-0 bottom-0 right-0 z-40 w-72 max-w-[85vw] bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 md:w-56 ${
+          mobileMenuOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+        }`}
+      >
         <div className="p-4 border-b border-[#0F172A]/50">
           <h1 className="font-bold text-lg text-white">NMD OS Control</h1>
           <MarketOrderAlarmBell />
@@ -267,8 +283,39 @@ export default function AdminLayout() {
           </div>
         )}
       </aside>
-      <main className="flex-1 overflow-auto bg-[#F8FAFC]">
-        <div className="p-6">
+      <main className="flex-1 overflow-auto bg-[#F8FAFC] min-w-0">
+        <div className="md:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200">
+          <div className="px-3 py-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
+              aria-label="فتح القائمة"
+            >
+              <span className="text-lg leading-none">☰</span>
+            </button>
+            <div className="min-w-0 text-center flex-1">
+              <p className="text-sm font-semibold text-gray-900 truncate">NMD OS Control</p>
+              {auth.user?.email ? (
+                <p className="text-[11px] text-gray-500 truncate">{auth.user.email}</p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-1">
+              <MarketOrderAlarmBell />
+              {MOCK_API_URL && auth.user && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  aria-label="تسجيل الخروج"
+                  className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-3 md:p-6">
           <Outlet />
         </div>
       </main>
