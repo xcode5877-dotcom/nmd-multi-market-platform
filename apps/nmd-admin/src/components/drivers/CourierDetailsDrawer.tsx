@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Drawer, Button, Skeleton } from '@nmd/ui';
-import { Truck, KeyRound, Pencil } from 'lucide-react';
+import { Truck, KeyRound, Pencil, Trash2 } from 'lucide-react';
 import type { GlobalCourierRow } from '../../drivers/globalCourierTypes';
 import { DriverOnlineBadge } from './DriverOnlineBadge';
 import { useGlobalCouriersApi } from '../../drivers/useGlobalCouriers';
@@ -12,6 +12,7 @@ export function CourierDetailsDrawer({
   onClose,
   onEdit,
   onChangePassword,
+  onDelete,
   canWrite,
 }: {
   courier: GlobalCourierRow | null;
@@ -19,6 +20,7 @@ export function CourierDetailsDrawer({
   onClose: () => void;
   onEdit: () => void;
   onChangePassword: () => void;
+  onDelete?: () => void;
   canWrite: boolean;
 }) {
   const api = useGlobalCouriersApi();
@@ -150,6 +152,21 @@ export function CourierDetailsDrawer({
             </>
           )}
         </div>
+
+        {canWrite && onDelete && (
+          <div className="pt-4 mt-2 border-t border-red-100">
+            <p className="text-xs font-medium text-red-700 mb-2">متقدم / منطقة الخطر</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-700 border-red-200 hover:bg-red-50 w-full justify-center"
+              onClick={onDelete}
+            >
+              <Trash2 className="w-4 h-4 ml-1" />
+              حذف السائق
+            </Button>
+          </div>
+        )}
       </div>
     </Drawer>
   );

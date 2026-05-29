@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Input, Select, Modal, useToast, Skeleton } from '@nmd/ui';
@@ -20,6 +20,7 @@ import { DriverOnlineBadge } from '../../components/drivers/DriverOnlineBadge';
 import { CourierWriteGuardBanner, useCourierWriteAccess } from '../../components/drivers/CourierWriteGuardBanner';
 import { CourierFormModal, type CourierFormValues } from '../../components/drivers/CourierFormModal';
 import { CourierDetailsDrawer } from '../../components/drivers/CourierDetailsDrawer';
+import { CourierDeleteConfirmModal } from '../../components/drivers/CourierDeleteConfirmModal';
 
 const api = new MockApiClient();
 
@@ -39,7 +40,7 @@ function invalidateCourierQueries(qc: ReturnType<typeof useQueryClient>) {
 export default function DriversCouriersPage() {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
-  const { canWrite } = useCourierWriteAccess();
+  const { canWrite, isRootAdmin } = useCourierWriteAccess();
   const { data: couriers = [], isLoading, isError, refetch, isFetching } = useGlobalCouriers(true);
   const { data: markets = [] } = useMarketOptions();
   const { data: tenants = [] } = useQuery({
@@ -56,7 +57,15 @@ export default function DriversCouriersPage() {
   const [newPassword, setNewPassword] = useState('');
   const [deleteModal, setDeleteModal] = useState<GlobalCourierRow | null>(null);
   const [deleteCascade, setDeleteCascade] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [dangerOpenId, setDangerOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dangerOpenId) return;
+    const close = () => setDangerOpenId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [dangerOpenId]);
 
   const filtered = useMemo(() => filterGlobalCouriers(couriers, filters), [couriers, filters]);
 
@@ -140,16 +149,22 @@ export default function DriversCouriersPage() {
   const deleteMutation = useMutation({
     mutationFn: ({ row, cascade }: { row: GlobalCourierRow; cascade: boolean }) =>
       api.deleteMarketCourier(row.marketId, row.id, cascade),
-    onSuccess: (_, { row }) => {
+    onSuccess: async (_, { row }) => {
       invalidateCourierQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['market-couriers', row.marketId] });
+      await refetch();
       addToast('تم حذف السائق', 'success');
       setDeleteModal(null);
       setDeleteCascade(false);
+      setDeleteError(null);
       setDetailsCourier(null);
       setDangerOpenId(null);
     },
-    onError: (e) => addToast(e instanceof Error ? e.message : 'فشل الحذف', 'error'),
+    onError: (e) => {
+      const message = e instanceof Error ? e.message : 'فشل حذف السائق';
+      setDeleteError(message);
+      addToast(message, 'error');
+    },
   });
 
   const openCreate = () => {
@@ -321,23 +336,35 @@ export default function DriversCouriersPage() {
                               <div className="relative">
                                 <button
                                   type="button"
+                                  title="إجراءات متقدمة"
                                   className="p-1.5 rounded hover:bg-gray-100"
-                                  onClick={() => setDangerOpenId(dangerOpenId === c.id ? null : c.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDangerOpenId(dangerOpenId === c.id ? null : c.id);
+                                  }}
                                 >
                                   <MoreVertical className="w-4 h-4 text-gray-500" />
                                 </button>
                                 {dangerOpenId === c.id && (
-                                  <div className="absolute left-0 z-10 mt-1 w-44 rounded-lg border border-red-200 bg-white shadow-lg p-1">
+                                  <div
+                                    className="absolute left-0 z-10 mt-1 w-48 rounded-lg border border-red-200 bg-white shadow-lg p-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <p className="px-3 py-1 text-[10px] font-medium text-red-600 uppercase tracking-wide">
+                                      متقدم / خطر
+                                    </p>
                                     <button
                                       type="button"
                                       className="w-full text-start px-3 py-2 text-xs text-red-700 hover:bg-red-50 rounded flex items-center gap-1"
                                       onClick={() => {
+                                        setDeleteError(null);
+                                        setDeleteCascade(false);
                                         setDeleteModal(c);
                                         setDangerOpenId(null);
                                       }}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
-                                      حذف (متقدم)
+                                      حذف السائق
                                     </button>
                                   </div>
                                 )}
@@ -385,6 +412,17 @@ export default function DriversCouriersPage() {
           }
         }}
         canWrite={canWrite}
+        onDelete={
+          canWrite
+            ? () => {
+                if (detailsCourier) {
+                  setDeleteError(null);
+                  setDeleteCascade(false);
+                  setDeleteModal(detailsCourier);
+                }
+              }
+            : undefined
+        }
       />
 
       <Modal
@@ -419,40 +457,27 @@ export default function DriversCouriersPage() {
         </div>
       </Modal>
 
-      <Modal
+      <CourierDeleteConfirmModal
+        courier={deleteModal}
         open={!!deleteModal}
+        cascade={deleteCascade}
+        onCascadeChange={setDeleteCascade}
         onClose={() => {
           setDeleteModal(null);
           setDeleteCascade(false);
+          setDeleteError(null);
         }}
-        title={`حذف السائق — ${deleteModal?.name ?? ''}`}
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            يُفضّل <strong>تعطيل</strong> السائق بدلاً من الحذف. الحذف نهائي ولا يمكن التراجع عنه.
-          </p>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={deleteCascade} onChange={(e) => setDeleteCascade(e.target.checked)} />
-            <span>حذف شامل: امسح الطلبات الخارجية والمصاريف المرتبطة بهذا السائق</span>
-          </label>
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={() => setDeleteModal(null)}>
-              إلغاء
-            </Button>
-            <Button
-              variant="outline"
-              className="text-red-700 border-red-300 hover:bg-red-50"
-              disabled={deleteMutation.isPending || !canWrite}
-              onClick={() => {
-                if (deleteModal) deleteMutation.mutate({ row: deleteModal, cascade: deleteCascade });
-              }}
-            >
-              {deleteMutation.isPending ? 'جاري الحذف...' : 'تأكيد الحذف'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={() => {
+          if (deleteModal) {
+            setDeleteError(null);
+            deleteMutation.mutate({ row: deleteModal, cascade: deleteCascade });
+          }
+        }}
+        isPending={deleteMutation.isPending}
+        error={deleteError}
+        canWrite={canWrite}
+        isRootAdmin={isRootAdmin}
+      />
     </div>
   );
 }
