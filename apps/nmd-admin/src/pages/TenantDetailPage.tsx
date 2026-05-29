@@ -7,10 +7,19 @@ import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
 import { formatPrice, formatDateGregorian } from '@nmd/core';
 import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign } from 'lucide-react';
-import { apiFetch } from '../api';
+import { apiFetch, apiHeaders } from '../api';
+import PlatformFeeDisabledBanner from '../components/platform-fee/PlatformFeeDisabledBanner';
+import PlatformFeeConfigFields, { tenantOverrideToConfig } from '../components/platform-fee/PlatformFeeConfigFields';
+import PlatformFeePreviewCalculator from '../components/platform-fee/PlatformFeePreviewCalculator';
+import {
+  isPlatformAdminRole,
+  type PlatformFeeConfig,
+  type TenantPlatformFeeOverride,
+} from '../lib/platform-fee';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const MIN_PASSWORD_LENGTH = 6;
 const ADMIN_PORT = 5176;
 const STOREFRONT_PORT = 5173;
@@ -32,6 +41,7 @@ export default function TenantDetailPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const id = params.tenantId ?? params.id;
+  const platformAdmin = isPlatformAdminRole(user?.role);
   const superAdmin = isSuperAdmin(user?.role);
   const showDeleteStore = canDeleteStore(user?.role);
   const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string } | null>(null);
@@ -156,6 +166,11 @@ export default function TenantDetailPage() {
   const currentName = tenant?.name ?? '';
   const currentAbout = (tenant as { about?: string })?.about ?? '';
   const currentStoreType = (tenant as { storeType?: 'RESTAURANT' | 'PROFESSIONAL' })?.storeType ?? 'RESTAURANT';
+  const currentPaymentMethods = (tenant as { paymentMethods?: { cash?: boolean; card?: boolean; installments?: boolean }; paymentCapabilities?: { cash?: boolean; card?: boolean; allowInstallments?: boolean } });
+  const currentCashEnabled = currentPaymentMethods.paymentMethods?.cash ?? (currentPaymentMethods.paymentCapabilities?.cash ?? true);
+  const currentCardEnabled = currentPaymentMethods.paymentMethods?.card ?? (currentPaymentMethods.paymentCapabilities?.card ?? false);
+  const currentInstallmentsEnabled =
+    currentPaymentMethods.paymentMethods?.installments ?? (currentPaymentMethods.paymentCapabilities?.allowInstallments ?? false);
   const currentOpenTime = (tenant as { openTime?: string })?.openTime ?? '08:00';
   const currentCloseTime = (tenant as { closeTime?: string })?.closeTime ?? '17:00';
   const currentForceClosed = (tenant as { forceClosed?: boolean })?.forceClosed ?? false;
@@ -163,13 +178,26 @@ export default function TenantDetailPage() {
   const currentEnabled = (tenant as { enabled?: boolean })?.enabled ?? true;
   const currentLocation = (tenant as { location?: { lat: number; lng: number } })?.location;
   const currentDeliveryRadiusKm = (tenant as { deliveryRadiusKm?: number })?.deliveryRadiusKm;
-  const currentFinancialConfig = (tenant as { financialConfig?: { commissionType: string; commissionValue: number; deliveryFeeModel: string } })?.financialConfig;
+  const currentFinancialConfig = (tenant as { financialConfig?: { commissionType: string; commissionValue: number; deliveryFeeModel: string; loyaltyBonusCoinsPerOrderToday?: number; loyaltyBonusCoinsPerOrder?: number; platformFee?: TenantPlatformFeeOverride } })?.financialConfig;
+  const currentPlatformFee = currentFinancialConfig?.platformFee;
+  const tenantMarketId = (tenant as { marketId?: string })?.marketId;
+  const { data: tenantMarket } = useQuery({
+    queryKey: ['market', tenantMarketId],
+    queryFn: () =>
+      fetch(`${MOCK_API_URL}/markets/${tenantMarketId}`, { headers: apiHeaders() }).then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error('Not found'))
+      ),
+    enabled: !!tenantMarketId && USE_API && platformAdmin,
+  });
   const [nameLocal, setNameLocal] = useState(currentName);
   const [aboutLocal, setAboutLocal] = useState(currentAbout);
   const [storeTypeLocal, setStoreTypeLocal] = useState<'RESTAURANT' | 'PROFESSIONAL'>(currentStoreType);
   const [openTimeLocal, setOpenTimeLocal] = useState(currentOpenTime);
   const [closeTimeLocal, setCloseTimeLocal] = useState(currentCloseTime);
   const [forceClosedLocal, setForceClosedLocal] = useState(currentForceClosed);
+  const [cashEnabledLocal, setCashEnabledLocal] = useState(currentCashEnabled);
+  const [cardEnabledLocal, setCardEnabledLocal] = useState(currentCardEnabled);
+  const [installmentsEnabledLocal, setInstallmentsEnabledLocal] = useState(currentInstallmentsEnabled);
   const [categoryIdLocal, setCategoryIdLocal] = useState(currentCategoryId);
   const [enabledLocal, setEnabledLocal] = useState(currentEnabled);
   const [latLocal, setLatLocal] = useState(currentLocation?.lat ?? '');
@@ -178,12 +206,21 @@ export default function TenantDetailPage() {
   const [commissionTypeLocal, setCommissionTypeLocal] = useState(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
   const [commissionValueLocal, setCommissionValueLocal] = useState(currentFinancialConfig?.commissionValue ?? 10);
   const [deliveryFeeModelLocal, setDeliveryFeeModelLocal] = useState(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
+  const [loyaltyBonusCoinsLocal, setLoyaltyBonusCoinsLocal] = useState(currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0);
+  const [loyaltyBonusCoinsPerOrderLocal, setLoyaltyBonusCoinsPerOrderLocal] = useState(currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0);
+  const [useMarketDefaultLocal, setUseMarketDefaultLocal] = useState(currentPlatformFee?.useMarketDefault !== false);
+  const [platformFeeConfigLocal, setPlatformFeeConfigLocal] = useState<PlatformFeeConfig>(() =>
+    tenantOverrideToConfig(currentPlatformFee)
+  );
   useEffect(() => { setNameLocal(currentName); }, [currentName]);
   useEffect(() => { setAboutLocal(currentAbout); }, [currentAbout]);
   useEffect(() => { setStoreTypeLocal(currentStoreType); }, [currentStoreType]);
   useEffect(() => { setOpenTimeLocal(currentOpenTime); }, [currentOpenTime]);
   useEffect(() => { setCloseTimeLocal(currentCloseTime); }, [currentCloseTime]);
   useEffect(() => { setForceClosedLocal(currentForceClosed); }, [currentForceClosed]);
+  useEffect(() => { setCashEnabledLocal(currentCashEnabled); }, [currentCashEnabled]);
+  useEffect(() => { setCardEnabledLocal(currentCardEnabled); }, [currentCardEnabled]);
+  useEffect(() => { setInstallmentsEnabledLocal(currentInstallmentsEnabled); }, [currentInstallmentsEnabled]);
   useEffect(() => { setCategoryIdLocal(currentCategoryId); }, [currentCategoryId]);
   useEffect(() => { setEnabledLocal(currentEnabled); }, [currentEnabled]);
   useEffect(() => {
@@ -195,7 +232,49 @@ export default function TenantDetailPage() {
     setCommissionTypeLocal(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
     setCommissionValueLocal(currentFinancialConfig?.commissionValue ?? 10);
     setDeliveryFeeModelLocal(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
-  }, [currentFinancialConfig?.commissionType, currentFinancialConfig?.commissionValue, currentFinancialConfig?.deliveryFeeModel]);
+    setLoyaltyBonusCoinsLocal(currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0);
+    setLoyaltyBonusCoinsPerOrderLocal(currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0);
+  }, [currentFinancialConfig?.commissionType, currentFinancialConfig?.commissionValue, currentFinancialConfig?.deliveryFeeModel, currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday, currentFinancialConfig?.loyaltyBonusCoinsPerOrder]);
+  useEffect(() => {
+    setUseMarketDefaultLocal(currentPlatformFee?.useMarketDefault !== false);
+    setPlatformFeeConfigLocal(tenantOverrideToConfig(currentPlatformFee));
+  }, [currentPlatformFee?.useMarketDefault, currentPlatformFee?.enabled, currentPlatformFee?.model, currentPlatformFee?.percentage, currentPlatformFee?.fixedPerOrder, currentPlatformFee?.fixedPerItem, currentPlatformFee?.minFee, currentPlatformFee?.maxFee]);
+
+  const buildPlatformFeePayload = (): TenantPlatformFeeOverride => {
+    if (useMarketDefaultLocal) {
+      return { useMarketDefault: true };
+    }
+    return {
+      useMarketDefault: false,
+      enabled: platformFeeConfigLocal.enabled ?? false,
+      model: platformFeeConfigLocal.model ?? 'PERCENTAGE',
+      percentage: Number(platformFeeConfigLocal.percentage) || 0,
+      fixedPerOrder: Number(platformFeeConfigLocal.fixedPerOrder) || 0,
+      fixedPerItem: Number(platformFeeConfigLocal.fixedPerItem) || 0,
+      minFee: Number(platformFeeConfigLocal.minFee) || 0,
+      maxFee: Number(platformFeeConfigLocal.maxFee) || 0,
+    };
+  };
+
+  const platformFeePayloadMatches = (): boolean => {
+    const saved = currentPlatformFee ?? { useMarketDefault: true };
+    const next = buildPlatformFeePayload();
+    if ((saved.useMarketDefault !== false) !== (next.useMarketDefault !== false)) return false;
+    if (next.useMarketDefault !== false) return true;
+    return (
+      (saved.enabled ?? false) === (next.enabled ?? false) &&
+      (saved.model ?? 'PERCENTAGE') === (next.model ?? 'PERCENTAGE') &&
+      (saved.percentage ?? 0) === (next.percentage ?? 0) &&
+      (saved.fixedPerOrder ?? 0) === (next.fixedPerOrder ?? 0) &&
+      (saved.fixedPerItem ?? 0) === (next.fixedPerItem ?? 0) &&
+      (saved.minFee ?? 0) === (next.minFee ?? 0) &&
+      (saved.maxFee ?? 0) === (next.maxFee ?? 0)
+    );
+  };
+
+  const tenantFeeOverridePreview: TenantPlatformFeeOverride | null = useMarketDefaultLocal
+    ? { useMarketDefault: true }
+    : buildPlatformFeePayload();
 
   const saveStorefrontMutation = useMutation({
     mutationFn: (payload: { name: string; about: string }) =>
@@ -207,7 +286,7 @@ export default function TenantDetailPage() {
     onError: (err) => addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error'),
   });
   const saveGeneralMutation = useMutation({
-    mutationFn: (payload: { storeType: 'RESTAURANT' | 'PROFESSIONAL'; openTime: string; closeTime: string; forceClosed: boolean }) =>
+    mutationFn: (payload: { storeType: 'RESTAURANT' | 'PROFESSIONAL'; openTime: string; closeTime: string; forceClosed: boolean; paymentMethods: { cash: boolean; card: boolean; installments: boolean } }) =>
       apiFetch(`/tenants/${id}/operational-settings`, { method: 'PUT', body: JSON.stringify(payload) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-registry', id] });
@@ -242,6 +321,9 @@ export default function TenantDetailPage() {
         commissionType: commissionTypeLocal as 'PERCENTAGE' | 'FIXED',
         commissionValue: Number(commissionValueLocal) || 0,
         deliveryFeeModel: deliveryFeeModelLocal as 'MARKET' | 'TENANT',
+        loyaltyBonusCoinsPerOrderToday: Math.max(0, Math.floor(loyaltyBonusCoinsLocal)),
+        loyaltyBonusCoinsPerOrder: Math.max(0, Math.floor(loyaltyBonusCoinsPerOrderLocal)),
+        ...(platformAdmin ? { platformFee: buildPlatformFeePayload() } : {}),
       },
     };
     if (location !== undefined) payload.location = location;
@@ -262,17 +344,33 @@ export default function TenantDetailPage() {
     (currentDeliveryRadiusKm != null ? String(currentDeliveryRadiusKm) : '') !== deliveryRadiusKmLocal ||
     (currentFinancialConfig?.commissionType ?? 'PERCENTAGE') !== commissionTypeLocal ||
     (currentFinancialConfig?.commissionValue ?? 10) !== commissionValueLocal ||
-    (currentFinancialConfig?.deliveryFeeModel ?? 'TENANT') !== deliveryFeeModelLocal;
+    (currentFinancialConfig?.deliveryFeeModel ?? 'TENANT') !== deliveryFeeModelLocal ||
+    (currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0) !== loyaltyBonusCoinsLocal ||
+    (currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0) !== loyaltyBonusCoinsPerOrderLocal ||
+    (platformAdmin && !platformFeePayloadMatches());
 
   const storefrontHasChanges = nameLocal !== currentName || aboutLocal !== currentAbout;
   const generalHasChanges =
     storeTypeLocal !== currentStoreType ||
     openTimeLocal !== currentOpenTime ||
     closeTimeLocal !== currentCloseTime ||
-    forceClosedLocal !== currentForceClosed;
+    forceClosedLocal !== currentForceClosed ||
+    cashEnabledLocal !== currentCashEnabled ||
+    cardEnabledLocal !== currentCardEnabled ||
+    installmentsEnabledLocal !== currentInstallmentsEnabled;
   const handleSaveStorefront = () => saveStorefrontMutation.mutate({ name: nameLocal, about: aboutLocal });
   const handleSaveGeneral = () =>
-    saveGeneralMutation.mutate({ storeType: storeTypeLocal, openTime: openTimeLocal, closeTime: closeTimeLocal, forceClosed: forceClosedLocal });
+    saveGeneralMutation.mutate({
+      storeType: storeTypeLocal,
+      openTime: openTimeLocal,
+      closeTime: closeTimeLocal,
+      forceClosed: forceClosedLocal,
+      paymentMethods: {
+        cash: cashEnabledLocal,
+        card: cardEnabledLocal,
+        installments: installmentsEnabledLocal,
+      },
+    });
 
   const [deleteStoreModalOpen, setDeleteStoreModalOpen] = useState(false);
   const deleteStoreMutation = useMutation({
@@ -572,8 +670,61 @@ export default function TenantDetailPage() {
                     <option value="MARKET">السوق</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">مكافأة عملات ثابتة (كل طلب مكتمل)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={loyaltyBonusCoinsPerOrderLocal}
+                    onChange={(e) => setLoyaltyBonusCoinsPerOrderLocal(Number(e.target.value) || 0)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    يُضاف للعميل عند كل طلب مكتمل (بالإضافة إلى قاعدة 10 ₪ = 5 عملات ومكافأة التوصيل إن وُجدت).
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">مكافأة عملات (طلبات اليوم)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={loyaltyBonusCoinsLocal}
+                    onChange={(e) => setLoyaltyBonusCoinsLocal(Number(e.target.value) || 0)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    عند إكمال الطلب: يُضاف للعميل عدد العملات هنا إذا وُضع الطلب في نفس يوم التقويم (بالإضافة إلى قاعدة 10 ₪ = 5 عملات).
+                  </p>
+                </div>
               </div>
             </Card>
+            {platformAdmin && (
+              <Card className="p-6 bg-white">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">رسوم منصة Now Market</h2>
+                <p className="text-sm text-gray-500 mb-4">
+                  تُضاف على سعر الزبون ولا تظهر لصاحب المتجر كربح للمنصة. يمكن للمتجر استخدام إعداد السوق أو override
+                  خاص.
+                </p>
+                <PlatformFeeDisabledBanner />
+                <PlatformFeeConfigFields
+                  config={platformFeeConfigLocal}
+                  onChange={setPlatformFeeConfigLocal}
+                  idPrefix="tenant-pf"
+                  tenantMode
+                  useMarketDefault={useMarketDefaultLocal}
+                  onUseMarketDefaultChange={setUseMarketDefaultLocal}
+                />
+                <div className="mt-6">
+                  <PlatformFeePreviewCalculator
+                    marketFeeConfig={(tenantMarket as { platformFeeConfig?: PlatformFeeConfig } | undefined)?.platformFeeConfig}
+                    tenantFeeOverride={tenantFeeOverridePreview}
+                    title="معاينة — هذا المتجر"
+                  />
+                </div>
+              </Card>
+            )}
             {USE_API && (
               <Button
                 onClick={() => saveStoreManagementMutation.mutate()}
@@ -776,6 +927,24 @@ export default function TenantDetailPage() {
                 />
                 <label htmlFor="forceClosed" className="text-sm font-medium text-gray-900 cursor-pointer">
                   إغلاق يدوي طارئ (Force Closed) — يعرض المحل مغلقاً بغض النظر عن الساعات
+                </label>
+              </div>
+            </Card>
+            <Card className="p-6 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">طرق الدفع للمتجر</h2>
+              <p className="text-sm text-gray-500 mb-3">تحكم Granular على مستوى المتجر. التفعيل النهائي للبطاقة يعتمد أيضًا على التفعيل العام للمنصة.</p>
+              <div className="grid gap-3">
+                <label className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="text-sm font-medium text-gray-900">نقدًا (Cash)</span>
+                  <input type="checkbox" checked={cashEnabledLocal} onChange={(e) => setCashEnabledLocal(e.target.checked)} className="h-4 w-4" />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="text-sm font-medium text-gray-900">بطاقة (Card)</span>
+                  <input type="checkbox" checked={cardEnabledLocal} onChange={(e) => setCardEnabledLocal(e.target.checked)} className="h-4 w-4" />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="text-sm font-medium text-gray-900">أقساط (Installments)</span>
+                  <input type="checkbox" checked={installmentsEnabledLocal} onChange={(e) => setInstallmentsEnabledLocal(e.target.checked)} className="h-4 w-4" />
                 </label>
               </div>
             </Card>

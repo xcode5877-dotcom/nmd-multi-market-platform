@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Input, useToast } from '@nmd/ui';
-import { CreditCard, Clock, LayoutGrid, Send } from 'lucide-react';
-import { apiHeaders } from '../api';
+import { CreditCard, Clock, LayoutGrid, Send, Percent } from 'lucide-react';
+import { apiFetch, apiHeaders } from '../api';
+import PlatformFeeDisabledBanner from '../components/platform-fee/PlatformFeeDisabledBanner';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -11,6 +12,45 @@ export default function SystemSettingsPage() {
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastBody, setBroadcastBody] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
+  const [globalCardEnabled, setGlobalCardEnabled] = useState(true);
+  const [globalInstallmentsEnabled, setGlobalInstallmentsEnabled] = useState(true);
+  const [globalPaymentLoading, setGlobalPaymentLoading] = useState(true);
+  const [globalPaymentSaving, setGlobalPaymentSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiFetch<{ paymentMethods?: { card?: boolean; installments?: boolean } }>('/config/payment-methods');
+        setGlobalCardEnabled(res.paymentMethods?.card !== false);
+        setGlobalInstallmentsEnabled(res.paymentMethods?.installments !== false);
+      } catch {
+        addToast('تعذّر تحميل إعدادات الدفع العامة', 'error');
+      } finally {
+        setGlobalPaymentLoading(false);
+      }
+    };
+    void load();
+  }, [addToast]);
+
+  const saveGlobalPayments = async () => {
+    setGlobalPaymentSaving(true);
+    try {
+      await apiFetch('/config/payment-methods', {
+        method: 'PUT',
+        body: JSON.stringify({
+          paymentMethods: {
+            card: globalCardEnabled,
+            installments: globalInstallmentsEnabled,
+          },
+        }),
+      });
+      addToast('تم حفظ إعدادات الدفع العامة', 'success');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'فشل حفظ إعدادات الدفع', 'error');
+    } finally {
+      setGlobalPaymentSaving(false);
+    }
+  };
 
   const sendBroadcast = async () => {
     const title = broadcastTitle.trim();
@@ -64,6 +104,25 @@ export default function SystemSettingsPage() {
           </div>
         </Card>
         <Card className="p-6">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <div className="font-medium text-gray-900">تحكم عام بالدفع</div>
+              <div className="text-sm text-gray-500">Kill-Switch شامل لكل المنصة (بطاقة / أقساط)</div>
+            </div>
+            <Button size="sm" onClick={saveGlobalPayments} disabled={globalPaymentLoading || globalPaymentSaving}>
+              {globalPaymentSaving ? 'جاري الحفظ...' : 'حفظ'}
+            </Button>
+          </div>
+          <div className="grid gap-3 mb-4">
+            <label className="flex items-center justify-between rounded-lg border p-3">
+              <span className="text-sm font-medium text-gray-900">تفعيل الدفع بالبطاقة عالميًا</span>
+              <input type="checkbox" checked={globalCardEnabled} onChange={(e) => setGlobalCardEnabled(e.target.checked)} disabled={globalPaymentLoading} className="h-4 w-4" />
+            </label>
+            <label className="flex items-center justify-between rounded-lg border p-3">
+              <span className="text-sm font-medium text-gray-900">تفعيل الأقساط عالميًا</span>
+              <input type="checkbox" checked={globalInstallmentsEnabled} onChange={(e) => setGlobalInstallmentsEnabled(e.target.checked)} disabled={globalPaymentLoading} className="h-4 w-4" />
+            </label>
+          </div>
           <Link
             to="/settings/payments"
             className="flex items-center gap-3 p-4 rounded-lg hover:bg-gray-50 transition-colors"
@@ -74,6 +133,24 @@ export default function SystemSettingsPage() {
               <div className="text-sm text-gray-500">طرق الدفع والبوابات</div>
             </div>
           </Link>
+        </Card>
+        <Card className="p-6">
+          <PlatformFeeDisabledBanner />
+          <div className="flex items-start gap-3">
+            <Percent className="w-5 h-5 text-teal-600 mt-0.5" />
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-900 mb-1">رسوم منصة Now Market</h2>
+              <p className="text-sm text-gray-500 mb-3">
+                الإعداد الافتراضي يُحدَّد لكل سوق على حدة. يمكن تجاوزه لمتجر معيّن من صفحة تفاصيل المتجر.
+              </p>
+              <Link
+                to="/markets"
+                className="inline-flex items-center text-sm font-medium text-primary hover:underline"
+              >
+                اذهب إلى الأسواق ← رسوم المنصة
+              </Link>
+            </div>
+          </div>
         </Card>
         <Card className="p-6">
           <Link

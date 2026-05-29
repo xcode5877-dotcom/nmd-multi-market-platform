@@ -32,6 +32,7 @@ const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const MarketDispatchPage = lazy(() => import('./pages/MarketDispatchPage'));
 const MarketFinancePage = lazy(() => import('./pages/MarketFinancePage'));
 const MarketReportsPage = lazy(() => import('./pages/MarketReportsPage'));
+const MarketPlatformFeePage = lazy(() => import('./pages/MarketPlatformFeePage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
 const PillarCategoryManagerPage = lazy(() => import('./pages/PillarCategoryManagerPage'));
@@ -80,6 +81,7 @@ function Content() {
         <Route path="markets/:id/orders" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/dispatch" element={<MarketRouteGuard><MarketDispatchPage /></MarketRouteGuard>} />
         <Route path="markets/:id/finance" element={<MarketRouteGuard><MarketFinancePage /></MarketRouteGuard>} />
+        <Route path="markets/:id/platform-fee" element={<MarketRouteGuard><MarketPlatformFeePage /></MarketRouteGuard>} />
         <Route path="markets/:id/reports" element={<MarketRouteGuard><MarketReportsPage /></MarketRouteGuard>} />
         <Route path="markets/:id/banners" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />

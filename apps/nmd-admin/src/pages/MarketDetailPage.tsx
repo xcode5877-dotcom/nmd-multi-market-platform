@@ -82,6 +82,7 @@ export default function MarketDetailPage() {
     if (pathname.endsWith('/orders')) return 'orders';
     if (pathname.endsWith('/dispatch')) return 'dispatch';
     if (pathname.endsWith('/finance')) return 'finance';
+    if (pathname.endsWith('/platform-fee')) return 'platform-fee';
     if (pathname.endsWith('/banners')) return 'banners';
     if (pathname.endsWith('/layout')) return 'layout';
     return 'details';
@@ -429,6 +430,18 @@ export default function MarketDetailPage() {
             >
               المالية
             </NavLink>
+            {(isRootAdmin || isSuperAdmin) && (
+              <NavLink
+                to={`/markets/${id}/platform-fee`}
+                className={({ isActive }) =>
+                  `shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                    isActive ? 'bg-white border border-b-0 border-gray-200 text-gray-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
+                  }`
+                }
+              >
+                رسوم المنصة
+              </NavLink>
+            )}
             <NavLink
               to={`/markets/${id}/reports`}
               className={({ isActive }) =>
