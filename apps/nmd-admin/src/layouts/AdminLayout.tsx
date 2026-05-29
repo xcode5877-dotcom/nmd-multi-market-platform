@@ -295,6 +295,7 @@ export default function AdminLayout() {
                       key={item.to}
                       to={appendTenant(item.to)}
                       end={item.end ?? true}
+                      title={item.hint ? `${item.label} — ${item.hint}` : item.label}
                       className={({ isActive }) =>
                         `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navLinkClass(
                           isActive,
@@ -302,8 +303,23 @@ export default function AdminLayout() {
                         )}`
                       }
                     >
-                      <item.icon className="w-4 h-4 shrink-0" aria-hidden />
-                      <span className="leading-snug">{item.label}</span>
+                      {({ isActive }) => (
+                        <>
+                          <item.icon className="w-4 h-4 shrink-0 self-start mt-0.5" aria-hidden />
+                          <span className="min-w-0 flex flex-col gap-0.5">
+                            <span className="leading-snug">{item.label}</span>
+                            {item.hint ? (
+                              <span
+                                className={`text-[10px] leading-tight ${
+                                  isActive ? 'text-white/75' : 'text-gray-500'
+                                }`}
+                              >
+                                {item.hint}
+                              </span>
+                            ) : null}
+                          </span>
+                        </>
+                      )}
                     </NavLink>
                   ))}
                 </div>

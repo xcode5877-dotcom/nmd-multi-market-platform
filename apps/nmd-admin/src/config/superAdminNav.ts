@@ -30,6 +30,8 @@ export type SuperAdminNavItem = {
   icon: LucideIcon;
   /** NavLink `end` — default true */
   end?: boolean;
+  /** Muted helper under the label (taxonomy clarity only) */
+  hint?: string;
 };
 
 export type SuperAdminNavSection = {
@@ -58,8 +60,20 @@ export const SUPER_ADMIN_NAV_SECTIONS: SuperAdminNavSection[] = [
     title: 'الأسواق والمتاجر',
     items: [
       { to: '/tenants', label: 'كل المتاجر', icon: Building2, end: true },
-      { to: '/categories', label: 'تصنيفات المتجر', icon: FolderTree, end: true },
-      { to: '/pillars', label: 'أعمدة المول', icon: LayoutGrid, end: true },
+      {
+        to: '/categories',
+        label: 'التصنيفات القديمة',
+        hint: 'متوافق مع النظام القديم',
+        icon: FolderTree,
+        end: true,
+      },
+      {
+        to: '/pillars',
+        label: 'أعمدة المول',
+        hint: 'نظام التصنيف الحالي للمول',
+        icon: LayoutGrid,
+        end: true,
+      },
       { to: '/system/templates', label: 'قوالب المتاجر', icon: LayoutGrid, end: true },
     ],
   },

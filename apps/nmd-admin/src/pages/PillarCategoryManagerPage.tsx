@@ -225,7 +225,10 @@ export default function PillarCategoryManagerPage() {
   return (
     <div dir="rtl" className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">الأعمدة والتصنيفات</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">الأعمدة والتصنيفات</h1>
+          <p className="text-sm text-gray-500 mt-1">نظام التصنيف الحالي للمول</p>
+        </div>
         <Button onClick={() => { setCreatePillarOpen(true); setPillarForm({ name: '', nameAr: '', slug: '', icon: '', sortOrder: pillarList.length }); }} className="gap-2">
           <Plus className="w-4 h-4" />
           إضافة عمود

@@ -92,7 +92,10 @@ export default function CategoriesAdminPage() {
   return (
     <div dir="rtl">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">إدارة التصنيفات</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">إدارة التصنيفات</h1>
+          <p className="text-sm text-gray-500 mt-1">متوافق مع النظام القديم</p>
+        </div>
         <Button onClick={() => { setCreateOpen(true); setForm({ title: '', icon: '📦', isProfessional: false, sortOrder: list.length }); }} className="gap-2">
           <Plus className="w-4 h-4" />
           إضافة تصنيف
