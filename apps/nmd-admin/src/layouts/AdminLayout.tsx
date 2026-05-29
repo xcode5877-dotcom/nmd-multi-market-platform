@@ -1,7 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { Outlet, NavLink, useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Building2, Store, FileText, LogOut, Package, MapPin, ShoppingCart, Shield, Settings, FolderTree, ClipboardList, Users, Truck, Bell, BellOff, Volume2, LayoutGrid, Trophy, Tag, Gift, AlertCircle, DollarSign, Send, Radio, Wallet, BarChart3, UserCog } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Building2,
+  Store,
+  LogOut,
+  Package,
+  MapPin,
+  ShoppingCart,
+  Shield,
+  Settings,
+  ClipboardList,
+  Users,
+  Truck,
+  Bell,
+  BellOff,
+  Volume2,
+  AlertCircle,
+  DollarSign,
+} from 'lucide-react';
 import StoreStatusToggle from '../components/StoreStatusToggle';
 import { setEmergencyHeaders, TOKEN_KEY } from '../api';
 import { MockApiClient } from '@nmd/mock';
@@ -9,15 +27,32 @@ import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { MarketOrderAlarmProvider, useMarketOrderAlarm } from '../contexts/MarketOrderAlarmContext';
+import { SUPER_ADMIN_NAV_SECTIONS, type SuperAdminNavSection } from '../config/superAdminNav';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
+
+type FlatNavItem = {
+  to: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  end: boolean;
+};
 
 /** Parse marketId and tenantId from pathname when inside markets/:id/tenants/:tenantId (or nested). */
 function parseMarketAndTenantFromPath(pathname: string): { marketId?: string; tenantId?: string } {
   const match = pathname.match(/\/markets\/([^/]+)\/tenants\/([^/]+)/);
   if (match) return { marketId: match[1], tenantId: match[2] };
   return {};
+}
+
+function navLinkClass(isActive: boolean, accent: SuperAdminNavSection['accent']) {
+  if (accent === 'teal') {
+    return isActive
+      ? 'bg-teal-600 text-white'
+      : 'text-gray-300 hover:bg-[#334155] hover:text-white';
+  }
+  return isActive ? 'bg-[#7C3AED] text-white' : 'text-gray-300 hover:bg-[#334155] hover:text-white';
 }
 
 /** Simplified dashboard summary for native app: Today's Sales, Active Stores, Urgent Alerts. */
@@ -37,7 +72,9 @@ function AdminNativeDashboardSummary() {
             مبيعات اليوم
           </div>
           <p className="text-xl font-semibold text-gray-900">—</p>
-          <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض الأسواق</NavLink>
+          <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">
+            عرض الأسواق
+          </NavLink>
         </div>
         <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
           <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
@@ -45,7 +82,9 @@ function AdminNativeDashboardSummary() {
             متاجر نشطة
           </div>
           <p className="text-xl font-semibold text-gray-900">—</p>
-          <NavLink to="/tenants" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض المتاجر</NavLink>
+          <NavLink to="/tenants" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">
+            عرض المتاجر
+          </NavLink>
         </div>
         <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
           <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
@@ -56,12 +95,16 @@ function AdminNativeDashboardSummary() {
             {hasAlerts ? `${pendingCount} طلب بانتظار الموافقة` : 'لا يوجد'}
           </p>
           {hasAlerts && (
-            <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">عرض الطلبات</NavLink>
+            <NavLink to="/markets" className="text-sm text-[#7C3AED] hover:underline mt-1 inline-block">
+              عرض الطلبات
+            </NavLink>
           )}
         </div>
       </div>
       {me && (
-        <p className="text-xs text-gray-400 truncate" title={me.email}>{me.email}</p>
+        <p className="text-xs text-gray-400 truncate" title={me.email}>
+          {me.email}
+        </p>
       )}
     </div>
   );
@@ -75,7 +118,6 @@ export default function AdminLayout() {
   const { isNativeApp } = useNativeBridge();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  /** Ultimate Auth Sync: Admin logout — remove only nmd-access-token, then redirect. Do not clear nmd-customer-token (storefront). */
   const handleLogout = () => {
     if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_KEY);
     auth.logout();
@@ -92,7 +134,6 @@ export default function AdminLayout() {
     queryFn: () => api.getTenantById(me!.tenantId!),
     enabled: !!MOCK_API_URL && !!me?.tenantId && me?.role === 'TENANT_ADMIN',
   });
-  /** ROOT_ADMIN and SUPER_ADMIN see full root nav (Markets, Tenants, Pillars, Contests, etc.) */
   const isRootAdmin = me?.role === 'ROOT_ADMIN' || me?.role === 'SUPER_ADMIN';
   const isMarketAdmin = me?.role === 'MARKET_ADMIN';
   const isTenantAdmin = me?.role === 'TENANT_ADMIN';
@@ -107,7 +148,7 @@ export default function AdminLayout() {
     setEmergencyHeaders(emergency?.enabled ?? false, emergency?.reason ?? '');
   }, [emergency?.enabled, emergency?.reason]);
 
-  const marketNav = marketId
+  const marketNav: FlatNavItem[] = marketId
     ? [
         { to: `/markets/${marketId}`, icon: LayoutDashboard, label: 'Overview', end: true },
         { to: `/markets/${marketId}/tenants`, icon: Building2, label: 'Tenants', end: false },
@@ -117,31 +158,7 @@ export default function AdminLayout() {
       ]
     : [];
 
-  const driversNav = [
-    { to: '/drivers', icon: LayoutDashboard, label: 'لوحة التوصيل', end: true },
-    { to: '/drivers/couriers', icon: UserCog, label: 'إدارة السائقين', end: true },
-    { to: '/drivers/markets', icon: Radio, label: 'الأسواق والتوصيل', end: true },
-    { to: '/drivers/reports', icon: BarChart3, label: 'التقارير', end: true },
-    { to: '/drivers/finance', icon: Wallet, label: 'التسويات المالية', end: true },
-    { to: '/external-orders', icon: Package, label: 'الطلبات الخارجية', end: true },
-  ];
-
-  const rootNav = [
-    { to: '/markets', icon: Store, label: 'Markets', end: true },
-    { to: '/tenants', icon: Building2, label: 'Global Tenants', end: true },
-    { to: '/categories', icon: FolderTree, label: 'إدارة التصنيفات', end: true },
-    { to: '/pillars', icon: LayoutGrid, label: 'الأعمدة والتصنيفات', end: true },
-    { to: '/contests', icon: Trophy, label: 'المسابقات', end: true },
-    { to: '/rewards', icon: Gift, label: 'المكافآت والبطولات', end: true },
-    { to: '/coupons', icon: Tag, label: 'أكواد الخصم', end: true },
-    { to: '/push-notifications', icon: Send, label: 'إشعارات Push', end: true },
-    { to: '/customers', icon: Users, label: 'المشتركون', end: true },
-    { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
-    { to: '/settings', icon: Settings, label: 'Settings', end: false },
-    { to: '/audit', icon: FileText, label: 'Audit', end: true },
-  ];
-
-  const tenantNav = [
+  const tenantNav: FlatNavItem[] = [
     { to: '/tenant', icon: LayoutDashboard, label: 'الرئيسية', end: true },
     { to: '/tenant/products', icon: Package, label: 'المنتجات', end: false },
     { to: '/tenant/delivery-zones', icon: MapPin, label: 'مناطق التوصيل', end: false },
@@ -151,17 +168,26 @@ export default function AdminLayout() {
     { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false },
   ];
 
-  const baseNavItems = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : isRootAdmin ? rootNav : [];
-  const deliveryLink =
+  const baseNavItems: FlatNavItem[] = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : [];
+  const deliveryLink: FlatNavItem | null =
     isInsideStoreDashboard && marketIdFromUrl && tenantIdFromUrl
-      ? { to: `/markets/${marketIdFromUrl}/tenants/${tenantIdFromUrl}/settings/delivery`, icon: Truck, label: 'مناطق التوصيل', end: false }
+      ? {
+          to: `/markets/${marketIdFromUrl}/tenants/${tenantIdFromUrl}/settings/delivery`,
+          icon: Truck,
+          label: 'مناطق التوصيل',
+          end: false,
+        }
       : null;
   const navItems = deliveryLink ? [...baseNavItems, deliveryLink] : baseNavItems;
-  const navLoading = (isMarketAdmin && !marketId) || (isTenantAdmin && !me?.tenantId) || (isRootAdmin === false && isMarketAdmin === false && !isTenantAdmin && !!me);
+  const navLoading =
+    (isMarketAdmin && !marketId) ||
+    (isTenantAdmin && !me?.tenantId) ||
+    (isRootAdmin === false && isMarketAdmin === false && !isTenantAdmin && !!me);
 
   const [searchParams] = useSearchParams();
   const tenantParam = searchParams.get('tenant')?.trim();
-  const appendTenant = (path: string) => (tenantParam ? `${path}${path.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(tenantParam)}` : path);
+  const appendTenant = (path: string) =>
+    tenantParam ? `${path}${path.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(tenantParam)}` : path;
 
   const isIndex = location.pathname === '/' || location.pathname === '';
   useEffect(() => {
@@ -180,7 +206,13 @@ export default function AdminLayout() {
       <MarketOrderAlarmProvider marketId={marketIdFromUrl}>
         <div className="min-h-screen flex flex-col bg-[#F8FAFC] pb-24">
           <main className="flex-1 overflow-auto">
-            {isIndex ? <AdminNativeDashboardSummary /> : <div className="p-6"><Outlet /></div>}
+            {isIndex ? (
+              <AdminNativeDashboardSummary />
+            ) : (
+              <div className="p-6">
+                <Outlet />
+              </div>
+            )}
           </main>
           <nav
             className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-[#1E293B] border-t border-[#0F172A]/50 py-2 text-white"
@@ -193,7 +225,9 @@ export default function AdminLayout() {
                 to={appendTenant(to)}
                 end={end}
                 className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 px-2 py-1 min-w-0 flex-1 text-[10px] rounded-lg transition-colors ${isActive ? 'bg-[#7C3AED] text-white' : 'text-gray-400 hover:text-white'}`
+                  `flex flex-col items-center gap-0.5 px-2 py-1 min-w-0 flex-1 text-[10px] rounded-lg transition-colors ${
+                    isActive ? 'bg-[#7C3AED] text-white' : 'text-gray-400 hover:text-white'
+                  }`
                 }
               >
                 <Icon className="w-5 h-5 shrink-0" aria-hidden />
@@ -208,150 +242,161 @@ export default function AdminLayout() {
 
   return (
     <MarketOrderAlarmProvider marketId={marketIdFromUrl}>
-    <div className="min-h-screen flex bg-[#F8FAFC]">
-      {mobileMenuOpen && (
-        <button
-          type="button"
-          aria-label="إغلاق القائمة"
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-      <aside
-        className={`fixed top-0 bottom-0 right-0 z-40 w-72 max-w-[85vw] bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 md:w-56 ${
-          mobileMenuOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
-        }`}
-      >
-        <div className="p-4 border-b border-[#0F172A]/50">
-          <h1 className="font-bold text-lg text-white">NMD OS Control</h1>
-          <MarketOrderAlarmBell />
-          {MOCK_API_URL && auth.user && (
-            <div className="mt-3">
-              <p className="text-xs text-gray-400 truncate" title={auth.user.email}>{auth.user.email}</p>
-            </div>
-          )}
-          {isTenantAdmin && me?.tenantId && (
-            <div className="mt-3">
-              <StoreStatusToggle
-                tenantId={me.tenantId}
-                currentStatus={(tenantForStatus as { operationalStatus?: 'open' | 'closed' | 'busy' })?.operationalStatus ?? 'open'}
-                emphasizeClosed
-                variant="full"
-              />
-            </div>
-          )}
-          {MOCK_API_URL && isRootAdmin && (
-            <div className="mt-3">
-              <label className="text-xs text-gray-400 block mb-1">وضع الطوارئ</label>
-              <input
-                type="text"
-                placeholder="السبب (مطلوب للتعديل)"
-                value={emergency?.reason ?? ''}
-                onChange={(e) => emergency?.toggle(e.target.value)}
-                className="w-full text-sm bg-[#334155] text-white rounded px-2 py-1 border-0 placeholder-gray-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {emergency?.enabled ? '✓ التعديل مفعّل' : 'التعديل معطّل'}
-              </p>
-            </div>
-          )}
-        </div>
-        <nav className="flex-1 p-2 space-y-1">
-          {navLoading ? (
-            <div className="px-3 py-2 text-xs text-gray-500">جاري التحميل...</div>
-          ) : (
-            <>
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={appendTenant(item.to)}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                      isActive ? 'bg-[#7C3AED] text-white' : 'text-gray-300 hover:bg-[#334155] hover:text-white'
-                    }`
+      <div className="min-h-screen flex bg-[#F8FAFC]">
+        {mobileMenuOpen && (
+          <button
+            type="button"
+            aria-label="إغلاق القائمة"
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+        <aside
+          className={`fixed top-0 bottom-0 right-0 z-40 w-72 max-w-[85vw] bg-[#1E293B] border-e border-[#0F172A]/50 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 md:w-60 ${
+            mobileMenuOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+          }`}
+        >
+          <div className="p-4 border-b border-[#0F172A]/50 shrink-0">
+            <h1 className="font-bold text-lg text-white">NMD OS Control</h1>
+            <MarketOrderAlarmBell />
+            {MOCK_API_URL && auth.user && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-400 truncate" title={auth.user.email}>
+                  {auth.user.email}
+                </p>
+              </div>
+            )}
+            {isTenantAdmin && me?.tenantId && (
+              <div className="mt-3">
+                <StoreStatusToggle
+                  tenantId={me.tenantId}
+                  currentStatus={
+                    (tenantForStatus as { operationalStatus?: 'open' | 'closed' | 'busy' })?.operationalStatus ??
+                    'open'
                   }
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
-                </NavLink>
-              ))}
-              {isRootAdmin && driversNav.length > 0 ? (
-                <>
-                  <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    السائقون والتوصيل
+                  emphasizeClosed
+                  variant="full"
+                />
+              </div>
+            )}
+          </div>
+
+          <nav className="flex-1 overflow-y-auto p-2 space-y-4 min-h-0" aria-label="القائمة الجانبية">
+            {navLoading ? (
+              <div className="px-3 py-2 text-xs text-gray-500">جاري التحميل...</div>
+            ) : isRootAdmin ? (
+              SUPER_ADMIN_NAV_SECTIONS.map((section) => (
+                <div key={section.id} className="space-y-0.5">
+                  <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold tracking-wide text-gray-500 border-b border-[#334155]/60 mb-1">
+                    {section.title}
                   </p>
-                  {driversNav.map((item) => (
+                  {section.items.map((item) => (
                     <NavLink
                       key={item.to}
                       to={appendTenant(item.to)}
-                      end={item.end}
+                      end={item.end ?? true}
                       className={({ isActive }) =>
-                        `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                          isActive ? 'bg-teal-600 text-white' : 'text-gray-300 hover:bg-[#334155] hover:text-white'
-                        }`
+                        `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navLinkClass(
+                          isActive,
+                          section.accent
+                        )}`
                       }
                     >
-                      <item.icon className="w-5 h-5" />
-                      {item.label}
+                      <item.icon className="w-4 h-4 shrink-0" aria-hidden />
+                      <span className="leading-snug">{item.label}</span>
                     </NavLink>
                   ))}
-                </>
-              ) : null}
-            </>
-          )}
-        </nav>
-        {MOCK_API_URL && auth.user && (
-          <div className="p-2 border-t border-[#0F172A]/50 mt-auto">
-            <button
-              type="button"
-              onClick={handleLogout}
-              aria-label="تسجيل الخروج"
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-[#334155] hover:text-white transition-colors"
-            >
-              <LogOut className="w-4 h-4 shrink-0" />
-              تسجيل الخروج
-            </button>
+                </div>
+              ))
+            ) : (
+              <div className="space-y-0.5">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={appendTenant(item.to)}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navLinkClass(
+                        isActive,
+                        'purple'
+                      )}`
+                    }
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </nav>
+
+          <div className="shrink-0 p-2 border-t border-[#0F172A]/50 space-y-2">
+            {MOCK_API_URL && isRootAdmin && (
+              <div className="px-2 py-2 rounded-lg bg-[#334155]/40">
+                <label className="text-xs text-gray-400 block mb-1">وضع الطوارئ</label>
+                <input
+                  type="text"
+                  placeholder="السبب (مطلوب للتعديل)"
+                  value={emergency?.reason ?? ''}
+                  onChange={(e) => emergency?.toggle(e.target.value)}
+                  className="w-full text-sm bg-[#334155] text-white rounded px-2 py-1.5 border-0 placeholder-gray-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {emergency?.enabled ? '✓ التعديل مفعّل' : 'التعديل معطّل'}
+                </p>
+              </div>
+            )}
+            {MOCK_API_URL && auth.user && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                aria-label="تسجيل الخروج"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-[#334155] hover:text-white transition-colors"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                تسجيل الخروج
+              </button>
+            )}
           </div>
-        )}
-      </aside>
-      <main className="flex-1 overflow-auto bg-[#F8FAFC] min-w-0">
-        <div className="md:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200">
-          <div className="px-3 py-2 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
-              aria-label="فتح القائمة"
-            >
-              <span className="text-lg leading-none">☰</span>
-            </button>
-            <div className="min-w-0 text-center flex-1">
-              <p className="text-sm font-semibold text-gray-900 truncate">NMD OS Control</p>
-              {auth.user?.email ? (
-                <p className="text-[11px] text-gray-500 truncate">{auth.user.email}</p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-1">
-              <MarketOrderAlarmBell />
-              {MOCK_API_URL && auth.user && (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  aria-label="تسجيل الخروج"
-                  className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              )}
+        </aside>
+
+        <main className="flex-1 overflow-auto bg-[#F8FAFC] min-w-0">
+          <div className="md:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200">
+            <div className="px-3 py-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
+                aria-label="فتح القائمة"
+              >
+                <span className="text-lg leading-none">☰</span>
+              </button>
+              <div className="min-w-0 text-center flex-1">
+                <p className="text-sm font-semibold text-gray-900 truncate">NMD OS Control</p>
+                {auth.user?.email ? (
+                  <p className="text-[11px] text-gray-500 truncate">{auth.user.email}</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-1">
+                <MarketOrderAlarmBell />
+                {MOCK_API_URL && auth.user && (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    aria-label="تسجيل الخروج"
+                    className="min-h-11 min-w-11 px-3 rounded-lg border border-gray-200 text-gray-700 bg-white active:bg-gray-100"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="p-3 md:p-6">
-          <Outlet />
-        </div>
-      </main>
-    </div>
+          <div className="p-3 md:p-6">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </MarketOrderAlarmProvider>
   );
 }
