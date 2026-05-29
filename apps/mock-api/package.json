@@ -15,12 +15,14 @@
     "ensure-default-tenant": "tsx scripts/ensure-default-tenant.ts",
     "promote-user-to-root": "tsx scripts/promote-user-to-root.ts",
     "reset-root-password": "tsx scripts/reset-root-password.ts",
-    "verify:storage": "tsx scripts/verify-storage-drivers.ts"
+    "verify:storage": "tsx scripts/verify-storage-drivers.ts",
+    "verify:platform-fee": "tsx scripts/verify-platform-fee.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@nmd/core": "workspace:*",
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",

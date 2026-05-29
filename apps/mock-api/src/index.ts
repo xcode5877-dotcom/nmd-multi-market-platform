@@ -92,6 +92,12 @@ import {
 } from './hyp-service.js';
 import { sendOtpViaExternalWhatsAppApi } from './services/externalWhatsAppOtp.js';
 import { aggregateMerchantStats, dateRangeForMerchant, orderPaymentChannel, type MerchantTimeRange } from './merchant-stats.js';
+import {
+  computePlatformFee,
+  isPlatformFeeEnabled,
+  buildPlatformFeePayment,
+  enrichLegacyPaymentWithSnapshot,
+} from './platform-fee.js';
 import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
 
@@ -6876,15 +6882,50 @@ app.post('/orders', wrapAsync(async (req, res) => {
       }
     }
   }
-  const finalTotal = Math.max(0, orderSubtotal + orderDeliveryFee - couponDiscount);
+  const legacyTotal = Math.max(0, orderSubtotal + orderDeliveryFee - couponDiscount);
+  const orderItems = (created as { items?: { quantity?: number }[] }).items ?? [];
+  const itemCount = orderItems.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+  const marketForFee = tenant?.marketId
+    ? ((await repos.markets.findAll()) as Market[]).find((m) => m.id === tenant.marketId)
+    : undefined;
+  const feeResult = computePlatformFee({
+    itemsSubtotal: orderSubtotal,
+    discountAmount: couponDiscount,
+    itemCount,
+    deliveryFee: orderDeliveryFee,
+    marketFeeConfig: marketForFee?.platformFeeConfig,
+    tenantFeeOverride: tenant?.financialConfig?.platformFee,
+    featureFlagEnabled: isPlatformFeeEnabled(),
+  });
+  const finalTotal = isPlatformFeeEnabled() ? feeResult.customerTotal : legacyTotal;
+
   (created as Record<string, unknown>).subtotal = orderSubtotal;
   (created as Record<string, unknown>).total = finalTotal;
+  (created as Record<string, unknown>).discountAmount = couponDiscount;
+  (created as Record<string, unknown>).platformFee = feeResult.platformFee;
+  (created as Record<string, unknown>).platformFeeBase = feeResult.feeBase;
+  (created as Record<string, unknown>).platformFeeConfigSnapshot = feeResult.configSnapshot;
+  (created as Record<string, unknown>).merchantPayout = feeResult.merchantPayout;
+  (created as Record<string, unknown>).customerTotal = finalTotal;
+  (created as Record<string, unknown>).platformDeliveryFee = orderDeliveryFee;
 
-  const payment = await computePaymentForOrder(created as { items?: { totalPrice?: number }[]; subtotal?: number; total?: number; delivery?: { fee?: number } }, created.tenantId ?? '');
   const method = ((created as { paymentMethod?: string }).paymentMethod === 'CARD' ? 'CARD' : 'CASH') as 'CASH' | 'CARD';
-  (created as Record<string, unknown>).payment = { ...payment, method };
-  (created as Record<string, unknown>).merchantAmount = payment.breakdown.itemsTotal;
-  (created as Record<string, unknown>).platformDeliveryFee = payment.breakdown.deliveryFee;
+  const deliveryFeeModel = tenant?.financialConfig?.deliveryFeeModel ?? 'TENANT';
+  let paymentBase: Awaited<ReturnType<typeof computePaymentForOrder>> | ReturnType<typeof buildPlatformFeePayment>;
+  if (isPlatformFeeEnabled()) {
+    paymentBase = buildPlatformFeePayment(feeResult, deliveryFeeModel);
+    (created as Record<string, unknown>).merchantAmount = feeResult.merchantPayout;
+  } else {
+    const legacyOrderForPayment = {
+      ...(created as { items?: { totalPrice?: number }[]; subtotal?: number; total?: number; delivery?: { fee?: number } }),
+      total: legacyTotal,
+    };
+    const legacyPayment = await computePaymentForOrder(legacyOrderForPayment, created.tenantId ?? '');
+    paymentBase = enrichLegacyPaymentWithSnapshot(legacyPayment, feeResult);
+    (created as Record<string, unknown>).merchantAmount = legacyPayment.breakdown.itemsTotal;
+  }
+  const payment = { ...paymentBase, method };
+  (created as Record<string, unknown>).payment = payment;
 
   (created as Record<string, unknown>).id = (created as { id?: string }).id ?? crypto.randomUUID?.() ?? `order-${Date.now()}`;
   (created as Record<string, unknown>).orderType = (created as { orderType?: string }).orderType ?? 'PRODUCT';
@@ -8104,10 +8145,28 @@ type OrderWithPayment = {
   payment?: {
     method?: string;
     status?: string;
-    breakdown?: { itemsTotal?: number; deliveryFee?: number };
-    financials?: { gross?: number; commission?: number; netToMerchant?: number; netToMarket?: number };
+    breakdown?: {
+      itemsTotal?: number;
+      deliveryFee?: number;
+      discountAmount?: number;
+      platformFee?: number;
+      platformFeeBase?: number;
+      customerTotal?: number;
+    };
+    financials?: {
+      gross?: number;
+      commission?: number;
+      platformFee?: number;
+      netToMerchant?: number;
+      netToMarket?: number;
+      merchantPayout?: number;
+      customerTotal?: number;
+    };
+    platformFeeConfigSnapshot?: { source?: string };
     cashLedger?: { collected?: boolean };
   };
+  platformFee?: number;
+  merchantPayout?: number;
   paymentMethod?: string;
 };
 
@@ -8149,29 +8208,43 @@ function computeOrderFinancials(o: OrderWithPayment | null | undefined): {
   itemsTotal: number;
   deliveryFee: number;
   commission: number;
+  platformFee: number;
   netToMerchant: number;
   isCash: boolean;
   isCashCollected: boolean;
 } {
-  if (!o) return { gross: 0, itemsTotal: 0, deliveryFee: 0, commission: 0, netToMerchant: 0, isCash: true, isCashCollected: false };
+  if (!o) {
+    return { gross: 0, itemsTotal: 0, deliveryFee: 0, commission: 0, platformFee: 0, netToMerchant: 0, isCash: true, isCashCollected: false };
+  }
   const pay = o.payment;
+  const rec = o as Record<string, unknown>;
   const safeNum = (v: unknown): number => (typeof v === 'number' && !Number.isNaN(v) ? v : 0);
-  const items = Array.isArray((o as Record<string, unknown>)?.items) ? (o as Record<string, unknown>).items as { totalPrice?: number }[] : [];
+  const items = Array.isArray(rec?.items) ? rec.items as { totalPrice?: number }[] : [];
   const itemsSum = items.reduce((s: number, i: { totalPrice?: number }) => s + safeNum(i?.totalPrice), 0);
   const subtotal = safeNum(o?.subtotal) || itemsSum;
   const total = safeNum(o?.total) || (subtotal + safeNum(o?.delivery?.fee));
   const deliveryFee = safeNum(pay?.breakdown?.deliveryFee) || safeNum(o?.delivery?.fee);
 
-  const gross = safeNum(pay?.financials?.gross) || total;
+  const gross = safeNum(pay?.financials?.customerTotal) || safeNum(pay?.financials?.gross) || safeNum(rec.customerTotal) || total;
   const itemsTotal = safeNum(pay?.breakdown?.itemsTotal) || subtotal;
-  const commission = safeNum(pay?.financials?.commission);
-  const netToMerchant = safeNum(pay?.financials?.netToMerchant);
+  const platformFee =
+    safeNum(pay?.financials?.platformFee) ||
+    safeNum(pay?.breakdown?.platformFee) ||
+    safeNum(rec.platformFee) ||
+    0;
+  const commission = platformFee > 0 ? platformFee : safeNum(pay?.financials?.commission);
+  const netToMerchant =
+    safeNum(pay?.financials?.netToMerchant) ||
+    safeNum(pay?.financials?.merchantPayout) ||
+    safeNum(rec.merchantPayout) ||
+    safeNum(rec.merchantAmount) ||
+    0;
 
   const method = pay?.method ?? o?.paymentMethod;
   const isCash = method === 'CASH' || method === undefined || method === null;
   const isCashCollected = Boolean(pay?.cashLedger?.collected);
 
-  return { gross, itemsTotal, deliveryFee, commission, netToMerchant, isCash, isCashCollected };
+  return { gross, itemsTotal, deliveryFee, commission, platformFee, netToMerchant, isCash, isCashCollected };
 }
 
 /** Market finance summary. MARKET_ADMIN: own market; ROOT_ADMIN: read-only. */

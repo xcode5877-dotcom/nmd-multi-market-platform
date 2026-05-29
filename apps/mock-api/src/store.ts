@@ -65,6 +65,8 @@ export interface Market {
   categories?: Array<{ id: string; name: string; slug: string; icon?: string; sortOrder?: number }>;
   /** Stores/tenants in this market (for rich API response). */
   stores?: RegistryTenant[];
+  /** Market-level default platform service fee (Phase 1). JSON storage only until DB column added. */
+  platformFeeConfig?: import('./platform-fee.js').PlatformFeeConfig;
 }
 
 /** Delivery provider mode: TENANT = own couriers; MARKET = market couriers; PICKUP_ONLY = no delivery */
@@ -109,6 +111,8 @@ export interface RegistryTenant {
     commissionType: 'PERCENTAGE' | 'FIXED';
     commissionValue: number;
     deliveryFeeModel: 'MARKET' | 'TENANT';
+    /** Store-level platform fee override (Phase 1). Persisted in financialConfig JSON. */
+    platformFee?: import('./platform-fee.js').TenantPlatformFeeOverride;
   };
   paymentCapabilities?: { cash: boolean; card: boolean };
   /** Admin-controlled homepage sections */
