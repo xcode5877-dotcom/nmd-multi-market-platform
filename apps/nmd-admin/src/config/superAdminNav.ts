@@ -10,6 +10,7 @@ import {
   Radio,
   BarChart3,
   Wallet,
+  Percent,
   Package,
   Trophy,
   Gift,
@@ -60,6 +61,13 @@ export const SUPER_ADMIN_NAV_SECTIONS: SuperAdminNavSection[] = [
     title: 'الأسواق والمتاجر',
     items: [
       { to: '/tenants', label: 'كل المتاجر', icon: Building2, end: true },
+      {
+        to: '/platform-fees',
+        label: 'إدارة رسوم المنصة',
+        hint: 'عرض تشغيلي لكل المتاجر',
+        icon: Percent,
+        end: true,
+      },
       {
         to: '/categories',
         label: 'التصنيفات القديمة',

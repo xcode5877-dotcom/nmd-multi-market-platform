@@ -33,6 +33,7 @@ const MarketDispatchPage = lazy(() => import('./pages/MarketDispatchPage'));
 const MarketFinancePage = lazy(() => import('./pages/MarketFinancePage'));
 const MarketReportsPage = lazy(() => import('./pages/MarketReportsPage'));
 const MarketPlatformFeePage = lazy(() => import('./pages/MarketPlatformFeePage'));
+const PlatformFeesOverviewPage = lazy(() => import('./pages/PlatformFeesOverviewPage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
 const PillarCategoryManagerPage = lazy(() => import('./pages/PillarCategoryManagerPage'));
@@ -87,6 +88,7 @@ function Content() {
         <Route path="markets/:id/layout" element={<MarketRouteGuard><MarketDetailPage /></MarketRouteGuard>} />
         <Route path="markets/:id/couriers" element={<MarketRouteGuard><Navigate to="../dispatch" replace /></MarketRouteGuard>} />
         <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
+        <Route path="platform-fees" element={<RootOnlyRoute><PlatformFeesOverviewPage /></RootOnlyRoute>} />
         <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
         <Route path="pillars" element={<RootOnlyRoute><PillarCategoryManagerPage /></RootOnlyRoute>} />
         <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />

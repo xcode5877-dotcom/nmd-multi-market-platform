@@ -179,3 +179,121 @@ export function disabledPlatformFeeConfig(): PlatformFeeConfig {
     maxFee: 0,
   };
 }
+
+/** UI classification for fee source column (Phase 2.5 overview). */
+export type FeeSourceCategory = 'MARKET' | 'TENANT' | 'EXEMPT' | 'INACTIVE';
+
+export function classifyFeeSource(
+  marketFeeConfig?: PlatformFeeConfig | null,
+  tenantFeeOverride?: TenantPlatformFeeOverride | null
+): FeeSourceCategory {
+  if (tenantFeeOverride?.useMarketDefault === false) {
+    return tenantFeeOverride.enabled ? 'TENANT' : 'EXEMPT';
+  }
+  if (marketFeeConfig?.enabled) return 'MARKET';
+  return 'INACTIVE';
+}
+
+export const FEE_SOURCE_LABELS: Record<FeeSourceCategory, string> = {
+  MARKET: 'إعداد السوق',
+  TENANT: 'إعداد خاص',
+  EXEMPT: 'معفى',
+  INACTIVE: 'غير مفعل',
+};
+
+export const FEE_MODEL_SHORT_LABELS: Record<PlatformFeeModel, string> = {
+  PERCENTAGE: 'نسبة',
+  FIXED_ORDER: 'ثابت للطلب',
+  FIXED_ITEM: 'ثابت للمنتج',
+  HYBRID: 'هجين',
+};
+
+export function formatFeeValueSummary(config: PlatformFeeConfig | null | undefined): string {
+  if (!config) return '—';
+  const model = config.model ?? 'PERCENTAGE';
+  const parts: string[] = [];
+  if (model === 'PERCENTAGE' || model === 'HYBRID') {
+    parts.push(`${config.percentage ?? 0}%`);
+  }
+  if (model === 'FIXED_ORDER' || model === 'HYBRID') {
+    parts.push(`₪${config.fixedPerOrder ?? 0} / طلب`);
+  }
+  if (model === 'FIXED_ITEM' || model === 'HYBRID') {
+    parts.push(`₪${config.fixedPerItem ?? 0} / منتج`);
+  }
+  const min = config.minFee ?? 0;
+  const max = config.maxFee ?? 0;
+  if ((model === 'PERCENTAGE' || model === 'HYBRID') && (min > 0 || max > 0)) {
+    parts.push(`min ₪${min}${max > 0 ? ` max ₪${max}` : ''}`);
+  }
+  return parts.join(' · ') || '—';
+}
+
+/** Standard preview line: "طلب ₪100 → رسوم ₪10" */
+export function formatEffectivePreview(
+  marketFeeConfig?: PlatformFeeConfig | null,
+  tenantFeeOverride?: TenantPlatformFeeOverride | null,
+  sampleSubtotal = 100
+): string {
+  const result = computePlatformFeePreview({
+    itemsSubtotal: sampleSubtotal,
+    discountAmount: 0,
+    itemCount: 1,
+    deliveryFee: 0,
+    marketFeeConfig,
+    tenantFeeOverride,
+    simulateOrdersEnabled: true,
+  });
+  if (result.platformFee <= 0) {
+    return `طلب ₪${sampleSubtotal} → بدون رسوم`;
+  }
+  return `طلب ₪${sampleSubtotal} → رسوم ₪${result.platformFee}`;
+}
+
+export function getEffectiveFeeConfig(
+  marketFeeConfig?: PlatformFeeConfig | null,
+  tenantFeeOverride?: TenantPlatformFeeOverride | null
+): PlatformFeeConfig | null {
+  return resolvePlatformFeeConfig(marketFeeConfig, tenantFeeOverride).config;
+}
+
+export function isFeeActive(
+  marketFeeConfig?: PlatformFeeConfig | null,
+  tenantFeeOverride?: TenantPlatformFeeOverride | null
+): boolean {
+  return getEffectiveFeeConfig(marketFeeConfig, tenantFeeOverride) != null;
+}
+
+export type TenantFeeRowInput = {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  marketId?: string;
+  marketName?: string;
+  marketFeeConfig?: PlatformFeeConfig | null;
+  tenantFeeOverride?: TenantPlatformFeeOverride | null;
+  financialConfig?: { commissionType?: string; commissionValue?: number; deliveryFeeModel?: string; platformFee?: TenantPlatformFeeOverride };
+};
+
+export function buildTenantFeeRow(t: TenantFeeRowInput) {
+  const tenantFeeOverride = t.tenantFeeOverride ?? t.financialConfig?.platformFee;
+  const sourceCategory = classifyFeeSource(t.marketFeeConfig, tenantFeeOverride);
+  const effectiveConfig = getEffectiveFeeConfig(t.marketFeeConfig, tenantFeeOverride);
+  const model = effectiveConfig?.model ?? tenantFeeOverride?.model ?? t.marketFeeConfig?.model ?? 'PERCENTAGE';
+  return {
+    ...t,
+    tenantFeeOverride,
+    sourceCategory,
+    sourceLabel: FEE_SOURCE_LABELS[sourceCategory],
+    model,
+    modelLabel: sourceCategory === 'INACTIVE' && !effectiveConfig ? '—' : FEE_MODEL_SHORT_LABELS[model],
+    valueSummary:
+      sourceCategory === 'EXEMPT'
+        ? '—'
+        : formatFeeValueSummary(effectiveConfig ?? tenantFeeOverride ?? t.marketFeeConfig),
+    effectivePreview: formatEffectivePreview(t.marketFeeConfig, tenantFeeOverride),
+    active: isFeeActive(t.marketFeeConfig, tenantFeeOverride),
+  };
+}
+
+export type TenantFeeRow = ReturnType<typeof buildTenantFeeRow>;
