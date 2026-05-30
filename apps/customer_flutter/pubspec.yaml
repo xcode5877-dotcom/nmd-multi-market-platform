@@ -1,7 +1,7 @@
 name: customer_flutter
 description: Now Market customer app (Flutter)
 publish_to: "none"
-version: 1.0.11+27
+version: 1.0.12+28
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
