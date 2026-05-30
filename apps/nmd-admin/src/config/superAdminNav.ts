@@ -9,6 +9,7 @@ import {
   UserCog,
   Radio,
   BarChart3,
+  LineChart,
   Wallet,
   Percent,
   Package,
@@ -53,6 +54,13 @@ export const SUPER_ADMIN_NAV_SECTIONS: SuperAdminNavSection[] = [
     title: 'النظرة العامة',
     items: [
       { to: '/monitoring', label: 'لوحة التحكم', icon: LayoutDashboard, end: true },
+      {
+        to: '/economics',
+        label: 'اقتصاديات المنصة',
+        hint: 'ذكاء ربحية تشغيلي — قراءة فقط',
+        icon: LineChart,
+        end: true,
+      },
       { to: '/markets', label: 'الأسواق', icon: Store, end: true },
     ],
   },
