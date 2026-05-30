@@ -2,9 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/design_system.dart';
+import 'marketplace_card_layout.dart';
 
 /// Store strip + category grid — unified Now Market product tile (retail).
-class RetailProductCard extends StatelessWidget {
+class RetailProductCard extends StatefulWidget {
   const RetailProductCard({
     super.key,
     required this.width,
@@ -14,6 +15,7 @@ class RetailProductCard extends StatelessWidget {
     required this.available,
     required this.heroTag,
     required this.onTap,
+    this.onAddTap,
     this.description,
   });
 
@@ -24,25 +26,61 @@ class RetailProductCard extends StatelessWidget {
   final bool available;
   final String heroTag;
   final VoidCallback onTap;
+  final VoidCallback? onAddTap;
   final String? description;
 
-  static const double cardHeight = 210;
-  static const double imageHeight = 118;
-  static const double priceRowHeight = 26;
+  static const double cardHeight = MarketplaceCardLayout.productCardHeight;
+  static const double imageHeight = MarketplaceCardLayout.productImageHeight;
+  static const double priceRowHeight = MarketplaceCardLayout.productPriceRowHeight;
+
+  @override
+  State<RetailProductCard> createState() => _RetailProductCardState();
+}
+
+class _RetailProductCardState extends State<RetailProductCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _addPulse;
+  late final Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _addPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+    _scaleAnim = Tween<double>(begin: 1, end: 1.14).animate(
+      CurvedAnimation(parent: _addPulse, curve: Curves.easeOutBack),
+    );
+  }
+
+  @override
+  void dispose() {
+    _addPulse.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleAddTap() async {
+    if (!widget.available || widget.onAddTap == null) return;
+    widget.onAddTap!();
+    await _addPulse.forward(from: 0);
+    if (mounted) await _addPulse.reverse();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final priceStr = price.toStringAsFixed(2);
-    final desc = (description ?? '').trim();
+    final priceStr = NmdFormat.price(widget.price);
+    final desc = (widget.description ?? '').trim();
     final showDesc = desc.isNotEmpty;
+    final showAdd = widget.onAddTap != null;
 
     return SizedBox(
-      width: width,
-      height: cardHeight,
+      width: widget.width,
+      height: RetailProductCard.cardHeight,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           borderRadius: NmdRadius.borderMd,
           child: Ink(
             decoration: BoxDecoration(
@@ -57,68 +95,75 @@ class RetailProductCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  height: imageHeight,
+                  height: RetailProductCard.imageHeight,
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(NmdRadius.md),
                     ),
                     child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Positioned.fill(
-                          child: ColorFiltered(
-                            colorFilter: available
-                                ? const ColorFilter.mode(
-                                    Colors.transparent, BlendMode.dst)
-                                : const ColorFilter.matrix(<double>[
-                                    0.2126,
-                                    0.7152,
-                                    0.0722,
-                                    0,
-                                    0,
-                                    0.2126,
-                                    0.7152,
-                                    0.0722,
-                                    0,
-                                    0,
-                                    0.2126,
-                                    0.7152,
-                                    0.0722,
-                                    0,
-                                    0,
-                                    0,
-                                    0,
-                                    0,
-                                    1,
-                                    0,
-                                  ]),
-                            child: Hero(
-                              tag: heroTag,
-                              child: imageUrl.isEmpty
-                                  ? ColoredBox(color: NmdColors.tintAliveMuted)
-                                  : CachedNetworkImage(
-                                      imageUrl: imageUrl,
-                                      fit: BoxFit.cover,
-                                      fadeInDuration: NmdMotion.fast,
-                                      errorWidget: (_, __, ___) => ColoredBox(
-                                        color: NmdColors.tintAliveMuted,
-                                      ),
-                                      placeholder: (_, __) => ColoredBox(
-                                        color: NmdColors.tintAliveSoft,
-                                      ),
+                        ColorFiltered(
+                          colorFilter: widget.available
+                              ? const ColorFilter.mode(
+                                  Colors.transparent, BlendMode.dst)
+                              : const ColorFilter.matrix(<double>[
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0.2126,
+                                  0.7152,
+                                  0.0722,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ]),
+                          child: Hero(
+                            tag: widget.heroTag,
+                            child: widget.imageUrl.isEmpty
+                                ? ColoredBox(color: NmdColors.tintAliveMuted)
+                                : CachedNetworkImage(
+                                    imageUrl: widget.imageUrl,
+                                    fit: BoxFit.cover,
+                                    alignment: Alignment.center,
+                                    fadeInDuration: NmdMotion.fast,
+                                    errorWidget: (_, __, ___) => ColoredBox(
+                                      color: NmdColors.tintAliveMuted,
                                     ),
-                            ),
+                                    placeholder: (_, __) => ColoredBox(
+                                      color: NmdColors.tintAliveSoft,
+                                    ),
+                                  ),
                           ),
                         ),
-                        PositionedDirectional(
-                          start: NmdSpacing.xs,
-                          top: NmdSpacing.xs,
-                          child: _AddFab(enabled: available),
-                        ),
-                        if (!available)
+                        if (showAdd)
+                          PositionedDirectional(
+                            start: NmdSpacing.xs,
+                            top: NmdSpacing.xs,
+                            child: ScaleTransition(
+                              scale: _scaleAnim,
+                              child: _AddFab(
+                                enabled: widget.available,
+                                onTap: _handleAddTap,
+                              ),
+                            ),
+                          ),
+                        if (!widget.available)
                           PositionedDirectional(
                             end: NmdSpacing.xs,
                             top: NmdSpacing.xs,
-                            child: NmdBadge(
+                            child: const NmdBadge(
                               label: 'غير متوفر',
                               tone: NmdBadgeTone.neutral,
                               compact: true,
@@ -130,7 +175,7 @@ class RetailProductCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -138,13 +183,14 @@ class RetailProductCard extends StatelessWidget {
                           child: Align(
                             alignment: Alignment.topRight,
                             child: Text(
-                              name,
+                              widget.name,
                               textAlign: TextAlign.right,
                               maxLines: showDesc ? 1 : 2,
                               overflow: TextOverflow.ellipsis,
                               style: NmdTypography.bodyBold.copyWith(
                                 fontSize: 14,
-                                color: available
+                                height: 1.25,
+                                color: widget.available
                                     ? NmdColors.textPrimary
                                     : NmdColors.textTertiary,
                               ),
@@ -166,7 +212,7 @@ class RetailProductCard extends StatelessWidget {
                         ],
                         const SizedBox(height: 4),
                         SizedBox(
-                          height: priceRowHeight,
+                          height: RetailProductCard.priceRowHeight,
                           child: Row(
                             textDirection: TextDirection.rtl,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -176,9 +222,9 @@ class RetailProductCard extends StatelessWidget {
                                   priceStr,
                                   maxLines: 1,
                                   overflow: TextOverflow.fade,
-                                  style: NmdTypography.h3.copyWith(
+                                  style: NmdTypography.price.copyWith(
                                     fontSize: 16,
-                                    color: available
+                                    color: widget.available
                                         ? NmdColors.brandPrimary
                                         : NmdColors.textTertiary,
                                   ),
@@ -207,22 +253,31 @@ class RetailProductCard extends StatelessWidget {
 }
 
 class _AddFab extends StatelessWidget {
-  const _AddFab({required this.enabled});
+  const _AddFab({required this.enabled, required this.onTap});
 
   final bool enabled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: enabled ? NmdColors.brandPrimary : NmdColors.textTertiary,
-        shape: BoxShape.circle,
-        boxShadow: enabled ? NmdShadows.brandGlow(alpha: 0.22) : null,
+    return Material(
+      color: enabled ? NmdColors.brandPrimary : NmdColors.textTertiary,
+      shape: const CircleBorder(),
+      elevation: enabled ? 2 : 0,
+      shadowColor: NmdColors.brandPrimary.withValues(alpha: 0.35),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        customBorder: const CircleBorder(),
+        child: const SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(
+            Icons.add_rounded,
+            size: 20,
+            color: NmdColors.textOnBrand,
+          ),
+        ),
       ),
-      child:
-          const Icon(Icons.add_rounded, size: 18, color: NmdColors.textOnBrand),
     );
   }
 }

@@ -19,4 +19,10 @@ abstract final class NmdSpacing {
 
   /// Bottom nav clearance above safe area content.
   static const double bottomNavClearance = md;
+
+  /// Vertical gap between home page sections.
+  static const double homeSectionGap = lg;
+
+  /// Inner padding for standard cards.
+  static const double cardPadding = md;
 }

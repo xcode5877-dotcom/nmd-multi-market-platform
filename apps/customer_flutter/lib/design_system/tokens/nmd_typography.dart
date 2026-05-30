@@ -51,6 +51,25 @@ abstract final class NmdTypography {
         letterSpacing: 0.2,
       );
 
+  /// Customer-visible product / line price.
+  static TextStyle get price => _base(
+        size: 16,
+        weight: FontWeight.w800,
+        color: NmdColors.brandPrimary,
+        height: 1.1,
+      );
+
+  /// Cart/checkout totals.
+  static TextStyle get priceTotal => _base(
+        size: 22,
+        weight: FontWeight.w800,
+        color: NmdColors.brandPrimary,
+        height: 1.1,
+      );
+
+  /// Section headings on home and store pages.
+  static TextStyle get sectionTitle => h2;
+
   /// Build Material [TextTheme] from scale.
   static TextTheme textTheme(Color bodyColor) {
     return TextTheme(

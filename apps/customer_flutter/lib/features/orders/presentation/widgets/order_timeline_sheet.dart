@@ -207,7 +207,7 @@ class _OrderMetaRow extends StatelessWidget {
           ),
         if (order.total != null)
           NmdChip(
-            label: '₪${order.total!.toStringAsFixed(2)}',
+            label: NmdFormat.money(order.total!),
             variant: NmdChipVariant.status,
             backgroundColor: NmdColors.tintAliveSoft,
             foregroundColor: NmdColors.brandPrimary,
@@ -317,7 +317,7 @@ class _ServiceOrderSummaryBody extends StatelessWidget {
                 ),
               ),
               Text(
-                '₪${order.total!.toStringAsFixed(2)}',
+                NmdFormat.money(order.total!),
                 style: NmdTypography.h3.copyWith(color: NmdColors.brandPrimary),
               ),
             ],

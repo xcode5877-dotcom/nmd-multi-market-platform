@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../design_system/design_system.dart';
+import 'marketplace_card_layout.dart';
 
 /// Premium store tile for home horizontal lists.
 class HomeStoreCard extends StatelessWidget {
@@ -23,8 +24,9 @@ class HomeStoreCard extends StatelessWidget {
   final String logoUrl;
   final String openStatus;
 
-  static const double cardWidth = 152;
-  static const double logoAreaHeight = 112;
+  static const double cardWidth = MarketplaceCardLayout.storeCardWidth;
+  static const double logoAreaHeight = MarketplaceCardLayout.storeLogoAreaHeight;
+  static const double cardHeight = MarketplaceCardLayout.storeCardHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +36,7 @@ class HomeStoreCard extends StatelessWidget {
 
     return SizedBox(
       width: cardWidth,
+      height: cardHeight,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -49,6 +52,7 @@ class HomeStoreCard extends StatelessWidget {
               boxShadow: NmdShadows.sm,
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
                   height: logoAreaHeight,
@@ -103,34 +107,34 @@ class HomeStoreCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    NmdSpacing.xs,
-                    NmdSpacing.sm,
-                    NmdSpacing.xs,
-                    NmdSpacing.xxs,
-                  ),
-                  child: Text(
-                    storeName,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: NmdTypography.bodyBold,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    NmdSpacing.xs,
-                    0,
-                    NmdSpacing.xs,
-                    NmdSpacing.sm,
-                  ),
-                  child: Text(
-                    categoryLabel,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: NmdTypography.bodySmall,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      NmdSpacing.xs,
+                      NmdSpacing.sm,
+                      NmdSpacing.xs,
+                      NmdSpacing.sm,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          storeName,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: NmdTypography.bodyBold,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          categoryLabel,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: NmdTypography.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

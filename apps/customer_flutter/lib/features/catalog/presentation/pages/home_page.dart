@@ -17,6 +17,8 @@ import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
 import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
 import '../widgets/home_store_card.dart';
+import '../widgets/home_layout_shimmer.dart';
+import '../widgets/marketplace_card_layout.dart';
 import '../../../../widgets/nmd_search_bar.dart';
 
 /// Matches route `?pillar=` to pillar chip id from GET `/pillars` (trimmed string equality).
@@ -249,7 +251,7 @@ class _HomePageState extends State<HomePage> {
               future: _layoutFuture,
               builder: (context, snap) {
                 if (snap.connectionState != ConnectionState.done) {
-                  return const NmdLoading(message: 'جاري تحميل السوق...');
+                  return const HomeLayoutShimmer();
                 }
                 if (snap.hasError) {
                   return NmdErrorState(
@@ -550,19 +552,22 @@ class _HomeStoresShimmer extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: HomeStoreCard.logoAreaHeight + 72,
+            height: HomeStoreCard.cardHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               primary: false,
               shrinkWrap: true,
               padding: EdgeInsets.zero,
               itemCount: 4,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, __) => const SizedBox(
+                width: MarketplaceCardLayout.stripSeparator,
+              ),
               itemBuilder: (_, __) => Shimmer.fromColors(
                 baseColor: NmdColors.borderSubtle,
                 highlightColor: NmdColors.surfaceBase,
                 child: Container(
                   width: HomeStoreCard.cardWidth,
+                  height: HomeStoreCard.cardHeight,
                   decoration: BoxDecoration(
                     color: NmdColors.borderSubtle,
                     borderRadius: NmdRadius.borderMd,
@@ -990,23 +995,29 @@ class _FilteredPillarStoreList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.homeSectionGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           NmdSectionHeader(title: sectionTitle),
           SizedBox(
-            height: HomeStoreCard.logoAreaHeight + 72,
+            height: HomeStoreCard.cardHeight,
             child: Directionality(
               textDirection: TextDirection.rtl,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 primary: false,
                 shrinkWrap: true,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+                physics: MarketplaceStripScrollPhysics(
+                  itemExtent: HomeStoreCard.cardWidth,
+                  separatorWidth: MarketplaceCardLayout.stripSeparator,
+                  parent: const BouncingScrollPhysics(),
+                ),
+                padding: MarketplaceCardLayout.stripPadding,
                 itemCount: stores.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                separatorBuilder: (_, __) => const SizedBox(
+                  width: MarketplaceCardLayout.stripSeparator,
+                ),
                 itemBuilder: (context, i) {
                   final s = stores[i];
                   return HomeStoreCard(
@@ -1053,23 +1064,29 @@ class _StoreSection extends StatelessWidget {
     if (stores.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: NmdSpacing.sm),
+      padding: const EdgeInsets.only(bottom: NmdSpacing.homeSectionGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           NmdSectionHeader(title: section.title),
           SizedBox(
-            height: HomeStoreCard.logoAreaHeight + 72,
+            height: HomeStoreCard.cardHeight,
             child: Directionality(
               textDirection: TextDirection.rtl,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 primary: false,
                 shrinkWrap: true,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+                physics: MarketplaceStripScrollPhysics(
+                  itemExtent: HomeStoreCard.cardWidth,
+                  separatorWidth: MarketplaceCardLayout.stripSeparator,
+                  parent: const BouncingScrollPhysics(),
+                ),
+                padding: MarketplaceCardLayout.stripPadding,
                 itemCount: stores.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                separatorBuilder: (_, __) => const SizedBox(
+                  width: MarketplaceCardLayout.stripSeparator,
+                ),
                 itemBuilder: (context, i) {
                   final s = stores[i];
                   return HomeStoreCard(

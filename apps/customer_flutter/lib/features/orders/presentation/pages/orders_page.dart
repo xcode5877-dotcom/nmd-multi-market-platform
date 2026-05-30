@@ -833,7 +833,7 @@ class _OrderGroupCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '₪${group.combinedTotal.toStringAsFixed(2)}',
+                  NmdFormat.money(group.combinedTotal),
                   style: NmdTypography.h2.copyWith(
                     color: NmdColors.brandPrimary,
                   ),
@@ -877,7 +877,7 @@ class _OrderGroupCard extends StatelessWidget {
               children: [
                 const Spacer(),
                 Text(
-                  '₪${group.combinedTotal.toStringAsFixed(2)}',
+                  NmdFormat.money(group.combinedTotal),
                   style: NmdTypography.h2.copyWith(
                     color: NmdColors.brandPrimary,
                   ),

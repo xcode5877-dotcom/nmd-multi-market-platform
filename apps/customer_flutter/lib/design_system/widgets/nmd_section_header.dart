@@ -44,7 +44,7 @@ class NmdSectionHeader extends StatelessWidget {
                   Text(
                     title,
                     textAlign: TextAlign.right,
-                    style: NmdTypography.h2,
+                    style: NmdTypography.sectionTitle,
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: NmdSpacing.xxs),

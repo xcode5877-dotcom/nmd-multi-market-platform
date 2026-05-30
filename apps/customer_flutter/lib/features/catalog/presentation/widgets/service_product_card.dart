@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/design_system.dart';
+import 'marketplace_card_layout.dart';
 
 /// Service tile — same visual family as [RetailProductCard]; opens detail on tap.
 class ServiceProductCard extends StatelessWidget {
@@ -26,14 +27,14 @@ class ServiceProductCard extends StatelessWidget {
   final VoidCallback onOpenDetail;
   final String? description;
 
-  static const double cardWidth = 162;
-  static const double cardHeight = 210;
-  static const double imageHeight = 118;
-  static const double priceRowHeight = 26;
+  static const double cardWidth = MarketplaceCardLayout.stripCardWidth;
+  static const double cardHeight = MarketplaceCardLayout.productCardHeight;
+  static const double imageHeight = MarketplaceCardLayout.productImageHeight;
+  static const double priceRowHeight = MarketplaceCardLayout.productPriceRowHeight;
 
   @override
   Widget build(BuildContext context) {
-    final priceStr = price.toStringAsFixed(2);
+    final priceStr = NmdFormat.price(price);
     final desc = (description ?? '').trim();
     final showDesc = desc.isNotEmpty;
 
@@ -191,7 +192,7 @@ class ServiceProductCard extends StatelessWidget {
                                   priceStr,
                                   maxLines: 1,
                                   overflow: TextOverflow.fade,
-                                  style: NmdTypography.h3.copyWith(
+                                  style: NmdTypography.price.copyWith(
                                     fontSize: 16,
                                     color: available
                                         ? NmdColors.brandPrimary

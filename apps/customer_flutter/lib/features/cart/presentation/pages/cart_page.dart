@@ -37,10 +37,14 @@ class CartPage extends StatelessWidget {
               child: BlocBuilder<CartCubit, List<CartLine>>(
                 builder: (context, lines) {
                   if (lines.isEmpty) {
-                    return const NmdEmptyState(
+                    return NmdEmptyState(
                       title: 'السلة فارغة',
                       message: 'تصفّح المتاجر وأضف منتجاتك هنا',
                       icon: Icons.shopping_bag_outlined,
+                      actionLabel: 'تصفّح المتاجر',
+                      onAction: slug.isEmpty
+                          ? null
+                          : () => context.go('/market/$slug'),
                     );
                   }
 
@@ -74,6 +78,8 @@ class CartPage extends StatelessWidget {
                         ),
                       ),
                       _CartCheckoutBar(
+                        itemCount: lines.fold<int>(
+                            0, (s, e) => s + e.quantity),
                         total: total,
                         onCheckout: () async {
                           await ensureCustomerAuth(context);
@@ -108,15 +114,16 @@ class _CartLineCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return NmdCard(
       variant: NmdCardVariant.outlined,
-      padding: const EdgeInsets.all(NmdSpacing.sm + 2),
+      padding: EdgeInsets.all(NmdSizes.cardPadding),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
+        textDirection: TextDirection.rtl,
         children: [
           ClipRRect(
             borderRadius: NmdRadius.borderSm,
             child: SizedBox(
-              width: 72,
-              height: 72,
+              width: NmdSizes.productThumb,
+              height: NmdSizes.productThumb,
               child: line.imageUrl.isEmpty
                   ? ColoredBox(
                       color: NmdColors.tintAliveSoft,
@@ -137,7 +144,7 @@ class _CartLineCard extends StatelessWidget {
           const SizedBox(width: NmdSpacing.sm),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
                   line.name,
@@ -148,9 +155,11 @@ class _CartLineCard extends StatelessWidget {
                 ),
                 const SizedBox(height: NmdSpacing.xxs),
                 Text(
-                  '₪${line.unitPrice.toStringAsFixed(2)}',
+                  NmdFormat.money(line.unitPrice),
                   textAlign: TextAlign.right,
-                  style: NmdTypography.bodySmall,
+                  style: NmdTypography.bodySmall.copyWith(
+                    color: NmdColors.textSecondary,
+                  ),
                 ),
                 if (line.selectedOptions.isNotEmpty) ...[
                   const SizedBox(height: NmdSpacing.xxs),
@@ -160,35 +169,35 @@ class _CartLineCard extends StatelessWidget {
                     compact: true,
                   ),
                 ],
-                const SizedBox(height: NmdSpacing.xs),
+                const SizedBox(height: NmdSpacing.sm),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    _CartQtyStepper(
+                      qty: line.quantity,
+                      onChanged: onQtyChanged,
+                    ),
                     IconButton(
                       onPressed: onRemove,
+                      style: IconButton.styleFrom(
+                        minimumSize:
+                            Size(NmdSizes.touchTarget, NmdSizes.touchTarget),
+                      ),
                       icon: const Icon(
                         Icons.delete_outline_rounded,
                         color: NmdColors.textTertiary,
                         size: 22,
                       ),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    _CartQtyStepper(
-                      qty: line.quantity,
-                      onChanged: onQtyChanged,
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: NmdSpacing.xxs),
+          const SizedBox(width: NmdSpacing.xs),
           Text(
-            '₪${line.lineTotal.toStringAsFixed(2)}',
-            style: NmdTypography.h3.copyWith(
-              color: NmdColors.brandPrimary,
-              fontSize: 16,
-            ),
+            NmdFormat.money(line.lineTotal),
+            style: NmdTypography.price,
           ),
         ],
       ),
@@ -218,11 +227,10 @@ class _CartQtyStepper extends StatelessWidget {
         children: [
           _qtyBtn(Icons.remove_rounded, () => onChanged(qty > 1 ? qty - 1 : 1)),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: NmdSpacing.xs),
+            padding: const EdgeInsets.symmetric(horizontal: NmdSpacing.sm),
             child: Text(
               '$qty',
-              style:
-                  NmdTypography.label.copyWith(color: NmdColors.brandPrimary),
+              style: NmdTypography.label.copyWith(color: NmdColors.brandPrimary),
             ),
           ),
           _qtyBtn(Icons.add_rounded, () => onChanged(qty + 1)),
@@ -232,12 +240,16 @@ class _CartQtyStepper extends StatelessWidget {
   }
 
   Widget _qtyBtn(IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: NmdRadius.borderPill,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(icon, size: 18, color: NmdColors.brandPrimary),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: NmdRadius.borderPill,
+        child: SizedBox(
+          width: NmdSizes.touchTarget,
+          height: 36,
+          child: Icon(icon, size: 18, color: NmdColors.brandPrimary),
+        ),
       ),
     );
   }
@@ -245,10 +257,12 @@ class _CartQtyStepper extends StatelessWidget {
 
 class _CartCheckoutBar extends StatelessWidget {
   const _CartCheckoutBar({
+    required this.itemCount,
     required this.total,
     required this.onCheckout,
   });
 
+  final int itemCount;
   final double total;
   final VoidCallback onCheckout;
 
@@ -263,7 +277,7 @@ class _CartCheckoutBar extends StatelessWidget {
             top: BorderSide(
                 color: NmdColors.borderSubtle.withValues(alpha: 0.9)),
           ),
-          boxShadow: NmdShadows.sm,
+          boxShadow: NmdShadows.md,
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -278,13 +292,19 @@ class _CartCheckoutBar extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('الإجمالي', style: NmdTypography.h3),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('الإجمالي', style: NmdTypography.h3),
+                      Text(
+                        '$itemCount ${itemCount == 1 ? 'منتج' : 'منتجات'}',
+                        style: NmdTypography.bodySmall,
+                      ),
+                    ],
+                  ),
                   Text(
-                    '₪${total.toStringAsFixed(2)}',
-                    style: NmdTypography.h1.copyWith(
-                      color: NmdColors.brandPrimary,
-                      fontSize: 22,
-                    ),
+                    NmdFormat.money(total),
+                    style: NmdTypography.priceTotal,
                   ),
                 ],
               ),

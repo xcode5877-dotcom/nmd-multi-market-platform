@@ -34,7 +34,8 @@ class GlobalCartIcon extends StatelessWidget {
         final count = context.read<CartCubit>().itemCount;
         final label = count > 99 ? '99+' : '$count';
         return Padding(
-          padding: padding ?? const EdgeInsetsDirectional.only(end: 4),
+          padding: padding ??
+              const EdgeInsetsDirectional.only(start: 2, end: 4),
           child: Badge(
             isLabelVisible: count > 0,
             backgroundColor: Colors.white,
