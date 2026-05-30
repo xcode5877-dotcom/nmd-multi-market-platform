@@ -4,8 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
 import { formatAddonNameWithPlacement, formatDateGregorian } from '@nmd/core';
-import { ArrowLeft, KeyRound, Upload, Trash2, Eye } from 'lucide-react';
+import { ArrowLeft, KeyRound, Upload, Trash2, Eye, Settings2 } from 'lucide-react';
 import { apiHeaders, apiFetch, apiUpload, listCategories } from '../api';
+import PlatformOrderOpsPanel from '../components/orders/PlatformOrderOpsPanel';
+import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
+import { canUsePlatformOrderOps, formatOrderStatusLabel } from '../lib/platform-order-ops';
 import MarketBannersTab from './MarketBannersTab';
 import MarketLayoutTab from './MarketLayoutTab';
 
@@ -101,6 +104,7 @@ export default function MarketDetailPage() {
   const [createAccountTarget, setCreateAccountTarget] = useState<{ tenantId: string; tenantName: string } | null>(null);
   const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string; tenantId?: string } | null>(null);
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
+  const [orderOpsId, setOrderOpsId] = useState<string | null>(null);
   const [orderHardDeleting, setOrderHardDeleting] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -147,6 +151,7 @@ export default function MarketDetailPage() {
   );
 
   const canManageTenants = isRootAdmin || isSuperAdmin || me?.marketId === id;
+  const canPlatformOrderOps = canUsePlatformOrderOps(me?.role);
 
   const { data: marketOrders = [], isLoading: ordersLoading } = useQuery({
     queryKey: ['market-orders', id],
@@ -583,12 +588,23 @@ export default function MarketDetailPage() {
                           </td>
                           <td className="px-4 py-3">{`${o.total ?? 0} ر.س`}</td>
                           <td className="px-4 py-3">
-                            <span>{o.status ?? '-'}</span>
+                            <span>{formatOrderStatusLabel(o.status)}</span>
                           </td>
                           <td className="px-4 py-3 text-gray-500">{o.createdAt ? formatDateGregorian(o.createdAt) : '-'}</td>
                           <td className="px-4 py-3">
                             {o.id && (
                               <div className="flex items-center gap-1">
+                                {canPlatformOrderOps && (
+                                  <button
+                                    type="button"
+                                    className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    onClick={() => setOrderOpsId(o.id!)}
+                                    aria-label="تشغيل الطلب"
+                                    title="تشغيل الطلب"
+                                  >
+                                    <Settings2 className="w-4 h-4" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
@@ -633,6 +649,15 @@ export default function MarketDetailPage() {
             orderId={orderDetailsId}
             onClose={() => setOrderDetailsId(null)}
             marketTenants={marketTenants}
+            userRole={me?.role}
+            marketId={id}
+          />
+          <OrderPlatformOpsDrawer
+            orderId={orderOpsId}
+            onClose={() => setOrderOpsId(null)}
+            userRole={me?.role}
+            storeName={orderOpsId ? marketTenants.find((t) => marketOrders.find((o) => o.id === orderOpsId)?.tenantId === t.id)?.name : undefined}
+            invalidateKeys={id ? [['market-orders', id]] : []}
           />
           </>
       )}
@@ -959,9 +984,11 @@ interface OrderDetailsDrawerProps {
   orderId: string | null;
   onClose: () => void;
   marketTenants: (RegistryTenant & { marketId?: string })[];
+  userRole?: string;
+  marketId?: string;
 }
 
-function OrderDetailsDrawer({ orderId, onClose, marketTenants }: OrderDetailsDrawerProps) {
+function OrderDetailsDrawer({ orderId, onClose, marketTenants, userRole, marketId }: OrderDetailsDrawerProps) {
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', orderId],
     queryFn: () => api.getOrder(orderId!),
@@ -992,7 +1019,7 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants }: OrderDetailsDra
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">الحالة</span>
-                <span>{order.status ?? '—'}</span>
+                <span>{formatOrderStatusLabel(order.status)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">التاريخ</span>
@@ -1120,6 +1147,17 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants }: OrderDetailsDra
               <span>{storeName}</span>
             </div>
           </section>
+
+          {canUsePlatformOrderOps(userRole) && order.id && order.tenantId && (
+            <PlatformOrderOpsPanel
+              order={order}
+              userRole={userRole}
+              invalidateKeys={[
+                ...(marketId ? [['market-orders', marketId] as string[]] : []),
+                ['order', orderId!],
+              ]}
+            />
+          )}
         </div>
       )}
     </Drawer>

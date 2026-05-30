@@ -6,8 +6,10 @@ import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
 import { formatPrice, formatDateGregorian } from '@nmd/core';
-import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign } from 'lucide-react';
+import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign, Settings2 } from 'lucide-react';
 import { apiFetch, apiHeaders } from '../api';
+import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
+import { canUsePlatformOrderOps, formatOrderStatusLabel } from '../lib/platform-order-ops';
 import PlatformFeeDisabledBanner from '../components/platform-fee/PlatformFeeDisabledBanner';
 import PlatformFeeConfigFields, { tenantOverrideToConfig } from '../components/platform-fee/PlatformFeeConfigFields';
 import PlatformFeePreviewCalculator from '../components/platform-fee/PlatformFeePreviewCalculator';
@@ -43,8 +45,10 @@ export default function TenantDetailPage() {
   const id = params.tenantId ?? params.id;
   const platformAdmin = isPlatformAdminRole(user?.role);
   const superAdmin = isSuperAdmin(user?.role);
+  const canPlatformOrderOps = canUsePlatformOrderOps(user?.role);
   const showDeleteStore = canDeleteStore(user?.role);
   const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string } | null>(null);
+  const [orderOpsId, setOrderOpsId] = useState<string | null>(null);
   const [orderHardDeleting, setOrderHardDeleting] = useState(false);
   const openResetFromState = (location.state as { openResetPassword?: boolean })?.openResetPassword ?? false;
   const queryClient = useQueryClient();
@@ -780,7 +784,8 @@ export default function TenantDetailPage() {
                         <th className="text-start py-2">الإجمالي</th>
                         <th className="text-start py-2">الحالة</th>
                         {isRestaurant && <th className="text-start py-2">جاهز في</th>}
-                        {USE_API && isRestaurant && <th className="text-start py-2">إجراء</th>}
+                        {USE_API && isRestaurant && !canPlatformOrderOps && <th className="text-start py-2">إجراء</th>}
+                        {canPlatformOrderOps && USE_API && <th className="text-start py-2">تشغيل</th>}
                         {superAdmin && USE_API && <th className="text-start py-2 w-10" aria-label="حذف نهائي" />}
                       </tr>
                     </thead>
@@ -800,7 +805,9 @@ export default function TenantDetailPage() {
                             <td className="py-2">{formatDateGregorian(o.createdAt)}</td>
                             <td className="py-2">{formatPrice(o.total)}</td>
                             <td className="py-2">
-                              <span className={oExt.status === 'READY' ? 'text-green-600 font-medium' : ''}>{oExt.status ?? o.status}</span>
+                              <span className={oExt.status === 'READY' ? 'text-green-600 font-medium' : ''}>
+                                {formatOrderStatusLabel(oExt.status ?? o.status)}
+                              </span>
                               {oExt.fallbackTriggeredAt && <span className="ms-1 text-xs text-amber-600" title="انتقل لتوصيل السوق">↗</span>}
                             </td>
                             {isRestaurant && (
@@ -808,12 +815,27 @@ export default function TenantDetailPage() {
                                 {oExt.status === 'READY' ? <span className="text-green-600">جاهز</span> : minsLeft !== null ? <span>{minsLeft} د</span> : '-'}
                               </td>
                             )}
-                            {USE_API && isRestaurant && (
+                            {USE_API && isRestaurant && !canPlatformOrderOps && (
                               <td className="py-2">
                                 {canMarkReady && (
                                   <Button size="sm" onClick={() => markReadyMutation.mutate(idStr)} disabled={markReadyMutation.isPending}>
                                     جاهز للاستلام
                                   </Button>
+                                )}
+                              </td>
+                            )}
+                            {canPlatformOrderOps && USE_API && (
+                              <td className="py-2">
+                                {hasValidId && (
+                                  <button
+                                    type="button"
+                                    className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
+                                    onClick={() => setOrderOpsId(idStr)}
+                                    title="تشغيل الطلب"
+                                    aria-label="تشغيل الطلب"
+                                  >
+                                    <Settings2 className="w-4 h-4" />
+                                  </button>
                                 )}
                               </td>
                             )}
@@ -1073,6 +1095,14 @@ export default function TenantDetailPage() {
           </Button>
         </div>
       </Modal>
+
+      <OrderPlatformOpsDrawer
+        orderId={orderOpsId}
+        onClose={() => setOrderOpsId(null)}
+        userRole={user?.role}
+        storeName={tenant?.name}
+        invalidateKeys={id ? [['orders', id]] : []}
+      />
     </div>
   );
 }
