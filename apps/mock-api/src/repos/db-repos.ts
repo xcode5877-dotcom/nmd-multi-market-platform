@@ -4,19 +4,23 @@ import type { TenantCatalog } from '../store.js';
 import type { OrderRecord } from './types.js';
 import type { MarketsRepo, TenantsRepo, UsersRepo, CouriersRepo, CustomersRepo, OrdersRepo, CatalogRepo, DeliveryRepo, DeliveryZonesRepo, PaymentsRepo } from './types.js';
 import type { DeliveryZoneRecord } from '../store.js';
+import { parseMarketBrandingColumn, serializeMarketBrandingColumn } from '../market-branding-storage.js';
 
 const prisma = new PrismaClient();
 
-function marketToDomain(m: { id: string; name: string; slug: string; imageUrl: string | null; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null }): Market {
+function marketToDomain(m: { id: string; name: string; slug: string; imageUrl: string | null; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null; paymentMethods?: string | null }): Market {
+  const { branding, platformFeeConfig } = parseMarketBrandingColumn(m.branding);
   return {
     id: m.id,
     name: m.name,
     slug: m.slug,
     imageUrl: m.imageUrl ?? undefined,
-    branding: m.branding ? (JSON.parse(m.branding) as Market['branding']) : undefined,
+    branding,
+    platformFeeConfig,
     isActive: m.isActive,
     sortOrder: m.sortOrder ?? undefined,
     paymentCapabilities: m.paymentCapabilities ? (JSON.parse(m.paymentCapabilities) as Market['paymentCapabilities']) : undefined,
+    paymentMethods: m.paymentMethods ? (JSON.parse(m.paymentMethods) as Market['paymentMethods']) : undefined,
   };
 }
 
@@ -91,6 +95,9 @@ function orderToDomain(o: {
   id: string; tenantId: string | null; courierId: string | null; marketId: string | null;
   status: string | null; fulfillmentType: string | null; orderType: string | null; total: number | null;
   createdAt: string | null; payment: string | null; deliveryTimeline: string | null; payload: string | null;
+  isExternal?: boolean | null;
+  externalDestination?: string | null;
+  manualStoreName?: string | null;
 }): OrderRecord {
   const base: OrderRecord = {
     id: o.id,
@@ -102,6 +109,9 @@ function orderToDomain(o: {
     orderType: o.orderType ?? 'PRODUCT',
     total: o.total ?? undefined,
     createdAt: o.createdAt ?? undefined,
+    isExternal: o.isExternal ?? false,
+    externalDestination: o.externalDestination ?? undefined,
+    manualStoreName: o.manualStoreName ?? undefined,
   };
   if (o.payment) (base as Record<string, unknown>).payment = JSON.parse(o.payment);
   if (o.deliveryTimeline) (base as Record<string, unknown>).deliveryTimeline = JSON.parse(o.deliveryTimeline);
@@ -109,6 +119,10 @@ function orderToDomain(o: {
     const payload = JSON.parse(o.payload) as Record<string, unknown>;
     Object.assign(base, payload);
   }
+  // DB columns win over legacy payload keys
+  (base as Record<string, unknown>).isExternal = o.isExternal ?? false;
+  if (o.externalDestination != null) (base as Record<string, unknown>).externalDestination = o.externalDestination;
+  if (o.manualStoreName != null) (base as Record<string, unknown>).manualStoreName = o.manualStoreName;
   return base;
 }
 
@@ -116,8 +130,27 @@ function orderToDb(order: OrderRecord): {
   id: string; tenantId: string | null; courierId: string | null; marketId: string | null;
   status: string | null; fulfillmentType: string | null; orderType: string | null; total: number | null;
   createdAt: string | null; payment: string | null; deliveryTimeline: string | null; payload: string | null;
+  isExternal: boolean;
+  externalDestination: string | null;
+  manualStoreName: string | null;
 } {
-  const { id, tenantId, courierId, marketId, status, fulfillmentType, orderType, total, createdAt, payment, deliveryTimeline, ...rest } = order;
+  const {
+    id,
+    tenantId,
+    courierId,
+    marketId,
+    status,
+    fulfillmentType,
+    orderType,
+    total,
+    createdAt,
+    payment,
+    deliveryTimeline,
+    isExternal,
+    externalDestination,
+    manualStoreName,
+    ...rest
+  } = order;
   return {
     id: String(id ?? ''),
     tenantId: tenantId != null ? String(tenantId) : null,
@@ -130,6 +163,9 @@ function orderToDb(order: OrderRecord): {
     createdAt: createdAt != null ? String(createdAt) : null,
     payment: payment != null ? JSON.stringify(payment) : null,
     deliveryTimeline: deliveryTimeline != null ? JSON.stringify(deliveryTimeline) : null,
+    isExternal: Boolean(isExternal),
+    externalDestination: externalDestination != null ? String(externalDestination) : null,
+    manualStoreName: manualStoreName != null ? String(manualStoreName) : null,
     payload: Object.keys(rest).length > 0 ? JSON.stringify(rest) : null,
   };
 }
@@ -149,7 +185,7 @@ export function createDbMarketsRepo(): MarketsRepo {
             name: m.name,
             slug: m.slug,
             imageUrl: m.imageUrl ?? null,
-            branding: m.branding ? JSON.stringify(m.branding) : null,
+            branding: serializeMarketBrandingColumn(m),
             isActive: m.isActive ?? true,
             sortOrder: m.sortOrder ?? null,
             paymentCapabilities: m.paymentCapabilities ? JSON.stringify(m.paymentCapabilities) : null,
@@ -273,11 +309,13 @@ export function createDbCouriersRepo(): CouriersRepo {
         marketId: c.marketId ?? undefined,
         name: c.name,
         phone: c.phone ?? undefined,
+        password: c.password ?? undefined,
         isActive: c.isActive,
         isOnline: c.isOnline,
         capacity: c.capacity,
         isAvailable: c.isAvailable ?? undefined,
         deliveryCount: c.deliveryCount ?? undefined,
+        allowedStoreIds: c.allowedStoreIds ? (JSON.parse(c.allowedStoreIds) as string[]) : undefined,
       }));
     },
     async setAll(couriers: Courier[]) {
@@ -291,11 +329,13 @@ export function createDbCouriersRepo(): CouriersRepo {
             marketId: c.marketId ?? null,
             name: c.name,
             phone: c.phone ?? null,
+            password: c.password ?? null,
             isActive: c.isActive ?? true,
             isOnline: c.isOnline ?? false,
             capacity: c.capacity ?? 1,
             isAvailable: c.isAvailable ?? null,
             deliveryCount: c.deliveryCount ?? null,
+            allowedStoreIds: c.allowedStoreIds ? JSON.stringify(c.allowedStoreIds) : null,
           })),
         });
       }
@@ -308,9 +348,14 @@ export function createDbCustomersRepo(): CustomersRepo {
     async findAll() {
       const rows = await prisma.customer.findMany();
       return rows.map((c) => ({
+        // accountExtras may be missing from stale Prisma client typings in some environments.
+        accountExtras: ((c as unknown as { accountExtras?: unknown }).accountExtras as import('../store.js').Customer['accountExtras']) ?? undefined,
         id: c.id,
         phone: c.phone,
         name: c.name ?? undefined,
+        email: c.email ?? undefined,
+        city: c.city ?? undefined,
+        avatarUrl: c.avatarUrl ?? undefined,
         createdAt: c.createdAt,
       }));
     },
@@ -322,6 +367,10 @@ export function createDbCustomersRepo(): CustomersRepo {
             id: c.id,
             phone: c.phone,
             name: c.name ?? null,
+            email: c.email ?? null,
+            city: c.city ?? null,
+            avatarUrl: c.avatarUrl ?? null,
+            accountExtras: c.accountExtras != null ? (c.accountExtras as object) : undefined,
             createdAt: c.createdAt ?? new Date().toISOString(),
           })),
         });
@@ -609,17 +658,20 @@ export function createDbDeliveryZonesRepo(): DeliveryZonesRepo {
       await prisma.deliveryZone.deleteMany({ where: { tenantId } });
       if (zones.length > 0) {
         await prisma.deliveryZone.createMany({
-          data: zones.map((z) => ({
-            id: z.id,
-            tenantId,
-            name: z.name,
-            fee: z.fee,
-            etaMinutes: z.etaMinutes ?? null,
-            minimumOrder: (z as Record<string, unknown>).minimumOrder != null ? Number((z as Record<string, unknown>).minimumOrder) : null,
-            geo: (z as Record<string, unknown>).geo != null ? JSON.stringify((z as Record<string, unknown>).geo) : null,
-            isActive: z.isActive ?? true,
-            sortOrder: z.sortOrder ?? null,
-          })),
+          data: zones.map((z) => {
+            const zExtra = z as unknown as { minimumOrder?: unknown; geo?: unknown };
+            return {
+              id: z.id,
+              tenantId,
+              name: z.name,
+              fee: z.fee,
+              etaMinutes: z.etaMinutes ?? null,
+              minimumOrder: zExtra.minimumOrder != null ? Number(zExtra.minimumOrder) : null,
+              geo: zExtra.geo != null ? JSON.stringify(zExtra.geo) : null,
+              isActive: z.isActive ?? true,
+              sortOrder: z.sortOrder ?? null,
+            };
+          }),
         });
       }
     },

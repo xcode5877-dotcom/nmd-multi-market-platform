@@ -6255,6 +6255,12 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
   const before = { ...tenants[idx] };
   if (updates.banners !== undefined && !Array.isArray(updates.banners)) delete (updates as Record<string, unknown>).banners;
   if (updates.hero !== undefined && (typeof updates.hero !== 'object' || updates.hero === null)) delete (updates as Record<string, unknown>).hero;
+  if (updates.financialConfig !== undefined && typeof updates.financialConfig === 'object') {
+    updates.financialConfig = {
+      ...(tenants[idx].financialConfig ?? {}),
+      ...updates.financialConfig,
+    };
+  }
   tenants[idx] = { ...tenants[idx], ...updates };
   // Persists to PostgreSQL when STORAGE_DRIVER=db (marketId transfer, pillarId, etc. are permanent)
   await repos.tenants.setAll(tenants);

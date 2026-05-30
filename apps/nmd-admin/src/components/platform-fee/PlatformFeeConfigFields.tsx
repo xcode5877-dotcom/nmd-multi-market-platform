@@ -1,13 +1,17 @@
-import type { PlatformFeeConfig, PlatformFeeModel, TenantPlatformFeeOverride } from '../../lib/platform-fee';
-import { PLATFORM_FEE_MODEL_OPTIONS } from '../../lib/platform-fee';
+import type { PlatformFeeConfig, PlatformFeeModel, TenantFeeMode, TenantPlatformFeeOverride } from '../../lib/platform-fee';
+import { FEE_SOURCE_LABELS, PLATFORM_FEE_MODEL_OPTIONS } from '../../lib/platform-fee';
 
 type Props = {
   config: PlatformFeeConfig;
   onChange: (next: PlatformFeeConfig) => void;
   idPrefix?: string;
-  /** Tenant override: show market-default vs custom toggle */
+  /** Tenant override: inherit market / custom / exempt */
   tenantMode?: boolean;
+  tenantFeeMode?: TenantFeeMode;
+  onTenantFeeModeChange?: (mode: TenantFeeMode) => void;
+  /** @deprecated use tenantFeeMode */
   useMarketDefault?: boolean;
+  /** @deprecated use tenantFeeMode */
   onUseMarketDefaultChange?: (useMarket: boolean) => void;
 };
 
@@ -19,58 +23,98 @@ export default function PlatformFeeConfigFields({
   onChange,
   idPrefix = 'pf',
   tenantMode = false,
+  tenantFeeMode,
+  onTenantFeeModeChange,
   useMarketDefault = true,
   onUseMarketDefaultChange,
 }: Props) {
+  const resolvedTenantFeeMode: TenantFeeMode =
+    tenantFeeMode ??
+    (useMarketDefault ? 'MARKET_DEFAULT' : config.enabled === false ? 'EXEMPT' : 'CUSTOM');
+  const setTenantFeeMode = (mode: TenantFeeMode) => {
+    onTenantFeeModeChange?.(mode);
+    if (mode === 'MARKET_DEFAULT') onUseMarketDefaultChange?.(true);
+    else onUseMarketDefaultChange?.(false);
+    if (mode === 'CUSTOM') onChange({ ...config, enabled: true });
+    if (mode === 'EXEMPT') onChange({ ...config, enabled: false });
+  };
+
   const model = config.model ?? 'PERCENTAGE';
   const showPercentage = model === 'PERCENTAGE' || model === 'HYBRID';
   const showFixedOrder = model === 'FIXED_ORDER' || model === 'HYBRID';
   const showFixedItem = model === 'FIXED_ITEM' || model === 'HYBRID';
   const showMinMax = model === 'PERCENTAGE' || model === 'HYBRID';
-  const fieldsDisabled = tenantMode && useMarketDefault;
+  const showCustomFields = !tenantMode || resolvedTenantFeeMode === 'CUSTOM';
+  const fieldsDisabled = tenantMode && resolvedTenantFeeMode !== 'CUSTOM';
 
   const patch = (partial: Partial<PlatformFeeConfig>) => onChange({ ...config, ...partial });
 
   return (
     <div className="grid gap-4 max-w-lg">
-      {tenantMode && onUseMarketDefaultChange && (
+      {tenantMode && (onTenantFeeModeChange || onUseMarketDefaultChange) && (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-700">مصدر الإعداد</p>
+          <p className="text-sm font-medium text-gray-700">تسعير الزبون (رسوم منصة Now Market)</p>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2">
+            يُضاف لسعر المنتج الذي يراه الزبون في التطبيق. هذا ليس «عمولة المحل» أعلاه ولا يظهر كسطر منفصل للزبون.
+          </p>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
               name={`${idPrefix}-source`}
-              checked={useMarketDefault}
-              onChange={() => onUseMarketDefaultChange(true)}
+              checked={resolvedTenantFeeMode === 'MARKET_DEFAULT'}
+              onChange={() => setTenantFeeMode('MARKET_DEFAULT')}
             />
-            <span className="text-sm text-gray-900">استخدام إعدادات السوق</span>
+            <span className="text-sm text-gray-900">{FEE_SOURCE_LABELS.MARKET} — وراثة إعداد السوق</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
               name={`${idPrefix}-source`}
-              checked={!useMarketDefault}
-              onChange={() => onUseMarketDefaultChange(false)}
+              checked={resolvedTenantFeeMode === 'CUSTOM'}
+              onChange={() => setTenantFeeMode('CUSTOM')}
             />
-            <span className="text-sm text-gray-900">إعداد خاص لهذا المتجر</span>
+            <span className="text-sm text-gray-900">{FEE_SOURCE_LABELS.TENANT} — إعداد خاص (مثال: ₪5 على كل منتج)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name={`${idPrefix}-source`}
+              checked={resolvedTenantFeeMode === 'EXEMPT'}
+              onChange={() => setTenantFeeMode('EXEMPT')}
+            />
+            <span className="text-sm text-gray-900">{FEE_SOURCE_LABELS.EXEMPT} — بدون رسوم منصة</span>
           </label>
         </div>
       )}
 
-      <label className={`flex items-center gap-3 ${fieldsDisabled ? 'opacity-50' : 'cursor-pointer'}`}>
-        <input
-          type="checkbox"
-          checked={config.enabled ?? false}
-          disabled={fieldsDisabled}
-          onChange={(e) => patch({ enabled: e.target.checked })}
-          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-        />
-        <span className="font-medium text-gray-900">تفعيل رسوم المنصة {tenantMode && !useMarketDefault ? 'لهذا المتجر' : ''}</span>
-      </label>
+      {!tenantMode && (
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.enabled ?? false}
+            onChange={(e) => patch({ enabled: e.target.checked })}
+            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+          />
+          <span className="font-medium text-gray-900">تفعيل رسوم المنصة</span>
+        </label>
+      )}
 
+      {tenantMode && resolvedTenantFeeMode === 'EXEMPT' && (
+        <p className="text-sm text-gray-600 rounded-lg border border-gray-200 bg-gray-50 p-3">
+          هذا المتجر معفى من رسوم المنصة حتى لو كان السوق مفعّلاً.
+        </p>
+      )}
+
+      {tenantMode && resolvedTenantFeeMode === 'MARKET_DEFAULT' && (
+        <p className="text-sm text-gray-600 rounded-lg border border-gray-200 bg-gray-50 p-3">
+          يُطبَّق إعداد السوق الافتراضي عند تفعيل رسوم المنصة على مستوى المنصة.
+        </p>
+      )}
+
+      {showCustomFields && (
       <div className={fieldsDisabled ? 'opacity-50 pointer-events-none' : ''}>
         <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={`${idPrefix}-model`}>
-          نموذج الرسوم
+          نموذج رسوم المنصة (سعر الزبون)
         </label>
         <select
           id={`${idPrefix}-model`}
@@ -122,8 +166,11 @@ export default function PlatformFeeConfigFields({
         {showFixedItem && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={`${idPrefix}-fixed-item`}>
-              مبلغ ثابت على كل منتج (₪)
+              مبلغ ثابت يُضاف لسعر كل منتج/وجبة للزبون (₪)
             </label>
+            <p className="text-xs text-gray-500 mb-1">
+              مثال: ₪5 هنا → منتج ₪60 يظهر للزبون ₪65. لا تخلط مع «قيمة عمولة المحل» في قسم الحسابات الداخلية.
+            </p>
             <input
               id={`${idPrefix}-fixed-item`}
               type="number"
@@ -169,6 +216,7 @@ export default function PlatformFeeConfigFields({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

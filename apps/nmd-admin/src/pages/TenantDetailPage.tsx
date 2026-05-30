@@ -16,7 +16,12 @@ import PlatformFeePreviewCalculator from '../components/platform-fee/PlatformFee
 import {
   isPlatformAdminRole,
   type PlatformFeeConfig,
+  type TenantFeeMode,
   type TenantPlatformFeeOverride,
+  resolveTenantFeeMode,
+  tenantFeeModeToOverride,
+  classifyFeeSource,
+  FEE_SOURCE_LABELS,
 } from '../lib/platform-fee';
 
 const api = new MockApiClient();
@@ -224,7 +229,9 @@ export default function TenantDetailPage() {
   const [deliveryFeeModelLocal, setDeliveryFeeModelLocal] = useState(currentFinancialConfig.deliveryFeeModel ?? 'TENANT');
   const [loyaltyBonusCoinsLocal, setLoyaltyBonusCoinsLocal] = useState(currentFinancialConfig.loyaltyBonusCoinsPerOrderToday ?? 0);
   const [loyaltyBonusCoinsPerOrderLocal, setLoyaltyBonusCoinsPerOrderLocal] = useState(currentFinancialConfig.loyaltyBonusCoinsPerOrder ?? 0);
-  const [useMarketDefaultLocal, setUseMarketDefaultLocal] = useState(currentPlatformFee.useMarketDefault !== false);
+  const [tenantFeeModeLocal, setTenantFeeModeLocal] = useState<TenantFeeMode>(() =>
+    resolveTenantFeeMode(currentPlatformFee)
+  );
   const [platformFeeConfigLocal, setPlatformFeeConfigLocal] = useState<PlatformFeeConfig>(() =>
     tenantOverrideToConfig(currentPlatformFee)
   );
@@ -252,33 +259,20 @@ export default function TenantDetailPage() {
     setLoyaltyBonusCoinsPerOrderLocal(currentFinancialConfig.loyaltyBonusCoinsPerOrder ?? 0);
   }, [currentFinancialConfig.commissionType, currentFinancialConfig.commissionValue, currentFinancialConfig.deliveryFeeModel, currentFinancialConfig.loyaltyBonusCoinsPerOrderToday, currentFinancialConfig.loyaltyBonusCoinsPerOrder]);
   useEffect(() => {
-    setUseMarketDefaultLocal(currentPlatformFee.useMarketDefault !== false);
+    setTenantFeeModeLocal(resolveTenantFeeMode(currentPlatformFee));
     setPlatformFeeConfigLocal(tenantOverrideToConfig(currentPlatformFee));
   }, [currentPlatformFee.useMarketDefault, currentPlatformFee.enabled, currentPlatformFee.model, currentPlatformFee.percentage, currentPlatformFee.fixedPerOrder, currentPlatformFee.fixedPerItem, currentPlatformFee.minFee, currentPlatformFee.maxFee]);
 
-  const buildPlatformFeePayload = (): TenantPlatformFeeOverride => {
-    if (useMarketDefaultLocal) {
-      return { useMarketDefault: true };
-    }
-    return {
-      useMarketDefault: false,
-      enabled: platformFeeConfigLocal.enabled ?? false,
-      model: platformFeeConfigLocal.model ?? 'PERCENTAGE',
-      percentage: Number(platformFeeConfigLocal.percentage) || 0,
-      fixedPerOrder: Number(platformFeeConfigLocal.fixedPerOrder) || 0,
-      fixedPerItem: Number(platformFeeConfigLocal.fixedPerItem) || 0,
-      minFee: Number(platformFeeConfigLocal.minFee) || 0,
-      maxFee: Number(platformFeeConfigLocal.maxFee) || 0,
-    };
-  };
+  const buildPlatformFeePayload = (): TenantPlatformFeeOverride =>
+    tenantFeeModeToOverride(tenantFeeModeLocal, platformFeeConfigLocal);
 
   const platformFeePayloadMatches = (): boolean => {
-    const saved = currentPlatformFee ?? { useMarketDefault: true };
+    const savedMode = resolveTenantFeeMode(currentPlatformFee);
+    if (savedMode !== tenantFeeModeLocal) return false;
+    if (tenantFeeModeLocal !== 'CUSTOM') return true;
+    const saved = tenantFeeModeToOverride('CUSTOM', tenantOverrideToConfig(currentPlatformFee));
     const next = buildPlatformFeePayload();
-    if ((saved.useMarketDefault !== false) !== (next.useMarketDefault !== false)) return false;
-    if (next.useMarketDefault !== false) return true;
     return (
-      (saved.enabled ?? false) === (next.enabled ?? false) &&
       (saved.model ?? 'PERCENTAGE') === (next.model ?? 'PERCENTAGE') &&
       (saved.percentage ?? 0) === (next.percentage ?? 0) &&
       (saved.fixedPerOrder ?? 0) === (next.fixedPerOrder ?? 0) &&
@@ -288,9 +282,11 @@ export default function TenantDetailPage() {
     );
   };
 
-  const tenantFeeOverridePreview: TenantPlatformFeeOverride | null = useMarketDefaultLocal
-    ? { useMarketDefault: true }
-    : buildPlatformFeePayload();
+  const tenantFeeOverridePreview: TenantPlatformFeeOverride = buildPlatformFeePayload();
+  const tenantFeeSourceLabel = FEE_SOURCE_LABELS[classifyFeeSource(
+    (tenantMarket as { platformFeeConfig?: PlatformFeeConfig } | undefined)?.platformFeeConfig,
+    tenantFeeOverridePreview
+  )];
 
   const saveStorefrontMutation = useMutation({
     mutationFn: (payload: { name: string; about: string }) =>
@@ -648,14 +644,16 @@ export default function TenantDetailPage() {
             <Card className="p-6 bg-white">
               <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <DollarSign className="w-5 h-5" />
-                العمولة / الرسوم
+                عمولة المحل (حسابات داخلية)
               </h2>
               <p className="text-sm text-gray-500 mb-4">
-                إعدادات مالية خاصة بالمتجر (إن وُجدت). لا تؤثر على واجهة العميل مباشرة.
+                نسبة أو مبلغ يُخصم من إيراد المحل لصالح المنصة في التقارير المالية.{' '}
+                <strong className="text-gray-700">لا يغيّر سعر المنتج الذي يراه الزبون.</strong>{' '}
+                لتعديل سعر الزبون استخدم «رسوم منصة Now Market» أدناه.
               </p>
               <div className="grid gap-4 max-w-md">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">نوع العمولة</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">نوع عمولة المحل (داخلي)</label>
                   <select
                     value={commissionTypeLocal}
                     onChange={(e) => setCommissionTypeLocal(e.target.value)}
@@ -666,7 +664,7 @@ export default function TenantDetailPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">قيمة العمولة</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">قيمة عمولة المحل (داخلي — ليس سعر الزبون)</label>
                   <input
                     type="number"
                     min={0}
@@ -719,19 +717,28 @@ export default function TenantDetailPage() {
             </Card>
             {platformAdmin && (
               <Card className="p-6 bg-white">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">رسوم منصة Now Market</h2>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <h2 className="text-lg font-semibold text-gray-900">رسوم منصة Now Market</h2>
+                  <Badge variant="secondary">{tenantFeeSourceLabel}</Badge>
+                </div>
                 <p className="text-sm text-gray-500 mb-4">
-                  تُضاف على سعر الزبون ولا تظهر لصاحب المتجر كربح للمنصة. يمكن للمتجر استخدام إعداد السوق أو override
-                  خاص.
+                  يُضاف على سعر الزبون ولا يظهر كسطر «رسوم منصة» في التطبيق. يمكن للمتجر استخدام إعداد السوق أو override
+                  خاص أو الإعفاء. يتطلب تفعيل{' '}
+                  <code className="text-xs bg-slate-100 px-1 rounded">PLATFORM_FEE_ENABLED</code> على الخادم.
                 </p>
+                {tenantFeeModeLocal === 'CUSTOM' && (
+                  <p className="text-xs text-gray-600 font-mono bg-slate-50 border border-slate-200 rounded-lg p-2 mb-4 break-all">
+                    سيُحفظ: {JSON.stringify(buildPlatformFeePayload())}
+                  </p>
+                )}
                 <PlatformFeeDisabledBanner />
                 <PlatformFeeConfigFields
                   config={platformFeeConfigLocal}
                   onChange={setPlatformFeeConfigLocal}
                   idPrefix="tenant-pf"
                   tenantMode
-                  useMarketDefault={useMarketDefaultLocal}
-                  onUseMarketDefaultChange={setUseMarketDefaultLocal}
+                  tenantFeeMode={tenantFeeModeLocal}
+                  onTenantFeeModeChange={setTenantFeeModeLocal}
                 />
                 <div className="mt-6">
                   <PlatformFeePreviewCalculator

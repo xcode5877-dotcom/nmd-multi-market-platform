@@ -615,7 +615,7 @@ class _CategorySectionWidget extends StatelessWidget {
       return RetailProductCard(
         width: 128,
         name: p.name,
-        price: p.basePrice,
+        price: p.customerListPrice,
         imageUrl: p.imageUrl,
         available: available,
         heroTag: heroTag,

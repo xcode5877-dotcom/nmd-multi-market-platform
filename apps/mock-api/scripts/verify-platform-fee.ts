@@ -13,6 +13,7 @@ import {
   type PlatformFeeConfig,
   type TenantPlatformFeeOverride,
 } from '../src/platform-fee.js';
+import { parseMarketBrandingColumn, serializeMarketBrandingColumn } from '../src/market-branding-storage.js';
 
 let passed = 0;
 let failed = 0;
@@ -228,6 +229,42 @@ console.log('\n12. Flag OFF — display equals base');
   const ctx = { marketFeeConfig: { enabled: true, model: 'PERCENTAGE' as const, percentage: 5 } };
   const enriched = enrichProductDisplayPricing({ basePrice: 50 }, ctx);
   assert(approx(enriched.displayPrice, 50), 'displayPrice equals base when flag off');
+}
+
+console.log('\n13. Tenant CUSTOM FIXED_ITEM ₪5 — catalog unit price');
+{
+  process.env.PLATFORM_FEE_ENABLED = 'true';
+  const ctx = {
+    tenantFeeOverride: {
+      useMarketDefault: false,
+      enabled: true,
+      model: 'FIXED_ITEM' as const,
+      fixedPerItem: 5,
+    },
+    featureFlagEnabled: true,
+  };
+  const enriched = enrichProductDisplayPricing({ basePrice: 60 }, ctx);
+  assert(approx(enriched.displayPrice, 65), 'displayPrice = base + fixedPerItem for pizza-style item');
+  const small = enrichProductDisplayPricing({ basePrice: 25 }, ctx);
+  assert(approx(small.displayPrice, 30), 'displayPrice = 25 + 5');
+}
+
+console.log('\n14. Market platformFeeConfig branding JSON round-trip');
+{
+  const market = {
+    branding: { primaryColor: '#D97706' },
+    platformFeeConfig: { enabled: true, model: 'FIXED_ITEM' as const, fixedPerItem: 5 },
+  };
+  const raw = serializeMarketBrandingColumn(market);
+  assert(raw != null, 'serialized branding not null');
+  const parsed = parseMarketBrandingColumn(raw);
+  assert(parsed.branding?.primaryColor === '#D97706', 'branding primaryColor preserved');
+  assert(parsed.platformFeeConfig?.fixedPerItem === 5, 'platformFeeConfig fixedPerItem preserved');
+  assert(parsed.platformFeeConfig?.model === 'FIXED_ITEM', 'platformFeeConfig model preserved');
+  assert(
+    (parsed.branding as Record<string, unknown> | undefined)?.platformFeeConfig === undefined,
+    'platformFeeConfig not leaked into branding object'
+  );
 }
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
