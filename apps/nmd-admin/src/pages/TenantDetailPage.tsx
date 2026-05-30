@@ -170,7 +170,11 @@ export default function TenantDetailPage() {
   const currentName = tenant?.name ?? '';
   const currentAbout = (tenant as { about?: string })?.about ?? '';
   const currentStoreType = (tenant as { storeType?: 'RESTAURANT' | 'PROFESSIONAL' })?.storeType ?? 'RESTAURANT';
-  const currentPaymentMethods = (tenant as { paymentMethods?: { cash?: boolean; card?: boolean; installments?: boolean }; paymentCapabilities?: { cash?: boolean; card?: boolean; allowInstallments?: boolean } });
+  type TenantPaymentSettings = {
+    paymentMethods?: { cash?: boolean; card?: boolean; installments?: boolean };
+    paymentCapabilities?: { cash?: boolean; card?: boolean; allowInstallments?: boolean };
+  };
+  const currentPaymentMethods: TenantPaymentSettings = (tenant as TenantPaymentSettings | null | undefined) ?? {};
   const currentCashEnabled = currentPaymentMethods.paymentMethods?.cash ?? (currentPaymentMethods.paymentCapabilities?.cash ?? true);
   const currentCardEnabled = currentPaymentMethods.paymentMethods?.card ?? (currentPaymentMethods.paymentCapabilities?.card ?? false);
   const currentInstallmentsEnabled =
@@ -182,8 +186,16 @@ export default function TenantDetailPage() {
   const currentEnabled = (tenant as { enabled?: boolean })?.enabled ?? true;
   const currentLocation = (tenant as { location?: { lat: number; lng: number } })?.location;
   const currentDeliveryRadiusKm = (tenant as { deliveryRadiusKm?: number })?.deliveryRadiusKm;
-  const currentFinancialConfig = (tenant as { financialConfig?: { commissionType: string; commissionValue: number; deliveryFeeModel: string; loyaltyBonusCoinsPerOrderToday?: number; loyaltyBonusCoinsPerOrder?: number; platformFee?: TenantPlatformFeeOverride } })?.financialConfig;
-  const currentPlatformFee = currentFinancialConfig?.platformFee;
+  type TenantFinancialConfig = {
+    commissionType?: string;
+    commissionValue?: number;
+    deliveryFeeModel?: string;
+    loyaltyBonusCoinsPerOrderToday?: number;
+    loyaltyBonusCoinsPerOrder?: number;
+    platformFee?: TenantPlatformFeeOverride;
+  };
+  const currentFinancialConfig: TenantFinancialConfig = (tenant as { financialConfig?: TenantFinancialConfig } | null | undefined)?.financialConfig ?? {};
+  const currentPlatformFee = currentFinancialConfig.platformFee ?? { useMarketDefault: true };
   const tenantMarketId = (tenant as { marketId?: string })?.marketId;
   const { data: tenantMarket } = useQuery({
     queryKey: ['market', tenantMarketId],
@@ -207,12 +219,12 @@ export default function TenantDetailPage() {
   const [latLocal, setLatLocal] = useState(currentLocation?.lat ?? '');
   const [lngLocal, setLngLocal] = useState(currentLocation?.lng ?? '');
   const [deliveryRadiusKmLocal, setDeliveryRadiusKmLocal] = useState(currentDeliveryRadiusKm ?? '');
-  const [commissionTypeLocal, setCommissionTypeLocal] = useState(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
-  const [commissionValueLocal, setCommissionValueLocal] = useState(currentFinancialConfig?.commissionValue ?? 10);
-  const [deliveryFeeModelLocal, setDeliveryFeeModelLocal] = useState(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
-  const [loyaltyBonusCoinsLocal, setLoyaltyBonusCoinsLocal] = useState(currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0);
-  const [loyaltyBonusCoinsPerOrderLocal, setLoyaltyBonusCoinsPerOrderLocal] = useState(currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0);
-  const [useMarketDefaultLocal, setUseMarketDefaultLocal] = useState(currentPlatformFee?.useMarketDefault !== false);
+  const [commissionTypeLocal, setCommissionTypeLocal] = useState(currentFinancialConfig.commissionType ?? 'PERCENTAGE');
+  const [commissionValueLocal, setCommissionValueLocal] = useState(currentFinancialConfig.commissionValue ?? 10);
+  const [deliveryFeeModelLocal, setDeliveryFeeModelLocal] = useState(currentFinancialConfig.deliveryFeeModel ?? 'TENANT');
+  const [loyaltyBonusCoinsLocal, setLoyaltyBonusCoinsLocal] = useState(currentFinancialConfig.loyaltyBonusCoinsPerOrderToday ?? 0);
+  const [loyaltyBonusCoinsPerOrderLocal, setLoyaltyBonusCoinsPerOrderLocal] = useState(currentFinancialConfig.loyaltyBonusCoinsPerOrder ?? 0);
+  const [useMarketDefaultLocal, setUseMarketDefaultLocal] = useState(currentPlatformFee.useMarketDefault !== false);
   const [platformFeeConfigLocal, setPlatformFeeConfigLocal] = useState<PlatformFeeConfig>(() =>
     tenantOverrideToConfig(currentPlatformFee)
   );
@@ -233,16 +245,16 @@ export default function TenantDetailPage() {
   }, [currentLocation?.lat, currentLocation?.lng]);
   useEffect(() => { setDeliveryRadiusKmLocal(currentDeliveryRadiusKm != null ? String(currentDeliveryRadiusKm) : ''); }, [currentDeliveryRadiusKm]);
   useEffect(() => {
-    setCommissionTypeLocal(currentFinancialConfig?.commissionType ?? 'PERCENTAGE');
-    setCommissionValueLocal(currentFinancialConfig?.commissionValue ?? 10);
-    setDeliveryFeeModelLocal(currentFinancialConfig?.deliveryFeeModel ?? 'TENANT');
-    setLoyaltyBonusCoinsLocal(currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0);
-    setLoyaltyBonusCoinsPerOrderLocal(currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0);
-  }, [currentFinancialConfig?.commissionType, currentFinancialConfig?.commissionValue, currentFinancialConfig?.deliveryFeeModel, currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday, currentFinancialConfig?.loyaltyBonusCoinsPerOrder]);
+    setCommissionTypeLocal(currentFinancialConfig.commissionType ?? 'PERCENTAGE');
+    setCommissionValueLocal(currentFinancialConfig.commissionValue ?? 10);
+    setDeliveryFeeModelLocal(currentFinancialConfig.deliveryFeeModel ?? 'TENANT');
+    setLoyaltyBonusCoinsLocal(currentFinancialConfig.loyaltyBonusCoinsPerOrderToday ?? 0);
+    setLoyaltyBonusCoinsPerOrderLocal(currentFinancialConfig.loyaltyBonusCoinsPerOrder ?? 0);
+  }, [currentFinancialConfig.commissionType, currentFinancialConfig.commissionValue, currentFinancialConfig.deliveryFeeModel, currentFinancialConfig.loyaltyBonusCoinsPerOrderToday, currentFinancialConfig.loyaltyBonusCoinsPerOrder]);
   useEffect(() => {
-    setUseMarketDefaultLocal(currentPlatformFee?.useMarketDefault !== false);
+    setUseMarketDefaultLocal(currentPlatformFee.useMarketDefault !== false);
     setPlatformFeeConfigLocal(tenantOverrideToConfig(currentPlatformFee));
-  }, [currentPlatformFee?.useMarketDefault, currentPlatformFee?.enabled, currentPlatformFee?.model, currentPlatformFee?.percentage, currentPlatformFee?.fixedPerOrder, currentPlatformFee?.fixedPerItem, currentPlatformFee?.minFee, currentPlatformFee?.maxFee]);
+  }, [currentPlatformFee.useMarketDefault, currentPlatformFee.enabled, currentPlatformFee.model, currentPlatformFee.percentage, currentPlatformFee.fixedPerOrder, currentPlatformFee.fixedPerItem, currentPlatformFee.minFee, currentPlatformFee.maxFee]);
 
   const buildPlatformFeePayload = (): TenantPlatformFeeOverride => {
     if (useMarketDefaultLocal) {
@@ -322,6 +334,7 @@ export default function TenantDetailPage() {
       enabled: enabledLocal,
       deliveryRadiusKm: typeof deliveryRadiusKm === 'number' && !Number.isNaN(deliveryRadiusKm) ? deliveryRadiusKm : undefined,
       financialConfig: {
+        ...currentFinancialConfig,
         commissionType: commissionTypeLocal as 'PERCENTAGE' | 'FIXED',
         commissionValue: Number(commissionValueLocal) || 0,
         deliveryFeeModel: deliveryFeeModelLocal as 'MARKET' | 'TENANT',
@@ -346,11 +359,11 @@ export default function TenantDetailPage() {
     (currentLocation?.lat != null ? String(currentLocation.lat) : '') !== latLocal ||
     (currentLocation?.lng != null ? String(currentLocation.lng) : '') !== lngLocal ||
     (currentDeliveryRadiusKm != null ? String(currentDeliveryRadiusKm) : '') !== deliveryRadiusKmLocal ||
-    (currentFinancialConfig?.commissionType ?? 'PERCENTAGE') !== commissionTypeLocal ||
-    (currentFinancialConfig?.commissionValue ?? 10) !== commissionValueLocal ||
-    (currentFinancialConfig?.deliveryFeeModel ?? 'TENANT') !== deliveryFeeModelLocal ||
-    (currentFinancialConfig?.loyaltyBonusCoinsPerOrderToday ?? 0) !== loyaltyBonusCoinsLocal ||
-    (currentFinancialConfig?.loyaltyBonusCoinsPerOrder ?? 0) !== loyaltyBonusCoinsPerOrderLocal ||
+    (currentFinancialConfig.commissionType ?? 'PERCENTAGE') !== commissionTypeLocal ||
+    (currentFinancialConfig.commissionValue ?? 10) !== commissionValueLocal ||
+    (currentFinancialConfig.deliveryFeeModel ?? 'TENANT') !== deliveryFeeModelLocal ||
+    (currentFinancialConfig.loyaltyBonusCoinsPerOrderToday ?? 0) !== loyaltyBonusCoinsLocal ||
+    (currentFinancialConfig.loyaltyBonusCoinsPerOrder ?? 0) !== loyaltyBonusCoinsPerOrderLocal ||
     (platformAdmin && !platformFeePayloadMatches());
 
   const storefrontHasChanges = nameLocal !== currentName || aboutLocal !== currentAbout;
