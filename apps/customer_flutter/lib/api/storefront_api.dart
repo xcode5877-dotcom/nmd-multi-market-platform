@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 
@@ -466,7 +467,15 @@ class StorefrontApi {
 
   /// GET `/catalog/:tenantId` — products, categories, optionGroups (mock-api parity).
   Future<Map<String, dynamic>> getCatalog(String tenantId) async {
-    final response = await dio.get<dynamic>('/catalog/$tenantId');
+    final response = await dio.get<dynamic>(
+      '/catalog/$tenantId',
+      options: Options(
+        headers: const {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      ),
+    );
     final data = response.data;
     if (data is Map) return Map<String, dynamic>.from(data);
     throw Exception('Invalid catalog for tenant=$tenantId');
@@ -759,6 +768,43 @@ class StorefrontApi {
     final data = response.data;
     if (data is Map) return Map<String, dynamic>.from(data);
     throw Exception('Invalid order response');
+  }
+
+  /// Server-authoritative checkout totals (platform fee hidden in merchandise amount).
+  Future<Map<String, dynamic>> quoteCheckoutPricing({
+    required List<Map<String, dynamic>> stores,
+    double deliveryFee = 0,
+  }) async {
+    try {
+      final response = await dio.post<dynamic>(
+        '/customer/pricing/quote',
+        data: <String, dynamic>{
+          'stores': stores,
+          'deliveryFee': deliveryFee,
+        },
+      );
+      final data = response.data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (e, st) {
+      nmdDebugLog('quoteCheckoutPricing: $e\n$st');
+    }
+    final itemsSubtotal = stores.fold<double>(
+      0,
+      (s, st) => s + ((st['itemsSubtotal'] as num?)?.toDouble() ?? 0),
+    );
+    final discountAmount = stores.fold<double>(
+      0,
+      (s, st) => s + ((st['discountAmount'] as num?)?.toDouble() ?? 0),
+    );
+    final legacyMerchandise = math.max(0, itemsSubtotal - discountAmount);
+    return {
+      'customerTotal': legacyMerchandise + deliveryFee,
+      'deliveryFee': deliveryFee,
+      'displayMerchandiseTotal': legacyMerchandise,
+      'discountAmount': discountAmount,
+      'itemsSubtotal': itemsSubtotal,
+      'platformFeeApplied': false,
+    };
   }
 
   /// Hyp hosted payment: `POST /customer/payments/hyp/session` → `{ paymentUrl, orderGroupId, amountAgorot, currency }`.

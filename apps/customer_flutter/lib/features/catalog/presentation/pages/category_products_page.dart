@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../cart/application/cart_cubit.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../data/pillar_kind.dart';
 import '../../data/tenant_contact_info.dart';
@@ -71,6 +72,9 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
     final officeContact = tenantContactFromTenantMap(tenant);
 
     final products = await api.getCatalogProducts(widget.storeId);
+    if (mounted) {
+      context.read<CartCubit>().repriceFromCatalog(widget.storeId, products);
+    }
     List<Product> list;
     if (widget.categoryId == 'other') {
       final categories = await api.getCatalogCategories(widget.storeId);

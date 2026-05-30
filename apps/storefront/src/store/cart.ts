@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@nmd/core';
 import { generateId, roundMoney } from '@nmd/core';
+import type { Product } from '@nmd/core';
+import { repriceCartItemsFromCatalog } from '../lib/reprice-cart';
 
 const EMPTY_ITEMS: CartItem[] = [];
 
@@ -27,6 +29,8 @@ interface CartState {
   getStoreCountInCart: () => number;
   /** Store names in cart order for label (e.g. "مطعم أ + محل ب"). Falls back to tenantId slice if name missing. */
   getStoreNamesInCart: () => string[];
+  /** Update customerUnitPrice/totalPrice from fresh catalog (platform fee changes). */
+  repriceFromCatalog: (tenantId: string, products: Product[]) => void;
 }
 
 export const useCartStore = create<CartState>()(
@@ -118,6 +122,15 @@ export const useCartStore = create<CartState>()(
         const ids = get().getTenantIdsInCart();
         const names = get().tenantNames;
         return ids.map((id) => names[id]?.trim() || id.slice(0, 8) || 'متجر');
+      },
+      repriceFromCatalog: (tenantId, products) => {
+        const items = get().carts[tenantId] ?? [];
+        if (items.length === 0 || products.length === 0) return;
+        const repriced = repriceCartItemsFromCatalog(items, products);
+        if (repriced === items) return;
+        set((state) => ({
+          carts: { ...state.carts, [tenantId]: repriced },
+        }));
       },
     }),
     {

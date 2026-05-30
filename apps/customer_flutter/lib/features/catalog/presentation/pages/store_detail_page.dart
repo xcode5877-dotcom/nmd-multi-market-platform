@@ -8,11 +8,13 @@ import 'package:go_router/go_router.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../../api/resolve_image_url.dart';
+import '../../../../api/api_base.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../application/service_lead_actions.dart';
 import '../../domain/service_inquiry_message.dart';
@@ -118,6 +120,15 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     // Real price + optionGroups come from the typed API parsing.
     final categories = await api.getCatalogCategories(widget.storeId);
     final products = await api.getCatalogProducts(widget.storeId);
+    if (mounted) {
+      context.read<CartCubit>().repriceFromCatalog(widget.storeId, products);
+      for (final p in products) {
+        nmdDebugLog(
+          'INFO catalog price ${p.name}: base=${p.basePrice} '
+          'display=${p.displayPrice} customerList=${p.customerListPrice}',
+        );
+      }
+    }
     final fallbackCategoriesById = <String, String>{};
     for (final p in products) {
       if (!fallbackCategoriesById.containsKey(p.categoryId))

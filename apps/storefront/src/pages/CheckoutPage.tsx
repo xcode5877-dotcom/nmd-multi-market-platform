@@ -56,6 +56,7 @@ export default function CheckoutPage() {
   const getItems = useCartStore((s) => s.getItems);
   const getStoreCountInCart = useCartStore((s) => s.getStoreCountInCart);
   const getCartHasMultipleMarkets = useCartStore((s) => s.getCartHasMultipleMarkets);
+  const repriceFromCatalog = useCartStore((s) => s.repriceFromCatalog);
   const clearCart = useCartStore((s) => s.clearCart);
   const addToast = useToast().addToast;
   const { customer, isLoading: authLoading } = useCustomerAuth();
@@ -96,6 +97,23 @@ export default function CheckoutPage() {
       enabled: !!tid,
     })),
   });
+
+  const catalogQueries = useQueries({
+    queries: tenantIds.map((tid) => ({
+      queryKey: ['products', tid, 'checkout-reprice'] as const,
+      queryFn: () => api.getProducts(tid),
+      enabled: !!tid,
+    })),
+  });
+
+  useEffect(() => {
+    tenantIds.forEach((tid, i) => {
+      const products = catalogQueries[i]?.data;
+      if (products && products.length > 0) {
+        repriceFromCatalog(tid, products);
+      }
+    });
+  }, [tenantIds, catalogQueries, repriceFromCatalog]);
 
   const storeData = tenantIds.map((tid, i) => {
     const items = getItems(tid);

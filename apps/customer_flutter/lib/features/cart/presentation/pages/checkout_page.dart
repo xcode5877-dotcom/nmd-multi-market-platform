@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
@@ -109,13 +110,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   void _startBootstrap() {
     if (!mounted) return;
-    final cart = context.read<CartCubit>().state;
+    final cartCubit = context.read<CartCubit>();
+    final cart = cartCubit.state;
     if (cart.isEmpty) {
       context.pop();
       return;
     }
     setState(() {
-      _bootstrap = _loadBootstrap(context.read<Dio>(), cart);
+      _bootstrap = _loadBootstrap(context.read<Dio>(), cart, cartCubit);
     });
   }
 
@@ -134,8 +136,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Future<_CheckoutBootstrap> _loadBootstrap(
-      Dio dio, List<CartLine> lines) async {
+      Dio dio, List<CartLine> lines, CartCubit cartCubit) async {
     final api = StorefrontApi(dio);
+    final tenantIds = <String>[];
+    for (final line in lines) {
+      if (!tenantIds.contains(line.tenantId)) tenantIds.add(line.tenantId);
+    }
+    final productsByTenant = <String, List<Product>>{};
+    for (final tid in tenantIds) {
+      productsByTenant[tid] = await api.getCatalogProducts(tid);
+    }
+    if (mounted) {
+      await cartCubit.repriceFromCatalogForTenants(productsByTenant);
+    }
+    lines = cartCubit.state;
     final market = await api.getMarketBySlug(widget.marketSlug);
     final marketId = market['id']?.toString();
     if (marketId == null || marketId.isEmpty) throw Exception('Market missing');
@@ -541,7 +555,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             onRetry: () => setState(
                               () => _bootstrap = _loadBootstrap(
                                 context.read<Dio>(),
-                                lines,
+                                context.read<CartCubit>().state,
+                                context.read<CartCubit>(),
                               ),
                             ),
                           );

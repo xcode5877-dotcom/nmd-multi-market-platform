@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import { Skeleton, EmptyState, Button } from '@nmd/ui';
 import { useAppStore } from '../store/app';
+import { useCartStore } from '../store/cart';
 import { useTheme } from '@nmd/ui';
 import { onTenantUpdate } from '../lib/tenant-broadcast';
 import { TopHeroCarousel } from '../components/TopHeroCarousel';
@@ -153,7 +154,14 @@ export default function HomePage() {
     (categories ?? []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).filter((c) => !c.parentId || c.parentId === '').filter((c) => c.isVisible !== false);
   const { data: categories, isLoading, refetch } = useQuery({
     queryKey: ['menu', tenantId],
-    queryFn: () => api.getMenu(tenantId),
+    queryFn: async () => {
+      try {
+        return await api.getMenu(tenantId);
+      } catch (e) {
+        console.error('[HomePage] /categories(menu) fetch failed:', { tenantId, error: e });
+        throw e;
+      }
+    },
     enabled: !!tenantId,
   });
 
@@ -162,6 +170,12 @@ export default function HomePage() {
     queryFn: () => api.getProducts(tenantId),
     enabled: !!tenantId,
   });
+
+  const repriceFromCatalog = useCartStore((s) => s.repriceFromCatalog);
+  useEffect(() => {
+    if (!tenantId || allProducts.length === 0) return;
+    repriceFromCatalog(tenantId, allProducts);
+  }, [tenantId, allProducts, repriceFromCatalog]);
 
   const { data: campaigns = [] } = useQuery({
     queryKey: ['campaigns', tenantId],
@@ -238,11 +252,6 @@ export default function HomePage() {
   if (isEmptyProfessional) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
-        {tenant && (
-          <div className="flex justify-end mb-3">
-            <StatusBadge tenant={tenant} variant="hero" />
-          </div>
-        )}
         {tenant ? (
           <ProfessionalHero tenant={tenant} hero={hero} banners={banners} />
         ) : (
@@ -307,14 +316,7 @@ export default function HomePage() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}
       >
-        {/* Back to Market is in Header; Status Badge stays above hero */}
-        {tenant && (
-          <div className="flex justify-end mb-3">
-            <StatusBadge tenant={tenant} variant="hero" />
-          </div>
-        )}
-
-        {/* Hero: always render so the top is never empty */}
+        {/* Hero: always render so the top is never empty; status is inside ProfessionalHero */}
         {tenant ? (
           <ProfessionalHero tenant={tenant} hero={hero} banners={banners} />
         ) : (
@@ -325,7 +327,9 @@ export default function HomePage() {
 
         {/* Service List */}
         <section className="mb-10" dir="rtl">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">خدماتنا</h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight mb-6 border-b border-gray-200/90 pb-3">
+            خدماتنا
+          </h2>
           <div className="space-y-4">
             {services.map((prod, i) => (
               <motion.div

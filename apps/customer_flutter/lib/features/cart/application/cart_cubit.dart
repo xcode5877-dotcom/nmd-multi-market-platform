@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../api/api_base.dart';
+import '../../../api/models/product.dart';
 import '../domain/cart_selected_option.dart';
 
 final class CartLine extends Equatable {
@@ -146,4 +148,54 @@ final class CartCubit extends Cubit<List<CartLine>> {
   }
 
   void clear() => emit(const []);
+
+  /// Refresh customer [unitPrice] from fresh catalog (platform fee / displayPrice changes).
+  /// Merchant [merchantUnitPrice] is unchanged; markup delta is applied on top.
+  void repriceFromCatalog(String tenantId, List<Product> products) {
+    if (state.isEmpty || products.isEmpty) return;
+    final byId = {for (final p in products) p.id: p};
+    var changed = false;
+    final next = state.map((line) {
+      if (line.tenantId != tenantId) return line;
+      final product = byId[line.productId];
+      if (product == null) return line;
+      final markupDelta = product.customerListPrice - product.basePrice;
+      if (markupDelta == 0 &&
+          line.unitPrice >= product.customerListPrice &&
+          line.merchantUnitPrice <= product.basePrice) {
+        return line;
+      }
+      final newUnitPrice = line.merchantUnitPrice + markupDelta;
+      if ((newUnitPrice - line.unitPrice).abs() < 0.001) return line;
+      changed = true;
+      nmdDebugLog(
+        'INFO cart reprice ${product.name}: base=${product.basePrice} '
+        'display=${product.displayPrice} customerList=${product.customerListPrice} '
+        'line ${line.unitPrice}→$newUnitPrice',
+      );
+      return CartLine(
+        lineKey: line.lineKey,
+        tenantId: line.tenantId,
+        productId: line.productId,
+        name: line.name,
+        unitPrice: newUnitPrice,
+        merchantUnitPrice: line.merchantUnitPrice,
+        imageUrl: line.imageUrl,
+        quantity: line.quantity,
+        selectedOptions: line.selectedOptions,
+        optionGroupsJson: line.optionGroupsJson,
+      );
+    }).toList();
+    if (changed) emit(next);
+  }
+
+  /// Reprice all tenants present in the cart (checkout bootstrap).
+  Future<void> repriceFromCatalogForTenants(
+    Map<String, List<Product>> productsByTenant,
+  ) async {
+    if (state.isEmpty || productsByTenant.isEmpty) return;
+    for (final entry in productsByTenant.entries) {
+      repriceFromCatalog(entry.key, entry.value);
+    }
+  }
 }
