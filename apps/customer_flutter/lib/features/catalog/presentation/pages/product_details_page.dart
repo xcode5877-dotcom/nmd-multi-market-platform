@@ -16,6 +16,7 @@ import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../data/pillar_kind.dart';
 import '../../data/tenant_contact_info.dart';
 import '../widgets/pizza_side_toggle.dart';
+import '../../../../widgets/app_error_view.dart';
 
 class ProductDetailsPage extends StatefulWidget {
   const ProductDetailsPage({
@@ -437,9 +438,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                 children: [
                   _productHeader(context, showCart: true),
                   Expanded(
-                    child: NmdErrorState(
-                      title: 'تعذر تحميل المنتج',
-                      message: snap.error.toString(),
+                    child: AppErrorView.fromError(
+                      error: snap.error!,
+                      context: 'product_details',
+                      compact: true,
                       onRetry: () => setState(() => _future = _load()),
                     ),
                   ),

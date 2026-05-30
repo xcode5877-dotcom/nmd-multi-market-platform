@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../api/storefront_api.dart';
+import '../../../core/errors/app_error_mapper.dart';
 import '../data/pillar_nav_item.dart';
 import '../data/sub_category_nav_item.dart';
 
@@ -124,10 +125,11 @@ final class HomeCubit extends Cubit<HomeCubitState> {
         pillars: items,
       ));
     } catch (e) {
+      AppErrorMapper.log(e, context: 'home_pillars');
       emit(state.copyWith(
         pillarStatus: HomeCategoriesStatus.failure,
         pillars: const [],
-        pillarErrorMessage: e.toString(),
+        pillarErrorMessage: AppErrorMapper.friendlyMessage(e),
       ));
     }
   }
@@ -203,6 +205,7 @@ final class HomeCubit extends Cubit<HomeCubitState> {
       ));
     } catch (e) {
       if (gen != _tenantSyncGeneration) return;
+      AppErrorMapper.log(e, context: 'home_tenants');
       emit(HomeCubitState(
         pillarStatus: state.pillarStatus,
         pillars: state.pillars,
@@ -212,7 +215,7 @@ final class HomeCubit extends Cubit<HomeCubitState> {
         subCategoriesForPillarId: p,
         tenantsStatus: TenantsStatus.failure,
         tenantMaps: const [],
-        tenantsErrorMessage: e.toString(),
+        tenantsErrorMessage: AppErrorMapper.friendlyMessage(e),
       ));
     }
   }

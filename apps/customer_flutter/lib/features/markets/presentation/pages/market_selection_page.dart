@@ -16,6 +16,7 @@ import '../../../../api/market_images.dart';
 import '../../../../api/markets_picker_load_result.dart';
 import '../../../../api/models/market.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../../widgets/app_error_view.dart';
 import '../../../../widgets/global_nmd_header.dart';
 import '../../../../widgets/nmd_bottom_nav.dart';
 
@@ -113,24 +114,23 @@ class _MarketSelectionPageState extends State<MarketSelectionPage> {
                     );
                   }
                   if (snap.hasError) {
-                    return _MarketsDiagnosticBody(
-                      statusCode: null,
-                      rawResponse: snap.error.toString(),
-                      errorMessage: snap.error.toString(),
-                      title: 'تعذر التحميل',
-                      onCopy: () =>
-                          _copyToClipboard(context, snap.error.toString()),
+                    return AppErrorView.fromError(
+                      error: snap.error!,
+                      context: 'market_picker',
+                      compact: true,
+                      onRetry: () => setState(() => _future = _load()),
                     );
                   }
                   final result = snap.data!;
                   if (result.markets.isEmpty) {
-                    return _MarketsDiagnosticBody(
+                    return AppErrorView.fromHttpStatus(
                       statusCode: result.statusCode,
+                      context: 'market_picker_empty',
+                      endpoint: '/markets',
                       rawResponse: result.rawResponse,
                       errorMessage: result.errorMessage,
-                      title: 'تعذر التحميل',
-                      onCopy: () => _copyToClipboard(
-                          context, result.diagnosticClipboardText),
+                      compact: true,
+                      onRetry: () => setState(() => _future = _load()),
                     );
                   }
                   if (result.markets.length == 1) {
@@ -272,102 +272,6 @@ class _DiagnosticHintCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _MarketsDiagnosticBody extends StatelessWidget {
-  const _MarketsDiagnosticBody({
-    required this.title,
-    required this.onCopy,
-    this.statusCode,
-    this.rawResponse,
-    this.errorMessage,
-  });
-
-  final String title;
-  final VoidCallback onCopy;
-  final int? statusCode;
-  final String? rawResponse;
-  final String? errorMessage;
-
-  @override
-  Widget build(BuildContext context) {
-    final fullText = StringBuffer()
-      ..writeln('HTTP status: ${statusCode ?? '—'}')
-      ..writeln();
-    if (errorMessage != null && errorMessage!.isNotEmpty) {
-      fullText.writeln('Error: $errorMessage');
-      fullText.writeln();
-    }
-    fullText.writeln('RAW_RESPONSE:');
-    fullText.write(rawResponse ?? '(null)');
-    final text = fullText.toString();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFFDC2626),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Status: ${statusCode ?? '—'}',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Scrollbar(
-                thumbVisibility: true,
-                child: SingleChildScrollView(
-                  primary: true,
-                  child: SelectableText(
-                    text,
-                    style: GoogleFonts.cairo(
-                      fontSize: 11,
-                      height: 1.35,
-                      color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onCopy,
-            icon: const Icon(Icons.copy, size: 20),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryTeal,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            label: Text('نسخ إلى الحافظة',
-                style: GoogleFonts.cairo(
-                    fontWeight: FontWeight.w700, fontSize: 14)),
-          ),
-          const SizedBox(height: 12),
-        ],
       ),
     );
   }

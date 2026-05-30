@@ -7,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/errors/app_error_mapper.dart';
+import '../../../../widgets/app_error_view.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/network/token_storage.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -330,9 +332,10 @@ class _OrdersPageState extends State<OrdersPage> {
                   );
                 }
                 if (state.status == OrdersStatus.error) {
-                  return NmdErrorState(
+                  return AppErrorView(
                     title: 'تعذّر تحميل الطلبات',
-                    message: state.message ?? 'حاول مرة أخرى بعد قليل',
+                    message: state.message ?? AppErrorMapper.unknownMessage,
+                    compact: true,
                     onRetry: () => context.read<OrdersCubit>().load(),
                   );
                 }

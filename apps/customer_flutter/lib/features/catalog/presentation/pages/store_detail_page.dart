@@ -28,6 +28,7 @@ import '../widgets/product_quick_add.dart';
 import '../widgets/marketplace_card_layout.dart';
 import '../widgets/retail_product_card.dart';
 import '../widgets/service_product_card.dart';
+import '../../../../widgets/app_error_view.dart';
 
 class StoreDetailPage extends StatefulWidget {
   const StoreDetailPage({
@@ -239,9 +240,10 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                   children: [
                     _storeAppHeader(context, showCart: true),
                     Expanded(
-                      child: NmdErrorState(
-                        title: 'تعذر تحميل المتجر',
-                        message: snap.error.toString(),
+                      child: AppErrorView.fromError(
+                        error: snap.error!,
+                        context: 'store_detail',
+                        compact: true,
                         onRetry: () => setState(() => _future = _load()),
                       ),
                     ),

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../api/api_base.dart';
+import '../errors/app_error_mapper.dart';
 import 'auth_interceptor.dart';
 import 'dio_io_adapter.dart';
 import 'ssl_error_utils.dart';
@@ -52,9 +53,9 @@ final class DioClient {
     final dio = Dio(
       BaseOptions(
         baseUrl: resolvedBase,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 20),
-        sendTimeout: const Duration(seconds: 20),
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
         headers: const {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -87,6 +88,11 @@ final class DioClient {
         },
         onError: (e, handler) {
           final u = e.requestOptions.uri.toString();
+          AppErrorMapper.log(
+            e,
+            context: 'dio',
+            endpoint: u,
+          );
           if (kDebugMode || kNmdApiLog) {
             developer.log('ERROR ${e.response?.statusCode} $u ${e.message}',
                 name: 'NMD_HTTP');

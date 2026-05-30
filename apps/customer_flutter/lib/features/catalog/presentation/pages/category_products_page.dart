@@ -13,6 +13,7 @@ import '../../data/tenant_contact_info.dart';
 import '../widgets/retail_product_card.dart';
 import '../widgets/service_product_card.dart';
 import '../widgets/product_quick_add.dart';
+import '../../../../widgets/app_error_view.dart';
 
 class _CategoryProductsPayload {
   const _CategoryProductsPayload({
@@ -120,7 +121,12 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
           future: _future,
           builder: (context, snap) {
             if (snap.hasError) {
-              return Center(child: Text(snap.error.toString()));
+              return AppErrorView.fromError(
+                error: snap.error!,
+                context: 'category_products',
+                compact: true,
+                onRetry: () => setState(() => _future = _load()),
+              );
             }
             if (!snap.hasData) {
               return const Center(

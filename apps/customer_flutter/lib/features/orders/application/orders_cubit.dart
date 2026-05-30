@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../api/api_base.dart';
 import '../../../api/storefront_api.dart';
 import '../../../core/network/token_storage.dart';
+import '../../../core/errors/app_error_mapper.dart';
 import '../domain/customer_order_vm.dart';
 
 enum OrdersStatus { initial, loading, success, empty, error, unauthorized }
@@ -98,15 +99,11 @@ class OrdersCubit extends Cubit<OrdersState> {
         emit(const OrdersState.empty());
         return;
       }
-      emit(OrdersState.error(_extractError(e)));
+      AppErrorMapper.log(e, context: 'orders');
+      emit(OrdersState.error(AppErrorMapper.friendlyMessage(e)));
     } catch (e) {
-      emit(OrdersState.error(e.toString()));
+      AppErrorMapper.log(e, context: 'orders');
+      emit(OrdersState.error(AppErrorMapper.friendlyMessage(e)));
     }
-  }
-
-  static String _extractError(DioException e) {
-    final d = e.response?.data;
-    if (d is Map && d['error'] != null) return d['error'].toString();
-    return e.message ?? 'تعذّر تحميل الطلبات';
   }
 }

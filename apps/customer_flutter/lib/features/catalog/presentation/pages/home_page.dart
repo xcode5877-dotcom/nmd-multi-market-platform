@@ -18,6 +18,8 @@ import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
 import '../widgets/home_store_card.dart';
 import '../widgets/home_layout_shimmer.dart';
+import '../../../../core/errors/app_error_mapper.dart';
+import '../../../../widgets/app_error_view.dart';
 import '../widgets/marketplace_card_layout.dart';
 import '../../../../widgets/nmd_search_bar.dart';
 
@@ -254,9 +256,10 @@ class _HomePageState extends State<HomePage> {
                   return const HomeLayoutShimmer();
                 }
                 if (snap.hasError) {
-                  return NmdErrorState(
-                    title: 'تعذر تحميل السوق',
-                    message: snap.error.toString(),
+                  return AppErrorView.fromError(
+                    error: snap.error!,
+                    context: 'home_layout',
+                    compact: true,
                     onRetry: () {
                       setState(() {
                         _layoutFuture = _fetchLayout();
@@ -273,9 +276,11 @@ class _HomePageState extends State<HomePage> {
                 return BlocBuilder<HomeCubit, HomeCubitState>(
                   builder: (context, cState) {
                     if (cState.tenantsStatus == TenantsStatus.failure) {
-                      return NmdErrorState(
+                      return AppErrorView(
                         title: 'تعذر تحميل المحلات',
-                        message: cState.tenantsErrorMessage,
+                        message: cState.tenantsErrorMessage ??
+                            AppErrorMapper.unknownMessage,
+                        compact: true,
                         onRetry: () {
                           _tenantSyncToken = null;
                           final pillar = GoRouterState.of(context)
@@ -599,11 +604,16 @@ class _PillarNavStrip extends StatelessWidget {
         }
         if (state.pillarStatus == HomeCategoriesStatus.failure) {
           return Padding(
-            padding: const EdgeInsets.all(NmdSpacing.md),
-            child: Text(
-              state.pillarErrorMessage ?? 'تعذر تحميل الأقسام',
-              textAlign: TextAlign.center,
-              style: NmdTypography.bodySmall.copyWith(color: NmdColors.error),
+            padding: const EdgeInsets.symmetric(
+              horizontal: NmdSpacing.screenHorizontal,
+              vertical: NmdSpacing.sm,
+            ),
+            child: AppErrorView(
+              title: 'تعذر تحميل الأقسام',
+              message: state.pillarErrorMessage ??
+                  AppErrorMapper.unknownMessage,
+              compact: true,
+              onRetry: () => context.read<HomeCubit>().loadPillars(),
             ),
           );
         }

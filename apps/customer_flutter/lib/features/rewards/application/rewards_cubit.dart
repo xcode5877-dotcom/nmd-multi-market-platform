@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../data/reward_item.dart';
+import '../../../core/errors/app_error_mapper.dart';
 
 enum RewardsStatus { initial, loading, loaded, failure }
 
@@ -80,10 +81,11 @@ class RewardsCubit extends Cubit<RewardsState> {
         ),
       );
     } catch (e) {
+      AppErrorMapper.log(e, context: 'rewards');
       emit(
         state.copyWith(
           status: RewardsStatus.failure,
-          errorMessage: e.toString(),
+          errorMessage: AppErrorMapper.friendlyMessage(e),
         ),
       );
     }

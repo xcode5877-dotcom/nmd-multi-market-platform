@@ -8,12 +8,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/cart_cubit.dart';
 import '../widgets/cart_modifier_lines.dart';
+import '../../../../widgets/app_error_view.dart';
 
 /// Maps Hyp session API errors (502/503) to a snackbar string with result code when present.
 String _hypSessionErrorMessage(Object error) {
@@ -549,9 +551,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           return const NmdLoading(
                               message: 'جاري تحميل بيانات الطلب...');
                         }
-                        if (snap.hasError || !snap.hasData) {
-                          return NmdErrorState(
+                        if (snap.hasError) {
+                          return AppErrorView.fromError(
+                            error: snap.error!,
+                            context: 'checkout_bootstrap',
+                            compact: true,
+                            onRetry: () => setState(
+                              () => _bootstrap = _loadBootstrap(
+                                context.read<Dio>(),
+                                context.read<CartCubit>().state,
+                                context.read<CartCubit>(),
+                              ),
+                            ),
+                          );
+                        }
+                        if (!snap.hasData) {
+                          return AppErrorView(
                             title: 'تعذّر تحميل بيانات الطلب',
+                            message: AppErrorMapper.unknownMessage,
+                            compact: true,
                             onRetry: () => setState(
                               () => _bootstrap = _loadBootstrap(
                                 context.read<Dio>(),
