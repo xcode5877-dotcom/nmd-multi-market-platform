@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Info } from 'lucide-react';
 import type { Product, Campaign } from '@nmd/core';
 import { applyCampaign, formatMoney } from '@nmd/core';
+import { getCustomerListPrice, getCustomerStrikethroughPrice } from '../lib/customer-price';
 import { useToast } from '@nmd/ui';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
@@ -23,12 +24,14 @@ function hasVariants(product: Product): boolean {
 }
 
 function ProductPrice({ product, campaigns }: { product: Product; campaigns: Campaign[] }) {
-  const { discount } = applyCampaign(product.basePrice, campaigns, product.id, product.categoryId);
-  const finalPrice = product.basePrice - discount;
-  if (discount > 0) {
+  const listPrice = getCustomerListPrice(product);
+  const { discount } = applyCampaign(listPrice, campaigns, product.id, product.categoryId);
+  const finalPrice = listPrice - discount;
+  const strike = getCustomerStrikethroughPrice(product, discount, finalPrice);
+  if (strike != null && strike > finalPrice) {
     return (
       <div className="flex flex-col items-start gap-0.5">
-        <span className="line-through text-gray-400 text-xs font-medium leading-none">{formatMoney(product.basePrice)}</span>
+        <span className="line-through text-gray-400 text-xs font-medium leading-none">{formatMoney(strike)}</span>
         <p className="text-lg font-bold text-primary leading-none">
           {formatMoney(finalPrice)}
         </p>
@@ -37,7 +40,7 @@ function ProductPrice({ product, campaigns }: { product: Product; campaigns: Cam
   }
   return (
     <p className="text-lg font-bold text-primary leading-none">
-      {formatMoney(product.basePrice)}
+      {formatMoney(finalPrice)}
     </p>
   );
 }
@@ -68,7 +71,8 @@ function ProductCardInner({
   }, []);
 
   const isNew = isNewProduct(product.createdAt);
-  const { discount } = applyCampaign(product.basePrice, campaigns, product.id, product.categoryId);
+  const listPrice = getCustomerListPrice(product);
+  const { discount } = applyCampaign(listPrice, campaigns, product.id, product.categoryId);
   const hasDiscount = discount > 0;
   const needsOptions = hasVariants(product);
   const isAvailable = product.isAvailable !== false;
@@ -89,7 +93,7 @@ function ProductCardInner({
       addToast('يمكنك الطلب من متجر واحد فقط في كل مرة. افرغ السلة أو أكمل طلبك الحالي.', 'error');
       return;
     }
-    const finalPrice = product.basePrice - discount;
+    const finalPrice = listPrice - discount;
     const isWeightBased =
       (product as { isWeightBased?: boolean }).isWeightBased === true ||
       ((product as { quantityStep?: number }).quantityStep ?? 1) < 1;
@@ -101,6 +105,7 @@ function ProductCardInner({
         categoryId: product.categoryId,
         quantity: 1,
         basePrice: product.basePrice,
+        customerUnitPrice: listPrice,
         selectedOptions: [],
         optionGroups: product.optionGroups ?? [],
         totalPrice: finalPrice,
@@ -119,7 +124,7 @@ function ProductCardInner({
       setIsBouncing(false);
       bounceTimeoutRef.current = null;
     }, 250);
-  }, [canAddToCart, needsOptions, product, discount, navigate, addItem, tenantId, tenantName, marketId, getTenantIdsInCart, addToast, tenantSlug]);
+  }, [canAddToCart, needsOptions, product, discount, listPrice, navigate, addItem, tenantId, tenantName, marketId, getTenantIdsInCart, addToast, tenantSlug]);
 
   const rawImage = product.images?.[0]?.url ?? product.imageUrl;
   const imageUrl = rawImage ? resolveImageUrl(rawImage) : 'https://placehold.co/400x400?text=No+Image';

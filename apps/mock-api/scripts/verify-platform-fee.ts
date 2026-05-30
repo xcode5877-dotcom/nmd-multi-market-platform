@@ -6,6 +6,9 @@
 
 import {
   computePlatformFee,
+  computeMarketplaceDisplayPricing,
+  displayMarketplaceUnitPrice,
+  enrichProductDisplayPricing,
   resolvePlatformFeeConfig,
   type PlatformFeeConfig,
   type TenantPlatformFeeOverride,
@@ -188,6 +191,43 @@ console.log('\n9. Flag ON but no config enabled → legacy totals');
   });
   assert(r.platformFee === 0, 'no config → fee 0');
   assert(approx(r.customerTotal, 83), 'customerTotal = 75 + 8 = 83');
+}
+
+console.log('\n10. Catalog display unit price — 5% market');
+{
+  process.env.PLATFORM_FEE_ENABLED = 'true';
+  const ctx = { marketFeeConfig: { enabled: true, model: 'PERCENTAGE' as const, percentage: 5 } };
+  const unit = displayMarketplaceUnitPrice(100, ctx);
+  assert(approx(unit, 105), 'display unit = 105 for base 100 @ 5%');
+  const enriched = enrichProductDisplayPricing({ basePrice: 100 }, ctx);
+  assert(approx(enriched.displayPrice, 105), 'enriched displayPrice = 105');
+}
+
+console.log('\n11. Cart display allocation — fixed order ₪3 on two lines');
+{
+  process.env.PLATFORM_FEE_ENABLED = 'true';
+  const ctx = {
+    marketFeeConfig: { enabled: true, model: 'FIXED_ORDER' as const, fixedPerOrder: 3 },
+  };
+  const r = computeMarketplaceDisplayPricing(
+    [
+      { baseAmount: 60, quantity: 1, itemCount: 1 },
+      { baseAmount: 40, quantity: 1, itemCount: 1 },
+    ],
+    ctx
+  );
+  assert(approx(r.displayMerchandiseTotal, 103), 'display merchandise = 100 + 3');
+  assert(approx(r.lines[0]!.displayAmount + r.lines[1]!.displayAmount, 103), 'lines sum to display total');
+  assert(approx(r.platformFee, 3), 'platform fee = 3');
+  assert(approx(r.merchantPayout, 100), 'merchant payout = 100');
+}
+
+console.log('\n12. Flag OFF — display equals base');
+{
+  process.env.PLATFORM_FEE_ENABLED = 'false';
+  const ctx = { marketFeeConfig: { enabled: true, model: 'PERCENTAGE' as const, percentage: 5 } };
+  const enriched = enrichProductDisplayPricing({ basePrice: 50 }, ctx);
+  assert(approx(enriched.displayPrice, 50), 'displayPrice equals base when flag off');
 }
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

@@ -602,7 +602,7 @@ class _CategorySectionWidget extends StatelessWidget {
       if (isServicesStore) {
         return ServiceProductCard(
           name: p.name,
-          price: p.basePrice,
+          price: p.customerListPrice,
           imageUrl: p.imageUrl,
           available: available,
           heroTag: heroTag,

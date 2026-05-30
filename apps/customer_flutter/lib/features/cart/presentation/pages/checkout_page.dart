@@ -282,7 +282,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Map<String, dynamic> _lineToOrderItem(CartLine line) {
-    final total = line.lineTotal;
+    final merchantTotal = line.merchantUnitPrice * line.quantity;
     final modifierLines =
         modifierLinesFromCart(line.selectedOptions, line.optionGroupsJson);
     final modifierSummaryAr = modifierLines.map((m) => m.text).toList();
@@ -303,11 +303,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
       'productId': line.productId,
       'productName': line.name,
       'quantity': line.quantity,
-      'basePrice': line.unitPrice,
+      'basePrice': line.merchantUnitPrice,
       'selectedOptions': selected,
       'optionGroups': jsonDecode(line.optionGroupsJson) as List<dynamic>,
       if (modifierSummaryAr.isNotEmpty) 'modifierSummaryAr': modifierSummaryAr,
-      'totalPrice': total,
+      'totalPrice': merchantTotal,
       if (line.imageUrl.isNotEmpty) 'imageUrl': line.imageUrl,
     };
   }

@@ -290,12 +290,237 @@ export function enrichLegacyPaymentWithSnapshot(
       customerTotal: feeResult.customerTotal,
       discount: feeResult.discountAmount,
     },
-    financials: {
-      ...payment.financials,
-      platformFee: 0,
-      merchantPayout: feeResult.merchantPayout,
-      customerTotal: feeResult.customerTotal,
-    },
     platformFeeConfigSnapshot: feeResult.configSnapshot,
   };
+}
+
+export type CheckoutPricingStoreInput = {
+  tenantId: string;
+  itemsSubtotal: number;
+  itemCount: number;
+  /** Coupon discount applied to this store's items (first store in multi-store checkout). */
+  discountAmount?: number;
+};
+
+export type CheckoutPricingQuoteInput = {
+  stores: CheckoutPricingStoreInput[];
+  deliveryFee?: number;
+};
+
+/** Customer-facing checkout totals — platform fee is baked into merchandise amount, not exposed. */
+export type CheckoutPricingQuoteResult = {
+  customerTotal: number;
+  deliveryFee: number;
+  /** Product amount shown to customer (includes hidden platform markup when flag on). */
+  displayMerchandiseTotal: number;
+  discountAmount: number;
+  itemsSubtotal: number;
+  platformFeeApplied: boolean;
+};
+
+export function computeCheckoutPricingQuote(
+  input: CheckoutPricingQuoteInput,
+  resolveStore: (tenantId: string) => {
+    marketFeeConfig?: PlatformFeeConfig | null;
+    tenantFeeOverride?: TenantPlatformFeeOverride | null;
+  }
+): CheckoutPricingQuoteResult {
+  const deliveryFee = roundMoney(Math.max(0, input.deliveryFee ?? 0));
+  const flagEnabled = isPlatformFeeEnabled();
+  let displayMerchandiseTotal = 0;
+  let discountAmount = 0;
+  let itemsSubtotal = 0;
+
+  for (const store of input.stores) {
+    const itemsSub = roundMoney(Math.max(0, store.itemsSubtotal));
+    const discount = roundMoney(Math.max(0, store.discountAmount ?? 0));
+    itemsSubtotal += itemsSub;
+    discountAmount += discount;
+
+    const { marketFeeConfig, tenantFeeOverride } = resolveStore(store.tenantId);
+    const display = computeMarketplaceDisplayPricing(
+      [{ baseAmount: itemsSub, quantity: 1, itemCount: store.itemCount }],
+      { marketFeeConfig, tenantFeeOverride },
+      { discountAmount: discount, featureFlagEnabled: flagEnabled }
+    );
+    displayMerchandiseTotal += display.displayMerchandiseTotal;
+  }
+
+  const customerTotal = roundMoney(displayMerchandiseTotal + deliveryFee);
+  const legacyMerchandise = roundMoney(Math.max(itemsSubtotal - discountAmount, 0));
+
+  return {
+    customerTotal: flagEnabled ? customerTotal : roundMoney(legacyMerchandise + deliveryFee),
+    deliveryFee,
+    displayMerchandiseTotal: flagEnabled ? displayMerchandiseTotal : legacyMerchandise,
+    discountAmount,
+    itemsSubtotal,
+    platformFeeApplied: flagEnabled && displayMerchandiseTotal > legacyMerchandise,
+  };
+}
+
+// --- Marketplace catalog repricing (customer-visible prices) ---
+
+export type MarketplacePricingContext = {
+  marketFeeConfig?: PlatformFeeConfig | null;
+  tenantFeeOverride?: TenantPlatformFeeOverride | null;
+  featureFlagEnabled?: boolean;
+};
+
+export type MarketplaceDisplayLineInput = {
+  lineId?: string;
+  /** Merchant line total (unit × qty at merchant rates, before platform markup). */
+  baseAmount: number;
+  quantity: number;
+  itemCount?: number;
+};
+
+export type MarketplaceDisplayLineResult = {
+  lineId?: string;
+  baseAmount: number;
+  displayAmount: number;
+  displayUnitPrice: number;
+  quantity: number;
+};
+
+export type MarketplaceDisplayPricingResult = {
+  lines: MarketplaceDisplayLineResult[];
+  itemsSubtotal: number;
+  discountAmount: number;
+  feeBase: number;
+  platformFee: number;
+  merchantPayout: number;
+  displayMerchandiseTotal: number;
+  appliedConfigSource: PlatformFeeConfigSource;
+};
+
+/**
+ * Allocate marketplace markup across cart/catalog lines (server-authoritative).
+ * Uses computePlatformFee() then distributes display total proportionally by merchant fee base share.
+ */
+export function computeMarketplaceDisplayPricing(
+  lines: MarketplaceDisplayLineInput[],
+  ctx: MarketplacePricingContext,
+  options?: { discountAmount?: number }
+): MarketplaceDisplayPricingResult {
+  const flagEnabled = ctx.featureFlagEnabled ?? isPlatformFeeEnabled();
+  const discountAmount = roundMoney(Math.max(0, options?.discountAmount ?? 0));
+  const itemsSubtotal = roundMoney(
+    lines.reduce((s, l) => s + Math.max(0, Number(l.baseAmount) || 0), 0)
+  );
+  const itemCount = lines.reduce(
+    (s, l) => s + Math.max(0, Math.floor(Number(l.itemCount ?? l.quantity) || 0)),
+    0
+  );
+
+  if (!flagEnabled || lines.length === 0) {
+    const mapped = lines.map((l) => {
+      const baseAmount = roundMoney(Math.max(0, l.baseAmount));
+      const qty = Math.max(1, Number(l.quantity) || 1);
+      return {
+        lineId: l.lineId,
+        baseAmount,
+        displayAmount: baseAmount,
+        displayUnitPrice: roundMoney(baseAmount / qty),
+        quantity: qty,
+      };
+    });
+    const feeBase = roundMoney(Math.max(itemsSubtotal - discountAmount, 0));
+    return {
+      lines: mapped,
+      itemsSubtotal,
+      discountAmount,
+      feeBase,
+      platformFee: 0,
+      merchantPayout: feeBase,
+      displayMerchandiseTotal: feeBase,
+      appliedConfigSource: 'DISABLED',
+    };
+  }
+
+  const feeResult = computePlatformFee({
+    itemsSubtotal,
+    discountAmount,
+    itemCount,
+    deliveryFee: 0,
+    marketFeeConfig: ctx.marketFeeConfig,
+    tenantFeeOverride: ctx.tenantFeeOverride,
+    featureFlagEnabled: true,
+  });
+
+  const feeBase = feeResult.feeBase;
+  const displayMerchandiseTotal = roundMoney(feeBase + feeResult.platformFee);
+
+  const resultLines: MarketplaceDisplayLineResult[] = lines.map((l) => {
+    const baseAmount = roundMoney(Math.max(0, l.baseAmount));
+    const qty = Math.max(1, Number(l.quantity) || 1);
+    let displayAmount = baseAmount;
+    if (feeBase > 0 && itemsSubtotal > 0) {
+      const lineFeeBaseShare = roundMoney((baseAmount / itemsSubtotal) * feeBase);
+      const lineFeeShare =
+        feeResult.platformFee > 0
+          ? roundMoney((lineFeeBaseShare / feeBase) * feeResult.platformFee)
+          : 0;
+      displayAmount = roundMoney(lineFeeBaseShare + lineFeeShare);
+    } else if (feeBase === 0) {
+      displayAmount = 0;
+    }
+    return {
+      lineId: l.lineId,
+      baseAmount,
+      displayAmount,
+      displayUnitPrice: roundMoney(displayAmount / qty),
+      quantity: qty,
+    };
+  });
+
+  return {
+    lines: resultLines,
+    itemsSubtotal,
+    discountAmount,
+    feeBase,
+    platformFee: feeResult.platformFee,
+    merchantPayout: feeResult.merchantPayout,
+    displayMerchandiseTotal,
+    appliedConfigSource: feeResult.appliedConfigSource,
+  };
+}
+
+/** Single-unit catalog/card price (assumes qty=1 line context). */
+export function displayMarketplaceUnitPrice(
+  baseUnitPrice: number,
+  ctx: MarketplacePricingContext
+): number {
+  const base = roundMoney(Math.max(0, baseUnitPrice));
+  const result = computeMarketplaceDisplayPricing(
+    [{ baseAmount: base, quantity: 1, itemCount: 1 }],
+    ctx
+  );
+  return result.lines[0]?.displayUnitPrice ?? base;
+}
+
+export type CatalogProductPricingFields = {
+  displayPrice: number;
+  displayComparePrice?: number;
+};
+
+export function enrichProductDisplayPricing(
+  product: { basePrice: number; compareAtPrice?: number | null },
+  ctx: MarketplacePricingContext
+): CatalogProductPricingFields {
+  const flagEnabled = ctx.featureFlagEnabled ?? isPlatformFeeEnabled();
+  if (!flagEnabled) {
+    return {
+      displayPrice: roundMoney(Math.max(0, product.basePrice)),
+      ...(product.compareAtPrice != null
+        ? { displayComparePrice: roundMoney(Math.max(0, product.compareAtPrice)) }
+        : {}),
+    };
+  }
+  const displayPrice = displayMarketplaceUnitPrice(product.basePrice, ctx);
+  const displayComparePrice =
+    product.compareAtPrice != null && Number.isFinite(product.compareAtPrice)
+      ? displayMarketplaceUnitPrice(Number(product.compareAtPrice), ctx)
+      : undefined;
+  return { displayPrice, ...(displayComparePrice != null ? { displayComparePrice } : {}) };
 }

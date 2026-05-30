@@ -31,7 +31,7 @@ class ProfessionalServiceListCard extends StatelessWidget {
   /// Store/office — product rows inherit these when the service has no own numbers.
   final TenantContactInfo officeContact;
 
-  bool get _hasPrice => product.basePrice > 0;
+  bool get _hasPrice => product.customerListPrice > 0;
 
   Future<void> _inquire(BuildContext context) async {
     final dio = context.read<Dio>();
@@ -120,7 +120,7 @@ class ProfessionalServiceListCard extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'يبدأ من ${product.basePrice.toStringAsFixed(2)} ₪',
+                          'يبدأ من ${product.customerListPrice.toStringAsFixed(2)} ₪',
                           style: GoogleFonts.cairo(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,

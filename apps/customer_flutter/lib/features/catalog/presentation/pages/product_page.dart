@@ -59,7 +59,7 @@ class _ProductPageState extends State<ProductPage> {
           final name = parsed.name;
           final description = parsed.description;
           final imageUrl = parsed.imageUrl;
-          final price = parsed.basePrice;
+          final price = parsed.customerListPrice;
 
           return Stack(
             children: [

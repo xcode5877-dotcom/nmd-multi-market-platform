@@ -94,9 +94,16 @@ import { sendOtpViaExternalWhatsAppApi } from './services/externalWhatsAppOtp.js
 import { aggregateMerchantStats, dateRangeForMerchant, orderPaymentChannel, type MerchantTimeRange } from './merchant-stats.js';
 import {
   computePlatformFee,
+  computeCheckoutPricingQuote,
+  computeMarketplaceDisplayPricing,
+  displayMarketplaceUnitPrice,
+  enrichProductDisplayPricing,
   isPlatformFeeEnabled,
+  roundMoney,
   buildPlatformFeePayment,
   enrichLegacyPaymentWithSnapshot,
+  type CheckoutPricingStoreInput,
+  type MarketplacePricingContext,
 } from './platform-fee.js';
 import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
@@ -976,6 +983,9 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/tenants\/by-id\/[^/]+$/ },
   { method: 'GET', path: /^\/catalog\/[^/]+$/ },
   { method: 'POST', path: /^\/orders$/ },
+  { method: 'POST', path: /^\/customer\/pricing\/quote$/ },
+  { method: 'POST', path: /^\/customer\/pricing\/line$/ },
+  { method: 'POST', path: /^\/customer\/pricing\/cart$/ },
   { method: 'GET', path: /^\/customer\/auth\/check-phone$/ },
   { method: 'POST', path: /^\/customer\/auth\/start$/ },
   { method: 'POST', path: /^\/customer\/auth\/verify$/ },
@@ -3145,6 +3155,86 @@ app.get('/coupons/validate', wrapAsync(async (req, res) => {
     valid: true,
     coupon: { id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value, discountAmount, storeId: coupon.storeId ?? undefined },
   });
+}));
+
+/** Server-authoritative checkout totals for storefront/Flutter (platform fee hidden in merchandise amount). */
+app.post('/customer/pricing/quote', wrapAsync(async (req, res) => {
+  const body = req.body as { stores?: CheckoutPricingStoreInput[]; deliveryFee?: number };
+  const stores = Array.isArray(body.stores) ? body.stores : [];
+  if (stores.length === 0) {
+    return res.status(400).json({ error: 'stores required' });
+  }
+  for (const s of stores) {
+    if (!s?.tenantId || typeof s.tenantId !== 'string') {
+      return res.status(400).json({ error: 'each store requires tenantId' });
+    }
+  }
+
+  const allTenants = (await repos.tenants.findAll()) as RegistryTenant[];
+  const allMarkets = (await repos.markets.findAll()) as Market[];
+  const marketById = new Map(allMarkets.map((m) => [m.id, m]));
+
+  const quote = computeCheckoutPricingQuote(
+    { stores, deliveryFee: Number(body.deliveryFee) || 0 },
+    (tenantId) => {
+      const tenant = allTenants.find((t) => t.id === tenantId);
+      const market = tenant?.marketId ? marketById.get(tenant.marketId) : undefined;
+      return {
+        marketFeeConfig: market?.platformFeeConfig,
+        tenantFeeOverride: tenant?.financialConfig?.platformFee,
+      };
+    }
+  );
+
+  res.json(quote);
+}));
+
+/** Reprice a single merchant line amount (product page with options). */
+app.post('/customer/pricing/line', wrapAsync(async (req, res) => {
+  const body = req.body as { tenantId?: string; baseAmount?: number; quantity?: number; itemCount?: number };
+  const tenantId = String(body.tenantId ?? '').trim();
+  const baseAmount = Number(body.baseAmount) || 0;
+  const quantity = Math.max(1, Number(body.quantity) || 1);
+  const itemCount = Math.max(0, Math.floor(Number(body.itemCount ?? quantity) || 0));
+  if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+
+  const ctx = await resolveTenantPricingContext(tenantId);
+  const result = computeMarketplaceDisplayPricing(
+    [{ baseAmount, quantity, itemCount: itemCount || quantity }],
+    ctx
+  );
+  const line = result.lines[0];
+  res.json({
+    baseAmount: line?.baseAmount ?? baseAmount,
+    displayAmount: line?.displayAmount ?? baseAmount,
+    displayUnitPrice: line?.displayUnitPrice ?? baseAmount / quantity,
+    platformFeeApplied: isPlatformFeeEnabled() && result.platformFee > 0,
+  });
+}));
+
+/** Reprice cart lines (merchant base amounts in, customer display amounts out). */
+app.post('/customer/pricing/cart', wrapAsync(async (req, res) => {
+  const body = req.body as {
+    tenantId?: string;
+    lines?: Array<{ lineId?: string; baseAmount?: number; quantity?: number; itemCount?: number }>;
+    discountAmount?: number;
+  };
+  const tenantId = String(body.tenantId ?? '').trim();
+  const lines = Array.isArray(body.lines) ? body.lines : [];
+  if (!tenantId || lines.length === 0) {
+    return res.status(400).json({ error: 'tenantId and lines required' });
+  }
+  const ctx = await resolveTenantPricingContext(tenantId);
+  const mapped = lines.map((l) => ({
+    lineId: l.lineId,
+    baseAmount: Number(l.baseAmount) || 0,
+    quantity: Math.max(1, Number(l.quantity) || 1),
+    itemCount: Math.max(0, Math.floor(Number(l.itemCount ?? l.quantity) || 0)),
+  }));
+  const result = computeMarketplaceDisplayPricing(mapped, ctx, {
+    discountAmount: Number(body.discountAmount) || 0,
+  });
+  res.json(result);
 }));
 
 app.get('/customer/rewards', wrapAsync(async (req, res) => {
@@ -6569,17 +6659,85 @@ async function resolveCatalogTenantId(param: string): Promise<string> {
   return tenant?.id ?? param;
 }
 
+async function resolveTenantPricingContext(tenantId: string): Promise<MarketplacePricingContext> {
+  const tenants = (await repos.tenants.findAll()) as RegistryTenant[];
+  const tenant = tenants.find((t) => t.id === tenantId);
+  const markets = (await repos.markets.findAll()) as Market[];
+  const market = tenant?.marketId ? markets.find((m) => m.id === tenant.marketId) : undefined;
+  return {
+    marketFeeConfig: market?.platformFeeConfig,
+    tenantFeeOverride: tenant?.financialConfig?.platformFee,
+    featureFlagEnabled: isPlatformFeeEnabled(),
+  };
+}
+
+function enrichOptionItemForCustomer(
+  item: { priceDelta?: number; priceModifier?: number; [key: string]: unknown },
+  ctx: MarketplacePricingContext
+) {
+  if (!isPlatformFeeEnabled()) return item;
+  const delta = Number(item.priceDelta ?? item.priceModifier ?? 0);
+  if (!Number.isFinite(delta) || delta === 0) return item;
+  return {
+    ...item,
+    displayPriceDelta: displayMarketplaceUnitPrice(delta, ctx),
+  };
+}
+
+function enrichCatalogForCustomerView(
+  catalog: {
+    categories?: unknown[];
+    products?: Array<{ basePrice?: number; compareAtPrice?: number; optionGroups?: Array<{ items?: unknown[] }>; [key: string]: unknown }>;
+    optionGroups?: Array<{ items?: unknown[]; [key: string]: unknown }>;
+    optionItems?: unknown[];
+  },
+  ctx: MarketplacePricingContext
+) {
+  if (!isPlatformFeeEnabled()) {
+    return { ...catalog, marketplaceRepricing: false };
+  }
+  const enrichGroups = (groups: Array<{ items?: unknown[]; [key: string]: unknown }> | undefined) =>
+    (groups ?? []).map((g) => ({
+      ...g,
+      items: (g.items ?? []).map((it) => enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx)),
+    }));
+  const products = (catalog.products ?? []).map((p) => {
+    const pricing = enrichProductDisplayPricing(
+      { basePrice: Number(p.basePrice) || 0, compareAtPrice: (p as { compareAtPrice?: number }).compareAtPrice },
+      ctx
+    );
+    return {
+      ...p,
+      ...pricing,
+      optionGroups: enrichGroups(p.optionGroups as Array<{ items?: unknown[] }> | undefined),
+    };
+  });
+  return {
+    ...catalog,
+    products,
+    optionGroups: enrichGroups(catalog.optionGroups as Array<{ items?: unknown[] }> | undefined),
+    optionItems: (catalog.optionItems ?? []).map((it) =>
+      enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx)
+    ),
+    marketplaceRepricing: true,
+  };
+}
+
 app.get('/catalog/:tenantId', wrapAsync(async (req, res) => {
   try {
     const tenantId = await resolveCatalogTenantId(req.params.tenantId);
     const catalog = await repos.catalog.getCatalog(tenantId);
+    const pricingCtx = await resolveTenantPricingContext(tenantId);
     const sortByOrder = (a: { sortOrder?: number }, b: { sortOrder?: number }) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
     const products = [...(catalog.products ?? [])].sort(sortByOrder);
-    const sorted = {
-      ...catalog,
-      categories: [...(catalog.categories ?? [])].sort(sortByOrder),
-      products,
-    };
+    const sorted = enrichCatalogForCustomerView(
+      {
+        ...catalog,
+        categories: [...(catalog.categories ?? [])].sort(sortByOrder),
+        products,
+      },
+      pricingCtx
+    );
     res.json(sorted);
   } catch (err) {
     console.error('[catalog] getCatalog failed:', err instanceof Error ? err.message : err);
@@ -6883,11 +7041,25 @@ app.post('/orders', wrapAsync(async (req, res) => {
     }
   }
   const legacyTotal = Math.max(0, orderSubtotal + orderDeliveryFee - couponDiscount);
-  const orderItems = (created as { items?: { quantity?: number }[] }).items ?? [];
+  const orderItems = (created as { items?: { quantity?: number; totalPrice?: number }[] }).items ?? [];
   const itemCount = orderItems.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
   const marketForFee = tenant?.marketId
     ? ((await repos.markets.findAll()) as Market[]).find((m) => m.id === tenant.marketId)
     : undefined;
+  const pricingCtx: MarketplacePricingContext = {
+    marketFeeConfig: marketForFee?.platformFeeConfig,
+    tenantFeeOverride: tenant?.financialConfig?.platformFee,
+    featureFlagEnabled: isPlatformFeeEnabled(),
+  };
+  const displayLines = orderItems.map((i, idx) => ({
+    lineId: String(idx),
+    baseAmount: roundMoney(Number(i.totalPrice) || 0),
+    quantity: Math.max(1, Number(i.quantity) || 1),
+    itemCount: Math.max(0, Math.floor(Number(i.quantity) || 1)),
+  }));
+  const displayPricing = computeMarketplaceDisplayPricing(displayLines, pricingCtx, {
+    discountAmount: couponDiscount,
+  });
   const feeResult = computePlatformFee({
     itemsSubtotal: orderSubtotal,
     discountAmount: couponDiscount,
@@ -6897,7 +7069,15 @@ app.post('/orders', wrapAsync(async (req, res) => {
     tenantFeeOverride: tenant?.financialConfig?.platformFee,
     featureFlagEnabled: isPlatformFeeEnabled(),
   });
-  const finalTotal = isPlatformFeeEnabled() ? feeResult.customerTotal : legacyTotal;
+  const finalTotal = isPlatformFeeEnabled()
+    ? roundMoney(displayPricing.displayMerchandiseTotal + orderDeliveryFee)
+    : legacyTotal;
+  if (isPlatformFeeEnabled()) {
+    feeResult.platformFee = displayPricing.platformFee;
+    feeResult.merchantPayout = displayPricing.merchantPayout;
+    feeResult.feeBase = displayPricing.feeBase;
+    feeResult.customerTotal = finalTotal;
+  }
 
   (created as Record<string, unknown>).subtotal = orderSubtotal;
   (created as Record<string, unknown>).total = finalTotal;

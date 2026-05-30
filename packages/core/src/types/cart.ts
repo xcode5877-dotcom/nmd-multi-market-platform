@@ -22,6 +22,8 @@ export interface CartItem {
   categoryId?: string;
   quantity: number;
   basePrice: number;
+  /** Repriced customer unit (base + options markup) before campaigns; merchant base stays in basePrice. */
+  customerUnitPrice?: number;
   selectedOptions: SelectedOption[] | PizzaSelectedOption[];
   optionGroups: OptionGroup[];
   totalPrice: number;

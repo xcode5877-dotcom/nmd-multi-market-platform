@@ -134,7 +134,7 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
     final parsed = Product.fromJson(p);
     final name = parsed.name;
     final description = parsed.description;
-    final price = parsed.basePrice;
+    final price = parsed.customerListPrice;
     final productId = p['id']?.toString() ?? '';
     final imageUrl = productImageUrl(p);
     final lineTotal = price * _qty;

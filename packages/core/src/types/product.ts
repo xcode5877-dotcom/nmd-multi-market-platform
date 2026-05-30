@@ -34,11 +34,15 @@ export interface OptionItem {
   /** @deprecated use priceDelta */
   priceModifier?: number;
   priceDelta?: number;
+  /** Customer marketplace option surcharge (when repricing enabled). */
+  displayPriceDelta?: number;
   sortOrder: number;
   enabled?: boolean;
   defaultSelected?: boolean;
-  /** When "HALF", storefront shows placement control (يمين/يسار/كامل). Placement does not affect price. */
+  /** When "HALF", storefront shows placement control (يمين/يسار/كامل). */
   placement?: OptionPlacement;
+  /** Explicit per-topping split switch from store admin. */
+  allowSplitting?: boolean;
 }
 
 export interface OptionGroup {
@@ -56,6 +60,8 @@ export interface OptionGroup {
   items: OptionItem[];
   /** When true, each selected option shows placement control (يمين/يسار/كامل). Pizza add-ons. */
   allowHalfPlacement?: boolean;
+  /** Alias for allowHalfPlacement used by newer admin UX. */
+  allowSplitting?: boolean;
 }
 
 export type PizzaSliceSelection = 'WHOLE' | 'LEFT' | 'RIGHT';
@@ -75,6 +81,10 @@ export interface Product {
   description?: string;
   type: ProductType;
   basePrice: number;
+  /** Customer marketplace price (includes platform markup when enabled server-side). */
+  displayPrice?: number;
+  /** Customer compare-at price for offers (repriced when applicable). */
+  displayComparePrice?: number;
   currency: string;
   /** Legacy: single image URL; auto-set from images[0] when images exist */
   imageUrl?: string;

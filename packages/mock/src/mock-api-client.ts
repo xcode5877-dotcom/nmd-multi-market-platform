@@ -206,7 +206,7 @@ function isPublicRoute(method: string, path: string): boolean {
   if (m === 'GET') {
     return PUBLIC_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
   }
-  if (m === 'POST' && (pathname === '/orders' || pathname === '/auth/login')) return true;
+  if (m === 'POST' && (pathname === '/orders' || pathname === '/auth/login' || pathname === '/customer/pricing/quote' || pathname === '/customer/pricing/line' || pathname === '/customer/pricing/cart')) return true;
   return false;
 }
 
@@ -473,6 +473,38 @@ export class MockApiClient implements ApiClient {
     }
     await delay(80);
     return { valid: false, error: 'الكود غير صحيح' };
+  }
+
+  /** Server-authoritative checkout totals (platform fee hidden in merchandise amount). */
+  async quoteCheckoutPricing(params: {
+    stores: Array<{ tenantId: string; itemsSubtotal: number; itemCount: number; discountAmount?: number }>;
+    deliveryFee?: number;
+  }): Promise<{
+    customerTotal: number;
+    deliveryFee: number;
+    displayMerchandiseTotal: number;
+    discountAmount: number;
+    itemsSubtotal: number;
+    platformFeeApplied: boolean;
+  }> {
+    if (this.useApi) {
+      return apiFetch('/customer/pricing/quote', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+    }
+    const itemsSubtotal = params.stores.reduce((s, st) => s + st.itemsSubtotal, 0);
+    const discountAmount = params.stores.reduce((s, st) => s + (st.discountAmount ?? 0), 0);
+    const deliveryFee = params.deliveryFee ?? 0;
+    const legacyMerchandise = Math.max(0, itemsSubtotal - discountAmount);
+    return {
+      customerTotal: legacyMerchandise + deliveryFee,
+      deliveryFee,
+      displayMerchandiseTotal: legacyMerchandise,
+      discountAmount,
+      itemsSubtotal,
+      platformFeeApplied: false,
+    };
   }
 
   /** Customer rewards (winner coupons). Requires customer auth. */

@@ -12,6 +12,7 @@ final class CartLine extends Equatable {
     required this.productId,
     required this.name,
     required this.unitPrice,
+    required this.merchantUnitPrice,
     required this.imageUrl,
     required this.quantity,
     this.selectedOptions = const [],
@@ -23,7 +24,10 @@ final class CartLine extends Equatable {
   final String tenantId;
   final String productId;
   final String name;
+  /// Customer-visible unit price (includes marketplace markup when set).
   final double unitPrice;
+  /// Merchant base unit price for order payout (unchanged by platform markup).
+  final double merchantUnitPrice;
   final String imageUrl;
   final int quantity;
 
@@ -42,6 +46,7 @@ final class CartLine extends Equatable {
       productId: productId,
       name: name,
       unitPrice: unitPrice,
+      merchantUnitPrice: merchantUnitPrice,
       imageUrl: imageUrl,
       quantity: quantity ?? this.quantity,
       selectedOptions: selectedOptions,
@@ -56,6 +61,7 @@ final class CartLine extends Equatable {
         productId,
         name,
         unitPrice,
+        merchantUnitPrice,
         imageUrl,
         quantity,
         selectedOptions,
@@ -85,6 +91,7 @@ final class CartCubit extends Cubit<List<CartLine>> {
     required String productId,
     required String name,
     required double unitPrice,
+    double? merchantUnitPrice,
     required String imageUrl,
     int addQty = 1,
     List<CartSelectedOption> selectedOptions = const [],
@@ -109,6 +116,7 @@ final class CartCubit extends Cubit<List<CartLine>> {
           productId: productId,
           name: name,
           unitPrice: unitPrice,
+          merchantUnitPrice: merchantUnitPrice ?? unitPrice,
           imageUrl: imageUrl,
           quantity: addQty,
           selectedOptions: selectedOptions,

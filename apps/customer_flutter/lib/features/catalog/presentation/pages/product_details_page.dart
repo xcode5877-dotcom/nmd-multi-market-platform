@@ -107,6 +107,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   Future<void> _handleAddToCart({
     required Product product,
     required double computedUnitPrice,
+    required double merchantUnitPrice,
     required bool storeClosed,
   }) async {
     if (storeClosed || !product.canAddToCart) return;
@@ -142,6 +143,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       productId: product.id,
       name: product.name,
       unitPrice: computedUnitPrice,
+      merchantUnitPrice: merchantUnitPrice,
       imageUrl: product.imageUrl,
       addQty: 1,
       selectedOptions: _buildCartSelectedOptions(product),
@@ -173,7 +175,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     return out;
   }
 
-  double _computeUnitPrice(Product product) {
+  double _computeMerchantUnitPrice(Product product) {
     var total = product.basePrice;
     for (final group in product.optionGroups) {
       final selected = _selectedByGroup[group.id];
@@ -216,6 +218,59 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         final p = (placements[itemId] ?? PizzaPlacement.defaultPlacement)
             .toUpperCase();
         final delta = found.priceDelta;
+        if (p == PizzaPlacement.left || p == PizzaPlacement.right) {
+          total += delta / 2;
+        } else {
+          total += delta;
+        }
+      }
+    }
+    return total;
+  }
+
+  double _computeCustomerUnitPrice(Product product) {
+    var total = product.customerListPrice;
+    for (final group in product.optionGroups) {
+      final selected = _selectedByGroup[group.id];
+      if (selected == null || selected.isEmpty) continue;
+      final placements = _placementByGroup[group.id] ?? {};
+
+      if ((group.allowHalfPlacement || group.allowSplitting) &&
+          selected.length == 2) {
+        String? leftId;
+        String? rightId;
+        for (final id in selected) {
+          final p =
+              (placements[id] ?? PizzaPlacement.defaultPlacement).toUpperCase();
+          if (p == PizzaPlacement.left) leftId = id;
+          if (p == PizzaPlacement.right) rightId = id;
+        }
+        if (leftId != null && rightId != null) {
+          ProductOptionItem? i1;
+          ProductOptionItem? i2;
+          for (final i in group.items) {
+            if (i.id == leftId) i1 = i;
+            if (i.id == rightId) i2 = i;
+          }
+          if (i1 != null && i2 != null) {
+            total += (i1.customerPriceDelta + i2.customerPriceDelta) / 2;
+            continue;
+          }
+        }
+      }
+
+      for (final itemId in selected) {
+        ProductOptionItem? found;
+        for (final i in group.items) {
+          if (i.id == itemId) {
+            found = i;
+            break;
+          }
+        }
+        if (found == null) continue;
+        final p = (placements[itemId] ?? PizzaPlacement.defaultPlacement)
+            .toUpperCase();
+        final delta = found.customerPriceDelta;
         if (p == PizzaPlacement.left || p == PizzaPlacement.right) {
           total += delta / 2;
         } else {
@@ -412,7 +467,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           final product = payload.product;
           final storeClosed = payload.storeStatus == 'closed';
           final isServices = payload.isServicesStore;
-          final computedUnitPrice = _computeUnitPrice(product);
+          final computedUnitPrice = _computeCustomerUnitPrice(product);
+          final merchantUnitPrice = _computeMerchantUnitPrice(product);
           final heroTag = 'product-${widget.storeId}-${product.id}';
 
           final desc = product.description.trim();
@@ -696,6 +752,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                     onPressed: () => _handleAddToCart(
                                       product: product,
                                       computedUnitPrice: computedUnitPrice,
+                                      merchantUnitPrice: merchantUnitPrice,
                                       storeClosed: storeClosed,
                                     ),
                                   ),

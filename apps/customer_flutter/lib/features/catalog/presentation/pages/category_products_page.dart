@@ -145,7 +145,7 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
                       return ServiceProductCard(
                         width: constraints.maxWidth,
                         name: p.name,
-                        price: p.basePrice,
+                        price: p.customerListPrice,
                         imageUrl: p.imageUrl,
                         available: p.canAddToCart,
                         heroTag: heroTag,
@@ -175,7 +175,7 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
                     return RetailProductCard(
                       width: constraints.maxWidth,
                       name: p.name,
-                      price: p.basePrice,
+                      price: p.customerListPrice,
                       imageUrl: p.imageUrl,
                       available: p.canAddToCart,
                       heroTag: heroTag,

@@ -25,6 +25,7 @@ class ProductOptionItem {
     required this.id,
     required this.name,
     required this.priceDelta,
+    this.displayPriceDelta,
     this.allowSplitting,
     this.placement,
   });
@@ -32,6 +33,9 @@ class ProductOptionItem {
   final String id;
   final String name;
   final double priceDelta;
+  final double? displayPriceDelta;
+
+  double get customerPriceDelta => displayPriceDelta ?? priceDelta;
 
   /// When true, option can use half-pizza placement (web `optionSupportsHalf`).
   final bool? allowSplitting;
@@ -50,6 +54,9 @@ class ProductOptionItem {
             json['extraPrice'] ??
             json['price'],
       ),
+      displayPriceDelta: json['displayPriceDelta'] != null
+          ? _parseNum(json['displayPriceDelta'])
+          : null,
       allowSplitting: json['allowSplitting'] == true ? true : null,
       placement: json['placement']?.toString(),
     );
@@ -152,6 +159,7 @@ class Product {
     required this.imageUrl,
     required this.categoryId,
     required this.basePrice,
+    this.displayPrice,
     required this.optionGroups,
     required this.isAvailable,
     required this.stockQuantity,
@@ -163,9 +171,13 @@ class Product {
   final String imageUrl;
   final String categoryId;
   final double basePrice;
+  final double? displayPrice;
   final List<ProductOptionGroup> optionGroups;
   final bool isAvailable;
   final int? stockQuantity;
+
+  /// Customer-visible list price (marketplace repriced when [displayPrice] is set).
+  double get customerListPrice => displayPrice ?? basePrice;
 
   bool get isInStock => (stockQuantity ?? 1) > 0;
   bool get canAddToCart => isAvailable && isInStock;
@@ -182,7 +194,10 @@ class Product {
       description: (json['description']?.toString() ?? '').trim(),
       imageUrl: _resolveProductImage(json),
       categoryId: (json['categoryId']?.toString() ?? '').trim(),
-      basePrice: _parseRealPrice(json),
+      basePrice: _parseMerchantBasePrice(json),
+      displayPrice: json['displayPrice'] != null
+          ? _parseNum(json['displayPrice'])
+          : null,
       optionGroups: groups,
       isAvailable: _parseAvailability(json),
       stockQuantity: _parseStock(json),
@@ -205,6 +220,15 @@ int? _parseStock(Map<String, dynamic> json) {
   if (stock == null) return null;
   if (stock is num) return stock.toInt();
   return int.tryParse(stock.toString());
+}
+
+double _parseMerchantBasePrice(Map<String, dynamic> json) {
+  final base = json['basePrice'];
+  if (base != null) {
+    final n = _parseNum(base);
+    if (n > 0) return n;
+  }
+  return _parseRealPrice(json);
 }
 
 double _parseRealPrice(Map<String, dynamic> json) {

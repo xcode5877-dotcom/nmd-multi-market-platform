@@ -102,11 +102,22 @@ export default function CheckoutPage() {
     const campaigns = campaignsQueries[i]?.data ?? [];
     const result = priceCart(items, campaigns);
     const tenantName = (tenantQueries[i]?.data as { name?: string } | undefined)?.name ?? tid.slice(0, 8);
-    return { tenantId: tid, tenantName, items, priced: result.priced, subtotal: result.subtotal, discountTotal: result.discountTotal, total: result.total };
+    return {
+      tenantId: tid,
+      tenantName,
+      items,
+      priced: result.priced,
+      subtotal: result.subtotal,
+      discountTotal: result.discountTotal,
+      total: result.total,
+      merchantSubtotal: result.merchantSubtotal,
+      merchantTotal: result.merchantTotal,
+    };
   });
 
   const itemsTotal = storeData.reduce((s, d) => s + d.total, 0);
   const subtotalAll = storeData.reduce((s, d) => s + d.subtotal, 0);
+  const merchantSubtotalAll = storeData.reduce((s, d) => s + d.merchantSubtotal, 0);
   const discountTotalAll = storeData.reduce((s, d) => s + d.discountTotal, 0);
   const storeCount = getStoreCountInCart();
 
@@ -136,7 +147,7 @@ export default function CheckoutPage() {
   const deliveryFee = fulfillmentType === 'DELIVERY' ? baseZoneFee + additionalStoreFee : 0;
   const couponDiscount = appliedCoupon?.discountAmount ?? 0;
   const totalWithDelivery = itemsTotal + deliveryFee - couponDiscount;
-  /** Display-only: whole numbers (Math.floor). No data/API changes. */
+  /** Display-only: whole numbers (Math.floor). Cart lines use server displayPrice when repricing is on. */
   const displayTotal = Math.floor(totalWithDelivery);
 
   const needsAddress = fulfillmentType === 'DELIVERY';
@@ -186,7 +197,7 @@ export default function CheckoutPage() {
         code: trimmed,
         tenantId: primaryTenantId,
         cartStoreIds: tenantIds,
-        subtotal: subtotalAll,
+        subtotal: merchantSubtotalAll,
         customerPhone: (customer?.phone ?? customerPhone.trim()) || undefined,
       });
       if (result.valid && result.coupon) {
@@ -233,7 +244,7 @@ export default function CheckoutPage() {
           tenantId: tid,
           items: row.priced.map((p) => ({
             ...p.item,
-            totalPrice: p.finalPrice * p.item.quantity,
+            totalPrice: roundMoney(p.merchantFinalPrice * p.item.quantity),
           })),
           fulfillmentType,
           paymentMethod: 'CASH',

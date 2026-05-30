@@ -5,12 +5,11 @@ import { ChevronDown, Package, Truck, MessageCircle, ShieldCheck } from 'lucide-
 import { useQuery } from '@tanstack/react-query';
 import { MockApiClient } from '@nmd/mock';
 import type { Product, OptionGroup, OptionItem, SelectedOption, PizzaSelectedOption, ProductVariant } from '@nmd/core';
-import { applyCampaign, formatMoney, filterOptionGroupsForTenant, roundMoney } from '@nmd/core';
+import { applyCampaign, customerUnitPrice, formatMoney, filterOptionGroupsForTenant, roundMoney } from '@nmd/core';
 import { Skeleton, useToast, Modal } from '@nmd/ui';
 import { ImageFullscreenViewer } from '../components/ImageFullscreenViewer';
 import { PizzaAddonsSelector } from '../components/PizzaAddonsSelector';
 import { ProductPageSkeleton } from '../components/skeletons';
-import { Link } from 'react-router-dom';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 import { useBottomNav } from '../contexts/BottomNavContext';
@@ -72,10 +71,15 @@ function findMatchingVariant(
   if (variants.length === 0) return null;
   const groups = (product.optionGroups ?? []).filter((g) => (g.items?.length ?? 0) > 0);
   if (product.type === 'PIZZA') return null;
+  // Variant system represents a single option value per option group.
+  // If the customer selected multiple optionItemIds for any group,
+  // do not attempt variant matching (it would incorrectly collapse to ids[0]).
   const selectedMap = new Map<string, string>();
   for (const s of selected) {
     const ids = 'optionItemIds' in s ? s.optionItemIds : [];
-    if (ids.length > 0) selectedMap.set(s.optionGroupId, ids[0]);
+    if (ids.length === 0) continue;
+    if (ids.length !== 1) return null;
+    selectedMap.set(s.optionGroupId, ids[0]);
   }
   if (selectedMap.size !== groups.length) return null;
   return variants.find((v) => {
@@ -86,31 +90,44 @@ function findMatchingVariant(
   }) ?? null;
 }
 
+function readOptionDelta(item: OptionItem, customer: boolean): number {
+  if (customer) {
+    const display = item.displayPriceDelta;
+    if (display != null && Number.isFinite(display)) return display;
+  }
+  return item.priceDelta ?? item.priceModifier ?? 0;
+}
+
 function calculatePrice(
   product: Product,
-  selected: SelectedOption[] | PizzaSelectedOption[]
+  selected: SelectedOption[] | PizzaSelectedOption[],
+  customer = true
 ): number {
-  let total = product.basePrice;
+  let total = customer ? customerUnitPrice(product) : product.basePrice;
   for (const sel of selected) {
     const ids = 'optionItemIds' in sel ? sel.optionItemIds : [];
     const placements = 'optionPlacements' in sel ? (sel.optionPlacements ?? {}) : {};
     const group = product.optionGroups.find((g) => g.id === sel.optionGroupId);
     if (!group) continue;
-    if (group.allowHalfPlacement && ids.length === 2) {
+    if ((group.allowHalfPlacement || group.allowSplitting) && ids.length === 2) {
       const leftId = ids.find((id) => placements[id] === 'LEFT');
       const rightId = ids.find((id) => placements[id] === 'RIGHT');
       if (leftId != null && rightId != null) {
         const item1 = group.items.find((i) => i.id === leftId);
         const item2 = group.items.find((i) => i.id === rightId);
-        const d1 = item1?.priceDelta ?? item1?.priceModifier ?? 0;
-        const d2 = item2?.priceDelta ?? item2?.priceModifier ?? 0;
+        const d1 = readOptionDelta(item1!, customer);
+        const d2 = readOptionDelta(item2!, customer);
         total += (d1 + d2) / 2;
         continue;
       }
     }
     for (const itemId of ids) {
       const item = group.items.find((i) => i.id === itemId);
-      if (item) total += item.priceDelta ?? item.priceModifier ?? 0;
+      if (!item) continue;
+      const delta = readOptionDelta(item, customer);
+      const placement = placements[itemId];
+      if (placement === 'LEFT' || placement === 'RIGHT') total += delta / 2;
+      else total += delta;
     }
   }
   return total;
@@ -183,6 +200,10 @@ export default function ProductPage() {
   const tenantType = useAppStore((s) => s.tenantType) ?? 'GENERAL';
   const storeType = useAppStore((s) => s.storeType);
   const isProfessional = storeType === 'PROFESSIONAL';
+  // Android wrapper WebView UA contains "NowMarket-Native".
+  // When native bottom nav is present, hide the web fixed add-to-cart bar to avoid duplicates.
+  const isNativeAndroidWebView =
+    typeof navigator !== 'undefined' && navigator.userAgent.includes('NowMarket-Native');
   const addToast = useToast().addToast;
   const addItem = useCartStore((s) => s.addItem);
   const getTenantIdsInCart = useCartStore((s) => s.getTenantIdsInCart);
@@ -238,7 +259,7 @@ export default function ProductPage() {
   const hasVariantSystem = (product?.variants?.length ?? 0) > 0;
 
   const groupHasHalfOptions = useCallback((g: OptionGroup) =>
-    g.allowHalfPlacement || (g.items ?? []).some((i) => i.placement === 'HALF'),
+    g.allowHalfPlacement || g.allowSplitting || (g.items ?? []).some((i) => i.placement === 'HALF' || i.allowSplitting === true),
   []);
 
   const nonAddonGroups = useMemo(
@@ -361,6 +382,14 @@ export default function ProductPage() {
     _optionPlacements?: Record<string, 'WHOLE' | 'LEFT' | 'RIGHT'>
   ) => {
     const group = product?.optionGroups?.find((g) => g.id === groupId);
+    console.log('NMD-DEBUG-OPTIONS:', product?.id, {
+      groupId,
+      itemIds,
+      selectionType: group?.selectionType,
+      maxSelected: group?.maxSelected,
+      options: group?.items ?? [],
+      sliceSelection,
+    });
     if (product?.type === 'PIZZA' && group && groupHasHalfOptions(group)) {
       return;
     }
@@ -411,6 +440,7 @@ export default function ProductPage() {
           categoryId: product.categoryId,
           quantity,
           basePrice: product.basePrice,
+          customerUnitPrice: unitPrice,
           selectedOptions: effectiveSelected,
           optionGroups: product.optionGroups,
           totalPrice,
@@ -435,7 +465,7 @@ export default function ProductPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 pb-[120px] md:pb-4 bg-[#ffffff] min-h-screen w-full" dir="rtl" style={{ margin: 0 }}>
+    <div className="max-w-5xl mx-auto px-4 pb-[120px] md:pb-4 min-h-screen w-full bg-white" dir="rtl" style={{ margin: 0 }}>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -445,7 +475,7 @@ export default function ProductPage() {
         {/* Image Gallery */}
         <div className="space-y-3">
           <div
-            className="aspect-[4/5] w-full rounded-2xl overflow-hidden bg-gray-100 relative cursor-zoom-in"
+            className="aspect-[4/5] w-full rounded-2xl overflow-hidden bg-white relative cursor-zoom-in border border-[#0f766e]/10"
             role="button"
             tabIndex={0}
             onClick={() => hasImages && setFullscreenOpen(true)}
@@ -680,8 +710,8 @@ export default function ProductPage() {
         </div>
       </motion.div>
 
-      {/* Fixed action bar: Quantity (pill) + Add to Cart + View Cart when items exist (mobile only) */}
-      {!isProfessional && (
+      {/* Fixed action bar: hide in Android native wrapper (native bottom nav/cart UI). */}
+      {!isProfessional && !isNativeAndroidWebView && (
         <ProductPageFixedBar
           quantity={quantity}
           setQuantity={setQuantity}
@@ -757,12 +787,9 @@ function ProductPageFixedBar(props: {
     handleAddToCart,
   } = props;
   const { visible: bottomNavVisible, height: bottomNavHeight } = useBottomNav();
-  const tenantSlug = useAppStore((s) => s.tenantSlug ?? s.tenantId ?? '');
   const carts = useCartStore((s) => s.carts);
   const tenantIds = Object.keys(carts).filter((id) => (carts[id]?.length ?? 0) > 0);
   const cartCount = tenantIds.reduce((sum, tid) => sum + (carts[tid] ?? []).reduce((s, i) => s + i.quantity, 0), 0);
-  const firstTenantInCart = tenantIds[0];
-  const cartPath = tenantSlug ? `/${tenantSlug}/cart` : firstTenantInCart ? `/${firstTenantInCart}/cart` : '/';
 
   const cartBarHeight = 88; // ~5.5rem
   const bottomOffset = bottomNavVisible
@@ -837,15 +864,7 @@ function ProductPageFixedBar(props: {
               +
             </button>
           </div>
-          {cartCount > 0 && (
-            <Link
-              to={cartPath}
-              className="h-11 px-5 rounded-full font-semibold text-sm shrink-0 flex items-center justify-center border-2 transition-colors"
-              style={{ borderColor: TEAL, color: TEAL }}
-            >
-              عرض السلة
-            </Link>
-          )}
+          {/* Duplicate removed: CartBar has full details (count, price) + عرض السلة. Keep only ONE cart banner. */}
           <button
             type="button"
             onClick={handleAddToCart}
@@ -877,22 +896,34 @@ function VariantSelector({
 
   const selectedIds = value ? ('optionItemIds' in value ? value.optionItemIds : []) : [];
   const isColor = isColorGroup(group);
+  const selectionType = String(group.selectionType ?? '');
+  const isSingle = selectionType === 'single';
+  const isMulti = selectionType === 'multi' || selectionType === 'multiple';
+  const maxSelected = Number.isFinite(group.maxSelected) ? group.maxSelected : Number(group.maxSelected);
+  // If DB says maxSelected > 1, always allow multi-select even if selectionType is wrong
+  // for some tenants/stores.
+  const isMultiEffective = isMulti || maxSelected > 1;
+  const isSingleEffective = !isMultiEffective;
 
   const toggle = useCallback(
     (itemId: string) => {
-      if (group.selectionType === 'single') {
+      if (isSingleEffective) {
         onChange([itemId]);
-      } else {
-        const next = selectedIds.includes(itemId)
-          ? selectedIds.filter((id) => id !== itemId)
-          : [...selectedIds, itemId];
-        onChange(next.slice(0, group.maxSelected));
+        return;
       }
+
+      // Multi-select: toggle select/unselect while respecting maxSelected.
+      const alreadySelected = selectedIds.includes(itemId);
+      if (!alreadySelected && selectedIds.length >= maxSelected) return;
+      const next = alreadySelected
+        ? selectedIds.filter((id) => id !== itemId)
+        : [...selectedIds, itemId];
+      onChange(next);
     },
-    [group.selectionType, group.maxSelected, selectedIds, onChange]
+    [isSingleEffective, maxSelected, selectedIds, onChange]
   );
 
-  if (group.selectionType === 'multi' && !isColor) {
+  if (isMultiEffective && !isColor) {
     return (
       <div className="space-y-2">
         <label className="block text-sm font-medium" style={{ color: '#0a0a0a' }}>
@@ -904,28 +935,37 @@ function VariantSelector({
             const itemStock = (item as OptionItem & { stock?: number }).stock;
             const variantStock = getOptionStockFromVariants(product, group.id, item.id);
             const stock = product.variants?.length ? variantStock : (itemStock ?? 1);
-            const disabled = stock === 0;
             const isSelected = selectedIds.includes(item.id);
+            const disabledByLimit = !isSelected && selectedIds.length >= maxSelected;
+            const disabled = stock === 0 || disabledByLimit;
             const priceStr =
               ((item.priceDelta ?? item.priceModifier ?? 0) > 0)
                 ? ` +${formatMoney(item.priceDelta ?? item.priceModifier ?? 0)}`
                 : '';
             return (
-              <button
+              <label
                 key={`${group.id}::${item.id}`}
-                type="button"
-                onClick={() => !disabled && toggle(item.id)}
-                disabled={disabled}
-                className={`chip-transition rounded-full px-4 py-2 text-sm font-medium ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`chip-transition rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 ${
+                  disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                }`}
                 style={{
                   backgroundColor: isSelected ? TEAL : '#ffffff',
                   color: isSelected ? '#ffffff' : '#0a0a0a',
                   border: isSelected ? 'none' : '1px solid rgba(15,118,110,0.2)',
                 }}
               >
-                {item.name}
-                {priceStr}
-              </button>
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  disabled={disabled}
+                  onChange={() => toggle(item.id)}
+                  className="w-4 h-4 accent-[#0f766e]"
+                />
+                <span>
+                  {item.name}
+                  {priceStr}
+                </span>
+              </label>
             );
           })}
         </div>

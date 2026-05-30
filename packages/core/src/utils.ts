@@ -1,6 +1,7 @@
 import { formatMoney } from './utils/money.js';
 
 export { formatDateGregorian, formatDateTimeGregorian, formatTimeGregorian, formatDateISO } from './utils/dates.js';
+export { customerUnitPrice, customerComparePrice } from './utils/customer-price.js';
 
 /**
  * Format price for display (ILS ₪, 2 decimals, Western numerals).
