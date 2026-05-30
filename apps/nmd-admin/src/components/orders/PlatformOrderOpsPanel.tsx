@@ -37,14 +37,7 @@ export default function PlatformOrderOpsPanel({
   const [cancelReason, setCancelReason] = useState('');
   const [pendingAction, setPendingAction] = useState<PlatformOrderActionId | null>(null);
 
-  if (!USE_API || !canUsePlatformOrderOps(userRole)) return null;
-  if (!order.id || !order.tenantId) return null;
-
   const actions = getPlatformOrderActions(order);
-  if (actions.length === 0) return null;
-
-  const isRootAdmin = userRole === 'ROOT_ADMIN';
-  const needsEmergencyForReady = isRootAdmin && !(emergency?.enabled && emergency?.reason?.trim());
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['order', order.id] });
@@ -77,7 +70,7 @@ export default function PlatformOrderOpsPanel({
     },
     onSuccess: (_data, actionId) => {
       invalidate();
-      const label = actions.find((a) => a.id === actionId)?.label ?? 'تم';
+      const label = getPlatformOrderActions(order).find((a) => a.id === actionId)?.label ?? 'تم';
       addToast(`${label} — تم بنجاح`, 'success');
       setPendingAction(null);
       setCancelOpen(false);
@@ -88,6 +81,13 @@ export default function PlatformOrderOpsPanel({
       setPendingAction(null);
     },
   });
+
+  if (!USE_API || !canUsePlatformOrderOps(userRole)) return null;
+  if (!order.id || !order.tenantId) return null;
+  if (actions.length === 0) return null;
+
+  const isRootAdmin = userRole === 'ROOT_ADMIN';
+  const needsEmergencyForReady = isRootAdmin && !(emergency?.enabled && emergency?.reason?.trim());
 
   const handleAction = (action: PlatformOrderAction) => {
     if (action.id === 'cancel') {
