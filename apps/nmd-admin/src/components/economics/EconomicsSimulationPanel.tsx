@@ -23,15 +23,18 @@ function SimField({
   value,
   onChange,
   suffix,
+  hint,
 }: {
   label: string;
   value: number;
   onChange: (n: number) => void;
   suffix?: string;
+  hint?: string;
 }) {
   return (
     <label className="block text-sm">
       <span className="text-gray-600">{label}</span>
+      {hint && <span className="block text-[11px] text-gray-400 mt-0.5">{hint}</span>}
       <div className="flex items-center gap-1 mt-1">
         <Input
           type="number"
@@ -78,29 +81,57 @@ export default function EconomicsSimulationPanel({
       </div>
 
       <div className="p-5 grid lg:grid-cols-2 gap-6">
-        <div className="grid sm:grid-cols-2 gap-4">
-          <SimField label="نسبة الرسوم %" value={input.percentageFee} onChange={(n) => patch({ percentageFee: n })} />
-          <SimField label="حد أدنى ₪" value={input.minFee} onChange={(n) => patch({ minFee: n })} />
-          <SimField label="حد أقصى ₪" value={input.maxFee} onChange={(n) => patch({ maxFee: n })} />
-          <SimField label="ثابت / طلب ₪" value={input.fixedFee} onChange={(n) => patch({ fixedFee: n })} />
-          <SimField label="بوابة دفع %" value={input.gatewayPct} onChange={(n) => patch({ gatewayPct: n })} />
-          <SimField label="تكلفة توصيل / طلب ₪" value={input.avgDeliveryCost} onChange={(n) => patch({ avgDeliveryCost: n })} />
-          <SimField label="تكاليف شهرية ₪" value={input.monthlyOperationalCosts} onChange={(n) => patch({ monthlyOperationalCosts: n })} />
-          <SimField label="طلبات / شهر" value={input.ordersPerMonth} onChange={(n) => patch({ ordersPerMonth: n })} />
-          <SimField label="متوسط سلة ₪" value={input.avgOrderValue} onChange={(n) => patch({ avgOrderValue: n })} />
-          <SimField label="رسوم توصيل متوسط ₪" value={input.avgDeliveryFee} onChange={(n) => patch({ avgDeliveryFee: n })} />
-          <SimField label="نسبة فيزا" value={Math.round(input.cardOrderRatio * 100)} onChange={(n) => patch({ cardOrderRatio: n / 100 })} suffix="%" />
-          <SimField label="نسبة كوبون %" value={input.couponRatePct} onChange={(n) => patch({ couponRatePct: n })} />
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800 mb-3">رسوم المنصة والتشغيل</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <SimField label="نسبة الرسوم %" value={input.percentageFee} onChange={(n) => patch({ percentageFee: n })} />
+            <SimField label="حد أدنى ₪" value={input.minFee} onChange={(n) => patch({ minFee: n })} />
+            <SimField label="حد أقصى ₪" value={input.maxFee} onChange={(n) => patch({ maxFee: n })} />
+            <SimField label="ثابت / طلب ₪" value={input.fixedFee} onChange={(n) => patch({ fixedFee: n })} />
+            <SimField label="بوابة دفع %" value={input.gatewayPct} onChange={(n) => patch({ gatewayPct: n })} />
+            <SimField
+              label="تكاليف تشغيل شهرية ₪"
+              value={input.monthlyOperationalCosts}
+              onChange={(n) => patch({ monthlyOperationalCosts: n })}
+              hint="بدون تكرار سائق/وقود إن استخدمت تكلفة توصيل/طلب"
+            />
+            <SimField label="طلبات / شهر" value={input.ordersPerMonth} onChange={(n) => patch({ ordersPerMonth: n })} />
+            <SimField label="متوسط سلة ₪" value={input.avgOrderValue} onChange={(n) => patch({ avgOrderValue: n })} />
+            <SimField label="نسبة فيزا" value={Math.round(input.cardOrderRatio * 100)} onChange={(n) => patch({ cardOrderRatio: n / 100 })} suffix="%" />
+            <SimField label="نسبة كوبون %" value={input.couponRatePct} onChange={(n) => patch({ couponRatePct: n })} />
+          </div>
+
+          <h3 className="text-sm font-semibold text-gray-800 mb-3 mt-6">اقتصاديات التوصيل</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <SimField
+              label="متوسط رسوم التوصيل للعميل ₪"
+              value={input.avgDeliveryFee}
+              onChange={(n) => patch({ avgDeliveryFee: n })}
+              hint="دخل التوصيل / طلب"
+            />
+            <SimField
+              label="متوسط تكلفة التوصيل / طلب ₪"
+              value={input.avgDeliveryCost}
+              onChange={(n) => patch({ avgDeliveryCost: n })}
+              hint="سائق + وقود + تشغيل توصيل"
+            />
+          </div>
+          <div className="mt-3 p-3 rounded-lg bg-teal-50 border border-teal-100 text-sm">
+            <span className="text-teal-800">هامش التوصيل / طلب: </span>
+            <span className="font-bold text-teal-900">{formatMoney(output.deliveryMarginPerOrder)}</span>
+          </div>
         </div>
 
         <div className="space-y-3">
           <OutputRow label="إيراد رسوم منصة / شهر" value={output.projectedMonthlyPlatformRevenue} accent="emerald" />
-          <OutputRow label="هامش توصيل / شهر" value={output.projectedMonthlyDeliveryMargin} />
+          <OutputRow label="دخل التوصيل / شهر" value={output.projectedMonthlyDeliveryRevenue} accent="emerald" />
+          <OutputRow label="تكلفة التوصيل / شهر" value={-output.projectedMonthlyDeliveryCost} accent="red" />
+          <OutputRow label="هامش التوصيل / شهر" value={output.projectedMonthlyDeliveryMargin} />
           <OutputRow label="تكلفة بوابة / شهر" value={-output.projectedMonthlyGatewayCost} accent="red" />
           <OutputRow label="كوبونات / شهر" value={-output.projectedMonthlyCouponCost} accent="red" />
-          <OutputRow label="مساهمة صافية / شهر" value={output.projectedMonthlyContribution} accent="indigo" bold />
+          <OutputRow label="صافي المساهمة / شهر" value={output.projectedMonthlyContribution} accent="indigo" bold />
           <OutputRow
-            label="ربح / خسارة vs التكاليف"
+            label="ربح / خسارة vs التكاليف التشغيلية"
             value={output.projectedProfitLoss}
             accent={output.projectedProfitLoss >= 0 ? 'emerald' : 'red'}
             bold
@@ -111,7 +142,7 @@ export default function EconomicsSimulationPanel({
               <p className="text-lg font-bold">{output.breakEvenOrdersPerMonth.toLocaleString('ar')}</p>
             </div>
             <div className="p-3 rounded-lg bg-gray-50 border">
-              <p className="text-xs text-gray-500">مساهمة / طلب</p>
+              <p className="text-xs text-gray-500">صافي المساهمة / طلب</p>
               <p className="text-lg font-bold">{formatMoney(output.contributionPerOrder)}</p>
             </div>
           </div>

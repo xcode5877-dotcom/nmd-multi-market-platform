@@ -116,6 +116,7 @@ export type OverviewMetrics = {
   configuredPlatformRevenue: number;
   actualPlatformRevenue: number;
   gatewayCostEstimate: number;
+  deliveryCostTotal: number;
   deliveryMarginTotal: number;
   operationalAllocation: number;
   estimatedNetContribution: number;
@@ -124,8 +125,10 @@ export type OverviewMetrics = {
 
 export type UnitEconomics = {
   avgProjectedPlatformRevenue: number;
-  avgGatewayCost: number;
+  avgDeliveryRevenue: number;
   avgDeliveryCost: number;
+  avgDeliveryMargin: number;
+  avgGatewayCost: number;
   avgCouponCost: number;
   avgOperationalAllocation: number;
   avgContributionPerOrder: number;
@@ -231,7 +234,10 @@ export type SimulationInput = {
 
 export type SimulationOutput = {
   projectedMonthlyPlatformRevenue: number;
+  projectedMonthlyDeliveryRevenue: number;
+  projectedMonthlyDeliveryCost: number;
   projectedMonthlyDeliveryMargin: number;
+  deliveryMarginPerOrder: number;
   projectedMonthlyGatewayCost: number;
   projectedMonthlyCouponCost: number;
   projectedMonthlyContribution: number;
@@ -363,10 +369,11 @@ export function normalizeOrder(order: RawOrder, ctx: TenantContext | undefined, 
       ? roundMoney(gmv * (settings.gatewayPct / 100))
       : safeNum(order.payment?.financials?.gatewayFee);
 
-  const isMarketDelivery = ctx?.deliveryFeeModel === 'MARKET';
-  const deliveryRevenue = isMarketDelivery ? deliveryFee : 0;
-  const deliveryCostEstimate = deliveryFee > 0 ? settings.avgDeliveryCost : 0;
-  const deliveryMargin = isMarketDelivery ? roundMoney(deliveryRevenue - deliveryCostEstimate) : 0;
+  // Customer-paid delivery fee = Now Market delivery income (all stores).
+  const deliveryRevenue = roundMoney(Math.max(0, deliveryFee));
+  const isDeliveryOrder = deliveryRevenue > 0 || order.delivery != null;
+  const deliveryCostEstimate = isDeliveryOrder ? settings.avgDeliveryCost : 0;
+  const deliveryMargin = roundMoney(deliveryRevenue - deliveryCostEstimate);
 
   const feeSource = classifyFeeSource(ctx?.marketFeeConfig, ctx?.tenantFeeOverride);
 
@@ -428,11 +435,18 @@ export function computeOverviewMetrics(
   const configuredPlatformRevenue = roundMoney(active.reduce((s, o) => s + o.projectedPlatformFee, 0));
   const actualPlatformRevenue = roundMoney(active.reduce((s, o) => s + o.actualPlatformFee, 0));
   const gatewayCostEstimate = roundMoney(active.reduce((s, o) => s + o.gatewayFeeEstimate, 0));
+  const deliveryCostTotal = roundMoney(active.reduce((s, o) => s + o.deliveryCostEstimate, 0));
   const deliveryMarginTotal = roundMoney(active.reduce((s, o) => s + o.deliveryMargin, 0));
   const operationalAllocation = operationalAllocationForPeriod(monthlyOperationalCosts, from, to);
 
+  // Net = platform revenue + delivery revenue − delivery cost − gateway − coupons − ops
   const estimatedNetContribution = roundMoney(
-    configuredPlatformRevenue + deliveryMarginTotal - gatewayCostEstimate - couponExposure - operationalAllocation
+    configuredPlatformRevenue +
+      deliveryRevenue -
+      deliveryCostTotal -
+      gatewayCostEstimate -
+      couponExposure -
+      operationalAllocation
   );
   const estimatedBurn = roundMoney(Math.max(0, -estimatedNetContribution));
 
@@ -450,6 +464,7 @@ export function computeOverviewMetrics(
     configuredPlatformRevenue,
     actualPlatformRevenue,
     gatewayCostEstimate,
+    deliveryCostTotal,
     deliveryMarginTotal,
     operationalAllocation,
     estimatedNetContribution,
@@ -462,11 +477,13 @@ export function computeUnitEconomics(
   normalized: NormalizedOrder[]
 ): UnitEconomics {
   const n = overview.orderCount || 1;
-  const deliveryCostTotal = roundMoney(normalized.reduce((s, o) => s + o.deliveryCostEstimate, 0));
+  const deliveryRevenueTotal = roundMoney(normalized.reduce((s, o) => s + o.deliveryRevenue, 0));
   return {
     avgProjectedPlatformRevenue: roundMoney(overview.configuredPlatformRevenue / n),
+    avgDeliveryRevenue: roundMoney(deliveryRevenueTotal / n),
+    avgDeliveryCost: roundMoney(overview.deliveryCostTotal / n),
+    avgDeliveryMargin: roundMoney(overview.deliveryMarginTotal / n),
     avgGatewayCost: roundMoney(overview.gatewayCostEstimate / n),
-    avgDeliveryCost: roundMoney(deliveryCostTotal / n),
     avgCouponCost: roundMoney(overview.couponExposure / n),
     avgOperationalAllocation: roundMoney(overview.operationalAllocation / n),
     avgContributionPerOrder: roundMoney(overview.estimatedNetContribution / n),
@@ -500,7 +517,13 @@ export function computeMarketRows(
       couponExposure: roundMoney(orders.reduce((s, o) => s + o.discountAmount, 0)),
       estimatedContribution: roundMoney(
         orders.reduce(
-          (s, o) => s + o.projectedPlatformFee + o.deliveryMargin - o.gatewayFeeEstimate - o.discountAmount,
+          (s, o) =>
+            s +
+            o.projectedPlatformFee +
+            o.deliveryRevenue -
+            o.deliveryCostEstimate -
+            o.gatewayFeeEstimate -
+            o.discountAmount,
           0
         )
       ),
@@ -559,7 +582,13 @@ export function computeStoreRows(
       cardRatio: orderCount > 0 ? cardOrders / orderCount : 0,
       estimatedContribution: roundMoney(
         orders.reduce(
-          (s, o) => s + o.projectedPlatformFee + o.deliveryMargin - o.gatewayFeeEstimate - o.discountAmount,
+          (s, o) =>
+            s +
+            o.projectedPlatformFee +
+            o.deliveryRevenue -
+            o.deliveryCostEstimate -
+            o.gatewayFeeEstimate -
+            o.discountAmount,
           0
         )
       ),
@@ -636,10 +665,8 @@ export function computeProfitabilityEstimates(
 /**
  * Simulation engine — formula-only projection. Does NOT activate fees.
  *
- * Platform revenue/order ≈ clamp(avgBasket * (1-couponRate) * pct + fixed, min, max)
- * Gateway cost/order ≈ avgTicket * cardRatio * gatewayPct
- * Delivery margin/order ≈ avgDeliveryFee - avgDeliveryCost (if positive)
- * Contribution/order = platformRev + deliveryMargin - gateway - coupon - opsPerOrder
+ * Net/order = platformFee + deliveryFee − deliveryCost − gateway − coupon − ops
+ * Monthly figures scale by ordersPerMonth.
  */
 export function runSimulation(input: SimulationInput): SimulationOutput {
   const avgBasket = Math.max(0, input.avgOrderValue);
@@ -652,15 +679,24 @@ export function runSimulation(input: SimulationInput): SimulationOutput {
 
   const couponPerOrder = roundMoney(avgBasket * (input.couponRatePct / 100));
   const gatewayPerOrder = roundMoney(avgBasket * input.cardOrderRatio * (input.gatewayPct / 100));
-  const deliveryMarginPerOrder = roundMoney(Math.max(0, input.avgDeliveryFee - input.avgDeliveryCost));
+  const deliveryRevenuePerOrder = roundMoney(Math.max(0, input.avgDeliveryFee));
+  const deliveryCostPerOrder = roundMoney(Math.max(0, input.avgDeliveryCost));
+  const deliveryMarginPerOrder = roundMoney(deliveryRevenuePerOrder - deliveryCostPerOrder);
   const opsPerOrder =
     input.ordersPerMonth > 0 ? roundMoney(input.monthlyOperationalCosts / input.ordersPerMonth) : 0;
 
   const contributionPerOrder = roundMoney(
-    platformFeePerOrder + deliveryMarginPerOrder - gatewayPerOrder - couponPerOrder - opsPerOrder
+    platformFeePerOrder +
+      deliveryRevenuePerOrder -
+      deliveryCostPerOrder -
+      gatewayPerOrder -
+      couponPerOrder -
+      opsPerOrder
   );
 
   const projectedMonthlyPlatformRevenue = roundMoney(platformFeePerOrder * input.ordersPerMonth);
+  const projectedMonthlyDeliveryRevenue = roundMoney(deliveryRevenuePerOrder * input.ordersPerMonth);
+  const projectedMonthlyDeliveryCost = roundMoney(deliveryCostPerOrder * input.ordersPerMonth);
   const projectedMonthlyDeliveryMargin = roundMoney(deliveryMarginPerOrder * input.ordersPerMonth);
   const projectedMonthlyGatewayCost = roundMoney(gatewayPerOrder * input.ordersPerMonth);
   const projectedMonthlyCouponCost = roundMoney(couponPerOrder * input.ordersPerMonth);
@@ -672,7 +708,10 @@ export function runSimulation(input: SimulationInput): SimulationOutput {
 
   return {
     projectedMonthlyPlatformRevenue,
+    projectedMonthlyDeliveryRevenue,
+    projectedMonthlyDeliveryCost,
     projectedMonthlyDeliveryMargin,
+    deliveryMarginPerOrder,
     projectedMonthlyGatewayCost,
     projectedMonthlyCouponCost,
     projectedMonthlyContribution,

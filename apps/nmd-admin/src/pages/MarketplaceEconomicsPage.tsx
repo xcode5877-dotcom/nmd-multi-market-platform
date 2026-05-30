@@ -11,6 +11,7 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  Truck,
   Wallet,
 } from 'lucide-react';
 import { Badge, Card } from '@nmd/ui';
@@ -240,7 +241,28 @@ export default function MarketplaceEconomicsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-3">
           <KpiCard label="GMV" value={formatMoney(overview.gmv)} sub={`${overview.orderCount} طلب`} icon={Activity} accent="border-s-emerald-500" />
           <KpiCard label="متوسط الطلب" value={formatMoney(overview.avgOrderValue)} icon={Wallet} accent="border-s-sky-500" />
-          <KpiCard label="إيراد التوصيل (سوق)" value={formatMoney(overview.deliveryRevenue)} icon={TrendingUp} accent="border-s-teal-500" />
+          <KpiCard
+            label="دخل التوصيل"
+            value={formatMoney(overview.deliveryRevenue)}
+            sub="رسوم التوصيل المدفوعة من العميل"
+            icon={TrendingUp}
+            accent="border-s-teal-500"
+          />
+          <KpiCard
+            label="تكلفة التوصيل المقدرة"
+            value={formatMoney(overview.deliveryCostTotal)}
+            sub={`₪${settings.avgDeliveryCost} / طلب توصيل`}
+            icon={Truck}
+            accent="border-s-orange-500"
+          />
+          <KpiCard
+            label="هامش التوصيل"
+            value={formatMoney(overview.deliveryMarginTotal)}
+            heat={overview.deliveryMarginTotal >= 0 ? 'good' : 'bad'}
+            sub="دخل التوصيل − تكلفة التوصيل"
+            icon={TrendingUp}
+            accent="border-s-cyan-500"
+          />
           <KpiCard label="تعرّض الكوبونات" value={formatMoney(overview.couponExposure)} icon={TrendingDown} accent="border-s-amber-500" heat="warn" />
           <KpiCard
             label="نقد vs فيزا"
@@ -264,9 +286,10 @@ export default function MarketplaceEconomicsPage() {
             accent="border-s-gray-400"
           />
           <KpiCard
-            label="مساهمة صافية تقديرية"
+            label="صافي المساهمة"
             value={formatMoney(overview.estimatedNetContribution)}
             heat={overview.estimatedNetContribution >= 0 ? 'good' : 'bad'}
+            sub="رسوم + توصيل − تكاليف − كوبون − تشغيل"
             icon={Target}
             accent="border-s-emerald-600"
           />
@@ -295,14 +318,16 @@ export default function MarketplaceEconomicsPage() {
       {/* 3. Unit economics */}
       <section>
         <h2 className="text-lg font-semibold text-gray-900 mb-3">اقتصاديات الوحدة (متوسط / طلب)</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             { label: 'رسوم منصة (مُعدّ)', value: unit.avgProjectedPlatformRevenue },
+            { label: 'دخل التوصيل', value: unit.avgDeliveryRevenue },
+            { label: 'تكلفة التوصيل', value: -unit.avgDeliveryCost },
+            { label: 'هامش التوصيل', value: unit.avgDeliveryMargin },
             { label: 'بوابة دفع', value: -unit.avgGatewayCost },
-            { label: 'تكلفة توصيل', value: -unit.avgDeliveryCost },
             { label: 'كوبون', value: -unit.avgCouponCost },
             { label: 'تخصيص تشغيلي', value: -unit.avgOperationalAllocation },
-            { label: 'مساهمة / طلب', value: unit.avgContributionPerOrder, highlight: true },
+            { label: 'صافي المساهمة / طلب', value: unit.avgContributionPerOrder, highlight: true },
           ].map((row) => (
             <Card
               key={row.label}
