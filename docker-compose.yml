@@ -1,17 +1,13 @@
-# nmd.marketing — Production: web-gateway (Nginx + 4 frontends) + mock-api
+# Monorepo root: this file must live next to package.json / pnpm-workspace.yaml.
+# Build `context: .` is the directory containing THIS compose file (the repo root), not your shell cwd.
 #
-# DATA PERSISTENCE (no data loss on down/up, rebuild, or image uploads):
-# - PostgreSQL: named volume "postgres_data". Markets, tenants, orders, and all DB-backed data persist.
-# - mock-api data (data.json, orders.json, market-config.json, push-subscriptions): named volume
-#   "mock_api_data" at /app/data so host builds/restarts never wipe them.
-# - Uploads: named volume "uploads_data" at /app/uploads so saving images does NOT trigger host
-#   filesystem changes that could refresh the container or affect DB connectivity.
-# - STORAGE_DRIVER is hardcoded to "db" so the app never reverts to json (empty) mode.
-#
-# First time after switching to named volumes: mock_api_data and uploads_data start empty. The
-# entrypoint creates data.json, orders.json, etc. in mock_api_data. If you had host files you need
-# (e.g. market-config.json, uploads), copy once: docker cp ./apps/mock-api/market-config.json
-# nmd-multi-market-platform-mock-api-1:/app/data/ ; docker cp ./apps/mock-api/uploads/. nmd-multi-market-platform-mock-api-1:/app/uploads/
+# Build contexts (one per image — no shared ambiguous paths):
+#   web-gateway, mock-api  → context: .  (repo root; Dockerfiles COPY root package.json / workspace)
+#   whatsapp-service       → context: ./apps/whatsapp-service
+#   soundmir-app           → context: ./apps/soundmir-app (Soundmir app’s own package.json there)
+# Wrong: docker build -f Dockerfile.mock-api apps/mock-api  (no root package.json in context)
+# Right: docker compose build mock-api   OR   docker build -f Dockerfile.mock-api .
+#          from the repository root (same folder as this file).
 
 services:
   postgres:
@@ -20,8 +16,9 @@ services:
       POSTGRES_USER: nmd
       POSTGRES_PASSWORD: nmd
       POSTGRES_DB: nmd
+    networks:
+      - nmd_net
     volumes:
-      # Persistent volume: survives docker compose down/up and rebuild. For host-visible data use: ./postgres_data:/var/lib/postgresql/data
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
@@ -30,32 +27,51 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: always
 
+  # mock-api + web-gateway: build.context MUST stay "." (repo root) — Dockerfiles COPY package.json from there.
+  # --- Public HTTP/HTTPS: ONLY this service publishes host :80 and :443 (see ports below). ---
+  # nmd.marketing / www + soundmir.com / www are terminated INSIDE web-gateway (nginx-10-*.conf, nginx-30-*.conf
+  # in the image). soundmir-app has no host port mapping; it is reached only via proxy_pass from web-gateway.
+  #
+  # If `docker compose up` fails with "address already in use" on 80/443, the host OS (e.g. system nginx) is
+  # still bound to those ports. Free them so Compose remains the sole owner, then start again, e.g.:
+  #   sudo systemctl disable --now nginx
+  #   # or: sudo systemctl stop apache2
+  # Do not publish :80/:443 from any other compose service or duplicate reverse-proxy on this host.
   web-gateway:
     build:
-      # Context must be repo root so Dockerfile.web can COPY packages and apps
       context: .
       dockerfile: Dockerfile.web
       args:
         VITE_PUBLIC_ORIGIN: "https://nmd.marketing"
-        # Force fresh storefront build (set to "1" or $(date +%s) when deploying cart/checkout UI updates)
         STOREFRONT_CACHEBUST: "1"
+    networks:
+      - nmd_net
     ports:
       - "80:80"
       - "443:443"
+      # Alternate HTTP port (e.g. direct IP tests); Host header still selects vhost — catch-all is default_server only on :80/:41532 inside container
+      - "41532:80"
     volumes:
-      # SSL certificates from host (Certbot)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      # Webroot for Certbot HTTP-01 renewal
-      - /var/www/certbot:/var/www/certbot
+      # Host Certbot writes certs + webroot challenges; Nginx reads both. Paths must match certbot -w /var/www/certbot.
+      # Prep: mkdir -p /var/www/certbot/.well-known/acme-challenge && chmod -R 755 /var/www/certbot
+      # :rw on letsencrypt so deploy hooks / renewal can refresh symlinks; Nginx only needs read for serving.
+      - /etc/letsencrypt:/etc/letsencrypt:rw
+      - /var/www/certbot:/var/www/certbot:rw
+      - /opt/qashtota/frontend/dist:/opt/qashtota/frontend/dist:ro
     depends_on:
       - mock-api
-    restart: unless-stopped
+      # WhatsApp is optional for the gateway; nginx → mock-api handles /api/*. Do not tie gateway boot to whatsapp-service.
+    # Restart after host reboot; will bind :80/:443 as soon as they are free (no competing host nginx).
+    restart: always
 
   whatsapp-service:
     build:
       context: apps/whatsapp-service
       dockerfile: Dockerfile
+    networks:
+      - nmd_net
     ports:
       - "3000:3000"
     shm_size: '2gb'
@@ -71,11 +87,19 @@ services:
       PORT: "3000"
       WA_SESSION_PATH: "/app/session"
       PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable"
-      WA_API_KEY: "your_secret_key_here"
-      DEBUG: "whatsapp-web.js:*" # لتفعيل سجلات إضافية من المكتبة نفسها
+      WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
+      DEBUG: "whatsapp-web.js:*"
       DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
     volumes:
       - whatsapp_session:/app/session
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"fetch('http://localhost:3000/health',{headers:{'x-api-key':process.env.WA_API_KEY}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,56 +107,69 @@ services:
       resources:
         limits:
           memory: 2G
-    restart: unless-stopped
+    restart: always
 
   mock-api:
     build:
       context: .
       dockerfile: Dockerfile.mock-api
-      args:
-        PRISMA_REBUILD: "postgresql"
+    # Must share nmd_net with web-gateway (service name must stay `mock-api` — matches $upstream_mock_api in Nginx).
+    networks:
+      - nmd_net
     ports:
-      # External port 3001 (host) → container port 5190 (API runs on 5190 inside container)
       - "3001:5190"
-    # Entrypoint: chmod /app/uploads for real-time sync, then run app (set CMD to skip migrate: node dist/index.js)
     entrypoint: ["/app/apps/mock-api/docker-entrypoint.sh"]
     command: ["node", "/app/apps/mock-api/dist/index.js"]
     environment:
       PORT: "5190"
-      # Hardcoded db: always use PostgreSQL. Never revert to json (which would show empty markets/stores).
+      # Must match volume uploads_data:/app/uploads — static /uploads and multer use this path.
+      UPLOADS_DIR: "/app/uploads"
       STORAGE_DRIVER: "db"
       DATA_FILE: "/app/data/data.json"
-      MARKET_CONFIG_FILE: "/app/data/market-config.json"
-      ORDERS_FILE: "/app/data/orders.json"
-      UPLOADS_DIR: "/app/uploads"
-      # Use service name "postgres" and internal port 5432; schema=public for Prisma
       DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
       PUBLIC_URL: "https://nmd.marketing/api"
-      # WhatsApp gateway: mock-api sends OTP via this URL (x-api-key required)
+      USE_LEGACY_WHATSAPP_GATEWAY: "1"
       WHATSAPP_GATEWAY_URL: "http://whatsapp-service:3000"
       WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
-      # Firebase Admin (FCM). Path inside container: /app/firebase-service-account.json. Must match the app's Firebase project (e.g. now-market-59841).
       FIREBASE_SERVICE_ACCOUNT_PATH: "/app/firebase-service-account.json"
+      API_KEY: "c522d724baaaf9a3213dcf17590f0fd8"
+      # Platform service fee — customer-visible repricing (Phase 1). Rollback: set false and redeploy mock-api.
+      PLATFORM_FEE_ENABLED: "true"
     volumes:
-      # Named volume: survives build/restart and is isolated from host. Saves to uploads no longer
-      # trigger host filesystem changes that could affect the container or DB connection.
       - uploads_data:/app/uploads
-      # Named volume for JSON config (market-config, push-subscriptions, etc.). With STORAGE_DRIVER=db
-      # markets/tenants come from Postgres; this volume keeps layout and other file-backed state.
       - mock_api_data:/app/data
-      # Firebase Admin (FCM). Service account file kept with its original name; mounted at /app/firebase-service-account.json in container. If you had a directory at apps/mock-api/firebase-service-account.json, remove it to avoid EISDIR.
       - ./apps/mock-api/now-market-59841-firebase-adminsdk-fbsvc-949643eb84.json:/app/firebase-service-account.json:ro
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+      # Do NOT gate mock-api on whatsapp-service health: if WA is stuck (QR/session), the whole API would never listen → nginx 502 on all /api/* (stores, markets, auth).
+      # OTP/WhatsApp routes fail gracefully at runtime; DB-backed reads keep working once postgres is healthy.
+    restart: always
+
+  # Backend only — no host :80/:443; TLS and Host routing: web-gateway → soundmir-app:3000.
+  # Build context is apps/soundmir-app (must contain package.json — see apps/soundmir-app/INTEGRATION.txt).
+  soundmir-app:
+    container_name: soundmir-app
+    build:
+      context: ./apps/soundmir-app
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      STORE_PATH: /app/data/store.json
+      NEXT_PUBLIC_SITE_URL: https://soundmir.com
+      ADMIN_PASSWORD: soundmir2026
+    volumes:
+      - ./apps/soundmir-app/data:/app/data
+    networks:
+      - nmd_net
 
 volumes:
-  # PostgreSQL data; survives down/up and rebuild. Required for STORAGE_DRIVER=db — do not remove unless intentionally resetting DB.
   postgres_data:
-  # Mock-api JSON files (data.json, orders.json, market-config.json, push-subscriptions.json). Survives build/restart.
   mock_api_data:
-  # Uploads (logos, banners, product images). Separate from data so image saves never trigger filesystem refresh that wipes DB view.
   uploads_data:
-  # WhatsApp session; survives restarts so QR code is not required again
   whatsapp_session:
+
+networks:
+  nmd_net:

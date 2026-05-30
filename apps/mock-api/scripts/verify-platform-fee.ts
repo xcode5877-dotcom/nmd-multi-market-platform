@@ -267,5 +267,23 @@ console.log('\n14. Market platformFeeConfig branding JSON round-trip');
   );
 }
 
+console.log('\n15. maxFee:0 must not zero FIXED_ITEM fee');
+{
+  process.env.PLATFORM_FEE_ENABLED = 'true';
+  const ctx = {
+    tenantFeeOverride: {
+      useMarketDefault: false,
+      enabled: true,
+      model: 'FIXED_ITEM' as const,
+      fixedPerItem: 5,
+      minFee: 0,
+      maxFee: 0,
+    },
+    featureFlagEnabled: true,
+  };
+  const enriched = enrichProductDisplayPricing({ basePrice: 60 }, ctx);
+  assert(approx(enriched.displayPrice, 65), 'maxFee 0 does not clamp fee to zero');
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 process.exit(failed > 0 ? 1 : 0);

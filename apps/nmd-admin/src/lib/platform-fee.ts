@@ -19,6 +19,35 @@ export interface TenantPlatformFeeOverride extends PlatformFeeConfig {
   useMarketDefault?: boolean;
 }
 
+/** Per-store fee source selection in Super Admin tenant UI. */
+export type TenantFeeMode = 'MARKET_DEFAULT' | 'CUSTOM' | 'EXEMPT';
+
+export function resolveTenantFeeMode(override?: TenantPlatformFeeOverride | null): TenantFeeMode {
+  if (!override || override.useMarketDefault !== false) return 'MARKET_DEFAULT';
+  if (override.enabled) return 'CUSTOM';
+  return 'EXEMPT';
+}
+
+export function tenantFeeModeToOverride(
+  mode: TenantFeeMode,
+  config: PlatformFeeConfig
+): TenantPlatformFeeOverride {
+  if (mode === 'MARKET_DEFAULT') return { useMarketDefault: true };
+  if (mode === 'EXEMPT') return { useMarketDefault: false, enabled: false };
+  const minFee = Number(config.minFee) || 0;
+  const maxFee = Number(config.maxFee) || 0;
+  return {
+    useMarketDefault: false,
+    enabled: true,
+    model: config.model ?? 'PERCENTAGE',
+    percentage: Number(config.percentage) || 0,
+    fixedPerOrder: Number(config.fixedPerOrder) || 0,
+    fixedPerItem: Number(config.fixedPerItem) || 0,
+    ...(minFee > 0 ? { minFee } : {}),
+    ...(maxFee > 0 ? { maxFee } : {}),
+  };
+}
+
 export type PlatformFeeConfigSource = 'MARKET' | 'TENANT' | 'DISABLED';
 
 export const PLATFORM_FEE_MODEL_OPTIONS: { value: PlatformFeeModel; label: string }[] = [
@@ -64,8 +93,8 @@ export function resolvePlatformFeeConfig(
 
 function clampFee(fee: number, minFee?: number, maxFee?: number): number {
   let result = fee;
-  if (minFee != null && Number.isFinite(minFee)) result = Math.max(result, minFee);
-  if (maxFee != null && Number.isFinite(maxFee)) result = Math.min(result, maxFee);
+  if (minFee != null && Number.isFinite(minFee) && minFee > 0) result = Math.max(result, minFee);
+  if (maxFee != null && Number.isFinite(maxFee) && maxFee > 0) result = Math.min(result, maxFee);
   return roundMoney(Math.max(0, result));
 }
 
