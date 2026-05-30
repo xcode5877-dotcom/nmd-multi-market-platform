@@ -12,6 +12,7 @@ import '../../data/pillar_kind.dart';
 import '../../data/tenant_contact_info.dart';
 import '../widgets/retail_product_card.dart';
 import '../widgets/service_product_card.dart';
+import '../widgets/product_quick_add.dart';
 
 class _CategoryProductsPayload {
   const _CategoryProductsPayload({
@@ -171,25 +172,35 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
                 mainAxisSpacing: 12,
                 mainAxisExtent: RetailProductCard.cardHeight,
               ),
-              itemBuilder: (context, i) {
-                final p = products[i];
-                final heroTag = 'product-${widget.storeId}-${p.id}-grid';
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    return RetailProductCard(
-                      width: constraints.maxWidth,
-                      name: p.name,
-                      price: p.customerListPrice,
-                      imageUrl: p.imageUrl,
-                      available: p.canAddToCart,
-                      heroTag: heroTag,
-                      onTap: () => context.push(
-                        '/market/${widget.marketSlug}/store/${widget.storeId}/product/${p.id}',
-                      ),
-                    );
-                  },
-                );
-              },
+                itemBuilder: (context, i) {
+                  final p = products[i];
+                  final heroTag = 'product-${widget.storeId}-${p.id}-grid';
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return RetailProductCard(
+                        width: constraints.maxWidth,
+                        name: p.name,
+                        price: p.customerListPrice,
+                        imageUrl: p.imageUrl,
+                        available: p.canAddToCart,
+                        heroTag: heroTag,
+                        onTap: () => context.push(
+                          '/market/${widget.marketSlug}/store/${widget.storeId}/product/${p.id}',
+                        ),
+                        onAddTap: p.canAddToCart
+                            ? () => handleProductQuickAdd(
+                                  context: context,
+                                  product: p,
+                                  tenantId: widget.storeId,
+                                  marketSlug: widget.marketSlug,
+                                  storeId: widget.storeId,
+                                  available: p.canAddToCart,
+                                )
+                            : null,
+                      );
+                    },
+                  );
+                },
             );
           },
         ),

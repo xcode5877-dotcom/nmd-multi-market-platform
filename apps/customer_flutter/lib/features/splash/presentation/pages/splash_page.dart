@@ -42,8 +42,9 @@ class _SplashPageState extends State<SplashPage> {
 
     try {
       final api = StorefrontApi(dio);
+      final marketsFuture = api.fetchMarketsForPicker();
       final warmupTasks = <Future<void>>[
-        api.getMarkets().then((_) {}).catchError((Object e, StackTrace st) {
+        marketsFuture.then((_) {}).catchError((Object e, StackTrace st) {
           _logSplash('WARN splash warm-up getMarkets: $e');
           _logSplash(st);
         }),
@@ -65,13 +66,21 @@ class _SplashPageState extends State<SplashPage> {
         );
       }
       await Future.wait(warmupTasks, eagerError: false);
+      if (!mounted) return;
+      final markets = await marketsFuture;
+      if (!mounted) return;
+      if (markets.length == 1) {
+        context.go('/market/${markets.first.slug}');
+      } else {
+        context.go('/main');
+      }
     } catch (e, st) {
       _logSplash('WARN splash warm-up: $e');
       _logSplash(st);
+      if (!mounted) return;
+      context.go('/main');
     }
 
-    if (!mounted) return;
-    context.go('/main');
     // Remove native splash only after the first frame of the next route is rendered.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.allowFirstFrame();

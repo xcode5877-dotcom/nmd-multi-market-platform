@@ -8,8 +8,10 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../design_system/design_system.dart';
 import '../../../../api/market_images.dart';
 import '../../../../api/markets_picker_load_result.dart';
 import '../../../../api/models/market.dart';
@@ -105,15 +107,9 @@ class _MarketSelectionPageState extends State<MarketSelectionPage> {
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
-                    return const Center(
-                      child: SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.6,
-                          color: AppColors.primaryTeal,
-                        ),
-                      ),
+                    return const Padding(
+                      padding: EdgeInsets.all(NmdSpacing.screenHorizontal),
+                      child: _MarketPickerShimmer(),
                     );
                   }
                   if (snap.hasError) {
@@ -135,6 +131,22 @@ class _MarketSelectionPageState extends State<MarketSelectionPage> {
                       title: 'تعذر التحميل',
                       onCopy: () => _copyToClipboard(
                           context, result.diagnosticClipboardText),
+                    );
+                  }
+                  if (result.markets.length == 1) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!context.mounted) return;
+                      context.go('/market/${result.markets.first.slug}');
+                    });
+                    return const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.6,
+                          color: AppColors.primaryTeal,
+                        ),
+                      ),
                     );
                   }
                   return SingleChildScrollView(
@@ -619,6 +631,35 @@ class _NetworkErrorPlaceholder extends StatelessWidget {
           'assets/branding/logo-nowmarket.svg',
           width: 56,
           height: 56,
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketPickerShimmer extends StatelessWidget {
+  const _MarketPickerShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        childAspectRatio: 0.92,
+      ),
+      itemCount: 4,
+      itemBuilder: (_, __) => Shimmer.fromColors(
+        baseColor: NmdColors.borderSubtle,
+        highlightColor: NmdColors.surfaceBase,
+        child: Container(
+          decoration: BoxDecoration(
+            color: NmdColors.borderSubtle,
+            borderRadius: NmdRadius.borderMd,
+          ),
         ),
       ),
     );

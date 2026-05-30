@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../api/models/pizza_placement.dart';
 import '../../../../design_system/design_system.dart';
 
-/// Tristate control: full pizza / left half / right half (web `PizzaAddonsSelector` order L–W–R in LTR).
+/// Premium segmented selector for pizza placement (same values as web/API).
 class PizzaSideToggle extends StatelessWidget {
   const PizzaSideToggle({
     super.key,
@@ -16,147 +16,110 @@ class PizzaSideToggle extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final bool enabled;
 
+  static const _segments = <_PlacementSegment>[
+    _PlacementSegment(
+      value: PizzaPlacement.whole,
+      label: 'كامل',
+    ),
+    _PlacementSegment(
+      value: PizzaPlacement.right,
+      label: 'نصف يمين',
+    ),
+    _PlacementSegment(
+      value: PizzaPlacement.left,
+      label: 'نصف يسار',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final v = value.toUpperCase();
+    final selected = value.toUpperCase();
     return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _SideButton(
-            selected: v == PizzaPlacement.left,
-            onTap: enabled ? () => onChanged(PizzaPlacement.left) : null,
-            child: _HalfCirclePainterWidget(
-              side: _HalfSide.left,
-              ink: v == PizzaPlacement.left
-                  ? NmdColors.textOnBrand
-                  : NmdColors.brandPrimary,
-            ),
+      textDirection: TextDirection.rtl,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: NmdColors.surfaceMuted,
+          borderRadius: NmdRadius.borderMd,
+          border: const Border.fromBorderSide(
+            BorderSide(color: NmdColors.borderSubtle),
           ),
-          const SizedBox(width: 4),
-          _SideButton(
-            selected: v == PizzaPlacement.whole,
-            onTap: enabled ? () => onChanged(PizzaPlacement.whole) : null,
-            child: _HalfCirclePainterWidget(
-              side: _HalfSide.full,
-              ink: v == PizzaPlacement.whole
-                  ? NmdColors.textOnBrand
-                  : NmdColors.brandPrimary,
-            ),
-          ),
-          const SizedBox(width: 4),
-          _SideButton(
-            selected: v == PizzaPlacement.right,
-            onTap: enabled ? () => onChanged(PizzaPlacement.right) : null,
-            child: _HalfCirclePainterWidget(
-              side: _HalfSide.right,
-              ink: v == PizzaPlacement.right
-                  ? NmdColors.textOnBrand
-                  : NmdColors.brandPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SideButton extends StatelessWidget {
-  const _SideButton({
-    required this.selected,
-    required this.onTap,
-    required this.child,
-  });
-
-  final bool selected;
-  final VoidCallback? onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? NmdColors.brandPrimary : NmdColors.surfaceMuted,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: IconTheme(
-            data: IconThemeData(
-              color: selected ? NmdColors.textOnBrand : NmdColors.brandPrimary,
-              size: 22,
-            ),
-            child: child,
-          ),
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < _segments.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: _SegmentChip(
+                  label: _segments[i].label,
+                  selected: selected == _segments[i].value,
+                  enabled: enabled,
+                  onTap: enabled
+                      ? () => onChanged(_segments[i].value)
+                      : null,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
 }
 
-enum _HalfSide { full, left, right }
+class _PlacementSegment {
+  const _PlacementSegment({required this.value, required this.label});
 
-class _HalfCirclePainterWidget extends StatelessWidget {
-  const _HalfCirclePainterWidget({required this.side, required this.ink});
+  final String value;
+  final String label;
+}
 
-  final _HalfSide side;
-  final Color ink;
+class _SegmentChip extends StatelessWidget {
+  const _SegmentChip({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    const size = 22.0;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(
-        painter: _HalfCirclePainter(side: side, ink: ink),
+    final bg = selected ? NmdColors.brandPrimary : Colors.transparent;
+    final fg = selected
+        ? NmdColors.textOnBrand
+        : (enabled ? NmdColors.textPrimary : NmdColors.textTertiary);
+
+    return Material(
+      color: bg,
+      borderRadius: NmdRadius.borderSm,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: NmdRadius.borderSm,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Center(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: NmdTypography.label.copyWith(
+                  color: fg,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
-}
-
-class _HalfCirclePainter extends CustomPainter {
-  _HalfCirclePainter({required this.side, required this.ink});
-
-  final _HalfSide side;
-  final Color ink;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
-    final r = size.width / 2 - 1;
-    final fill = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = ink;
-
-    switch (side) {
-      case _HalfSide.full:
-        fill.color = ink;
-        canvas.drawCircle(c, r, fill);
-        break;
-      case _HalfSide.left:
-        canvas.drawCircle(c, r, stroke);
-        fill.color = ink;
-        canvas.drawArc(
-            Rect.fromCircle(center: c, radius: r), 1.5708, 3.14159, true, fill);
-        break;
-      case _HalfSide.right:
-        canvas.drawCircle(c, r, stroke);
-        fill.color = ink;
-        canvas.drawArc(Rect.fromCircle(center: c, radius: r), -1.5708, 3.14159,
-            true, fill);
-        break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _HalfCirclePainter oldDelegate) =>
-      oldDelegate.side != side || oldDelegate.ink != ink;
 }

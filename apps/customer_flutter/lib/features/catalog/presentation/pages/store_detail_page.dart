@@ -24,6 +24,8 @@ import '../widgets/available_slots_placeholder.dart';
 import '../widgets/html_plain_text.dart';
 import '../widgets/professional_service_list_card.dart';
 import '../widgets/professional_store_info_section.dart';
+import '../widgets/product_quick_add.dart';
+import '../widgets/marketplace_card_layout.dart';
 import '../widgets/retail_product_card.dart';
 import '../widgets/service_product_card.dart';
 
@@ -610,8 +612,17 @@ class _CategorySectionWidget extends StatelessWidget {
       final desc = p.description.trim();
       void onTap() =>
           context.push('/market/$marketSlug/store/$storeId/product/${p.id}');
+      void onAdd() => handleProductQuickAdd(
+            context: context,
+            product: p,
+            tenantId: storeId,
+            marketSlug: marketSlug,
+            storeId: storeId,
+            available: available,
+          );
       if (isServicesStore) {
         return ServiceProductCard(
+          width: MarketplaceCardLayout.stripCardWidth,
           name: p.name,
           price: p.customerListPrice,
           imageUrl: p.imageUrl,
@@ -624,7 +635,7 @@ class _CategorySectionWidget extends StatelessWidget {
         );
       }
       return RetailProductCard(
-        width: 128,
+        width: MarketplaceCardLayout.stripCardWidth,
         name: p.name,
         price: p.customerListPrice,
         imageUrl: p.imageUrl,
@@ -632,6 +643,7 @@ class _CategorySectionWidget extends StatelessWidget {
         heroTag: heroTag,
         description: desc.isEmpty ? null : desc,
         onTap: onTap,
+        onAddTap: available ? onAdd : null,
       );
     }
 
@@ -656,11 +668,16 @@ class _CategorySectionWidget extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 primary: false,
                 shrinkWrap: true,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+                physics: MarketplaceStripScrollPhysics(
+                  itemExtent: MarketplaceCardLayout.stripCardWidth,
+                  separatorWidth: MarketplaceCardLayout.stripSeparator,
+                  parent: const BouncingScrollPhysics(),
+                ),
+                padding: MarketplaceCardLayout.stripPadding,
                 itemCount: products.length,
-                separatorBuilder: (_, __) =>
-                    SizedBox(width: isServicesStore ? 14 : 16),
+                separatorBuilder: (_, __) => const SizedBox(
+                  width: MarketplaceCardLayout.stripSeparator,
+                ),
                 itemBuilder: (context, i) => productTile(i),
               ),
             ),

@@ -637,32 +637,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             data.zones.isEmpty ||
                             (_selectedZoneId != null &&
                                 _selectedZoneId!.isNotEmpty);
-                        final globalCardEnabled =
-                            data.globalPaymentMethods['card'] != false;
-                        final storeCardEnabled =
-                            data.tenantPaymentMethods['card'] == true;
-                        final cardEnabled =
-                            globalCardEnabled && storeCardEnabled;
                         final cashEnabled =
                             data.tenantPaymentMethods['cash'] != false;
-                        if (_paymentMethod == _PaymentMethod.card &&
-                            !cardEnabled) {
+                        if (_paymentMethod == _PaymentMethod.card) {
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted)
+                            if (mounted) {
                               setState(
                                   () => _paymentMethod = _PaymentMethod.cash);
+                            }
                           });
                         }
-                        if (_paymentMethod == _PaymentMethod.cash &&
-                            !cashEnabled &&
-                            cardEnabled) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted)
-                              setState(
-                                  () => _paymentMethod = _PaymentMethod.card);
-                          });
-                        }
-                        final hasPaymentOption = cashEnabled || cardEnabled;
+                        final hasPaymentOption = cashEnabled;
                         final canSubmit = nameOk &&
                             phoneOk &&
                             addressOk &&
@@ -866,21 +851,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                 _paymentMethod =
                                                     _PaymentMethod.cash),
                                           ),
-                                          if (cardEnabled)
-                                            const SizedBox(
-                                                height: NmdSpacing.sm),
+                                          const SizedBox(
+                                              height: NmdSpacing.sm),
                                         ],
-                                        if (cardEnabled)
-                                          _PaymentOptionTile(
-                                            title: 'بطاقة ائتمان (Hyp)',
-                                            subtitle:
-                                                'صفحة دفع آمنة — Isracard / CreditGuard',
-                                            selected: _paymentMethod ==
-                                                _PaymentMethod.card,
-                                            onTap: () => setState(() =>
-                                                _paymentMethod =
-                                                    _PaymentMethod.card),
-                                          ),
+                                        _PaymentOptionTile(
+                                          title: 'بطاقة ائتمان — قريبًا',
+                                          subtitle: 'سيتوفر قريباً',
+                                          selected: false,
+                                          enabled: false,
+                                          onTap: () {},
+                                        ),
                                         if (!hasPaymentOption)
                                           Text(
                                             'لا توجد طرق دفع مفعّلة حالياً لهذا المتجر.',
@@ -1117,9 +1097,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                           Text('الإجمالي',
                                               style: NmdTypography.h3),
                                           Text(
-                                            '₪${grandTotal.toStringAsFixed(2)}',
-                                            style: NmdTypography.h1.copyWith(
-                                              color: NmdColors.brandPrimary,
+                                            NmdFormat.money(grandTotal),
+                                            style: NmdTypography.priceTotal.copyWith(
                                               fontSize: 24,
                                             ),
                                           ),
@@ -1189,40 +1168,61 @@ class _PaymentOptionTile extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String title;
   final String subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return NmdCard(
-      variant: NmdCardVariant.flat,
-      padding: const EdgeInsets.symmetric(
-        horizontal: NmdSpacing.sm + 2,
-        vertical: NmdSpacing.sm,
-      ),
-      onTap: onTap,
-      child: Row(
-        children: [
-          Icon(
-            selected ? Icons.radio_button_checked : Icons.radio_button_off,
-            color: selected ? NmdColors.brandPrimary : NmdColors.textTertiary,
-          ),
-          const SizedBox(width: NmdSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: NmdTypography.bodyBold),
-                const SizedBox(height: 2),
-                Text(subtitle, style: NmdTypography.bodySmall),
-              ],
+    final inactive = !enabled;
+    return Opacity(
+      opacity: inactive ? 0.55 : 1,
+      child: NmdCard(
+        variant: NmdCardVariant.flat,
+        padding: const EdgeInsets.symmetric(
+          horizontal: NmdSpacing.sm + 2,
+          vertical: NmdSpacing.sm,
+        ),
+        onTap: enabled ? onTap : null,
+        child: Row(
+          children: [
+            Icon(
+              inactive
+                  ? Icons.lock_outline
+                  : (selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off),
+              color: inactive
+                  ? NmdColors.textTertiary
+                  : (selected
+                      ? NmdColors.brandPrimary
+                      : NmdColors.textTertiary),
             ),
-          ),
-        ],
+            const SizedBox(width: NmdSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: NmdTypography.bodyBold.copyWith(
+                      color: inactive
+                          ? NmdColors.textSecondary
+                          : NmdColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: NmdTypography.bodySmall),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1499,31 +1499,33 @@ class _SummaryBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _sumRow('المجموع', '₪${subtotal.toStringAsFixed(2)}',
-              const Color(0xFF334155)),
+          _sumRow('المجموع', NmdFormat.money(subtotal), NmdColors.textPrimary),
           if (showDelivery) ...[
-            const SizedBox(height: 8),
-            _sumRow('رسوم التوصيل', '₪${delivery.toStringAsFixed(2)}',
-                const Color(0xFF334155)),
+            const SizedBox(height: NmdSpacing.xs),
+            _sumRow(
+              'رسوم التوصيل',
+              NmdFormat.money(delivery),
+              NmdColors.textPrimary,
+            ),
           ],
           if (couponDiscount > 0) ...[
-            const SizedBox(height: 8),
-            _sumRow('خصم الكوبون', '-₪${couponDiscount.toStringAsFixed(2)}',
-                const Color(0xFFB91C1C)),
+            const SizedBox(height: NmdSpacing.xs),
+            _sumRow(
+              'خصم الكوبون',
+              NmdFormat.moneySigned(couponDiscount, negative: true),
+              NmdColors.error,
+            ),
           ],
-          const SizedBox(height: 12),
-          const Divider(height: 1),
-          const SizedBox(height: 12),
+          const SizedBox(height: NmdSpacing.sm),
+          const Divider(height: 1, color: NmdColors.borderSubtle),
+          const SizedBox(height: NmdSpacing.sm),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('الإجمالي النهائي', style: NmdTypography.h3),
               Text(
-                '₪${grandTotal.toStringAsFixed(2)}',
-                style: NmdTypography.h1.copyWith(
-                  color: NmdColors.brandPrimary,
-                  fontSize: 22,
-                ),
+                NmdFormat.money(grandTotal),
+                style: NmdTypography.priceTotal,
               ),
             ],
           ),
