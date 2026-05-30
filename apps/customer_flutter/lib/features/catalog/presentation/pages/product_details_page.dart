@@ -582,19 +582,11 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '₪${computedUnitPrice.toStringAsFixed(2)}',
-                                        style: NmdTypography.h2.copyWith(
-                                          color: NmdColors.brandPrimary,
+                                        NmdFormat.money(computedUnitPrice),
+                                        style: NmdTypography.price.copyWith(
+                                          fontSize: 18,
                                         ),
                                       ),
-                                      if (computedUnitPrice !=
-                                          product.basePrice)
-                                        Text(
-                                          'أساسي ₪${product.basePrice.toStringAsFixed(2)}',
-                                          style: NmdTypography.micro.copyWith(
-                                            color: NmdColors.textTertiary,
-                                          ),
-                                        ),
                                     ],
                                   ),
                                 ],
@@ -736,7 +728,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
                                     child: Text(
-                                      '₪${computedUnitPrice.toStringAsFixed(2)}',
+                                      NmdFormat.money(computedUnitPrice),
                                       style: NmdTypography.label.copyWith(
                                         color: NmdColors.textOnBrand,
                                         fontWeight: FontWeight.w800,
