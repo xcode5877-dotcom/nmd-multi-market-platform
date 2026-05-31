@@ -6,16 +6,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../api/models/pizza_placement.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
+import '../../../../design_system/premium/premium_marketplace_design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
-import '../../../../features/cart/domain/cart_selected_option.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../data/pillar_kind.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../application/service_lead_actions.dart';
 import '../../data/tenant_contact_info.dart';
-import '../widgets/pizza_side_toggle.dart';
+import '../widgets/service_cinematic_experience.dart';
+import '../customization/product_customization_tier.dart';
+import '../customization/customization_step_plan.dart';
+import '../customization/customization_tokens.dart';
+import '../customization/product_customization_controller.dart';
+import '../widgets/floating_smart_cta.dart';
+import '../widgets/product_customization_surface.dart';
 import '../../../../widgets/app_error_view.dart';
 
 class ProductDetailsPage extends StatefulWidget {
@@ -38,11 +45,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     with SingleTickerProviderStateMixin {
   late final Future<_ProductPagePayload> _future;
 
-  /// groupId -> selected option item ids
-  final Map<String, Set<String>> _selectedByGroup = {};
-
-  /// groupId -> (optionItemId -> WHOLE|LEFT|RIGHT), web `optionPlacements`.
-  final Map<String, Map<String, String>> _placementByGroup = {};
+  ProductCustomizationController? _customization;
+  String? _customizationProductId;
 
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _cartIconKey = GlobalKey();
@@ -72,6 +76,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 
   @override
   void dispose() {
+    _customization?.removeListener(_onCustomizationChanged);
+    _customization?.dispose();
     _scrollController.dispose();
     _dockBounceController.dispose();
     _flyController?.dispose();
@@ -139,6 +145,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     }
 
     _flyToCart(imageUrl: product.imageUrl);
+    final customization = _customization;
     cart.addOrIncrement(
       tenantId: widget.storeId,
       productId: product.id,
@@ -147,190 +154,45 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       merchantUnitPrice: merchantUnitPrice,
       imageUrl: product.imageUrl,
       addQty: 1,
-      selectedOptions: _buildCartSelectedOptions(product),
+      selectedOptions:
+          customization?.buildCartSelectedOptions() ?? const [],
       optionGroupsJson: optionGroupsToOrderJson(product.optionGroups),
     );
   }
 
-  List<CartSelectedOption> _buildCartSelectedOptions(Product product) {
-    final out = <CartSelectedOption>[];
-    for (final group in product.optionGroups) {
-      final ids = _selectedByGroup[group.id];
-      if (ids == null || ids.isEmpty) continue;
-      final pl = <String, String>{};
-      for (final id in ids) {
-        pl[id] = (_placementByGroup[group.id]?[id] ??
-                PizzaPlacement.defaultPlacement)
-            .toUpperCase();
-      }
-      final half = productGroupHasHalfOptions(group);
-      out.add(
-        CartSelectedOption(
-          optionGroupId: group.id,
-          optionItemIds: ids.toList(),
-          sliceSelection: half ? PizzaPlacement.defaultPlacement : null,
-          optionPlacements: pl,
-        ),
-      );
+  void _ensureCustomization(Product product) {
+    if (_customizationProductId == product.id && _customization != null) {
+      return;
     }
-    return out;
+    _customization?.removeListener(_onCustomizationChanged);
+    _customization?.dispose();
+    _customization = ProductCustomizationController(product);
+    _customizationProductId = product.id;
+    _customization!.addListener(_onCustomizationChanged);
   }
 
-  double _computeMerchantUnitPrice(Product product) {
-    var total = product.basePrice;
-    for (final group in product.optionGroups) {
-      final selected = _selectedByGroup[group.id];
-      if (selected == null || selected.isEmpty) continue;
-      final placements = _placementByGroup[group.id] ?? {};
-
-      if ((group.allowHalfPlacement || group.allowSplitting) &&
-          selected.length == 2) {
-        String? leftId;
-        String? rightId;
-        for (final id in selected) {
-          final p =
-              (placements[id] ?? PizzaPlacement.defaultPlacement).toUpperCase();
-          if (p == PizzaPlacement.left) leftId = id;
-          if (p == PizzaPlacement.right) rightId = id;
-        }
-        if (leftId != null && rightId != null) {
-          ProductOptionItem? i1;
-          ProductOptionItem? i2;
-          for (final i in group.items) {
-            if (i.id == leftId) i1 = i;
-            if (i.id == rightId) i2 = i;
-          }
-          if (i1 != null && i2 != null) {
-            total += (i1.priceDelta + i2.priceDelta) / 2;
-            continue;
-          }
-        }
-      }
-
-      for (final itemId in selected) {
-        ProductOptionItem? found;
-        for (final i in group.items) {
-          if (i.id == itemId) {
-            found = i;
-            break;
-          }
-        }
-        if (found == null) continue;
-        final p = (placements[itemId] ?? PizzaPlacement.defaultPlacement)
-            .toUpperCase();
-        final delta = found.priceDelta;
-        if (p == PizzaPlacement.left || p == PizzaPlacement.right) {
-          total += delta / 2;
-        } else {
-          total += delta;
-        }
-      }
-    }
-    return total;
-  }
-
-  double _computeCustomerUnitPrice(Product product) {
-    var total = product.customerListPrice;
-    for (final group in product.optionGroups) {
-      final selected = _selectedByGroup[group.id];
-      if (selected == null || selected.isEmpty) continue;
-      final placements = _placementByGroup[group.id] ?? {};
-
-      if ((group.allowHalfPlacement || group.allowSplitting) &&
-          selected.length == 2) {
-        String? leftId;
-        String? rightId;
-        for (final id in selected) {
-          final p =
-              (placements[id] ?? PizzaPlacement.defaultPlacement).toUpperCase();
-          if (p == PizzaPlacement.left) leftId = id;
-          if (p == PizzaPlacement.right) rightId = id;
-        }
-        if (leftId != null && rightId != null) {
-          ProductOptionItem? i1;
-          ProductOptionItem? i2;
-          for (final i in group.items) {
-            if (i.id == leftId) i1 = i;
-            if (i.id == rightId) i2 = i;
-          }
-          if (i1 != null && i2 != null) {
-            total += (i1.customerPriceDelta + i2.customerPriceDelta) / 2;
-            continue;
-          }
-        }
-      }
-
-      for (final itemId in selected) {
-        ProductOptionItem? found;
-        for (final i in group.items) {
-          if (i.id == itemId) {
-            found = i;
-            break;
-          }
-        }
-        if (found == null) continue;
-        final p = (placements[itemId] ?? PizzaPlacement.defaultPlacement)
-            .toUpperCase();
-        final delta = found.customerPriceDelta;
-        if (p == PizzaPlacement.left || p == PizzaPlacement.right) {
-          total += delta / 2;
-        } else {
-          total += delta;
-        }
-      }
-    }
-    return total;
-  }
-
-  void _setGroupSelection(String groupId, Set<String> next) {
-    setState(() {
-      if (next.isEmpty) {
-        _selectedByGroup.remove(groupId);
-        _placementByGroup.remove(groupId);
-      } else {
-        _selectedByGroup[groupId] = next;
-        final prev = _placementByGroup[groupId] ?? {};
-        final pl = <String, String>{};
-        for (final id in next) {
-          pl[id] = prev[id] ?? PizzaPlacement.defaultPlacement;
-        }
-        _placementByGroup[groupId] = pl;
-      }
-    });
+  void _onCustomizationChanged() {
     _dockBounceController.forward(from: 0);
   }
 
-  void _setItemPlacement(String groupId, String itemId, String placement) {
-    setState(() {
-      final sel = Set<String>.from(_selectedByGroup[groupId] ?? {});
-      sel.add(itemId);
-      _selectedByGroup[groupId] = sel;
-      final pl = Map<String, String>.from(_placementByGroup[groupId] ?? {});
-      pl[itemId] = placement.toUpperCase();
-      _placementByGroup[groupId] = pl;
-    });
-    _dockBounceController.forward(from: 0);
-  }
-
-  void _removeHalfItem(String groupId, String itemId) {
-    setState(() {
-      final sel = Set<String>.from(_selectedByGroup[groupId] ?? {});
-      sel.remove(itemId);
-      _placementByGroup[groupId]?.remove(itemId);
-      if (sel.isEmpty) {
-        _selectedByGroup.remove(groupId);
-        _placementByGroup.remove(groupId);
-      } else {
-        _selectedByGroup[groupId] = sel;
-      }
-    });
-    _dockBounceController.forward(from: 0);
-  }
-
-  String _formatDelta(double delta) {
-    final abs = delta.abs().toStringAsFixed(2);
-    final sign = delta >= 0 ? '+' : '-';
-    return '$sign$abs₪';
+  void _openAdvancedBuilder({
+    required Product product,
+    required bool storeClosed,
+  }) {
+    final customization = _customization;
+    if (customization == null) return;
+    openAdvancedCustomizationSheet(
+      context,
+      product: product,
+      controller: customization,
+      storeClosed: storeClosed,
+      onAddToCart: () => _handleAddToCart(
+        product: product,
+        computedUnitPrice: customization.customerUnitPrice,
+        merchantUnitPrice: customization.merchantUnitPrice,
+        storeClosed: storeClosed,
+      ),
+    );
   }
 
   void _flyToCart({required String? imageUrl}) {
@@ -469,8 +331,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           final product = payload.product;
           final storeClosed = payload.storeStatus == 'closed';
           final isServices = payload.isServicesStore;
-          final computedUnitPrice = _computeCustomerUnitPrice(product);
-          final merchantUnitPrice = _computeMerchantUnitPrice(product);
+          _ensureCustomization(product);
+          final customization = _customization!;
+          final tier = effectiveCustomizationTier(product);
+          logCustomizationPlan(
+            product,
+            tier.name,
+            planCustomizationSteps(product),
+          );
+
           final heroTag = 'product-${widget.storeId}-${product.id}';
 
           final desc = product.description.trim();
@@ -479,288 +348,344 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
               ? '${desc.substring(0, 220)}...'
               : desc;
 
-          final bottomPadding = MediaQuery.of(context).padding.bottom;
-
           return Scaffold(
             backgroundColor: NmdColors.surfaceBase,
-            body: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            body: Stack(
+              fit: StackFit.expand,
               children: [
-                _productHeader(
-                  context,
-                  showCart: !isServices,
-                  cartIconKey: isServices ? null : _cartIconKey,
-                ),
-                Expanded(
-                  child: CustomScrollView(
-                    controller: _scrollController,
-                    primary: false,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 260,
-                          child: ClipPath(
-                            clipper: _HeroCurvedBottomClipper(),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Positioned.fill(
-                                  child: Hero(
-                                    tag: heroTag,
-                                    child: SizedBox(
-                                      key: _imageKey,
-                                      child: product.imageUrl.isEmpty
-                                          ? ColoredBox(
-                                              color: NmdColors.tintAliveSoft)
-                                          : CachedNetworkImage(
-                                              imageUrl: product.imageUrl,
-                                              fit: BoxFit.cover,
-                                              fadeInDuration: NmdMotion.fast,
-                                              placeholder: (_, __) =>
-                                                  ColoredBox(
-                                                color: NmdColors.tintAliveMuted,
-                                              ),
-                                              errorWidget: (_, __, ___) =>
-                                                  ColoredBox(
-                                                color: NmdColors.tintAliveMuted,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                                const Positioned(
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  height: 120,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
-                                        colors: [
-                                          Color(0xA6000000),
-                                          Color(0x55000000),
-                                          Color(0x00000000),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                if (isServices)
+                  CinematicScrollChrome(
+                    scrollController: _scrollController,
+                    title: product.name,
+                    backgroundColor: NmdColors.surfaceBase,
+                    leading: CinematicGlassIconButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      onPressed: () => context.pop(),
+                    ),
+                    body: _buildProductScrollView(
+                      product: product,
+                      heroTag: heroTag,
+                      isServices: isServices,
+                      storeClosed: storeClosed,
+                      customization: customization,
+                      tier: tier,
+                      desc: desc,
+                      shownDesc: shownDesc,
+                      shouldReadMore: shouldReadMore,
+                    ),
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _productHeader(
+                        context,
+                        showCart: true,
+                        cartIconKey: _cartIconKey,
                       ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            NmdSpacing.md,
-                            NmdSpacing.lg,
-                            NmdSpacing.md,
-                            NmdSpacing.md,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                textDirection: TextDirection.rtl,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      product.name,
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.right,
-                                      style: NmdTypography.h1.copyWith(
-                                        fontSize: 20,
-                                        height: 1.25,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: NmdSpacing.sm),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        NmdFormat.money(computedUnitPrice),
-                                        style: NmdTypography.price.copyWith(
-                                          fontSize: 18,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              if (storeClosed || !product.canAddToCart) ...[
-                                const SizedBox(height: NmdSpacing.xs),
-                                NmdBadge(
-                                  label: storeClosed
-                                      ? 'المحل مغلق حالياً'
-                                      : 'غير متوفر حالياً',
-                                  tone: NmdBadgeTone.neutral,
-                                ),
-                              ],
-                              if (desc.isNotEmpty) ...[
-                                _FadeInUpSection(
-                                  delayMs: 50,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        shownDesc,
-                                        style: NmdTypography.bodySmall.copyWith(
-                                          height: 1.6,
-                                        ),
-                                      ),
-                                      if (shouldReadMore) ...[
-                                        const SizedBox(height: NmdSpacing.xs),
-                                        GestureDetector(
-                                          onTap: () => setState(() =>
-                                              _descExpanded = !_descExpanded),
-                                          child: Text(
-                                            _descExpanded
-                                                ? 'عرض أقل'
-                                                : 'عرض المزيد',
-                                            style: NmdTypography.label.copyWith(
-                                              color: NmdColors.brandPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: NmdSpacing.sm),
-                                      const Divider(
-                                        height: 1,
-                                        color: NmdColors.divider,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 14),
-                              if (!isServices)
-                                for (var i = 0;
-                                    i < product.optionGroups.length;
-                                    i++) ...[
-                                  if (product
-                                      .optionGroups[i].items.isNotEmpty) ...[
-                                    _FadeInUpSection(
-                                      delayMs: 40 + (i * 40),
-                                      child: _OptionGroupChips(
-                                        group: product.optionGroups[i],
-                                        selectedItemIds: _selectedByGroup[
-                                                product.optionGroups[i].id] ??
-                                            const <String>{},
-                                        placements: _placementByGroup[
-                                                product.optionGroups[i].id] ??
-                                            const {},
-                                        onSelectionChanged: (next) =>
-                                            _setGroupSelection(
-                                                product.optionGroups[i].id,
-                                                next),
-                                        onPlacement: (itemId, p) =>
-                                            _setItemPlacement(
-                                                product.optionGroups[i].id,
-                                                itemId,
-                                                p),
-                                        onRemoveHalf: (itemId) =>
-                                            _removeHalfItem(
-                                                product.optionGroups[i].id,
-                                                itemId),
-                                        formatDelta: _formatDelta,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                  ],
-                                ],
-                            ],
-                          ),
-                        ),
-                      ),
-                      SliverPadding(
-                        padding: EdgeInsets.only(
-                          bottom: 100,
+                      Expanded(
+                        child: _buildProductScrollView(
+                          product: product,
+                          heroTag: heroTag,
+                          isServices: isServices,
+                          storeClosed: storeClosed,
+                          customization: customization,
+                          tier: tier,
+                          desc: desc,
+                          shownDesc: shownDesc,
+                          shouldReadMore: shouldReadMore,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-            bottomNavigationBar: isServices
-                ? null
-                : Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      NmdSpacing.md,
-                      0,
-                      NmdSpacing.md,
-                      bottomPadding + NmdSpacing.lg,
-                    ),
-                    child: AnimatedBuilder(
-                      animation: _dockScale,
-                      builder: (context, child) => Transform.scale(
-                        scale: _dockScale.value,
-                        child: child,
-                      ),
-                      child: ClipRRect(
-                        borderRadius: NmdRadius.borderPill,
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: NmdSurface(
-                            mode: NmdSurfaceMode.alive,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: NmdSpacing.sm,
-                              vertical: NmdSpacing.xs,
-                            ),
-                            borderRadius: NmdRadius.borderPill,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 56,
-                                  height: 56,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: NmdColors.brandPrimary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: NmdShadows.brandGlow(alpha: 0.2),
-                                  ),
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      NmdFormat.money(computedUnitPrice),
-                                      style: NmdTypography.label.copyWith(
-                                        color: NmdColors.textOnBrand,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: NmdSpacing.sm),
-                                Expanded(
-                                  child: _GlassAddToCartFabButton(
-                                    disabled:
-                                        storeClosed || !product.canAddToCart,
-                                    onPressed: () => _handleAddToCart(
-                                      product: product,
-                                      computedUnitPrice: computedUnitPrice,
-                                      merchantUnitPrice: merchantUnitPrice,
-                                      storeClosed: storeClosed,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                if (!isServices)
+                  ListenableBuilder(
+                    listenable: customization,
+                    builder: (context, _) {
+                      final missingRequired =
+                          customization.missingRequired.isNotEmpty;
+                      return AnimatedBuilder(
+                        animation: _dockScale,
+                        builder: (context, child) => FloatingSmartCta(
+                          scrollController: _scrollController,
+                          price: customization.customerUnitPrice,
+                          missingRequired: missingRequired,
+                          disabled: storeClosed || !product.canAddToCart,
+                          scale: _dockScale.value,
+                          onPressed: () => _handleAddToCart(
+                            product: product,
+                            computedUnitPrice:
+                                customization.customerUnitPrice,
+                            merchantUnitPrice:
+                                customization.merchantUnitPrice,
+                            storeClosed: storeClosed,
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
+                  )
+                else
+                  CinematicServiceDock(
+                    onPressed: () async {
+                      final dio = context.read<Dio>();
+                      final auth = context.read<AuthBloc>().state;
+                      await launchWhatsAppInquiry(
+                        dio: dio,
+                        tenantId: payload.tenantIdForLeads,
+                        contact: payload.contact,
+                        tenantContact: payload.officeContact,
+                        serviceName: product.name,
+                        customerPhone:
+                            auth.step == AuthStep.done ? auth.phone : null,
+                        context: context,
+                      );
+                    },
                   ),
+              ],
+            ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildProductScrollView({
+    required Product product,
+    required String heroTag,
+    required bool isServices,
+    required bool storeClosed,
+    required ProductCustomizationController customization,
+    required ProductCustomizationTier tier,
+    required String desc,
+    required String shownDesc,
+    required bool shouldReadMore,
+  }) {
+    return CustomScrollView(
+      controller: _scrollController,
+      primary: false,
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: isServices
+                ? MediaQuery.sizeOf(context).height * 0.42
+                : CustomizationTokens.heroHeight,
+            child: isServices
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: Hero(
+                          tag: heroTag,
+                          child: SizedBox(
+                            key: _imageKey,
+                            child: product.imageUrl.isEmpty
+                                ? const ColoredBox(
+                                    color: Color(0xFF141A22),
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: product.imageUrl,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration:
+                                        PremiumMarketplaceDesignSystem.micro,
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: PremiumMarketplaceDesignSystem
+                              .cinematicDarkOverlay,
+                        ),
+                      ),
+                    ],
+                  )
+                : ClipPath(
+                    clipper: _HeroCurvedBottomClipper(),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Positioned.fill(
+                          child: Hero(
+                            tag: heroTag,
+                            child: SizedBox(
+                              key: _imageKey,
+                              child: product.imageUrl.isEmpty
+                                  ? ColoredBox(
+                                      color: NmdColors.tintAliveSoft,
+                                    )
+                                  : CachedNetworkImage(
+                                      imageUrl: product.imageUrl,
+                                      fit: BoxFit.cover,
+                                      fadeInDuration: NmdMotion.fast,
+                                      placeholder: (_, __) => ColoredBox(
+                                        color: NmdColors.tintAliveMuted,
+                                      ),
+                                      errorWidget: (_, __, ___) => ColoredBox(
+                                        color: NmdColors.tintAliveMuted,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 120,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Color(0xA6000000),
+                                  Color(0x55000000),
+                                  Color(0x00000000),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              CustomizationTokens.md,
+              isServices ? 28 : CustomizationTokens.md,
+              CustomizationTokens.md,
+              CustomizationTokens.sm,
+            ),
+            child: ListenableBuilder(
+              listenable: customization,
+              builder: (context, _) {
+                final computedUnitPrice = customization.customerUnitPrice;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product.name,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: NmdTypography.display.copyWith(
+                              fontSize: isServices ? 24 : 20,
+                              height: 1.12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: isServices ? -0.4 : 0,
+                            ),
+                          ),
+                        ),
+                        if (!isServices) ...[
+                          const SizedBox(width: CustomizationTokens.sm),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                NmdFormat.money(computedUnitPrice),
+                                style: NmdTypography.price.copyWith(
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (!isServices &&
+                        (storeClosed || !product.canAddToCart)) ...[
+                      const SizedBox(height: CustomizationTokens.xs),
+                      NmdBadge(
+                        label: storeClosed
+                            ? 'المحل مغلق حالياً'
+                            : 'غير متوفر حالياً',
+                        tone: NmdBadgeTone.neutral,
+                      ),
+                    ],
+                    if (desc.isNotEmpty) ...[
+                      _FadeInUpSection(
+                        delayMs: 50,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const SizedBox(height: CustomizationTokens.sm),
+                            Text(
+                              shownDesc,
+                              style: NmdTypography.bodySmall.copyWith(
+                                height: 1.6,
+                                color: isServices
+                                    ? NmdColors.textSecondary
+                                    : null,
+                              ),
+                            ),
+                            if (shouldReadMore) ...[
+                              const SizedBox(
+                                  height: CustomizationTokens.xs),
+                              GestureDetector(
+                                onTap: () => setState(
+                                    () => _descExpanded = !_descExpanded),
+                                child: Text(
+                                  _descExpanded ? 'عرض أقل' : 'عرض المزيد',
+                                  style: NmdTypography.label.copyWith(
+                                    color: NmdColors.brandPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            if (!isServices) ...[
+                              const SizedBox(height: CustomizationTokens.sm),
+                              const Divider(
+                                height: 1,
+                                color: NmdColors.divider,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: CustomizationTokens.sm),
+                    if (!isServices)
+                      _FadeInUpSection(
+                        delayMs: 80,
+                        child: ProductCustomizationSurface(
+                          product: product,
+                          controller: customization,
+                          tier: tier,
+                          storeClosed: storeClosed,
+                          onOpenAdvancedBuilder: () => _openAdvancedBuilder(
+                            product: product,
+                            storeClosed: storeClosed,
+                          ),
+                          onAddToCart: () => _handleAddToCart(
+                            product: product,
+                            computedUnitPrice: customization.customerUnitPrice,
+                            merchantUnitPrice: customization.merchantUnitPrice,
+                            storeClosed: storeClosed,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.only(
+            bottom: isServices
+                ? PremiumMarketplaceDesignSystem.dockHeight + 32
+                : kFloatingProductCtaScrollInset,
+          ),
+        ),
+      ],
     );
   }
 
@@ -804,362 +729,6 @@ class _ProductPagePayload {
   /// Product-level override (future); empty until API exposes per-service phones.
   final TenantContactInfo contact;
   final TenantContactInfo officeContact;
-}
-
-class _GlassAddToCartFabButton extends StatelessWidget {
-  const _GlassAddToCartFabButton({
-    required this.disabled,
-    required this.onPressed,
-  });
-
-  final bool disabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return NmdButton(
-      label: 'أضف للسلة',
-      onPressed: disabled ? null : onPressed,
-      icon: const Icon(
-        Icons.shopping_cart_outlined,
-        size: 20,
-        color: NmdColors.textOnBrand,
-      ),
-      size: NmdButtonSize.medium,
-    );
-  }
-}
-
-class _OptionGroupChips extends StatelessWidget {
-  const _OptionGroupChips({
-    required this.group,
-    required this.selectedItemIds,
-    required this.placements,
-    required this.onSelectionChanged,
-    required this.onPlacement,
-    required this.onRemoveHalf,
-    required this.formatDelta,
-  });
-
-  final ProductOptionGroup group;
-  final Set<String> selectedItemIds;
-  final Map<String, String> placements;
-  final ValueChanged<Set<String>> onSelectionChanged;
-  final void Function(String itemId, String placement) onPlacement;
-  final void Function(String itemId) onRemoveHalf;
-  final String Function(double delta) formatDelta;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSingle = group.isSingle;
-    final items = group.items;
-    final hasHalf = productGroupHasHalfOptions(group);
-
-    return NmdCard(
-      variant: NmdCardVariant.outlined,
-      padding: const EdgeInsets.all(NmdSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            group.name,
-            textAlign: TextAlign.right,
-            style: NmdTypography.h3.copyWith(color: NmdColors.brandPrimary),
-          ),
-          const SizedBox(height: NmdSpacing.sm),
-          if (hasHalf) ...[
-            for (final item in items) ...[
-              if (productOptionSupportsHalf(item, group))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PizzaHalfModifierRow(
-                    item: item,
-                    formatDelta: formatDelta,
-                    selected: selectedItemIds.contains(item.id),
-                    side:
-                        (placements[item.id] ?? PizzaPlacement.defaultPlacement)
-                            .toUpperCase(),
-                    onSide: (p) => onPlacement(item.id, p),
-                    onRemove: () => onRemoveHalf(item.id),
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _TagChip(
-                      label: item.name,
-                      deltaLabel: formatDelta(item.priceDelta),
-                      selected: selectedItemIds.contains(item.id),
-                      enabled: selectedItemIds.contains(item.id) ||
-                          selectedItemIds.length < group.maxSelected,
-                      onTap: () {
-                        final selected = selectedItemIds.contains(item.id);
-                        final next = {...selectedItemIds};
-                        if (selected) {
-                          next.remove(item.id);
-                        } else {
-                          next.add(item.id);
-                        }
-                        onSelectionChanged(next);
-                      },
-                    ),
-                  ),
-                ),
-            ],
-          ] else if (isSingle)
-            SizedBox(
-              height: 62,
-              child: ListView.separated(
-                reverse: true,
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                shrinkWrap: true,
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final selected = selectedItemIds.contains(item.id);
-                  return _TagChip(
-                    label: item.name,
-                    deltaLabel: formatDelta(item.priceDelta),
-                    selected: selected,
-                    enabled: true,
-                    onTap: () => onSelectionChanged({item.id}),
-                  );
-                },
-              ),
-            )
-          else ...[
-            Builder(
-              builder: (context) {
-                final freeItems =
-                    items.where((i) => i.priceDelta == 0).toList();
-                final paidItems =
-                    items.where((i) => i.priceDelta != 0).toList();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (freeItems.isNotEmpty) ...[
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: freeItems.map((item) {
-                          final selected = selectedItemIds.contains(item.id);
-                          return _TagChip(
-                            label: item.name,
-                            deltaLabel: formatDelta(item.priceDelta),
-                            selected: selected,
-                            enabled: selected ||
-                                selectedItemIds.length < group.maxSelected,
-                            onTap: () {
-                              final next = {...selectedItemIds};
-                              if (selected) {
-                                next.remove(item.id);
-                              } else {
-                                next.add(item.id);
-                              }
-                              onSelectionChanged(next);
-                            },
-                          );
-                        }).toList(),
-                      ),
-                      if (paidItems.isNotEmpty) const SizedBox(height: 12),
-                    ],
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: paidItems.map((item) {
-                        final selected = selectedItemIds.contains(item.id);
-                        final disabled = !selected &&
-                            selectedItemIds.length >= group.maxSelected;
-                        return _TagChip(
-                          label: item.name,
-                          deltaLabel: formatDelta(item.priceDelta),
-                          selected: selected,
-                          enabled: !disabled,
-                          onTap: () {
-                            if (disabled) return;
-                            final next = {...selectedItemIds};
-                            if (selected) {
-                              next.remove(item.id);
-                            } else {
-                              next.add(item.id);
-                            }
-                            onSelectionChanged(next);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PizzaHalfModifierRow extends StatelessWidget {
-  const _PizzaHalfModifierRow({
-    required this.item,
-    required this.formatDelta,
-    required this.selected,
-    required this.side,
-    required this.onSide,
-    required this.onRemove,
-  });
-
-  final ProductOptionItem item;
-  final String Function(double delta) formatDelta;
-  final bool selected;
-  final String side;
-  final ValueChanged<String> onSide;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final priceStr =
-        item.priceDelta > 0 ? ' ${formatDelta(item.priceDelta)}' : '';
-    return NmdSurface(
-      mode: NmdSurfaceMode.muted,
-      padding: const EdgeInsets.symmetric(
-        horizontal: NmdSpacing.sm,
-        vertical: NmdSpacing.sm,
-      ),
-      borderRadius: NmdRadius.borderPill,
-      child: Row(
-        textDirection: TextDirection.rtl,
-        children: [
-          if (selected)
-            TextButton(
-              onPressed: onRemove,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(
-                'إزالة',
-                style: NmdTypography.micro.copyWith(color: NmdColors.error),
-              ),
-            ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${item.name}$priceStr',
-                  textAlign: TextAlign.right,
-                  style: NmdTypography.bodyBold.copyWith(fontSize: 13),
-                ),
-                if (selected && side != PizzaPlacement.whole) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.circle,
-                        size: 6,
-                        color: NmdColors.brandPrimary.withValues(alpha: 0.8),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        pizzaSideLabelAr(side),
-                        style: NmdTypography.micro.copyWith(
-                          color: NmdColors.brandPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: NmdSpacing.xs),
-          PizzaSideToggle(
-            value: side,
-            enabled: true,
-            onChanged: onSide,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TagChip extends StatelessWidget {
-  const _TagChip({
-    required this.label,
-    required this.deltaLabel,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String label;
-  final String deltaLabel;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: enabled ? 1 : 0.5,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: NmdRadius.borderPill,
-          child: AnimatedContainer(
-            duration: NmdMotion.fast,
-            curve: NmdMotion.standard,
-            padding: const EdgeInsets.symmetric(
-              horizontal: NmdSpacing.sm + 2,
-              vertical: NmdSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: selected ? NmdColors.brandPrimary : NmdColors.surfaceBase,
-              borderRadius: NmdRadius.borderPill,
-              border: Border.all(
-                color:
-                    selected ? NmdColors.brandPrimary : NmdColors.borderSubtle,
-                width: selected ? 1.5 : 1,
-              ),
-              boxShadow: selected ? NmdShadows.brandGlow(alpha: 0.15) : null,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: NmdTypography.label.copyWith(
-                    color: selected
-                        ? NmdColors.textOnBrand
-                        : NmdColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  deltaLabel,
-                  style: NmdTypography.micro.copyWith(
-                    color: selected
-                        ? NmdColors.textOnBrand.withValues(alpha: 0.9)
-                        : NmdColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _FadeInUpSection extends StatefulWidget {

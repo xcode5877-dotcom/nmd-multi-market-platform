@@ -58,6 +58,7 @@ class _MainLayoutState extends State<MainLayout> {
     final path = GoRouterState.of(context).uri.path;
     final tab = MainLayout.tabFromPath(path);
     final showShellAppBar = tab != MainTab.home &&
+        tab != MainTab.rewards &&
         !MainLayout.isSubRouteWithoutShellAppBar(path) &&
         !MainLayout.isAccountSubRoute(path);
 

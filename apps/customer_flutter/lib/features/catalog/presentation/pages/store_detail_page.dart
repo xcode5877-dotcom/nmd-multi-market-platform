@@ -13,6 +13,7 @@ import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
+import '../../../../design_system/premium/premium_marketplace_design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
@@ -20,10 +21,8 @@ import '../../application/service_lead_actions.dart';
 import '../../domain/service_inquiry_message.dart';
 import '../../data/pillar_kind.dart';
 import '../../data/tenant_contact_info.dart';
-import '../widgets/available_slots_placeholder.dart';
 import '../widgets/html_plain_text.dart';
-import '../widgets/professional_service_list_card.dart';
-import '../widgets/professional_store_info_section.dart';
+import '../widgets/service_cinematic_experience.dart';
 import '../widgets/product_quick_add.dart';
 import '../widgets/marketplace_card_layout.dart';
 import '../widgets/retail_product_card.dart';
@@ -51,6 +50,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
       ItemPositionsListener.create();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
+  final ScrollController _servicesScrollController = ScrollController();
   bool _searchOpen = false;
   int _activeCategoryIndex = 0;
   String _query = '';
@@ -68,6 +68,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
         .removeListener(_syncActiveTabFromScroll);
     _searchController.dispose();
     _searchFocus.dispose();
+    _servicesScrollController.dispose();
     super.dispose();
   }
 
@@ -314,101 +315,81 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
               if (data.isServicesStore) {
                 final serviceProducts =
                     sections.expand((s) => s.products).toList();
-                return Column(
-                  children: [
-                    _storeAppHeader(context, showCart: false),
-                    Expanded(
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          CustomScrollView(
-                            primary: true,
-                            slivers: [
-                              SliverToBoxAdapter(
-                                child: _ImmersiveStoreHero(
-                                  storeName: data.storeName,
-                                  logoUrl: data.logoUrl,
-                                  operatingStatus: data.operatingStatus,
-                                  isAdminClosed: data.isAdminClosed,
-                                  openTime: data.openTime,
-                                  closeTime: data.closeTime,
-                                  addressLine: data.addressLine,
-                                  pillarTag: data.pillarTag,
-                                  marketSlug: widget.marketSlug,
-                                  searchController: _searchController,
-                                  searchFocus: _searchFocus,
-                                  searchOpen: _searchOpen,
-                                  onSearchOpen: _openStoreSearch,
-                                  onSearchClose: _closeStoreSearch,
-                                  onQueryChanged: (v) => setState(
-                                      () => _query = v.trim().toLowerCase()),
-                                  bannerUrl: data.bannerUrl,
-                                ),
-                              ),
-                              if (data.operatingStatus == 'closed' ||
-                                  data.isAdminClosed)
-                                const SliverToBoxAdapter(
-                                  child: _StoreClosedBanner(),
-                                ),
-                              SliverToBoxAdapter(
-                                child: ProfessionalStoreInfoSection(
-                                  aboutPlain: data.aboutPlain,
-                                  openTime: data.openTime,
-                                  closeTime: data.closeTime,
-                                  operatingStatus: data.operatingStatus,
-                                  isAdminClosed: data.isAdminClosed,
-                                  showPrimaryContact:
-                                      tenantHasDialableContact(data.contact),
-                                  onPrimaryContact:
-                                      onProfessionalPrimaryContact,
-                                  subtitleTag: data.pillarTag,
-                                ),
-                              ),
-                              SliverToBoxAdapter(
-                                child: NmdSectionHeader(
-                                  title: 'خدماتنا',
-                                  padding: const EdgeInsetsDirectional.fromSTEB(
-                                    20,
-                                    NmdSpacing.sm,
-                                    20,
-                                    NmdSpacing.xs,
-                                  ),
-                                ),
-                              ),
-                              if (serviceProducts.isEmpty)
-                                const SliverToBoxAdapter(
-                                  child: NmdEmptyState(
-                                    title: 'لا توجد خدمات',
-                                    message: 'لا توجد خدمات مطابقة لبحثك.',
-                                    icon: Icons.handyman_outlined,
-                                  ),
-                                )
-                              else
-                                SliverPadding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20),
-                                  sliver: SliverList.separated(
-                                    itemCount: serviceProducts.length,
-                                    separatorBuilder: (_, __) =>
-                                        const SizedBox(height: 16),
-                                    itemBuilder: (context, i) =>
-                                        ProfessionalServiceListCard(
-                                      product: serviceProducts[i],
-                                      marketSlug: widget.marketSlug,
-                                      storeId: widget.storeId,
-                                      tenantIdForLeads: data.tenantIdForLeads,
-                                      officeContact: data.contact,
-                                    ),
-                                  ),
-                                ),
-                              const SliverToBoxAdapter(
-                                  child: AvailableSlotsPlaceholder()),
-                            ],
-                          ),
-                        ],
-                      ),
+                return CinematicScrollChrome(
+                  scrollController: _servicesScrollController,
+                  title: data.storeName,
+                  backgroundColor: NmdColors.surfaceBase,
+                  leading: CinematicGlassIconButton(
+                    icon: Icons.arrow_back_ios_new_rounded,
+                    onPressed: () => context.pop(),
+                  ),
+                  actions: [
+                    CinematicGlassIconButton(
+                      icon: Icons.person_outline_rounded,
+                      onPressed: () async {
+                        final ok = await ensureCustomerAuth(context);
+                        if (!context.mounted || !ok) return;
+                        context.go('/market/${widget.marketSlug}/account');
+                      },
                     ),
                   ],
+                  body: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      CustomScrollView(
+                        controller: _servicesScrollController,
+                        primary: false,
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: CinematicStoreHero(
+                              storeName: data.storeName,
+                              logoUrl: data.logoUrl,
+                              bannerUrl: data.bannerUrl,
+                              openTime: data.openTime,
+                              closeTime: data.closeTime,
+                              operatingStatus: data.operatingStatus,
+                              isAdminClosed: data.isAdminClosed,
+                              aboutPlain: data.aboutPlain,
+                            ),
+                          ),
+                          if (serviceProducts.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.all(48),
+                                child: NmdEmptyState(
+                                  title: 'لا توجد خدمات',
+                                  message: 'عد لاحقاً',
+                                  icon: Icons.handyman_outlined,
+                                ),
+                              ),
+                            )
+                          else
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(0, 16, 0, 96),
+                              sliver: SliverList.separated(
+                                itemCount: serviceProducts.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 26),
+                                itemBuilder: (context, i) =>
+                                    CinematicServicePanel(
+                                  product: serviceProducts[i],
+                                  marketSlug: widget.marketSlug,
+                                  storeId: widget.storeId,
+                                  tenantIdForLeads: data.tenantIdForLeads,
+                                  officeContact: data.contact,
+                                  index: i,
+                                  scrollController: _servicesScrollController,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (tenantHasDialableContact(data.contact))
+                        CinematicServiceDock(
+                          onPressed: onProfessionalPrimaryContact,
+                        ),
+                    ],
+                  ),
                 );
               }
 
@@ -734,15 +715,6 @@ class _ImmersiveStoreHero extends StatelessWidget {
     );
   }
 
-  NmdBadgeTone get _statusTone {
-    if (isAdminClosed) return NmdBadgeTone.error;
-    return switch (NmdSemantic.storeStatusFromApi(operatingStatus)) {
-      NmdStoreStatus.open => NmdBadgeTone.success,
-      NmdStoreStatus.busy => NmdBadgeTone.warning,
-      _ => NmdBadgeTone.neutral,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     // Use [LayoutBuilder] so hero height never exceeds the Column's remaining
@@ -772,18 +744,10 @@ class _ImmersiveStoreHero extends StatelessWidget {
                       )
                     : _FallbackHero(fallbackText: storeName),
               ),
-              const Positioned.fill(
+              Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x3D000000),
-                        Color(0x0A000000),
-                        Color(0xCC000000),
-                      ],
-                    ),
+                    gradient: PremiumMarketplaceDesignSystem.businessHeroOverlay,
                   ),
                 ),
               ),
@@ -885,28 +849,35 @@ class _ImmersiveStoreHero extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (logoUrl.isNotEmpty)
-                        Container(
-                          width: 64,
-                          height: 64,
+                        DecoratedBox(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: NmdColors.surfaceBase,
-                            border: Border.all(
-                              color: NmdColors.surfaceBase,
-                              width: 2,
+                            boxShadow: PremiumMarketplaceDesignSystem.cinematicCard(
+                              accent: NmdColors.brandPrimary,
                             ),
-                            boxShadow: NmdShadows.md,
                           ),
-                          child: ClipOval(
-                            child: CachedNetworkImage(
-                              imageUrl: logoUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => ColoredBox(
-                                color: NmdColors.tintAliveSoft,
-                                child: Icon(
-                                  Icons.storefront_rounded,
-                                  color: NmdColors.brandPrimary
-                                      .withValues(alpha: 0.5),
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: NmdColors.surfaceBase,
+                              border: Border.all(
+                                color: NmdColors.surfaceBase,
+                                width: 3,
+                              ),
+                            ),
+                            child: ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: logoUrl,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => ColoredBox(
+                                  color: NmdColors.tintAliveSoft,
+                                  child: Icon(
+                                    Icons.storefront_rounded,
+                                    color: NmdColors.brandPrimary
+                                        .withValues(alpha: 0.5),
+                                  ),
                                 ),
                               ),
                             ),
@@ -926,6 +897,8 @@ class _ImmersiveStoreHero extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: NmdTypography.h1.copyWith(
                                 color: NmdColors.textOnBrand,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
                                 shadows: const [
                                   Shadow(
                                     color: Color(0x99000000),
@@ -935,32 +908,12 @@ class _ImmersiveStoreHero extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: NmdSpacing.xxs),
-                            Wrap(
-                              spacing: NmdSpacing.xxs,
-                              runSpacing: NmdSpacing.xxs,
-                              alignment: WrapAlignment.end,
-                              children: [
-                                NmdBadge(
-                                    label: _statusLabel, tone: _statusTone),
-                                NmdChip(
-                                  label: '$openTime – $closeTime',
-                                  variant: NmdChipVariant.status,
-                                ),
-                                if (pillarTag != null &&
-                                    pillarTag!.trim().isNotEmpty)
-                                  NmdChip(
-                                    label: pillarTag!.trim(),
-                                    variant: NmdChipVariant.filter,
-                                    selected: true,
-                                  ),
-                                if (addressLine != null &&
-                                    addressLine!.trim().isNotEmpty)
-                                  NmdChip(
-                                    label: addressLine!.trim(),
-                                    variant: NmdChipVariant.status,
-                                  ),
-                              ],
+                            const SizedBox(height: 4),
+                            Text(
+                              _statusLabel,
+                              style: NmdTypography.micro.copyWith(
+                                color: NmdColors.textOnBrand.withValues(alpha: 0.7),
+                              ),
                             ),
                           ],
                         ),

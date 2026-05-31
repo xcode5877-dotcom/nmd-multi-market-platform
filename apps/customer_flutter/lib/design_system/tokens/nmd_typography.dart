@@ -21,24 +21,46 @@ abstract final class NmdTypography {
     );
   }
 
-  static TextStyle get display => _base(size: 28, weight: FontWeight.w800, height: 1.2);
+  static TextStyle get display => _base(
+        size: 28,
+        weight: FontWeight.w800,
+        height: 1.2,
+        letterSpacing: -0.4,
+      );
 
-  static TextStyle get h1 => _base(size: 22, weight: FontWeight.w800, height: 1.25);
+  static TextStyle get h1 => _base(
+        size: 22,
+        weight: FontWeight.w800,
+        height: 1.25,
+        letterSpacing: -0.3,
+      );
 
-  static TextStyle get h2 => _base(size: 18, weight: FontWeight.w700, height: 1.3);
+  static TextStyle get h2 => _base(
+        size: 18,
+        weight: FontWeight.w800,
+        height: 1.3,
+        letterSpacing: -0.2,
+      );
 
   static TextStyle get h3 => _base(size: 16, weight: FontWeight.w700, height: 1.35);
 
-  static TextStyle get body => _base(size: 15, weight: FontWeight.w500);
+  static TextStyle get body => _base(size: 15, weight: FontWeight.w600);
 
   static TextStyle get bodyBold => _base(size: 15, weight: FontWeight.w700);
 
-  static TextStyle get bodySmall =>
-      _base(size: 13, weight: FontWeight.w500, color: NmdColors.textSecondary);
+  static TextStyle get bodySmall => _base(
+        size: 13,
+        weight: FontWeight.w600,
+        color: NmdColors.textSecondary,
+      );
 
-  static TextStyle get label => _base(size: 12, weight: FontWeight.w600);
+  static TextStyle get label => _base(size: 12, weight: FontWeight.w700);
 
-  static TextStyle get micro => _base(size: 10, weight: FontWeight.w600);
+  static TextStyle get micro => _base(
+        size: 10,
+        weight: FontWeight.w700,
+        color: NmdColors.textSecondary.withValues(alpha: 0.92),
+      );
 
   static TextStyle get button =>
       _base(size: 15, weight: FontWeight.w700, color: NmdColors.textOnBrand, height: 1.1);

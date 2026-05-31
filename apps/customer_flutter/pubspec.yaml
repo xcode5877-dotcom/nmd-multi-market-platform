@@ -44,6 +44,8 @@ flutter:
     - assets/branding/
     - assets/animations/
     - assets/lottie/
+    - assets/images/pizza_builder/
+    - assets/images/pizza_builder/toppings/
 
 flutter_launcher_icons:
   android: true

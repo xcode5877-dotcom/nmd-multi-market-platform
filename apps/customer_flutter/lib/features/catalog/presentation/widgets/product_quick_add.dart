@@ -6,11 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../api/models/product.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/application/cart_cubit.dart';
-
-/// True when the customer must pick modifiers before ordering.
-bool productHasOrderModifiers(Product product) {
-  return product.optionGroups.any((group) => group.items.isNotEmpty);
-}
+import '../customization/product_complexity_classifier.dart';
 
 Future<void> handleProductQuickAdd({
   required BuildContext context,
