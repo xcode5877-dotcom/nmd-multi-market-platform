@@ -194,7 +194,9 @@ export async function deleteContest(id: string): Promise<void> {
 
 export async function setContestResult(
   id: string,
-  payload: { correctAnswer?: string } | { finalScoreA: number; finalScoreB: number }
+  payload:
+    | { correctAnswer?: string; correctAnswerIds?: string[] }
+    | { finalScoreA: number; finalScoreB: number }
 ): Promise<{ correctAnswer: string; winnersCount: number; finalScoreA?: number; finalScoreB?: number }> {
   return apiFetch(`/contests/${id}/result`, { method: 'POST', body: JSON.stringify(payload) });
 }
@@ -216,5 +218,154 @@ export async function getContestParticipations(id: string): Promise<{
   participations: ContestParticipationRow[];
 }> {
   return apiFetch(`/contests/${id}/participations`);
+}
+
+// --- Global rewards & activities (platform admin + public catalog) ---
+export type GlobalRewardType = 'COUPON' | 'EVENT' | 'PRIZE' | 'TOURNAMENT';
+
+export interface GlobalRewardAdmin {
+  id: string;
+  titleAr: string;
+  titleEn: string;
+  description: string;
+  imageUrl: string;
+  type: GlobalRewardType;
+  coinsCost: number;
+  stockLimit: number;
+  expiryDate: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  participantCount?: number;
+}
+
+/** Super Admin: full list. */
+export async function listGlobalRewardsAdmin(): Promise<GlobalRewardAdmin[]> {
+  return apiFetch<GlobalRewardAdmin[]>('/admin/rewards');
+}
+
+export async function createGlobalReward(body: {
+  titleAr: string;
+  titleEn: string;
+  description?: string;
+  imageUrl?: string;
+  type: GlobalRewardType;
+  coinsCost: number;
+  stockLimit: number;
+  expiryDate?: string;
+  isActive?: boolean;
+}): Promise<GlobalRewardAdmin> {
+  return apiFetch<GlobalRewardAdmin>('/admin/rewards', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateGlobalReward(
+  id: string,
+  body: Partial<{
+    titleAr: string;
+    titleEn: string;
+    description: string;
+    imageUrl: string;
+    type: GlobalRewardType;
+    coinsCost: number;
+    stockLimit: number;
+    expiryDate: string | null;
+    isActive: boolean;
+  }>
+): Promise<GlobalRewardAdmin> {
+  return apiFetch<GlobalRewardAdmin>(`/admin/rewards/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export async function deleteGlobalReward(id: string): Promise<void> {
+  return apiFetch<void>(`/admin/rewards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Storefront placeholder: active rewards (GET /rewards, no auth). */
+export async function listPublicRewards(): Promise<
+  Array<{
+    id: string;
+    title_ar: string;
+    title_en: string;
+    description?: string;
+    image_url?: string;
+    type: string;
+    coins_cost: number;
+    stock_limit: number;
+    expiry_date?: string;
+    is_active: boolean;
+    created_at: string;
+  }>
+> {
+  const url = `${MOCK_API_URL}/rewards`;
+  logFetchUrl(url, 'GET');
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`rewards: ${res.status}`);
+  return res.json();
+}
+
+export type RewardRedemptionStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
+
+export interface RewardRedemptionRow {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  rewardId: string;
+  rewardTitleAr: string;
+  rewardTitleEn: string;
+  type: string;
+  coinsSpent: number;
+  redeemedAt: string;
+  status: RewardRedemptionStatus;
+  updatedAt?: string;
+}
+
+export async function listRewardRedemptions(rewardId?: string): Promise<RewardRedemptionRow[]> {
+  const qs = rewardId ? `?rewardId=${encodeURIComponent(rewardId)}` : '';
+  return apiFetch<RewardRedemptionRow[]>(`/admin/reward-redemptions${qs}`);
+}
+
+export async function updateRewardRedemptionStatus(id: string, status: RewardRedemptionStatus): Promise<RewardRedemptionRow> {
+  return apiFetch<RewardRedemptionRow>(`/admin/reward-redemptions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export interface ExternalOrderAdminRow {
+  id: string;
+  createdAt?: string | null;
+  status?: string | null;
+  marketId?: string | null;
+  marketName?: string | null;
+  courierId?: string | null;
+  courierName?: string | null;
+  courierPhone?: string | null;
+  tenantId?: string | null;
+  tenantName?: string | null;
+  manualStoreName?: string | null;
+  storeDisplayName?: string | null;
+  externalDestination?: string | null;
+  deliveryFee?: number;
+  isExternal: true;
+}
+
+/** Super Admin: global external manual orders report. */
+export async function listAdminExternalOrders(): Promise<ExternalOrderAdminRow[]> {
+  return apiFetch<ExternalOrderAdminRow[]>('/admin/external-orders');
+}
+
+/** Download participants CSV (optional filter by reward). */
+export async function downloadRewardRedemptionsCsv(rewardId?: string): Promise<void> {
+  const qs = rewardId ? `?rewardId=${encodeURIComponent(rewardId)}` : '';
+  const url = `${MOCK_API_URL}/admin/reward-redemptions/export.csv${qs}`;
+  logFetchUrl(url, 'GET');
+  const res = await fetch(url, { headers: { ...apiHeaders(), Accept: 'text/csv' } });
+  if (!res.ok) throw new Error(`CSV export failed: ${res.status}`);
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = rewardId ? `participants-${rewardId.slice(0, 8)}.csv` : 'reward-participants.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 

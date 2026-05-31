@@ -7,6 +7,38 @@ import '../../../core/errors/app_error_mapper.dart';
 
 enum RewardsStatus { initial, loading, loaded, failure }
 
+final class RedeemOutcome extends Equatable {
+  const RedeemOutcome.success({
+    required this.newBalance,
+    required this.successMessage,
+  })  : ok = true,
+        errorMessage = null,
+        loginRequired = false;
+
+  const RedeemOutcome.failure(this.errorMessage)
+      : ok = false,
+        newBalance = null,
+        successMessage = null,
+        loginRequired = false;
+
+  const RedeemOutcome.needsLogin()
+      : ok = false,
+        errorMessage = null,
+        newBalance = null,
+        successMessage = null,
+        loginRequired = true;
+
+  final bool ok;
+  final String? errorMessage;
+  final bool loginRequired;
+  final int? newBalance;
+  final String? successMessage;
+
+  @override
+  List<Object?> get props =>
+      [ok, errorMessage, loginRequired, newBalance, successMessage];
+}
+
 final class RewardsState extends Equatable {
   const RewardsState({
     this.status = RewardsStatus.initial,
@@ -91,23 +123,78 @@ class RewardsCubit extends Cubit<RewardsState> {
     }
   }
 
-  Future<String?> redeem(String rewardId) async {
+  Future<RedeemOutcome> redeem(String rewardId) async {
     emit(state.copyWith(redeemingId: rewardId));
     try {
-      await _dio.post('/customer/rewards/$rewardId/redeem');
-      await load();
-      return null;
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/customer/rewards/$rewardId/redeem',
+      );
+      final data = res.data ?? const <String, dynamic>{};
+      final newBalance = (data['balance'] as num?)?.toInt();
+      final redemptionStatus =
+          (data['redemption_status'] as String?) ?? 'PENDING';
+      final redemptionId = data['id'] as String?;
+
+      final updatedRewards = state.rewards
+          .map(
+            (r) => r.id == rewardId
+                ? r.copyWith(
+                    redeemed: true,
+                    redemptionStatus: redemptionStatus,
+                    redemptionId: redemptionId,
+                  )
+                : r,
+          )
+          .toList();
+
+      emit(
+        state.copyWith(
+          rewards: updatedRewards,
+          clearRedeeming: true,
+        ),
+      );
+
+      return RedeemOutcome.success(
+        newBalance: newBalance,
+        successMessage: rewardRedeemSuccessMessageAr,
+      );
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) return 'login';
-      final msg = e.response?.data;
-      if (msg is Map && msg['error'] is String) {
-        return msg['error'] as String;
-      }
-      return e.message ?? 'فشل الاستبدال';
-    } catch (e) {
-      return e.toString();
-    } finally {
       emit(state.copyWith(clearRedeeming: true));
+      if (e.response?.statusCode == 401) {
+        return const RedeemOutcome.needsLogin();
+      }
+      return RedeemOutcome.failure(_mapRedeemError(e));
+    } catch (e) {
+      emit(state.copyWith(clearRedeeming: true));
+      return RedeemOutcome.failure('تعذّر إتمام العملية، حاول مجدداً');
     }
+  }
+
+  String _mapRedeemError(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final code = data['code'] as String?;
+      switch (code) {
+        case 'INSUFFICIENT_COINS':
+          return 'رصيدك غير كافٍ';
+        case 'ALREADY_REDEEMED':
+          return 'سبق أن شاركت في هذه المكافأة';
+        case 'SOLD_OUT':
+          return 'نفدت الكمية المتاحة';
+        case 'EXPIRED':
+          return 'انتهت صلاحية هذه المكافأة';
+      }
+      final msg = data['error'];
+      if (msg is String && msg.isNotEmpty) {
+        final lower = msg.toLowerCase();
+        if (lower.contains('insufficient')) return 'رصيدك غير كافٍ';
+        if (lower.contains('already redeemed')) {
+          return 'سبق أن شاركت في هذه المكافأة';
+        }
+        if (lower.contains('out of stock')) return 'نفدت الكمية المتاحة';
+        if (lower.contains('expired')) return 'انتهت صلاحية هذه المكافأة';
+      }
+    }
+    return AppErrorMapper.friendlyMessage(e);
   }
 }

@@ -2693,8 +2693,31 @@ function isRewardType(t: string): t is 'COUPON' | 'EVENT' | 'PRIZE' | 'TOURNAMEN
   return t === 'COUPON' || t === 'EVENT' || t === 'PRIZE' || t === 'TOURNAMENT';
 }
 
+class RewardRedeemError extends Error {
+  constructor(
+    public code: 'INSUFFICIENT_COINS' | 'ALREADY_REDEEMED' | 'SOLD_OUT',
+    message: string,
+    public extra?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'RewardRedeemError';
+  }
+}
+
 /** GET /rewards — public catalog; includes locked (expired / sold out) for storefront overlays. */
-app.get('/rewards', wrapAsync(async (_req, res) => {
+app.get('/rewards', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  const customerRedemptions = new Map<string, { status: string; id: string }>();
+  if (customer) {
+    const reds = await prisma.rewardRedemption.findMany({
+      where: { customerId: customer.id, status: { in: ['PENDING', 'COMPLETED'] } },
+      select: { rewardId: true, status: true, id: true },
+    });
+    for (const row of reds) {
+      customerRedemptions.set(row.rewardId, { status: row.status, id: row.id });
+    }
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const rows = await prisma.globalReward.findMany({
     where: { isActive: true },
@@ -2721,10 +2744,18 @@ app.get('/rewards', wrapAsync(async (_req, res) => {
         lock_reason = 'SOLD_OUT';
       }
     }
+    const redemption = customer ? customerRedemptions.get(r.id) : undefined;
     out.push({
       ...rewardToPublicJson(r),
       locked,
       lock_reason,
+      ...(customer
+        ? {
+            redeemed: !!redemption,
+            redemption_status: redemption?.status ?? null,
+            redemption_id: redemption?.id ?? null,
+          }
+        : {}),
     } as Record<string, unknown>);
   }
   res.json(out);
@@ -2734,7 +2765,18 @@ app.get('/rewards', wrapAsync(async (_req, res) => {
 app.get('/admin/rewards', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
   const rows = await prisma.globalReward.findMany({ orderBy: { createdAt: 'desc' } });
-  res.json(rows.map(rewardToAdminJson));
+  const counts = await prisma.rewardRedemption.groupBy({
+    by: ['rewardId'],
+    where: { status: { in: ['PENDING', 'COMPLETED'] } },
+    _count: { id: true },
+  });
+  const countByRewardId = Object.fromEntries(counts.map((c) => [c.rewardId, c._count.id]));
+  res.json(
+    rows.map((r) => ({
+      ...rewardToAdminJson(r),
+      participantCount: countByRewardId[r.id] ?? 0,
+    }))
+  );
 }));
 
 app.post('/admin/rewards', wrapAsync(async (req, res) => {
@@ -2829,7 +2871,7 @@ app.delete('/admin/rewards/:id', wrapAsync(async (req, res) => {
 /** Customer joins / redeems a global reward: checks balance, deducts coins, creates PENDING redemption. */
 app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
-  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  if (!customer) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
   const rewardId = req.params.rewardId;
   if (!rewardId) return res.status(400).json({ error: 'rewardId required' });
 
@@ -2839,47 +2881,61 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   if (reward.expiryDate) {
     const exp = reward.expiryDate.slice(0, 10);
-    if (exp < today) return res.status(400).json({ error: 'Reward expired' });
+    if (exp < today) return res.status(400).json({ error: 'Reward expired', code: 'EXPIRED' });
   }
 
   const coinsCost = Math.max(0, reward.coinsCost);
   const phoneNorm = normalizePhoneForCoupon(customer.phone);
   if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
 
-  const usedSlots = await prisma.rewardRedemption.count({
-    where: { rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
-  });
-  if (reward.stockLimit > 0 && usedSlots >= reward.stockLimit) {
-    return res.status(400).json({ error: 'Reward is out of stock' });
-  }
-
-  const dup = await prisma.rewardRedemption.findFirst({
-    where: { customerId: customer.id, rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
-  });
-  if (dup) return res.status(400).json({ error: 'Already redeemed this reward' });
-
-  const existingCoin = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
-  const currentBalance = existingCoin?.balance ?? INITIAL_COINS;
-  if (currentBalance < coinsCost) {
-    return res.status(400).json({ error: 'Insufficient coins', balance: currentBalance, required: coinsCost });
-  }
-
-  const newBalance = currentBalance - coinsCost;
   const now = new Date().toISOString();
   const redemptionId = `rred-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      if (existingCoin) {
-        await tx.customerCoin.update({
-          where: { customerPhone: phoneNorm },
-          data: { balance: newBalance, updatedAt: now },
+    const result = await prisma.$transaction(async (tx) => {
+      const dup = await tx.rewardRedemption.findFirst({
+        where: { customerId: customer.id, rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
+      });
+      if (dup) {
+        throw new RewardRedeemError('ALREADY_REDEEMED', 'Already redeemed this reward');
+      }
+
+      if (reward.stockLimit > 0) {
+        const usedSlots = await tx.rewardRedemption.count({
+          where: { rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
         });
+        if (usedSlots >= reward.stockLimit) {
+          throw new RewardRedeemError('SOLD_OUT', 'Reward is out of stock');
+        }
+      }
+
+      const existingCoin = await tx.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+      const currentBalance = existingCoin?.balance ?? INITIAL_COINS;
+      if (currentBalance < coinsCost) {
+        throw new RewardRedeemError('INSUFFICIENT_COINS', 'Insufficient coins', {
+          balance: currentBalance,
+          required: coinsCost,
+        });
+      }
+
+      const newBalance = currentBalance - coinsCost;
+      if (existingCoin) {
+        const updated = await tx.customerCoin.updateMany({
+          where: { customerPhone: phoneNorm, balance: { gte: coinsCost } },
+          data: { balance: { decrement: coinsCost }, updatedAt: now },
+        });
+        if (updated.count === 0) {
+          throw new RewardRedeemError('INSUFFICIENT_COINS', 'Insufficient coins', {
+            balance: currentBalance,
+            required: coinsCost,
+          });
+        }
       } else {
         await tx.customerCoin.create({
           data: { customerPhone: phoneNorm, balance: newBalance, updatedAt: now },
         });
       }
+
       await tx.rewardRedemption.create({
         data: {
           id: redemptionId,
@@ -2891,27 +2947,34 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
           updatedAt: now,
         },
       });
+
+      return { redemptionId, newBalance, now };
+    });
+
+    console.log('[coins-audit] DEDUCT', {
+      customerPhone: phoneNorm,
+      amount: coinsCost,
+      newBalance: result.newBalance,
+      via: 'reward_redeem',
+      rewardId,
+    });
+
+    res.status(201).json({
+      id: result.redemptionId,
+      rewardId,
+      status: 'PENDING',
+      coinsSpent: coinsCost,
+      balance: result.newBalance,
+      redeemedAt: result.now,
+      redeemed: true,
+      redemption_status: 'PENDING',
     });
   } catch (e: unknown) {
+    if (e instanceof RewardRedeemError) {
+      return res.status(400).json({ error: e.message, code: e.code, ...e.extra });
+    }
     throw e;
   }
-
-  console.log('[coins-audit] DEDUCT', {
-    customerPhone: phoneNorm,
-    amount: coinsCost,
-    newBalance,
-    via: 'reward_redeem',
-    rewardId,
-  });
-
-  res.status(201).json({
-    id: redemptionId,
-    rewardId,
-    status: 'PENDING',
-    coinsSpent: coinsCost,
-    balance: newBalance,
-    redeemedAt: now,
-  });
 }));
 
 function redemptionToAdminRow(r: {

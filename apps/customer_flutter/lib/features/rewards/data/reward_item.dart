@@ -13,6 +13,9 @@ final class RewardItem extends Equatable {
     this.lockReason,
     this.description,
     this.imageUrl,
+    this.redeemed = false,
+    this.redemptionStatus,
+    this.redemptionId,
   });
 
   final String id;
@@ -27,6 +30,15 @@ final class RewardItem extends Equatable {
   /// Admin-provided reward art (`image_url` from API).
   final String? imageUrl;
 
+  /// True when the logged-in customer has a PENDING/COMPLETED redemption.
+  final bool redeemed;
+
+  /// `PENDING` | `COMPLETED` when [redeemed] is true.
+  final String? redemptionStatus;
+  final String? redemptionId;
+
+  bool get isParticipated => redeemed;
+
   factory RewardItem.fromJson(Map<String, dynamic> json) {
     return RewardItem(
       id: json['id'] as String,
@@ -38,6 +50,30 @@ final class RewardItem extends Equatable {
       lockReason: json['lock_reason'] as String?,
       description: json['description'] as String?,
       imageUrl: json['image_url'] as String?,
+      redeemed: json['redeemed'] as bool? ?? false,
+      redemptionStatus: json['redemption_status'] as String?,
+      redemptionId: json['redemption_id'] as String?,
+    );
+  }
+
+  RewardItem copyWith({
+    bool? redeemed,
+    String? redemptionStatus,
+    String? redemptionId,
+  }) {
+    return RewardItem(
+      id: id,
+      titleAr: titleAr,
+      titleEn: titleEn,
+      type: type,
+      coinsCost: coinsCost,
+      locked: locked,
+      lockReason: lockReason,
+      description: description,
+      imageUrl: imageUrl,
+      redeemed: redeemed ?? this.redeemed,
+      redemptionStatus: redemptionStatus ?? this.redemptionStatus,
+      redemptionId: redemptionId ?? this.redemptionId,
     );
   }
 
@@ -64,9 +100,28 @@ final class RewardItem extends Equatable {
         locked,
         lockReason,
         description,
-        imageUrl
+        imageUrl,
+        redeemed,
+        redemptionStatus,
+        redemptionId,
       ];
 }
+
+/// Button/card label after the customer has joined or redeemed.
+String rewardRedeemedLabelAr(String type) {
+  switch (type.toUpperCase()) {
+    case 'TOURNAMENT':
+    case 'EVENT':
+      return 'تمت المشاركة';
+    case 'PRIZE':
+    case 'COUPON':
+    default:
+      return 'تم الاستبدال';
+  }
+}
+
+/// Success snackbar after a successful redeem/join action.
+const rewardRedeemSuccessMessageAr = 'تمت مشاركتك بنجاح';
 
 /// Tier derived from coin balance until the API exposes a dedicated field.
 String loyaltyTierLabel(int balance) {

@@ -455,6 +455,9 @@ class _CinematicRewardCard extends StatelessWidget {
   final VoidCallback onTap;
 
   String get _statusLabel {
+    if (item.redeemed) {
+      return rewardRedeemedLabelAr(item.type);
+    }
     if (item.locked) {
       return item.lockReason == 'EXPIRED'
           ? 'منتهي'
@@ -499,7 +502,8 @@ class _CinematicRewardCard extends StatelessWidget {
                   right: 12,
                   child: _FloatingStatusPill(
                     label: _statusLabel,
-                    locked: item.locked,
+                    locked: item.locked && !item.redeemed,
+                    participated: item.redeemed,
                   ),
                 ),
                 Positioned(
@@ -545,18 +549,29 @@ class _CinematicRewardCard extends StatelessWidget {
 }
 
 class _FloatingStatusPill extends StatelessWidget {
-  const _FloatingStatusPill({required this.label, required this.locked});
+  const _FloatingStatusPill({
+    required this.label,
+    required this.locked,
+    this.participated = false,
+  });
 
   final String label;
   final bool locked;
+  final bool participated;
 
   @override
   Widget build(BuildContext context) {
+    final Color bg;
+    if (participated) {
+      bg = NmdColors.brandPrimary.withValues(alpha: 0.88);
+    } else if (locked) {
+      bg = Colors.black.withValues(alpha: 0.42);
+    } else {
+      bg = NmdColors.success.withValues(alpha: 0.85);
+    }
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: locked
-            ? Colors.black.withValues(alpha: 0.42)
-            : NmdColors.success.withValues(alpha: 0.85),
+        color: bg,
         borderRadius: BorderRadius.circular(99),
       ),
       child: Padding(
@@ -644,7 +659,7 @@ class _RewardDetailBody extends StatelessWidget {
     final title = item.titleAr.isNotEmpty ? item.titleAr : item.titleEn;
     final canAfford =
         isAuthenticated && balance != null && balance! >= item.coinsCost;
-    final canRedeem = canAfford && !item.locked;
+    final canRedeem = canAfford && !item.locked && !item.redeemed;
     final url = item.imageUrl?.trim();
 
     return DraggableScrollableSheet(
@@ -722,6 +737,7 @@ class _RewardDetailBody extends StatelessWidget {
                           ),
                           const SizedBox(height: 24),
                           _DetailCta(
+                            item: item,
                             canRedeem: canRedeem,
                             redeeming: redeeming,
                             isAuthenticated: isAuthenticated,
@@ -764,27 +780,34 @@ class _RewardDetailBody extends StatelessWidget {
 
   Future<void> _handleRedeem(BuildContext context) async {
     HapticFeedback.mediumImpact();
-    final err = await context.read<RewardsCubit>().redeem(item.id);
+    final outcome = await context.read<RewardsCubit>().redeem(item.id);
     if (!context.mounted) return;
-    if (err == 'login') {
+    if (outcome.loginRequired) {
       await _handleLogin(context);
       return;
     }
-    if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    if (!outcome.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(outcome.errorMessage ?? 'تعذّر إتمام العملية')),
+      );
       return;
     }
-    await context.read<CoinsBalanceCubit>().load();
+    if (outcome.newBalance != null) {
+      context.read<CoinsBalanceCubit>().applyBalance(outcome.newBalance!);
+    } else {
+      await context.read<CoinsBalanceCubit>().load();
+    }
     if (!context.mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم الاستبدال بنجاح')),
+      SnackBar(content: Text(outcome.successMessage ?? rewardRedeemSuccessMessageAr)),
     );
   }
 }
 
 class _DetailCta extends StatelessWidget {
   const _DetailCta({
+    required this.item,
     required this.canRedeem,
     required this.redeeming,
     required this.isAuthenticated,
@@ -793,6 +816,7 @@ class _DetailCta extends StatelessWidget {
     required this.onLogin,
   });
 
+  final RewardItem item;
   final bool canRedeem;
   final bool redeeming;
   final bool isAuthenticated;
@@ -802,6 +826,26 @@ class _DetailCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (item.redeemed) {
+      return SizedBox(
+        width: double.infinity,
+        height: PremiumMarketplaceDesignSystem.ctaHeight,
+        child: FilledButton(
+          onPressed: null,
+          style: FilledButton.styleFrom(
+            disabledBackgroundColor: NmdColors.brandPrimary.withValues(alpha: 0.35),
+            disabledForegroundColor: Colors.white.withValues(alpha: 0.92),
+            shape: RoundedRectangleBorder(
+              borderRadius: PremiumMarketplaceDesignSystem.borderSm,
+            ),
+          ),
+          child: Text(
+            rewardRedeemedLabelAr(item.type),
+            style: NmdTypography.button.copyWith(fontSize: 14),
+          ),
+        ),
+      );
+    }
     if (locked) {
       return Text(
         'غير متاح حالياً',

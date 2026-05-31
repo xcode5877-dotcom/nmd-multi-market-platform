@@ -41,6 +41,16 @@ class CoinsBalanceCubit extends Cubit<CoinsBalanceState> {
   /// no-cache headers so the client does not reuse a stale GET /customer/coins.
   Future<void> load() => _fetch(bustCache: true);
 
+  void applyBalance(int balance) {
+    emit(
+      CoinsBalanceState(
+        balance: balance,
+        loading: false,
+        isAuthenticated: true,
+      ),
+    );
+  }
+
   Future<void> _fetch({required bool bustCache}) async {
     emit(state.copyWith(loading: true));
     try {
