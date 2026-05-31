@@ -14,6 +14,11 @@ class AuthInterceptor extends Interceptor {
     final method = options.method.toUpperCase();
 
     if (normalized.contains('/customer/')) return true;
+    // Optional auth: backend attaches redemption status when customer JWT is present.
+    if (method == 'GET' &&
+        (normalized == '/rewards' || normalized.endsWith('/rewards'))) {
+      return true;
+    }
     // Web parity: ContestPopUp sends Bearer for `/contest/me` and `/contest/participate`.
     if (normalized.contains('/contest/me') ||
         normalized.contains('/contest/participate')) {

@@ -1,5 +1,8 @@
+import 'dart:developer' as developer;
+
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../data/reward_item.dart';
@@ -86,24 +89,39 @@ class RewardsCubit extends Cubit<RewardsState> {
 
   final Dio _dio;
 
+  void _trace(String message, [Map<String, Object?>? data]) {
+    if (!kDebugMode) return;
+    developer.log(message, name: 'RewardsCubit', error: data);
+    debugPrint('[RewardsCubit] $message${data == null ? '' : ' $data'}');
+  }
+
   void setFilter(RewardFilter filter) {
     if (state.status != RewardsStatus.loaded) return;
     emit(state.copyWith(filter: filter));
   }
 
-  Future<void> load() async {
-    emit(
-      state.copyWith(
-        status: RewardsStatus.loading,
-        clearErrorMessage: true,
-      ),
-    );
+  Future<void> load({bool silent = false}) async {
+    if (!silent) {
+      emit(
+        state.copyWith(
+          status: RewardsStatus.loading,
+          clearErrorMessage: true,
+        ),
+      );
+    }
     try {
+      _trace('load start', {'silent': silent});
       final rewardsRes = await _dio.get('/rewards');
       final raw = rewardsRes.data as List<dynamic>? ?? [];
       final rewards = raw
           .map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
+
+      final redeemedCount = rewards.where((r) => r.redeemed).length;
+      _trace('load ok', {
+        'count': rewards.length,
+        'redeemedCount': redeemedCount,
+      });
 
       emit(
         RewardsState(
@@ -113,6 +131,10 @@ class RewardsCubit extends Cubit<RewardsState> {
         ),
       );
     } catch (e) {
+      _trace('load failed', {'error': e.toString(), 'silent': silent});
+      if (silent && state.status == RewardsStatus.loaded) {
+        return;
+      }
       AppErrorMapper.log(e, context: 'rewards');
       emit(
         state.copyWith(
@@ -125,6 +147,7 @@ class RewardsCubit extends Cubit<RewardsState> {
 
   Future<RedeemOutcome> redeem(String rewardId) async {
     emit(state.copyWith(redeemingId: rewardId));
+    _trace('redeem start', {'rewardId': rewardId});
     try {
       final res = await _dio.post<Map<String, dynamic>>(
         '/customer/rewards/$rewardId/redeem',
@@ -134,6 +157,13 @@ class RewardsCubit extends Cubit<RewardsState> {
       final redemptionStatus =
           (data['redemption_status'] as String?) ?? 'PENDING';
       final redemptionId = data['id'] as String?;
+
+      _trace('redeem ok', {
+        'rewardId': rewardId,
+        'balance': newBalance,
+        'status': redemptionStatus,
+        'redemptionId': redemptionId,
+      });
 
       final updatedRewards = state.rewards
           .map(
@@ -154,18 +184,29 @@ class RewardsCubit extends Cubit<RewardsState> {
         ),
       );
 
+      // Sync redemption flags from server (requires auth on GET /rewards).
+      await load(silent: true);
+
       return RedeemOutcome.success(
         newBalance: newBalance,
         successMessage: rewardRedeemSuccessMessageAr,
       );
     } on DioException catch (e) {
       emit(state.copyWith(clearRedeeming: true));
-      if (e.response?.statusCode == 401) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data;
+      _trace('redeem failed', {
+        'rewardId': rewardId,
+        'status': status,
+        'body': body,
+      });
+      if (status == 401) {
         return const RedeemOutcome.needsLogin();
       }
       return RedeemOutcome.failure(_mapRedeemError(e));
     } catch (e) {
       emit(state.copyWith(clearRedeeming: true));
+      _trace('redeem error', {'rewardId': rewardId, 'error': e.toString()});
       return RedeemOutcome.failure('تعذّر إتمام العملية، حاول مجدداً');
     }
   }

@@ -780,6 +780,10 @@ class _RewardDetailBody extends StatelessWidget {
 
   Future<void> _handleRedeem(BuildContext context) async {
     HapticFeedback.mediumImpact();
+    if (!isAuthenticated) {
+      await _handleLogin(context);
+      return;
+    }
     final outcome = await context.read<RewardsCubit>().redeem(item.id);
     if (!context.mounted) return;
     if (outcome.loginRequired) {
