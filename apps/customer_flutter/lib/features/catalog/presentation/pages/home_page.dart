@@ -25,6 +25,7 @@ import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../widgets/app_error_view.dart';
 import '../widgets/marketplace_card_layout.dart';
 import '../../../../widgets/nmd_search_bar.dart';
+import '../../../home/domain/feed/debug_feed_campaigns.dart';
 import '../../../home/domain/feed/feed_campaign.dart';
 import '../../../home/domain/feed/home_feed_block.dart';
 import '../../../home/domain/feed/home_feed_composer.dart';
@@ -162,14 +163,28 @@ class _HomePageState extends State<HomePage> {
         () => api.getMarketFeedCampaigns(slug),
         const <Map<String, dynamic>>[],
       );
-      final feedCampaigns = feedCampaignsRaw
+      var feedCampaigns = feedCampaignsRaw
           .map(FeedCampaign.fromJson)
           .where((c) => c.active && c.isWithinSchedule)
           .toList();
+
+      final usedDebugFallback =
+          feedCampaigns.isEmpty && kDebugMode;
+      if (usedDebugFallback) {
+        feedCampaigns = debugFeedCampaignFallback(slug);
+        if (kDebugMode) {
+          debugPrint(
+            '[FEED_CAMPAIGNS] debugFallback=true slug=$slug '
+            'fallbackCount=${feedCampaigns.length}',
+          );
+        }
+      }
+
       _logFeedCampaigns(
         slug: slug,
-        rawCount: feedCampaignsRaw.length,
+        apiCount: feedCampaignsRaw.length,
         visible: feedCampaigns,
+        usedDebugFallback: usedDebugFallback,
       );
       final campaigns = <Map<String, dynamic>>[];
 
@@ -218,16 +233,26 @@ class _HomePageState extends State<HomePage> {
 
   void _logFeedCampaigns({
     required String slug,
-    required int rawCount,
+    required int apiCount,
     required List<FeedCampaign> visible,
+    bool usedDebugFallback = false,
   }) {
     if (!kDebugMode) return;
     debugPrint(
-      '[FEED_CAMPAIGNS] slug=$slug count=$rawCount activeVisible=${visible.length}',
+      '[FEED_CAMPAIGNS] slug=$slug apiCount=$apiCount '
+      'visibleCount=${visible.length} debugFallback=$usedDebugFallback',
     );
-    for (final c in visible.take(5)) {
+    if (visible.isEmpty) {
       debugPrint(
-        '[FEED_CAMPAIGNS] id=${c.id} kind=${c.kind.name} placement=${c.placement.name}',
+        '[FEED_CAMPAIGNS] reason=no_active_campaigns '
+        '(check API, schedule, active flag, market slug)',
+      );
+      return;
+    }
+    for (final c in visible.take(6)) {
+      debugPrint(
+        '[FEED_CAMPAIGNS] id=${c.id} kind=${c.kind.name} '
+        'placement=${c.placement.name}',
       );
     }
   }

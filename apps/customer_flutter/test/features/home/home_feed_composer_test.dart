@@ -73,6 +73,28 @@ void main() {
     expect(blocks.first, isA<HeroBannerFeedBlock>());
   });
 
+  test('one section + AFTER_EVERY_2_ROWS still inserts lead promo at top', () {
+    final blocks = HomeFeedComposer.compose(
+      sections: const [
+        HomeFeedStoreSection(title: 'S0', storeIds: ['a'], index: 0),
+      ],
+      campaigns: [
+        FeedCampaign(
+          id: 'only',
+          marketSlug: 'dabburiyya',
+          kind: FeedCampaignKind.heroBanner,
+          title: 'Hero',
+          subtitle: '',
+          ctaLabel: 'Go',
+          actionType: FeedCampaignActionType.none,
+          placement: FeedCampaignPlacement.afterEvery2Rows,
+        ),
+      ],
+    );
+    expect(blocks.first, isA<HeroBannerFeedBlock>());
+    expect(blocks.whereType<StoreSectionFeedBlock>().length, 1);
+  });
+
   test('TOP placement appears before first section', () {
     final sections = [
       const HomeFeedStoreSection(title: 'S0', storeIds: ['a'], index: 0),
