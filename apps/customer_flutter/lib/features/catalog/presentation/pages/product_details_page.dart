@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
-import '../../../../design_system/premium/premium_marketplace_design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../data/pillar_kind.dart';
@@ -51,6 +50,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _cartIconKey = GlobalKey();
   final GlobalKey _imageKey = GlobalKey();
+  final GlobalKey _customizationSectionKey = GlobalKey();
 
   bool _descExpanded = false;
   late final AnimationController _dockBounceController;
@@ -173,6 +173,17 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 
   void _onCustomizationChanged() {
     _dockBounceController.forward(from: 0);
+  }
+
+  void _scrollToCustomization() {
+    final ctx = _customizationSectionKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      alignment: 0.12,
+    );
   }
 
   void _openAdvancedBuilder({
@@ -407,19 +418,24 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       return AnimatedBuilder(
                         animation: _dockScale,
                         builder: (context, child) => FloatingSmartCta(
-                          scrollController: _scrollController,
                           price: customization.customerUnitPrice,
                           missingRequired: missingRequired,
                           disabled: storeClosed || !product.canAddToCart,
                           scale: _dockScale.value,
-                          onPressed: () => _handleAddToCart(
-                            product: product,
-                            computedUnitPrice:
-                                customization.customerUnitPrice,
-                            merchantUnitPrice:
-                                customization.merchantUnitPrice,
-                            storeClosed: storeClosed,
-                          ),
+                          onPressed: () {
+                            if (missingRequired) {
+                              _scrollToCustomization();
+                              return;
+                            }
+                            _handleAddToCart(
+                              product: product,
+                              computedUnitPrice:
+                                  customization.customerUnitPrice,
+                              merchantUnitPrice:
+                                  customization.merchantUnitPrice,
+                              storeClosed: storeClosed,
+                            );
+                          },
                         ),
                       );
                     },
@@ -655,20 +671,25 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                     if (!isServices)
                       _FadeInUpSection(
                         delayMs: 80,
-                        child: ProductCustomizationSurface(
-                          product: product,
-                          controller: customization,
-                          tier: tier,
-                          storeClosed: storeClosed,
-                          onOpenAdvancedBuilder: () => _openAdvancedBuilder(
+                        child: KeyedSubtree(
+                          key: _customizationSectionKey,
+                          child: ProductCustomizationSurface(
                             product: product,
+                            controller: customization,
+                            tier: tier,
                             storeClosed: storeClosed,
-                          ),
-                          onAddToCart: () => _handleAddToCart(
-                            product: product,
-                            computedUnitPrice: customization.customerUnitPrice,
-                            merchantUnitPrice: customization.merchantUnitPrice,
-                            storeClosed: storeClosed,
+                            onOpenAdvancedBuilder: () => _openAdvancedBuilder(
+                              product: product,
+                              storeClosed: storeClosed,
+                            ),
+                            onAddToCart: () => _handleAddToCart(
+                              product: product,
+                              computedUnitPrice:
+                                  customization.customerUnitPrice,
+                              merchantUnitPrice:
+                                  customization.merchantUnitPrice,
+                              storeClosed: storeClosed,
+                            ),
                           ),
                         ),
                       ),
@@ -681,8 +702,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         SliverPadding(
           padding: EdgeInsets.only(
             bottom: isServices
-                ? PremiumMarketplaceDesignSystem.dockHeight + 32
-                : kFloatingProductCtaScrollInset,
+                ? PremiumMarketplaceDesignSystem.heroBookPillHeight + 28
+                : productCtaScrollInset(context),
           ),
         ),
       ],

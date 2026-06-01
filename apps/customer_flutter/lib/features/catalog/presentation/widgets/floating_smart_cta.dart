@@ -1,93 +1,54 @@
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/design_system.dart';
+import '../../../../widgets/nmd_bottom_nav.dart';
 
-/// Scroll-aware floating add-to-cart bar — bottom anchored only.
-class FloatingSmartCta extends StatefulWidget {
+/// Persistent bottom add-to-cart dock — always visible (no scroll hide).
+class FloatingSmartCta extends StatelessWidget {
   const FloatingSmartCta({
     super.key,
-    required this.scrollController,
     required this.price,
     required this.onPressed,
     this.disabled = false,
     this.missingRequired = false,
     this.loading = false,
     this.scale = 1,
-    this.visible = true,
+    this.clearMarketBottomNav = true,
   });
 
-  final ScrollController scrollController;
   final double price;
   final VoidCallback? onPressed;
   final bool disabled;
   final bool missingRequired;
   final bool loading;
   final double scale;
-  final bool visible;
+  /// When true, lifts dock above [MainLayout] bottom navigation.
+  final bool clearMarketBottomNav;
 
-  @override
-  State<FloatingSmartCta> createState() => _FloatingSmartCtaState();
-}
-
-class _FloatingSmartCtaState extends State<FloatingSmartCta> {
-  bool _scrollVisible = true;
-  double _lastOffset = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void didUpdateWidget(FloatingSmartCta oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.scrollController != widget.scrollController) {
-      oldWidget.scrollController.removeListener(_onScroll);
-      widget.scrollController.addListener(_onScroll);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.scrollController.removeListener(_onScroll);
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!widget.scrollController.hasClients) return;
-    final offset = widget.scrollController.offset;
-    final delta = offset - _lastOffset;
-    if (delta.abs() < 8) return;
-
-    final nextVisible = delta < 0 || offset <= 24;
-    if (nextVisible != _scrollVisible) {
-      setState(() => _scrollVisible = nextVisible);
-    }
-    _lastOffset = offset;
-  }
-
-  bool get _canTap =>
-      !widget.disabled && !widget.loading && widget.onPressed != null;
+  bool get _canTap => !disabled && !loading && onPressed != null;
 
   String get _ctaLabel {
-    if (widget.loading) return '...';
-    if (widget.missingRequired && !widget.disabled) {
-      return 'أكمل الاختيارات المطلوبة';
-    }
+    if (loading) return '...';
+    if (missingRequired && !disabled) return 'أكمل الاختيارات';
     return 'أضف للسلة';
   }
 
   @override
   Widget build(BuildContext context) {
-    final showDock = widget.visible && _scrollVisible;
+    final navClearance =
+        clearMarketBottomNav ? NmdBottomNav.navHeight : 0.0;
 
-    return PremiumFloatingDock(
-      visible: showDock,
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
       child: Padding(
-        padding: PremiumDockLayout.margin(context),
+        padding: PremiumDockLayout.margin(
+          context,
+          extraBottom: navClearance,
+        ),
         child: Transform.scale(
-          scale: widget.scale,
+          scale: scale,
           child: PremiumDockSurface(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -103,16 +64,16 @@ class _FloatingSmartCtaState extends State<FloatingSmartCta> {
                     flex: 3,
                     child: PremiumDockCta(
                       label: _ctaLabel,
-                      loading: widget.loading,
-                      enabled: _canTap && !widget.missingRequired,
+                      loading: loading,
+                      enabled: _canTap,
                       pulseWhenReady:
-                          _canTap && !widget.missingRequired && !widget.loading,
-                      onPressed: widget.onPressed,
+                          _canTap && !missingRequired && !loading,
+                      onPressed: onPressed,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    NmdFormat.money(widget.price),
+                    NmdFormat.money(price),
                     style: NmdTypography.price.copyWith(fontSize: 14),
                   ),
                 ],
@@ -125,4 +86,8 @@ class _FloatingSmartCtaState extends State<FloatingSmartCta> {
   }
 }
 
-const double kFloatingProductCtaScrollInset = PremiumDockLayout.scrollInset;
+/// Scroll padding so content clears the persistent dock + optional bottom nav.
+double productCtaScrollInset(BuildContext context, {bool clearBottomNav = true}) {
+  final nav = clearBottomNav ? NmdBottomNav.navHeight : 0.0;
+  return PremiumDockLayout.scrollInset + nav;
+}

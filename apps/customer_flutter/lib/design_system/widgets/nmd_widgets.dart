@@ -13,3 +13,4 @@ export 'nmd_loading.dart';
 export 'nmd_scaffold.dart';
 export 'nmd_section_header.dart';
 export 'nmd_surface.dart';
+export 'premium_dock_system.dart';

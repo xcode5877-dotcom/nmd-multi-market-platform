@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -27,6 +28,7 @@ import '../../../../widgets/nmd_search_bar.dart';
 import '../../../home/domain/feed/feed_campaign.dart';
 import '../../../home/domain/feed/home_feed_block.dart';
 import '../../../home/domain/feed/home_feed_composer.dart';
+import '../../../home/domain/feed/home_feed_sections_resolver.dart';
 import '../../../home/presentation/feed/home_feed_sliver_builder.dart';
 import '../../../home/presentation/feed/home_feed_store_view.dart';
 
@@ -164,6 +166,11 @@ class _HomePageState extends State<HomePage> {
           .map(FeedCampaign.fromJson)
           .where((c) => c.active && c.isWithinSchedule)
           .toList();
+      _logFeedCampaigns(
+        slug: slug,
+        rawCount: feedCampaignsRaw.length,
+        visible: feedCampaigns,
+      );
       final campaigns = <Map<String, dynamic>>[];
 
       final campaignBanners = campaigns
@@ -207,6 +214,42 @@ class _HomePageState extends State<HomePage> {
       nmdPostLoginTrace('HOME_API_FAILED', '$e\n$st');
       rethrow;
     }
+  }
+
+  void _logFeedCampaigns({
+    required String slug,
+    required int rawCount,
+    required List<FeedCampaign> visible,
+  }) {
+    if (!kDebugMode) return;
+    debugPrint(
+      '[FEED_CAMPAIGNS] slug=$slug count=$rawCount activeVisible=${visible.length}',
+    );
+    for (final c in visible.take(5)) {
+      debugPrint(
+        '[FEED_CAMPAIGNS] id=${c.id} kind=${c.kind.name} placement=${c.placement.name}',
+      );
+    }
+  }
+
+  List<HomeFeedBlock> _composeFeedBlocks({
+    required List<HomeFeedStoreSection> feedSections,
+    required List<FeedCampaign> campaigns,
+  }) {
+    final blocks = campaigns.isEmpty
+        ? feedSections.map((s) => StoreSectionFeedBlock(section: s)).toList()
+        : HomeFeedComposer.compose(
+            sections: feedSections,
+            campaigns: campaigns,
+          );
+    if (kDebugMode) {
+      final promos = blocks.where((b) => b is! StoreSectionFeedBlock).length;
+      debugPrint(
+        '[FEED_COMPOSER] insertedBlocks=$promos sections=${feedSections.length} '
+        'campaigns=${campaigns.length}',
+      );
+    }
+    return blocks;
   }
 
   String _marketDisplayName(Map<String, dynamic> market) {
@@ -410,6 +453,45 @@ class _HomePageState extends State<HomePage> {
                               _matchesStoreQuery(s, _query))
                           .toList();
 
+                      final pillarFeedSections =
+                          syntheticSectionsFromStoreIds(
+                        flatStores.map((s) => s.id).toList(),
+                        sectionTitle: flatTitle,
+                      );
+                      final pillarFeedBlocks = _composeFeedBlocks(
+                        feedSections: pillarFeedSections,
+                        campaigns: layout.feedCampaigns,
+                      );
+
+                      List<HomeFeedStoreView> resolvePillarSection(
+                        HomeFeedStoreSection section,
+                      ) {
+                        return section.storeIds
+                            .map((id) {
+                              for (final s in flatStores) {
+                                if (s.id == id) return s;
+                              }
+                              return null;
+                            })
+                            .whereType<_StoreItem>()
+                            .map(
+                              (s) => HomeFeedStoreView(
+                                id: s.id,
+                                slug: s.slug,
+                                name: s.name,
+                                category: s.category,
+                                logoUrl: s.logoUrl,
+                                openStatus: s.openStatus,
+                              ),
+                            )
+                            .toList();
+                      }
+
+                      final pillarStoreIdBySlug = {
+                        for (final s in flatStores)
+                          if (s.slug.isNotEmpty) s.slug: s.id,
+                      };
+
                       return CustomScrollView(
                         primary: true,
                         slivers: [
@@ -422,12 +504,12 @@ class _HomePageState extends State<HomePage> {
                           SliverToBoxAdapter(
                               child: _SubCategoryNavStrip(
                                   marketSlug: widget.slug)),
-                          SliverToBoxAdapter(
-                            child: _FilteredPillarStoreList(
-                              marketSlug: widget.slug,
-                              sectionTitle: flatTitle,
-                              stores: flatStores,
-                            ),
+                          ...HomeFeedSliverBuilder.buildSlivers(
+                            context: context,
+                            blocks: pillarFeedBlocks,
+                            marketSlug: widget.slug,
+                            resolveStores: resolvePillarSection,
+                            storeIdBySlug: pillarStoreIdBySlug,
                           ),
                           if (flatStores.isEmpty)
                             SliverToBoxAdapter(
@@ -458,28 +540,22 @@ class _HomePageState extends State<HomePage> {
                       if (hasVisibleStore) break;
                     }
 
-                    final feedSections = layout.sections
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => HomeFeedStoreSection(
-                            title: e.value.title,
-                            storeIds: e.value.storeIds,
-                            index: e.key,
-                          ),
-                        )
-                        .toList();
+                    final feedSections = resolveHomeFeedSections(
+                      layoutSections: layout.sections
+                          .map(
+                            (s) => (
+                              title: s.title,
+                              storeIds: s.storeIds,
+                            ),
+                          )
+                          .toList(),
+                      tenantStoreIds: storesById.keys.toList(),
+                    );
 
-                    final campaigns = layout.feedCampaigns;
-
-                    final feedBlocks = campaigns.isEmpty
-                        ? feedSections
-                            .map((s) => StoreSectionFeedBlock(section: s))
-                            .toList()
-                        : HomeFeedComposer.compose(
-                            sections: feedSections,
-                            campaigns: campaigns,
-                          );
+                    final feedBlocks = _composeFeedBlocks(
+                      feedSections: feedSections,
+                      campaigns: layout.feedCampaigns,
+                    );
 
                     final storeIdBySlug = <String, String>{
                       for (final e in storesBySlug.entries) e.key: e.value.id,
@@ -1066,133 +1142,6 @@ class _BannerCarousel extends StatelessWidget {
           autoPlay: banners.length > 1,
           autoPlayInterval: const Duration(seconds: 5),
         ),
-      ),
-    );
-  }
-}
-
-/// Pillar/sub active: one flat horizontal list (web section page parity) — no admin layout sections.
-class _FilteredPillarStoreList extends StatelessWidget {
-  const _FilteredPillarStoreList({
-    required this.marketSlug,
-    required this.sectionTitle,
-    required this.stores,
-  });
-
-  final String marketSlug;
-  final String sectionTitle;
-  final List<_StoreItem> stores;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: NmdSpacing.homeSectionGap),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          NmdSectionHeader(title: sectionTitle),
-          SizedBox(
-            height: HomeStoreCard.cardHeight,
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                shrinkWrap: true,
-                physics: MarketplaceStripScrollPhysics(
-                  itemExtent: HomeStoreCard.cardWidth,
-                  separatorWidth: MarketplaceCardLayout.stripSeparator,
-                  parent: const BouncingScrollPhysics(),
-                ),
-                padding: MarketplaceCardLayout.stripPadding,
-                itemCount: stores.length,
-                separatorBuilder: (_, __) => const SizedBox(
-                  width: MarketplaceCardLayout.stripSeparator,
-                ),
-                itemBuilder: (context, i) {
-                  final s = stores[i];
-                  return HomeStoreCard(
-                    marketSlug: marketSlug,
-                    storeId: s.id,
-                    storeName: s.name,
-                    categoryLabel: homeStoreCategoryLabel(s.category),
-                    logoUrl: s.logoUrl,
-                    openStatus: s.openStatus,
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StoreSection extends StatelessWidget {
-  const _StoreSection({
-    required this.marketSlug,
-    required this.section,
-    required this.storesById,
-    required this.storesBySlug,
-    required this.query,
-  });
-  final String marketSlug;
-  final _SectionItem section;
-  final Map<String, _StoreItem> storesById;
-  final Map<String, _StoreItem> storesBySlug;
-  final String query;
-
-  @override
-  Widget build(BuildContext context) {
-    final sectionTitleMatch =
-        query.isNotEmpty && section.title.toLowerCase().contains(query);
-    final stores = section.storeIds
-        .map((id) => storesById[id] ?? storesBySlug[id])
-        .whereType<_StoreItem>()
-        .where((s) => sectionTitleMatch || _matchesStoreQuery(s, query))
-        .toList();
-    if (stores.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: NmdSpacing.homeSectionGap),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          NmdSectionHeader(title: section.title),
-          SizedBox(
-            height: HomeStoreCard.cardHeight,
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                shrinkWrap: true,
-                physics: MarketplaceStripScrollPhysics(
-                  itemExtent: HomeStoreCard.cardWidth,
-                  separatorWidth: MarketplaceCardLayout.stripSeparator,
-                  parent: const BouncingScrollPhysics(),
-                ),
-                padding: MarketplaceCardLayout.stripPadding,
-                itemCount: stores.length,
-                separatorBuilder: (_, __) => const SizedBox(
-                  width: MarketplaceCardLayout.stripSeparator,
-                ),
-                itemBuilder: (context, i) {
-                  final s = stores[i];
-                  return HomeStoreCard(
-                    marketSlug: marketSlug,
-                    storeId: s.id,
-                    storeName: s.name,
-                    categoryLabel: homeStoreCategoryLabel(s.category),
-                    logoUrl: s.logoUrl,
-                    openStatus: s.openStatus,
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

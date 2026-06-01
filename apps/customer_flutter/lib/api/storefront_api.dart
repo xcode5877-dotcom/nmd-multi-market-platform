@@ -465,6 +465,17 @@ class StorefrontApi {
         .toList();
   }
 
+  /// GET `/markets/by-slug/:slug/feed-campaigns` — home discovery promo blocks.
+  Future<List<Map<String, dynamic>>> getMarketFeedCampaigns(String slug) async {
+    final response =
+        await dio.get<dynamic>('/markets/by-slug/$slug/feed-campaigns');
+    final rows = _extractMarketsRows(response.data);
+    return rows
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   /// GET `/catalog/:tenantId` — products, categories, optionGroups (mock-api parity).
   Future<Map<String, dynamic>> getCatalog(String tenantId) async {
     final response = await dio.get<dynamic>(
