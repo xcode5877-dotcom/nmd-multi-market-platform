@@ -1,3 +1,4 @@
+import 'package:customer_flutter/core/auth/auth_failure.dart';
 import 'package:customer_flutter/core/errors/app_error_mapper.dart';
 import 'package:customer_flutter/core/errors/app_error_type.dart';
 import 'package:dio/dio.dart';
@@ -16,19 +17,63 @@ void main() {
     expect(presentation.message, contains('الاتصال'));
   });
 
-  test('maps 401 to unauthorized copy', () {
+  test('maps protected 401 with token to session expired copy', () {
+    final requestOptions = RequestOptions(
+      path: '/customer/orders',
+      headers: {'Authorization': 'Bearer stale'},
+    );
     final presentation = AppErrorMapper.map(
       DioException(
-        requestOptions: RequestOptions(path: '/customer/orders'),
+        requestOptions: requestOptions,
         type: DioExceptionType.badResponse,
         response: Response(
-          requestOptions: RequestOptions(path: '/customer/orders'),
+          requestOptions: requestOptions,
           statusCode: 401,
         ),
       ),
     );
     expect(presentation.type, AppErrorType.unauthorized);
-    expect(presentation.title, 'انتهت الجلسة');
+    expect(presentation.title, kSessionExpiredMessage);
+  });
+
+  test('maps public feed-campaigns 401 without session expired copy', () {
+    final requestOptions = RequestOptions(
+      path: '/markets/by-slug/dabburiyya/feed-campaigns',
+      method: 'GET',
+      headers: {'Authorization': 'Bearer stale'},
+    );
+    final presentation = AppErrorMapper.map(
+      DioException(
+        requestOptions: requestOptions,
+        type: DioExceptionType.badResponse,
+        response: Response(
+          requestOptions: requestOptions,
+          statusCode: 401,
+        ),
+      ),
+    );
+    expect(presentation.type, AppErrorType.unknown);
+    expect(presentation.title, isNot(kSessionExpiredMessage));
+  });
+
+  test('maps optional GET /rewards 401 without session expired copy', () {
+    final requestOptions = RequestOptions(
+      path: '/rewards',
+      method: 'GET',
+      headers: {'Authorization': 'Bearer stale'},
+    );
+    final presentation = AppErrorMapper.map(
+      DioException(
+        requestOptions: requestOptions,
+        type: DioExceptionType.badResponse,
+        response: Response(
+          requestOptions: requestOptions,
+          statusCode: 401,
+        ),
+      ),
+    );
+    expect(presentation.type, AppErrorType.unknown);
+    expect(presentation.title, isNot(kSessionExpiredMessage));
   });
 
   test('maps 503 to maintenance copy', () {

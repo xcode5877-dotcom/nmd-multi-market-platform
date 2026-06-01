@@ -3,7 +3,9 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../api/storefront_api.dart';
+import '../../../core/auth/auth_failure.dart';
 import '../../../core/errors/app_error_mapper.dart';
+import '../../../core/network/guest_browsing_request.dart';
 import '../data/pillar_nav_item.dart';
 import '../data/sub_category_nav_item.dart';
 
@@ -90,11 +92,13 @@ final class HomeCubit extends Cubit<HomeCubitState> {
     emit(state.copyWith(
         pillarStatus: HomeCategoriesStatus.loading, pillarErrorMessage: null));
     try {
-      final response = await _dio.get<dynamic>(
-        '/pillars',
-        queryParameters: {
-          '_t': DateTime.now().millisecondsSinceEpoch.toString()
-        },
+      final response = await withGuestBrowsingRetry(
+        () => _dio.get<dynamic>(
+          '/pillars',
+          queryParameters: {
+            '_t': DateTime.now().millisecondsSinceEpoch.toString(),
+          },
+        ),
       );
       final raw = response.data;
       final List<dynamic> list;
@@ -126,6 +130,13 @@ final class HomeCubit extends Cubit<HomeCubitState> {
       ));
     } catch (e) {
       AppErrorMapper.log(e, context: 'home_pillars');
+      if (e is DioException && isGuestSafe401(e)) {
+        emit(state.copyWith(
+          pillarStatus: HomeCategoriesStatus.loaded,
+          pillars: const [],
+        ));
+        return;
+      }
       emit(state.copyWith(
         pillarStatus: HomeCategoriesStatus.failure,
         pillars: const [],
@@ -167,26 +178,30 @@ final class HomeCubit extends Cubit<HomeCubitState> {
     ));
 
     try {
-      final market = await _api.getMarketBySlug(marketSlug);
+      final market = await withGuestBrowsingRetry(
+        () => _api.getMarketBySlug(marketSlug),
+      );
       final marketId = market['id']?.toString();
       if (marketId == null || marketId.isEmpty) {
         throw Exception('Market missing');
       }
 
       // Tenants first — never blocked by /sub-categories failing or being slow.
-      final list = await _api.getMarketTenants(
-        marketId,
-        pillarId: p?.isNotEmpty == true ? p : null,
-        subCategoryId: sub != null && sub.isNotEmpty ? sub : null,
+      final list = await withGuestBrowsingFallback(
+        () => _api.getMarketTenants(
+          marketId,
+          pillarId: p?.isNotEmpty == true ? p : null,
+          subCategoryId: sub != null && sub.isNotEmpty ? sub : null,
+        ),
+        const <Map<String, dynamic>>[],
       );
 
       List<SubCategoryNavItem> subs = const [];
       if (p != null && p.isNotEmpty) {
-        try {
-          subs = await _api.getSubCategories(pillarId: p);
-        } catch (_) {
-          subs = const [];
-        }
+        subs = await withGuestBrowsingFallback(
+          () => _api.getSubCategories(pillarId: p),
+          const <SubCategoryNavItem>[],
+        );
       }
 
       if (gen != _tenantSyncGeneration) return;
@@ -206,6 +221,20 @@ final class HomeCubit extends Cubit<HomeCubitState> {
     } catch (e) {
       if (gen != _tenantSyncGeneration) return;
       AppErrorMapper.log(e, context: 'home_tenants');
+      if (e is DioException && isGuestSafe401(e)) {
+        emit(HomeCubitState(
+          pillarStatus: state.pillarStatus,
+          pillars: state.pillars,
+          pillarErrorMessage: state.pillarErrorMessage,
+          subCategoriesStatus: HomeCategoriesStatus.initial,
+          subCategories: const [],
+          subCategoriesForPillarId: p,
+          tenantsStatus: TenantsStatus.loaded,
+          tenantMaps: const [],
+          tenantsErrorMessage: null,
+        ));
+        return;
+      }
       emit(HomeCubitState(
         pillarStatus: state.pillarStatus,
         pillars: state.pillars,

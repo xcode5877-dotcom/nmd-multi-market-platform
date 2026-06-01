@@ -9,23 +9,18 @@ class AuthRemoteDataSource {
   final Dio _dio;
 
   Future<CustomerMeResult?> fetchCurrentCustomer() async {
-    try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/customer/me',
-        options: Options(headers: const {'Accept': 'application/json'}),
-      );
-      final data = response.data;
-      if (data == null) return null;
-      final phone = data['phone']?.toString().trim() ?? '';
-      if (phone.isEmpty) return null;
-      return CustomerMeResult(
-        phone: phone,
-        name: data['name']?.toString(),
-      );
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 401) return null;
-      rethrow;
-    }
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/customer/me',
+      options: Options(headers: const {'Accept': 'application/json'}),
+    );
+    final data = response.data;
+    if (data == null) return null;
+    final phone = data['phone']?.toString().trim() ?? '';
+    if (phone.isEmpty) return null;
+    return CustomerMeResult(
+      phone: phone,
+      name: data['name']?.toString(),
+    );
   }
 
   Future<CheckPhoneResult> checkPhone(String phone) async {

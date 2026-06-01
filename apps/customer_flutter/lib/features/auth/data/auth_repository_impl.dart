@@ -1,4 +1,5 @@
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../core/auth/app_review_demo_access.dart';
@@ -72,7 +73,15 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<CustomerMeResult?> fetchCurrentCustomer() async {
     final t = await _tokenStorage.getCustomerToken();
     if (t == null || t.trim().isEmpty) return null;
-    return _remote.fetchCurrentCustomer();
+    try {
+      return await _remote.fetchCurrentCustomer();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await _tokenStorage.clear();
+        return null;
+      }
+      rethrow;
+    }
   }
 
   @override

@@ -4,11 +4,20 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../api/api_base.dart';
 import '../../../api/storefront_api.dart';
+import '../../../core/auth/auth_failure.dart';
 import '../../../core/network/token_storage.dart';
 import '../../../core/errors/app_error_mapper.dart';
 import '../domain/customer_order_vm.dart';
 
-enum OrdersStatus { initial, loading, success, empty, error, unauthorized }
+enum OrdersStatus {
+  initial,
+  loading,
+  success,
+  empty,
+  error,
+  loginRequired,
+  sessionExpired,
+}
 
 final class OrdersState extends Equatable {
   const OrdersState({
@@ -29,9 +38,16 @@ final class OrdersState extends Equatable {
   const OrdersState.error(this.message)
       : status = OrdersStatus.error,
         groups = const [];
-  const OrdersState.unauthorized()
+  const OrdersState.loginRequired()
       : this(
-            status: OrdersStatus.unauthorized, groups: const [], message: null);
+            status: OrdersStatus.loginRequired,
+            groups: const [],
+            message: null);
+  const OrdersState.sessionExpired()
+      : this(
+            status: OrdersStatus.sessionExpired,
+            groups: const [],
+            message: null);
 
   final OrdersStatus status;
   final List<CustomerOrderGroup> groups;
@@ -48,13 +64,13 @@ class OrdersCubit extends Cubit<OrdersState> {
   final Dio _dio;
   final TokenStorage _tokenStorage;
 
-  void reportUnauthorized() => emit(const OrdersState.unauthorized());
+  void reportLoginRequired() => emit(const OrdersState.loginRequired());
 
   /// Does not call the network unless a customer JWT is present.
   Future<void> load() async {
     final token = await _tokenStorage.getCustomerToken();
     if (token == null || token.trim().isEmpty) {
-      emit(const OrdersState.unauthorized());
+      emit(const OrdersState.loginRequired());
       return;
     }
 
@@ -91,7 +107,19 @@ class OrdersCubit extends Cubit<OrdersState> {
     } on DioException catch (e) {
       final code = e.response?.statusCode;
       if (code == 401) {
-        emit(const OrdersState.unauthorized());
+        if (shouldForceLogout(
+          path: e.requestOptions.uri.path.isNotEmpty
+              ? e.requestOptions.uri.path
+              : e.requestOptions.path,
+          hadToken: requestHadBearerToken(e.requestOptions),
+          statusCode: code,
+          method: e.requestOptions.method,
+        )) {
+          await _tokenStorage.clear();
+          emit(const OrdersState.sessionExpired());
+        } else {
+          emit(const OrdersState.loginRequired());
+        }
         return;
       }
       // Missing route / proxy typo: treat like "no orders" instead of a technical error screen.

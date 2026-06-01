@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../auth/auth_failure.dart';
 import 'token_storage.dart';
 
 class AuthInterceptor extends Interceptor {
@@ -7,41 +8,55 @@ class AuthInterceptor extends Interceptor {
 
   final TokenStorage _tokenStorage;
 
-  bool _needsCustomerToken(RequestOptions options) {
-    // Prefer full URI path so `/api/customer/...` (merged baseUrl + path) still matches.
-    final path = options.uri.path.isNotEmpty ? options.uri.path : options.path;
-    final normalized = path.startsWith('/') ? path : '/$path';
-    final method = options.method.toUpperCase();
-
-    if (normalized.contains('/customer/')) return true;
-    // Optional auth: backend attaches redemption status when customer JWT is present.
-    if (method == 'GET' &&
-        (normalized == '/rewards' || normalized.endsWith('/rewards'))) {
-      return true;
-    }
-    // Web parity: ContestPopUp sends Bearer for `/contest/me` and `/contest/participate`.
-    if (normalized.contains('/contest/me') ||
-        normalized.contains('/contest/participate')) {
-      return true;
-    }
-    if (normalized.startsWith('/coupons/validate')) return true;
-    if (normalized.endsWith('/coupons/validate')) return true;
-    if ((normalized == '/orders' || normalized.endsWith('/orders')) &&
-        method == 'POST') {
-      return true;
-    }
-    return false;
-  }
-
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     _tokenStorage.getCustomerToken().then((token) {
-      if (_needsCustomerToken(options) && token != null && token.isNotEmpty) {
+      final path = requestPath(options);
+      final shouldAttach = shouldAttachCustomerToken(
+        path,
+        method: options.method,
+      );
+      if (shouldAttach && token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
       }
       handler.next(options);
     }).catchError((_) {
       handler.next(options);
     });
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final status = err.response?.statusCode;
+    if (status == 401) {
+      final path = requestPath(err.requestOptions);
+      final hadToken = requestHadBearerToken(err.requestOptions);
+      final method = err.requestOptions.method;
+
+      log401Intercept(
+        path: path,
+        hadToken: hadToken,
+        statusCode: status,
+        method: method,
+      );
+
+      final kind = classifyAuthFailure(
+        path: path,
+        hadToken: hadToken,
+        statusCode: status,
+        method: method,
+      );
+      err.requestOptions.extra['authFailureKind'] = kind;
+
+      if (shouldClearTokenOn401(
+        path: path,
+        hadToken: hadToken,
+        statusCode: status,
+        method: method,
+      )) {
+        _tokenStorage.clear();
+      }
+    }
+    handler.next(err);
   }
 }

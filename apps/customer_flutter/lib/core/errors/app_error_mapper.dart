@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../api/api_base.dart';
+import '../auth/auth_failure.dart';
 import 'app_error_type.dart';
 
 /// Friendly Arabic copy for a mapped error.
@@ -45,8 +46,13 @@ abstract final class AppErrorMapper {
     return _copy(AppErrorType.unknown);
   }
 
-  static AppErrorPresentation mapHttpStatus(int? statusCode) {
-    if (statusCode == 401) return _copy(AppErrorType.unauthorized);
+  static AppErrorPresentation mapHttpStatus(
+    int? statusCode, {
+    AuthFailureKind authFailure = AuthFailureKind.none,
+  }) {
+    if (statusCode == 401) {
+      return mapAuthFailure(authFailure);
+    }
     if (statusCode == 404) return _copy(AppErrorType.notFound);
     if (statusCode == 503) return _copy(AppErrorType.maintenance);
     if (statusCode != null && statusCode >= 500) {
@@ -56,6 +62,25 @@ abstract final class AppErrorMapper {
       return _copy(AppErrorType.server);
     }
     return _copy(AppErrorType.unknown);
+  }
+
+  static AppErrorPresentation mapAuthFailure(AuthFailureKind kind) {
+    switch (kind) {
+      case AuthFailureKind.loginRequired:
+        return AppErrorPresentation(
+          type: AppErrorType.unauthorized,
+          title: kLoginRequiredMessage,
+          message: kLoginRequiredMessage,
+        );
+      case AuthFailureKind.sessionExpired:
+        return AppErrorPresentation(
+          type: AppErrorType.unauthorized,
+          title: kSessionExpiredMessage,
+          message: kSessionExpiredMessage,
+        );
+      case AuthFailureKind.none:
+        return _copy(AppErrorType.unknown);
+    }
   }
 
   static String friendlyMessage(Object error) => map(error).message;
@@ -120,6 +145,23 @@ abstract final class AppErrorMapper {
       case DioExceptionType.connectionError:
         return _copy(AppErrorType.noConnection);
       case DioExceptionType.badResponse:
+        if (error.response?.statusCode == 401) {
+          final path = requestPath(error.requestOptions);
+          final hadToken = requestHadBearerToken(error.requestOptions);
+          if (shouldForceLogout(
+            path: path,
+            hadToken: hadToken,
+            statusCode: 401,
+            method: error.requestOptions.method,
+          )) {
+            return mapAuthFailure(AuthFailureKind.sessionExpired);
+          }
+          final kind = authFailureKindFromDio(error);
+          if (kind == AuthFailureKind.loginRequired) {
+            return mapAuthFailure(AuthFailureKind.loginRequired);
+          }
+          return _copy(AppErrorType.unknown);
+        }
         return mapHttpStatus(error.response?.statusCode);
       case DioExceptionType.cancel:
         return _copy(AppErrorType.unknown);
@@ -147,7 +189,7 @@ abstract final class AppErrorMapper {
     AppErrorType.timeout: 'تعذّر الاتصال',
     AppErrorType.server: 'حدثت مشكلة مؤقتة',
     AppErrorType.notFound: 'المحتوى غير متوفر',
-    AppErrorType.unauthorized: 'انتهت الجلسة',
+    AppErrorType.unauthorized: kSessionExpiredMessage,
     AppErrorType.maintenance: 'الخدمة قيد الصيانة',
     AppErrorType.unknown: 'حدث خطأ غير متوقع',
   };
@@ -161,8 +203,7 @@ abstract final class AppErrorMapper {
         'نحاول حل المشكلة. يرجى المحاولة بعد قليل.',
     AppErrorType.notFound:
         'لم نجد ما تبحث عنه. قد يكون المحتوى غير متاح حالياً.',
-    AppErrorType.unauthorized:
-        'يرجى تسجيل الدخول مرة أخرى للمتابعة.',
+    AppErrorType.unauthorized: kSessionExpiredMessage,
     AppErrorType.maintenance:
         'نقوم بتحسين الخدمة حالياً. يرجى المحاولة بعد قليل.',
     AppErrorType.unknown:

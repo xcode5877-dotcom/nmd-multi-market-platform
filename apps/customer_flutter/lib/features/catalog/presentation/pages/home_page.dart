@@ -9,7 +9,9 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../../core/auth/auth_failure.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/network/guest_browsing_request.dart';
 import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
@@ -22,6 +24,11 @@ import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../widgets/app_error_view.dart';
 import '../widgets/marketplace_card_layout.dart';
 import '../../../../widgets/nmd_search_bar.dart';
+import '../../../home/domain/feed/feed_campaign.dart';
+import '../../../home/domain/feed/home_feed_block.dart';
+import '../../../home/domain/feed/home_feed_composer.dart';
+import '../../../home/presentation/feed/home_feed_sliver_builder.dart';
+import '../../../home/presentation/feed/home_feed_store_view.dart';
 
 /// Matches route `?pillar=` to pillar chip id from GET `/pillars` (trimmed string equality).
 bool _pillarQueryMatchesChip(String? queryPillar, String itemId) =>
@@ -135,12 +142,28 @@ class _HomePageState extends State<HomePage> {
     try {
       final api = StorefrontApi(context.read<Dio>());
       final slug = widget.slug;
-      final market = await api.getMarketBySlug(slug);
+      final market = await withGuestBrowsingRetry(
+        () => api.getMarketBySlug(slug),
+      );
       final marketId = market['id']?.toString();
       if (marketId == null || marketId.isEmpty) throw Exception('Market missing');
 
-      final sectionsRaw = await api.getMarketLayout(slug);
-      final bannersRaw = await api.getMarketBanners(slug);
+      final sectionsRaw = await withGuestBrowsingFallback(
+        () => api.getMarketLayout(slug),
+        const <Map<String, dynamic>>[],
+      );
+      final bannersRaw = await withGuestBrowsingFallback(
+        () => api.getMarketBanners(slug),
+        const <Map<String, dynamic>>[],
+      );
+      final feedCampaignsRaw = await withGuestBrowsingFallback(
+        () => api.getMarketFeedCampaigns(slug),
+        const <Map<String, dynamic>>[],
+      );
+      final feedCampaigns = feedCampaignsRaw
+          .map(FeedCampaign.fromJson)
+          .where((c) => c.active && c.isWithinSchedule)
+          .toList();
       final campaigns = <Map<String, dynamic>>[];
 
       final campaignBanners = campaigns
@@ -178,6 +201,7 @@ class _HomePageState extends State<HomePage> {
         marketName: _marketDisplayName(market),
         banners: banners,
         sections: sections,
+        feedCampaigns: feedCampaigns,
       );
     } catch (e, st) {
       nmdPostLoginTrace('HOME_API_FAILED', '$e\n$st');
@@ -256,8 +280,16 @@ class _HomePageState extends State<HomePage> {
                   return const HomeLayoutShimmer();
                 }
                 if (snap.hasError) {
+                  final err = snap.error!;
+                  if (err is DioException && isGuestSafe401(err)) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      setState(() => _layoutFuture = _fetchLayout());
+                    });
+                    return const HomeLayoutShimmer();
+                  }
                   return AppErrorView.fromError(
-                    error: snap.error!,
+                    error: err,
                     context: 'home_layout',
                     compact: true,
                     onRetry: () {
@@ -426,6 +458,59 @@ class _HomePageState extends State<HomePage> {
                       if (hasVisibleStore) break;
                     }
 
+                    final feedSections = layout.sections
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => HomeFeedStoreSection(
+                            title: e.value.title,
+                            storeIds: e.value.storeIds,
+                            index: e.key,
+                          ),
+                        )
+                        .toList();
+
+                    final campaigns = layout.feedCampaigns;
+
+                    final feedBlocks = campaigns.isEmpty
+                        ? feedSections
+                            .map((s) => StoreSectionFeedBlock(section: s))
+                            .toList()
+                        : HomeFeedComposer.compose(
+                            sections: feedSections,
+                            campaigns: campaigns,
+                          );
+
+                    final storeIdBySlug = <String, String>{
+                      for (final e in storesBySlug.entries) e.key: e.value.id,
+                    };
+
+                    List<HomeFeedStoreView> resolveSectionStores(
+                      HomeFeedStoreSection section,
+                    ) {
+                      final sectionTitleMatch = _query.isNotEmpty &&
+                          section.title.toLowerCase().contains(_query);
+                      return section.storeIds
+                          .map((id) => storesById[id] ?? storesBySlug[id])
+                          .whereType<_StoreItem>()
+                          .where(
+                            (s) =>
+                                sectionTitleMatch ||
+                                _matchesStoreQuery(s, _query),
+                          )
+                          .map(
+                            (s) => HomeFeedStoreView(
+                              id: s.id,
+                              slug: s.slug,
+                              name: s.name,
+                              category: s.category,
+                              logoUrl: s.logoUrl,
+                              openStatus: s.openStatus,
+                            ),
+                          )
+                          .toList();
+                    }
+
                     return CustomScrollView(
                       primary: true,
                       slivers: [
@@ -437,16 +522,12 @@ class _HomePageState extends State<HomePage> {
                         SliverToBoxAdapter(
                             child:
                                 _SubCategoryNavStrip(marketSlug: widget.slug)),
-                        ...layout.sections.map(
-                          (section) => SliverToBoxAdapter(
-                            child: _StoreSection(
-                              marketSlug: widget.slug,
-                              section: section,
-                              storesById: storesById,
-                              storesBySlug: storesBySlug,
-                              query: _query,
-                            ),
-                          ),
+                        ...HomeFeedSliverBuilder.buildSlivers(
+                          context: context,
+                          blocks: feedBlocks,
+                          marketSlug: widget.slug,
+                          resolveStores: resolveSectionStores,
+                          storeIdBySlug: storeIdBySlug,
                         ),
                         if (layout.sections.isNotEmpty && !hasVisibleStore)
                           SliverToBoxAdapter(
@@ -1132,10 +1213,12 @@ class _HomeLayoutPayload {
     required this.marketName,
     required this.banners,
     required this.sections,
+    required this.feedCampaigns,
   });
   final String marketName;
   final List<_BannerItem> banners;
   final List<_SectionItem> sections;
+  final List<FeedCampaign> feedCampaigns;
 }
 
 class _BannerItem {
