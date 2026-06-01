@@ -67,5 +67,60 @@
         ]
       }
     ]
+  },
+  "feedCampaigns": {
+    "dabburiyya": [
+      {
+        "id": "fc_food_mood",
+        "title": "شو جاي عبالك اليوم؟",
+        "subtitle": "اختر مزاجك واكتشف محلات قريبة",
+        "type": "CATEGORY_DISCOVERY",
+        "ctaLabel": "اكتشف",
+        "ctaAction": "OPEN_CATEGORY",
+        "active": true,
+        "placement": "AFTER_SECTION_1",
+        "priority": 200,
+        "sortOrder": 0,
+        "categoryLabels": ["بيتزا", "برغر", "آسيوي", "قهوة", "حلويات"]
+      },
+      {
+        "id": "fc_weekly_challenge",
+        "title": "تحدي الأسبوع",
+        "subtitle": "اربح 500₪",
+        "type": "COMPETITION_CARD",
+        "ctaLabel": "شارك الآن",
+        "ctaAction": "OPEN_COMPETITION",
+        "active": true,
+        "placement": "AFTER_EVERY_2_ROWS",
+        "priority": 180,
+        "sortOrder": 1,
+        "participantCount": 24
+      },
+      {
+        "id": "fc_rewards_nudge",
+        "title": "معك عملات؟ 👀",
+        "subtitle": "استبدلها بمكافآت من محلاتك المفضلة",
+        "type": "REWARD_CARD",
+        "ctaLabel": "المكافآت",
+        "ctaAction": "OPEN_REWARD",
+        "active": true,
+        "placement": "AFTER_SECTION_2",
+        "priority": 170,
+        "sortOrder": 2
+      },
+      {
+        "id": "fc_new_store_story",
+        "title": "محل جديد وصل لـ Now Market",
+        "subtitle": "اكتشف تجربة طلب مميزة",
+        "type": "STORE_FEATURE",
+        "ctaLabel": "تعرّف عليه",
+        "ctaAction": "OPEN_STORE",
+        "active": true,
+        "placement": "TOP",
+        "priority": 160,
+        "sortOrder": 3,
+        "imageUrl": "https://nmd.marketing/api/uploads/banners/1773863402151-4v41n752.webp"
+      }
+    ]
   }
 }

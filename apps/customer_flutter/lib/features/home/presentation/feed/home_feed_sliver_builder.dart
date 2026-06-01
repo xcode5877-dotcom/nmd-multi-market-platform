@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/feed/feed_campaign.dart';
+import '../../domain/feed/feed_campaign_display.dart';
 import '../../domain/feed/home_feed_block.dart';
-import '../widgets/feed_campaigns/category_discovery_campaign.dart';
-import '../widgets/feed_campaigns/editorial_hero_campaign.dart';
-import '../widgets/feed_campaigns/compact_promo_strip.dart';
-import '../widgets/feed_campaigns/interactive_event_card.dart';
-import '../widgets/feed_campaigns/reward_card_campaign.dart';
+import '../widgets/feed_campaigns/challenge_event_editorial_card.dart';
+import '../widgets/feed_campaigns/food_mood_discovery_card.dart';
+import '../widgets/feed_campaigns/new_store_story_card.dart';
+import '../widgets/feed_campaigns/night_offers_feed_strip.dart';
+import '../widgets/feed_campaigns/rewards_discovery_editorial_card.dart';
 import 'feed_campaign_actions.dart';
 import 'home_feed_store_view.dart';
 import 'home_store_section_strip.dart';
@@ -34,26 +35,22 @@ class HomeFeedSliverBuilder {
         campaignIndex++;
         slivers.add(
           SliverToBoxAdapter(
-            child: _buildBlock(
+            child: _buildPromoBlock(
               context,
               block,
               marketSlug: marketSlug,
               storeIdBySlug: storeIdBySlug,
               campaignIndex: idx,
-              resolveStores: resolveStores,
             ),
           ),
         );
       } else {
         slivers.add(
           SliverToBoxAdapter(
-            child: _buildBlock(
-              context,
-              block,
+            child: HomeStoreSectionStrip(
               marketSlug: marketSlug,
-              storeIdBySlug: storeIdBySlug,
-              campaignIndex: 0,
-              resolveStores: resolveStores,
+              title: block.section.title,
+              stores: resolveStores(block.section),
             ),
           ),
         );
@@ -63,15 +60,15 @@ class HomeFeedSliverBuilder {
     return slivers;
   }
 
-  static Widget _buildBlock(
+  static Widget _buildPromoBlock(
     BuildContext context,
     HomeFeedBlock block, {
     required String marketSlug,
     required Map<String, String> storeIdBySlug,
     required int campaignIndex,
-    HomeFeedStoreResolver? resolveStores,
   }) {
-    void open(FeedCampaign campaign) {
+    final campaign = _campaignFrom(block);
+    void open() {
       handleFeedCampaignAction(
         context,
         campaign: campaign,
@@ -80,44 +77,59 @@ class HomeFeedSliverBuilder {
       );
     }
 
-    switch (block) {
-      case StoreSectionFeedBlock(:final section):
-        return HomeStoreSectionStrip(
-          marketSlug: marketSlug,
-          title: section.title,
-          stores: resolveStores!(section),
-        );
-      case HeroBannerFeedBlock(:final campaign):
-      case StoreFeatureFeedBlock(:final campaign):
-        return EditorialHeroCampaign(
+    if (campaign.showsAsFoodMood) {
+      return FoodMoodDiscoveryCard(
+        campaign: campaign,
+        listIndex: campaignIndex,
+        onCategoryTap: (_) => open(),
+      );
+    }
+
+    switch (campaign.kind) {
+      case FeedCampaignKind.competitionCard:
+        return ChallengeEventEditorialCard(
           campaign: campaign,
           listIndex: campaignIndex,
-          onCta: () => open(campaign),
+          onTap: open,
         );
-      case OfferStripFeedBlock(:final campaign):
-        return CompactPromoStrip(
+      case FeedCampaignKind.rewardCard:
+        return RewardsDiscoveryEditorialCard(
           campaign: campaign,
           listIndex: campaignIndex,
-          onTap: () => open(campaign),
+          onTap: open,
         );
-      case CompetitionCardFeedBlock(:final campaign):
-        return InteractiveEventCard(
+      case FeedCampaignKind.offerStrip:
+        return NightOffersFeedStrip(
           campaign: campaign,
           listIndex: campaignIndex,
-          onCta: () => open(campaign),
+          onTap: open,
         );
-      case RewardCardFeedBlock(:final campaign):
-        return RewardCardCampaign(
+      case FeedCampaignKind.storeFeature:
+      case FeedCampaignKind.heroBanner:
+      case FeedCampaignKind.popupTrigger:
+        return NewStoreStoryCard(
           campaign: campaign,
           listIndex: campaignIndex,
-          onCta: () => open(campaign),
+          onTap: open,
         );
-      case CategoryDiscoveryFeedBlock(:final campaign):
-        return CategoryDiscoveryCampaign(
+      case FeedCampaignKind.categoryDiscovery:
+        return FoodMoodDiscoveryCard(
           campaign: campaign,
           listIndex: campaignIndex,
-          onCategoryTap: (_) => open(campaign),
+          onCategoryTap: (_) => open(),
         );
     }
+  }
+
+  static FeedCampaign _campaignFrom(HomeFeedBlock block) {
+    return switch (block) {
+      HeroBannerFeedBlock(:final campaign) => campaign,
+      OfferStripFeedBlock(:final campaign) => campaign,
+      CompetitionCardFeedBlock(:final campaign) => campaign,
+      RewardCardFeedBlock(:final campaign) => campaign,
+      StoreFeatureFeedBlock(:final campaign) => campaign,
+      CategoryDiscoveryFeedBlock(:final campaign) => campaign,
+      StoreSectionFeedBlock() => throw StateError('not a promo block'),
+    };
   }
 }

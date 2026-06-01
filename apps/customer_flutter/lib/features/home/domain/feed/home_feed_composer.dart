@@ -1,5 +1,4 @@
-import 'package:flutter/foundation.dart';
-
+import '../../../../core/debug/nmd_feed_trace.dart';
 import 'feed_campaign.dart';
 import 'home_feed_block.dart';
 
@@ -66,8 +65,6 @@ class HomeFeedComposer {
       }
     }
 
-    _ensurePromoBeforeFirstSection(blocks, campaigns, insertedIds);
-
     _logComposer(
       sections: sections.length,
       campaigns: campaigns.length,
@@ -76,46 +73,19 @@ class HomeFeedComposer {
     return blocks;
   }
 
-  /// QA: at least one promo visible above the first store row when campaigns exist.
-  static void _ensurePromoBeforeFirstSection(
-    List<HomeFeedBlock> blocks,
-    List<FeedCampaign> campaigns,
-    Set<String> insertedIds,
-  ) {
-    if (campaigns.isEmpty || blocks.isEmpty) return;
-    if (blocks.first is! StoreSectionFeedBlock) return;
-
-    final sorted = List<FeedCampaign>.from(campaigns)
-      ..sort((a, b) {
-        final byPriority = b.priority.compareTo(a.priority);
-        if (byPriority != 0) return byPriority;
-        return a.sortOrder.compareTo(b.sortOrder);
-      });
-
-    FeedCampaign? lead;
-    for (final c in sorted) {
-      if (!insertedIds.contains(c.id)) {
-        lead = c;
-        break;
-      }
-    }
-    if (lead == null) return;
-
-    blocks.insert(0, _blockForCampaign(lead));
-    insertedIds.add(lead.id);
-  }
-
   static void _logComposer({
     required int sections,
     required int campaigns,
     required List<HomeFeedBlock> blocks,
   }) {
-    if (!kDebugMode) return;
     final promos = blocks.where((b) => b is! StoreSectionFeedBlock).length;
-    debugPrint(
-      '[FEED_COMPOSER] sections=$sections campaigns=$campaigns '
-      'insertedBlocks=$promos totalBlocks=${blocks.length}',
+    nmdFeedTrace(
+      '[FEED_COMPOSER] insertedBlocks=$promos sections=$sections '
+      'campaigns=$campaigns',
     );
+    if (campaigns > 0 && promos == 0) {
+      nmdFeedTrace('[FEED_COMPOSER] reason=no_promo_inserted');
+    }
   }
 
   static FeedCampaign? _takePlacement(

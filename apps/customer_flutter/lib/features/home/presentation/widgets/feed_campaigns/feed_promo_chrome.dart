@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../core/debug/nmd_feed_trace.dart';
 import '../../../domain/feed/feed_campaign.dart';
 import 'feed_campaign_motion.dart';
 
-/// Shared padding + optional debug label for feed promo blocks.
+/// Shared padding for feed promo blocks.
 class FeedPromoChrome extends StatelessWidget {
   const FeedPromoChrome({
     super.key,
@@ -24,48 +25,21 @@ class FeedPromoChrome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kDebugMode) {
-      debugPrint('[FEED_RENDER] blockType=$blockType id=${campaign?.id ?? '-'}');
+      nmdFeedTrace(
+        '[FEED_RENDER] blockType=$blockType id=${campaign?.id ?? '-'}',
+        verbose: true,
+      );
     }
 
-    final body = FeedCampaignFadeIn(
-      index: listIndex,
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 14),
-        child: onTap == null
-            ? child
-            : FeedCampaignPressable(onTap: onTap!, child: child),
-      ),
-    );
-
-    if (!kDebugMode) return RepaintBoundary(child: body);
-
     return RepaintBoundary(
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          body,
-          PositionedDirectional(
-            top: 2,
-            start: 8,
-            child: IgnorePointer(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Promo Block · $blockType',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+      child: FeedCampaignFadeIn(
+        index: listIndex,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 14),
+          child: onTap == null
+              ? child
+              : FeedCampaignPressable(onTap: onTap!, child: child),
+        ),
       ),
     );
   }

@@ -73,7 +73,7 @@ void main() {
     expect(blocks.first, isA<HeroBannerFeedBlock>());
   });
 
-  test('one section + AFTER_EVERY_2_ROWS still inserts lead promo at top', () {
+  test('single section does not force promo without placement slot', () {
     final blocks = HomeFeedComposer.compose(
       sections: const [
         HomeFeedStoreSection(title: 'S0', storeIds: ['a'], index: 0),
@@ -91,8 +91,8 @@ void main() {
         ),
       ],
     );
-    expect(blocks.first, isA<HeroBannerFeedBlock>());
-    expect(blocks.whereType<StoreSectionFeedBlock>().length, 1);
+    expect(blocks.length, 1);
+    expect(blocks.first, isA<StoreSectionFeedBlock>());
   });
 
   test('TOP placement appears before first section', () {
