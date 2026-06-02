@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../firebase_options.dart';
 import '../network/token_storage.dart';
 
 /// Customer FCM: permissions, token upload, foreground display, tap routing.
@@ -39,7 +40,7 @@ final class PushNotificationService {
     _initialized = true;
 
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       _firebaseReady = true;
     } catch (e, st) {
       debugPrint('[Push] Firebase init skipped (add google-services / GoogleService-Info): $e\n$st');

@@ -9,6 +9,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'app/app.dart';
 import 'app/app_scroll_behavior.dart';
 import 'core/debug/nmd_post_login_trace.dart';
+import 'firebase_options.dart';
 
 void _installNmdGlobalErrorSurfaces() {
   FlutterError.onError = (details) {
@@ -70,7 +71,7 @@ void _installNmdGlobalErrorSurfaces() {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
 
 void main() {
