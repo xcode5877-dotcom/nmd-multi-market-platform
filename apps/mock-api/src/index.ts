@@ -63,11 +63,19 @@ import {
 import {
   getBannersForMarket,
   getLayoutForMarket,
+  getFeedCampaignsForMarket,
+  getFeedCampaignsForMarketAdmin,
+  getFeedCampaignsConfigShape,
+  getHomeFeedSettingsForMarket,
+  setHomeFeedSettingsForMarket,
   setBannersForMarket,
   setLayoutForMarket,
+  setFeedCampaignsForMarket,
   normalizeMarketSlugForConfig,
   type MarketBanner,
   type MarketSection,
+  type MarketFeedCampaign,
+  type HomeFeedSettings,
 } from './market-config.js';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
@@ -79,7 +87,7 @@ import { normalizeInternationalPhoneDigits } from './utils/phone.js';
 import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
 import { sendWhatsAppNotification } from './services/CouponService.js';
 import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
-import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast } from './firebase-admin.js';
+import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast, isFCMConfigured } from './firebase-admin.js';
 import { awardLoyaltyCoinsIfNeeded, INITIAL_COINS } from './loyalty-coins.js';
 import {
   loadHypConfig,
@@ -978,6 +986,8 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/banners$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/layout$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/feed-campaigns$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/home-feed-settings$/ },
   { method: 'GET', path: /^\/markets\/[^/]+\/tenants$/ },
   { method: 'GET', path: /^\/tenants\/by-slug\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/by-id\/[^/]+$/ },
@@ -5076,6 +5086,27 @@ app.get('/users', async (req, res) => {
   res.json(users);
 });
 
+/** Admin: FCM delivery readiness (no fake “success” in UI). */
+app.get('/admin/notifications/status', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const tokens = await getAllCustomerFcmTokens();
+  const uniqueTokens = Array.from(new Set(tokens.map((tok) => tok.trim()).filter(Boolean)));
+  const fcmConfigured = isFCMConfigured();
+  res.json({
+    fcmConfigured,
+    registeredCustomerTokens: uniqueTokens.length,
+    pushReady: fcmConfigured && uniqueTokens.length > 0,
+    message: !fcmConfigured
+      ? 'الإشعارات غير مفعلة بعد — تحتاج ربط FCM (FIREBASE_SERVICE_ACCOUNT_JSON أو PATH)'
+      : uniqueTokens.length === 0
+        ? 'لا توجد أجهزة عملاء مسجّلة — التطبيق يحتاج حفظ رمز FCM'
+        : 'جاهز للإرسال عبر FCM',
+  });
+}));
+
 /** Admin broadcast: send FCM to all customers with fcmToken. Body: { title, body }. Super Admin / platform admin only. */
 app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
   const user = req.user as { id?: string; role?: string } | undefined;
@@ -5085,10 +5116,25 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
   const b = typeof body.body === 'string' ? body.body.trim() : '';
   if (!t && !b) return res.status(400).json({ error: 'title or body required' });
 
+  if (!isFCMConfigured()) {
+    return res.status(503).json({
+      error: 'FCM not configured',
+      fcmConfigured: false,
+      message: 'الإشعارات غير مفعلة بعد — تحتاج ربط FCM',
+    });
+  }
+
   const tokens = await getAllCustomerFcmTokens();
   const uniqueTokens = Array.from(new Set(tokens.map((tok) => tok.trim()).filter(Boolean)));
   if (uniqueTokens.length === 0) {
-    return res.json({ sent: 0, failed: 0, message: 'No customer FCM tokens registered' });
+    return res.status(422).json({
+      sent: 0,
+      failed: 0,
+      totalTokens: 0,
+      fcmConfigured: true,
+      error: 'No customer FCM tokens registered',
+      message: 'لا توجد أجهزة عملاء مسجّلة — لم يُرسل أي إشعار',
+    });
   }
 
   const payload = {
@@ -5096,6 +5142,15 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
     body: b || '',
   };
   const { successCount, failureCount } = await sendFCMMulticast(uniqueTokens, payload);
+  if (successCount === 0) {
+    return res.status(502).json({
+      sent: 0,
+      failed: failureCount,
+      totalTokens: uniqueTokens.length,
+      error: 'FCM delivery failed for all tokens',
+      message: 'فشل إرسال الإشعار لجميع الأجهزة',
+    });
+  }
   res.json({ sent: successCount, failed: failureCount, totalTokens: uniqueTokens.length });
 }));
 
@@ -5108,6 +5163,21 @@ app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => 
   if (!customerId) return res.status(400).json({ error: 'customerId required' });
   const title = (body.title ?? '').toString().trim() || 'إشعار';
   const msgBody = (body.body ?? '').toString().trim() || '';
+  if (!isFCMConfigured()) {
+    return res.status(503).json({
+      ok: false,
+      error: 'FCM not configured',
+      message: 'الإشعارات غير مفعلة بعد — تحتاج ربط FCM',
+    });
+  }
+  const token = await getCustomerFcmToken(customerId);
+  if (!token) {
+    return res.status(422).json({
+      ok: false,
+      error: 'No FCM token for customer',
+      message: 'العميل ليس لديه جهاز مسجّل لاستقبال الإشعارات',
+    });
+  }
   await sendFCMNotification(customerId, title, msgBody);
   res.json({ ok: true });
 }));
@@ -5721,6 +5791,79 @@ app.get('/markets/by-slug/:slug/layout', async (req, res) => {
   if (!market) return res.status(404).json({ error: 'Market not found' });
   const layout = getLayoutForMarket(slugNorm);
   res.json(layout);
+});
+
+app.get('/markets/by-slug/:slug/feed-campaigns', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const all = req.query.all === '1' || req.query.admin === '1';
+  try {
+    if (all) {
+      const user = req.user;
+      if (!user) return res.status(401).json({ error: 'Unauthorized' });
+      if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+    const shape = getFeedCampaignsConfigShape();
+    const rows = all
+      ? getFeedCampaignsForMarketAdmin(slugNorm)
+      : getFeedCampaignsForMarket(slugNorm);
+    const list = Array.isArray(rows) ? rows : [];
+    console.log(`[FEED_CAMPAIGNS_API] slug=${slugNorm} shape=${shape} count=${list.length}`);
+    return res.json(list);
+  } catch (err) {
+    console.error('[FEED_CAMPAIGNS_API] GET failed — returning []', err);
+    return res.json([]);
+  }
+});
+
+app.get('/markets/by-slug/:slug/home-feed-settings', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  res.json(getHomeFeedSettingsForMarket(slugNorm));
+});
+
+app.put('/markets/by-slug/:slug/home-feed-settings', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const body = req.body as Partial<HomeFeedSettings>;
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({ error: 'home feed settings must be an object' });
+  }
+  setHomeFeedSettingsForMarket(slugNorm, body as HomeFeedSettings);
+  res.json(getHomeFeedSettingsForMarket(slugNorm));
+});
+
+app.put('/markets/by-slug/:slug/feed-campaigns', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const body = req.body as unknown;
+  if (!Array.isArray(body)) {
+    return res.status(400).json({ error: 'feed campaigns payload must be an array' });
+  }
+  const campaigns = body as MarketFeedCampaign[];
+  setFeedCampaignsForMarket(slugNorm, campaigns);
+  res.json(getFeedCampaignsForMarketAdmin(slugNorm));
 });
 
 app.put('/markets/by-slug/:slug/banners', async (req, res) => {
