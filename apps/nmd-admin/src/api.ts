@@ -1,3 +1,5 @@
+import type { FeedCampaign, HomeFeedSettings } from './types/feedCampaign';
+
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 export const TOKEN_KEY = 'nmd-access-token';
 
@@ -134,6 +136,14 @@ export async function apiUploadBanner(file: File): Promise<{ urls: string[]; rel
     throw new Error(err.error ?? `Upload failed: ${res.status}`);
   }
   return res.json();
+}
+
+/** Upload one image; returns the first CDN URL from the banner upload endpoint. */
+export async function apiUploadSingleImage(file: File): Promise<string> {
+  const { urls } = await apiUploadBanner(file);
+  const url = urls?.[0]?.trim() ?? '';
+  if (!url) throw new Error('لم يُرجع الخادم رابط الصورة');
+  return url;
 }
 
 // --- Contests (platform admin) ---
@@ -369,3 +379,37 @@ export async function downloadRewardRedemptionsCsv(rewardId?: string): Promise<v
   URL.revokeObjectURL(a.href);
 }
 
+/** GET home feed promo blocks for a market (persisted in market-config.json). */
+export async function listMarketFeedCampaigns(marketSlug: string): Promise<FeedCampaign[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  const raw = await apiFetch<FeedCampaign[]>(`/markets/by-slug/${slug}/feed-campaigns?all=1`);
+  return Array.isArray(raw) ? raw : [];
+}
+
+/** PUT home feed campaigns for a market. */
+export async function saveMarketFeedCampaigns(
+  marketSlug: string,
+  campaigns: FeedCampaign[],
+): Promise<FeedCampaign[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  return apiFetch<FeedCampaign[]>(`/markets/by-slug/${slug}/feed-campaigns`, {
+    method: 'PUT',
+    body: JSON.stringify(campaigns),
+  });
+}
+
+export async function getHomeFeedSettings(marketSlug: string): Promise<HomeFeedSettings> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  return apiFetch<HomeFeedSettings>(`/markets/by-slug/${slug}/home-feed-settings`);
+}
+
+export async function saveHomeFeedSettings(
+  marketSlug: string,
+  settings: HomeFeedSettings,
+): Promise<HomeFeedSettings> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  return apiFetch<HomeFeedSettings>(`/markets/by-slug/${slug}/home-feed-settings`, {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}

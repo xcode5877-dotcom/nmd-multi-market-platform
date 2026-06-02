@@ -68,20 +68,40 @@
       }
     ]
   },
+  "homeFeedSettings": {
+    "dabburiyya": {
+      "maxBlocksPerHome": 3,
+      "maxPromoBlocksPerHome": 3,
+      "minStoreSectionsBetweenPromos": 2,
+      "firstPromoAfterSectionIndex": 1,
+      "spacingStyle": "normal",
+      "preventAdjacentLargeVisual": true,
+      "showLegacyBanners": true,
+      "showPillars": true
+    }
+  },
   "feedCampaigns": {
     "dabburiyya": [
       {
         "id": "fc_food_mood",
         "title": "شو جاي عبالك اليوم؟",
         "subtitle": "اختر مزاجك واكتشف محلات قريبة",
-        "type": "CATEGORY_DISCOVERY",
+        "type": "MOOD_DISCOVERY",
         "ctaLabel": "اكتشف",
-        "ctaAction": "OPEN_CATEGORY",
+        "ctaAction": "NONE",
         "active": true,
         "placement": "AFTER_SECTION_1",
         "priority": 200,
         "sortOrder": 0,
-        "categoryLabels": ["بيتزا", "برغر", "آسيوي", "قهوة", "حلويات"]
+        "visualWeight": "light",
+        "chips": [
+          { "label": "بيتزا", "emoji": "🍕", "action": "OPEN_CATEGORY", "targetId": "restaurants" },
+          { "label": "برجر", "emoji": "🍔", "action": "OPEN_CATEGORY", "targetId": "restaurants" },
+          { "label": "شاورما", "emoji": "🌯", "action": "OPEN_CATEGORY" },
+          { "label": "كوفي", "emoji": "☕", "action": "OPEN_CATEGORY" },
+          { "label": "سوشي", "emoji": "🍣", "action": "OPEN_CATEGORY" },
+          { "label": "صحي", "emoji": "🥗", "action": "OPEN_CATEGORY" }
+        ]
       },
       {
         "id": "fc_weekly_challenge",
@@ -100,7 +120,8 @@
         "id": "fc_rewards_nudge",
         "title": "معك عملات؟ 👀",
         "subtitle": "استبدلها بمكافآت من محلاتك المفضلة",
-        "type": "REWARD_CARD",
+        "type": "GLASS_STRIP",
+        "visualWeight": "light",
         "ctaLabel": "المكافآت",
         "ctaAction": "OPEN_REWARD",
         "active": true,

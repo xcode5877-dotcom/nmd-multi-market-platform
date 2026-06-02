@@ -18,6 +18,7 @@ import {
   Tag,
   CircleDot,
   Send,
+  Megaphone,
   Users,
   Settings,
   CreditCard,
@@ -122,6 +123,7 @@ export const SUPER_ADMIN_NAV_SECTIONS: SuperAdminNavSection[] = [
       { to: '/coupons', label: 'أكواد الخصم', icon: Tag, end: true },
       { to: '/lucky-wheel', label: 'عجلة الحظ', icon: CircleDot, end: true },
       { to: '/push-notifications', label: 'إشعارات العملاء', icon: Send, end: true },
+      { to: '/home-builder', label: 'بناء الصفحة الرئيسية', icon: Megaphone, end: true },
     ],
   },
   {

@@ -44,6 +44,7 @@ const ContestsPage = lazy(() => import('./pages/ContestsPage').then((m) => ({ de
 const CouponsPage = lazy(() => import('./pages/CouponsPage'));
 const LuckyWheelAdmin = lazy(() => import('./pages/LuckyWheelAdmin'));
 const PushNotificationsPage = lazy(() => import('./pages/PushNotificationsPage'));
+const HomePageBuilderPage = lazy(() => import('./pages/HomePageBuilderPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const ExternalOrdersAdminPage = lazy(() => import('./pages/ExternalOrdersAdminPage'));
 const DriversSectionLayout = lazy(() => import('./components/drivers/DriversSectionLayout'));
@@ -125,6 +126,8 @@ function Content() {
           <Route index element={<ExternalOrdersAdminPage />} />
         </Route>
         <Route path="push-notifications" element={<RootOnlyRoute><PushNotificationsPage /></RootOnlyRoute>} />
+        <Route path="home-builder" element={<RootOnlyRoute><HomePageBuilderPage /></RootOnlyRoute>} />
+        <Route path="feed-campaigns" element={<Navigate to="/home-builder" replace />} />
         <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
           {tenantRouteElements}
           <Route path="settings/delivery" element={<TenantDeliverySettingsPage />} />
