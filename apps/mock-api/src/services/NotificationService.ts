@@ -5,9 +5,14 @@
  * - Admin PWA: Web Push so admin gets a system notification when app is in background (iOS wake-up).
  */
 
+import { formatAddonNameWithPlacement } from '@nmd/core';
 import { getSubscriptionsByTenant, getSubscriptionsByPhone, sendPushNotification } from '../push-subscriptions.js';
+import { sendFCMToToken as sendRealFCMToToken } from '../firebase-admin.js';
+
+import { whatsAppFetch } from '../utils/whatsapp-http.js';
 
 const WHATSAPP_SERVICE_URL = process.env.WHATSAPP_WEB_SERVICE_URL ?? process.env.WHATSAPP_SERVICE_URL ?? 'http://whatsapp-service:3000';
+const WA_API_KEY = process.env.WA_API_KEY ?? '';
 const ORDER_ACTIONS_BASE = process.env.ORDER_ACTIONS_BASE_URL ?? 'https://nmd.marketing/merchant';
 
 export type OrderForNotification = {
@@ -28,6 +33,37 @@ export type TenantForMerchantNotify = {
 function formatMoney(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return '0';
   return `₪${Number(value).toFixed(2)}`;
+}
+
+/** Arabic modifier summary for merchant WhatsApp (uses catalog names from `optionGroups`). */
+function formatItemModifiersLine(item: {
+  selectedOptions?: unknown;
+  optionGroups?: unknown;
+}): string {
+  const sel = item.selectedOptions;
+  const groups = item.optionGroups;
+  if (!Array.isArray(sel) || sel.length === 0) return '';
+  if (!Array.isArray(groups)) return '';
+  const parts: string[] = [];
+  for (const raw of sel) {
+    if (!raw || typeof raw !== 'object') continue;
+    const s = raw as Record<string, unknown>;
+    const gid = String(s.optionGroupId ?? '');
+    const ids = Array.isArray(s.optionItemIds) ? (s.optionItemIds as string[]) : [];
+    const placements =
+      s.optionPlacements && typeof s.optionPlacements === 'object'
+        ? (s.optionPlacements as Record<string, string>)
+        : {};
+    const g = groups.find(
+      (x) => x && typeof x === 'object' && (x as { id?: string }).id === gid
+    ) as { items?: { id?: string; name?: string }[] } | undefined;
+    for (const id of ids) {
+      const name = g?.items?.find((opt) => opt.id === id)?.name ?? id;
+      const placement = (placements[id] ?? 'WHOLE') as 'WHOLE' | 'LEFT' | 'RIGHT';
+      parts.push(formatAddonNameWithPlacement(name, placement));
+    }
+  }
+  return parts.join('، ');
 }
 
 /**
@@ -63,7 +99,9 @@ export function buildMerchantOrderMessage(
     const name = (item.productName ?? 'منتج').toString();
     const qty = Number(item.quantity) || 1;
     const price = item.totalPrice != null ? formatMoney(item.totalPrice) : '';
-    lines.push(`• ${name} x${qty}${price ? `: ${price}` : ''}`);
+    const mod = formatItemModifiersLine(item as { selectedOptions?: unknown; optionGroups?: unknown });
+    const core = mod ? `${qty} × ${name} → ${mod}` : `${qty} × ${name}`;
+    lines.push(`• ${core}${price ? `: ${price}` : ''}`);
   }
   if (items.length === 0) lines.push('—');
   lines.push('');
@@ -106,9 +144,13 @@ export async function sendMessage(phone: string, message: string, orderId?: stri
   try {
     const body: { number: string; message: string; orderId?: string } = { number, message };
     if (orderId) body.orderId = orderId;
-    const res = await fetch(url, {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (WA_API_KEY) {
+      headers['x-api-key'] = WA_API_KEY;
+    }
+    const res = await whatsAppFetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
@@ -201,25 +243,34 @@ export const CUSTOMER_PUSH_MESSAGES: Record<string, { title: string; body: strin
 };
 
 /**
- * Send FCM to a single customer token (order status update). Mock: logs only; production would use Firebase Admin.
+ * Send FCM to a single customer token (order status update).
  */
-export function sendFCMToCustomerToken(
+export async function sendFCMToCustomerToken(
   fcmToken: string,
   status: string,
   orderId: string
-): void {
+): Promise<void> {
   const msg = CUSTOMER_PUSH_MESSAGES[String(status).toUpperCase()];
-  if (!msg) return;
-  console.log('[NotificationService] FCM (mock) to token', fcmToken.slice(0, 20) + '...', 'orderId:', orderId, 'title:', msg.title, 'body:', msg.body);
-  // Production: Firebase Admin messaging.send({ token: fcmToken, notification: { title: msg.title, body: msg.body }, data: { orderId, status } })
+  if (!msg || !fcmToken?.trim()) return;
+  const result = await sendRealFCMToToken(
+    fcmToken,
+    {
+      title: msg.title,
+      body: msg.body,
+      data: { orderId, status: String(status).toUpperCase(), type: 'order_status' },
+    },
+    'customer_notifications'
+  );
+  if (!result.success) {
+    console.warn('[NotificationService] FCM order status failed:', result.error);
+  }
 }
 
 /**
- * Send a generic FCM notification to one token (e.g. broadcast). Mock: logs only.
+ * @deprecated Use firebase-admin.sendFCMToToken directly for broadcasts.
  */
-export function sendFCMToToken(token: string, title: string, body: string): void {
-  console.log('[NotificationService] FCM (mock) broadcast to token', token.slice(0, 20) + '...', 'title:', title, 'body:', body);
-  // Production: Firebase Admin messaging.send({ token, notification: { title, body } })
+export async function sendFCMToToken(token: string, title: string, body: string): Promise<void> {
+  await sendRealFCMToToken(token, { title, body }, 'customer_notifications');
 }
 
 /**

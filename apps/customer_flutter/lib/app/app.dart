@@ -8,6 +8,7 @@ import '../features/auth/data/auth_remote_data_source.dart';
 import '../features/auth/data/auth_repository_impl.dart';
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/cart/application/cart_cubit.dart';
+import '../core/push/push_notification_listener.dart';
 import 'app_scroll_behavior.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
@@ -64,21 +65,24 @@ class _NowMarketAppState extends State<NowMarketApp> {
           BlocProvider<AuthBloc>.value(value: _authBloc),
           BlocProvider<CartCubit>.value(value: _cartCubit),
         ],
-        child: MaterialApp.router(
-          title: 'Now Market',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light,
-          scrollBehavior: const NmdAppScrollBehavior(),
-          routerConfig: appRouter,
-          builder: (context, child) {
-            if (child == null) {
-              return const ColoredBox(
-                color: Colors.white,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            return child;
-          },
+        child: PushNotificationListener(
+          router: appRouter,
+          child: MaterialApp.router(
+            title: 'Now Market',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light,
+            scrollBehavior: const NmdAppScrollBehavior(),
+            routerConfig: appRouter,
+            builder: (context, child) {
+              if (child == null) {
+                return const ColoredBox(
+                  color: Colors.white,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return child;
+            },
+          ),
         ),
       ),
     );

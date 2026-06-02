@@ -91,7 +91,8 @@ function logMismatchIfNeeded(err: unknown): void {
  */
 export async function sendFCMToToken(
   token: string,
-  payload: { title: string; body: string; data?: Record<string, string> }
+  payload: { title: string; body: string; data?: Record<string, string>; imageUrl?: string },
+  androidChannelId = 'new_order_alerts'
 ): Promise<{ success: boolean; error?: string }> {
   const a = initFirebase();
   if (!a || !token?.trim()) {
@@ -103,15 +104,20 @@ export async function sendFCMToToken(
       notification: {
         title: payload.title,
         body: payload.body,
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
       },
-      data: payload.data ?? {},
+      data: {
+        ...(payload.data ?? {}),
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+      },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'new_order_alerts',
+          channelId: androidChannelId,
           priority: 'max' as const,
           defaultSound: true,
+          ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
         },
       },
       apns: {
@@ -136,7 +142,8 @@ export async function sendFCMToToken(
  */
 export async function sendFCMMulticast(
   tokens: string[],
-  payload: { title: string; body: string; data?: Record<string, string> }
+  payload: { title: string; body: string; data?: Record<string, string>; imageUrl?: string },
+  androidChannelId = 'customer_notifications'
 ): Promise<{ successCount: number; failureCount: number }> {
   const a = initFirebase();
   const clean = (tokens ?? []).map((t) => t.trim()).filter(Boolean);
@@ -149,15 +156,20 @@ export async function sendFCMMulticast(
       notification: {
         title: payload.title,
         body: payload.body,
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
       },
-      data: payload.data ?? {},
+      data: {
+        ...(payload.data ?? {}),
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+      },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'new_order_alerts',
+          channelId: androidChannelId,
           priority: 'max' as const,
           defaultSound: true,
+          ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
         },
       },
       apns: {

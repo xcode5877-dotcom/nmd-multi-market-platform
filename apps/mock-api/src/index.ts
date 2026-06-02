@@ -5107,14 +5107,33 @@ app.get('/admin/notifications/status', wrapAsync(async (req, res) => {
   });
 }));
 
-/** Admin broadcast: send FCM to all customers with fcmToken. Body: { title, body }. Super Admin / platform admin only. */
+/** Admin broadcast: send FCM to customers. Body: { title, body, imageUrl?, route?, marketSlug? }. */
 app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
   const user = req.user as { id?: string; role?: string } | undefined;
   if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
-  const body = req.body as { title?: string; body?: string };
+  const body = req.body as {
+    title?: string;
+    body?: string;
+    imageUrl?: string;
+    route?: string;
+    marketSlug?: string;
+    scheduledAt?: string;
+  };
   const t = typeof body.title === 'string' ? body.title.trim() : '';
   const b = typeof body.body === 'string' ? body.body.trim() : '';
   if (!t && !b) return res.status(400).json({ error: 'title or body required' });
+
+  const scheduledAt = typeof body.scheduledAt === 'string' ? body.scheduledAt.trim() : '';
+  if (scheduledAt) {
+    const when = Date.parse(scheduledAt);
+    if (!Number.isNaN(when) && when > Date.now()) {
+      return res.status(501).json({
+        error: 'Scheduled push not implemented yet',
+        message: 'الجدولة غير مفعّلة بعد — أرسل الآن أو استخدم cron خارجي',
+        scheduledAt,
+      });
+    }
+  }
 
   if (!isFCMConfigured()) {
     return res.status(503).json({
@@ -5124,7 +5143,42 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
     });
   }
 
-  const tokens = await getAllCustomerFcmTokens();
+  let tokens = await getAllCustomerFcmTokens();
+  const marketSlug = typeof body.marketSlug === 'string' ? body.marketSlug.trim() : '';
+  if (marketSlug) {
+    const markets = await repos.markets.findAll();
+    const market = markets.find((m) => m.slug === marketSlug);
+    if (!market) {
+      return res.status(404).json({ error: 'Market not found', marketSlug });
+    }
+    if (isStorageDb()) {
+      const orders = await prisma.order.findMany({
+        where: { marketId: market.id },
+        select: { payload: true },
+      });
+      const phones = new Set<string>();
+      for (const o of orders) {
+        try {
+          const p = typeof o.payload === 'string' ? JSON.parse(o.payload) : o.payload;
+          const ph = (p as { customerPhone?: string })?.customerPhone;
+          if (ph) phones.add(normalizeInternationalPhoneDigits(ph));
+        } catch {
+          /* skip malformed payload */
+        }
+      }
+      const customers = await repos.customers.findAll();
+      const ids = customers
+        .filter((c) => phones.has(normalizeInternationalPhoneDigits(c.phone)))
+        .map((c) => c.id);
+      const rows = await prisma.customerFCMToken.findMany({
+        where: { customerId: { in: ids } },
+        select: { token: true },
+      });
+      tokens = rows.map((r) => r.token);
+    } else {
+      console.warn('[FCM] marketSlug filter requires STORAGE_DRIVER=db — sending to all tokens');
+    }
+  }
   const uniqueTokens = Array.from(new Set(tokens.map((tok) => tok.trim()).filter(Boolean)));
   if (uniqueTokens.length === 0) {
     return res.status(422).json({
@@ -5133,13 +5187,22 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
       totalTokens: 0,
       fcmConfigured: true,
       error: 'No customer FCM tokens registered',
-      message: 'لا توجد أجهزة عملاء مسجّلة — لم يُرسل أي إشعار',
+      message: marketSlug
+        ? `لا أجهزة مسجّلة لسوق ${marketSlug}`
+        : 'لا توجد أجهزة عملاء مسجّلة — لم يُرسل أي إشعار',
     });
   }
 
+  const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+  const route = typeof body.route === 'string' ? body.route.trim() : '';
   const payload = {
     title: t || 'إشعار',
     body: b || '',
+    ...(imageUrl ? { imageUrl } : {}),
+    data: {
+      ...(route ? { route } : {}),
+      type: 'admin_broadcast',
+    },
   };
   const { successCount, failureCount } = await sendFCMMulticast(uniqueTokens, payload);
   if (successCount === 0) {
@@ -5147,18 +5210,34 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
       sent: 0,
       failed: failureCount,
       totalTokens: uniqueTokens.length,
+      fcmConfigured: true,
       error: 'FCM delivery failed for all tokens',
       message: 'فشل إرسال الإشعار لجميع الأجهزة',
     });
   }
-  res.json({ sent: successCount, failed: failureCount, totalTokens: uniqueTokens.length });
+  res.json({
+    sent: successCount,
+    failed: failureCount,
+    totalTokens: uniqueTokens.length,
+    fcmConfigured: true,
+    message:
+      failureCount > 0
+        ? `تم الإرسال إلى ${successCount} جهاز (فشل ${failureCount})`
+        : `تم الإرسال إلى ${successCount} جهاز`,
+  });
 }));
 
 /** Super Admin: send a manual notification to a single customer by customerId. */
 app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => {
   const user = req.user as { role?: string } | undefined;
   if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
-  const body = req.body as { customerId?: string; title?: string; body?: string };
+  const body = req.body as {
+    customerId?: string;
+    title?: string;
+    body?: string;
+    imageUrl?: string;
+    route?: string;
+  };
   const customerId = (body.customerId ?? '').toString().trim();
   if (!customerId) return res.status(400).json({ error: 'customerId required' });
   const title = (body.title ?? '').toString().trim() || 'إشعار';
@@ -5166,6 +5245,9 @@ app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => 
   if (!isFCMConfigured()) {
     return res.status(503).json({
       ok: false,
+      sent: 0,
+      failed: 0,
+      fcmConfigured: false,
       error: 'FCM not configured',
       message: 'الإشعارات غير مفعلة بعد — تحتاج ربط FCM',
     });
@@ -5174,12 +5256,40 @@ app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => 
   if (!token) {
     return res.status(422).json({
       ok: false,
+      sent: 0,
+      failed: 0,
+      fcmConfigured: true,
       error: 'No FCM token for customer',
       message: 'العميل ليس لديه جهاز مسجّل لاستقبال الإشعارات',
     });
   }
-  await sendFCMNotification(customerId, title, msgBody);
-  res.json({ ok: true });
+  const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+  const route = typeof body.route === 'string' ? body.route.trim() : '';
+  const result = await sendAdminFCMToToken(
+    token,
+    {
+      title,
+      body: msgBody,
+      ...(imageUrl ? { imageUrl } : {}),
+      data: {
+        ...(route ? { route } : {}),
+        type: 'admin_direct',
+        customerId,
+      },
+    },
+    'customer_notifications'
+  );
+  if (!result.success) {
+    return res.status(502).json({
+      ok: false,
+      sent: 0,
+      failed: 1,
+      fcmConfigured: true,
+      error: result.error ?? 'FCM send failed',
+      message: 'فشل إرسال الإشعار للعميل',
+    });
+  }
+  res.json({ ok: true, sent: 1, failed: 0, fcmConfigured: true, message: 'تم الإرسال' });
 }));
 
 /** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset only TENANT_ADMIN whose tenant is in their market. */

@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'app/app.dart';
 import 'app/app_scroll_behavior.dart';
 import 'core/debug/nmd_post_login_trace.dart';
@@ -65,8 +68,14 @@ void _installNmdGlobalErrorSurfaces() {
   };
 }
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
 void main() {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   _installNmdGlobalErrorSurfaces();
   // Hold LaunchScreen until SplashPage calls allowFirstFrame (same as flutter_native_splash on iOS).
   widgetsBinding.deferFirstFrame();
