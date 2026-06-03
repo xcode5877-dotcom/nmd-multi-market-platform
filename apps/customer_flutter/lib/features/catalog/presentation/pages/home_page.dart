@@ -13,6 +13,8 @@ import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/auth_failure.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/network/guest_browsing_request.dart';
+import '../../../../core/debug/nmd_feed_trace.dart';
+import '../../../../core/navigation/safe_back_navigation.dart';
 import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
@@ -20,6 +22,8 @@ import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
 import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
 import '../widgets/home_store_card.dart';
+import '../widgets/restaurant_grid_store_card.dart';
+import '../../../../widgets/nmd_bottom_nav.dart';
 import '../widgets/home_layout_shimmer.dart';
 import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../widgets/app_error_view.dart';
@@ -27,11 +31,21 @@ import '../widgets/marketplace_card_layout.dart';
 import '../../../../widgets/nmd_search_bar.dart';
 import '../../../home/domain/feed/debug_feed_campaigns.dart';
 import '../../../home/domain/feed/feed_campaign.dart';
+import '../../../home/domain/feed/home_feed_settings.dart';
 import '../../../home/domain/feed/home_feed_block.dart';
 import '../../../home/domain/feed/home_feed_composer.dart';
 import '../../../home/domain/feed/home_feed_sections_resolver.dart';
+import '../../../home/domain/home_page_block.dart';
 import '../../../home/presentation/feed/home_feed_sliver_builder.dart';
 import '../../../home/presentation/feed/home_feed_store_view.dart';
+import '../../../home/presentation/feed/home_store_section_strip.dart';
+import '../../../home/presentation/widgets/feed_campaigns/challenge_event_editorial_card.dart';
+import '../../../home/presentation/widgets/feed_campaigns/custom_banner_block.dart';
+import '../../../home/presentation/widgets/feed_campaigns/floating_glass_promo_strip.dart';
+import '../../../home/presentation/widgets/feed_campaigns/food_mood_discovery_block.dart';
+import '../../../home/presentation/widgets/feed_campaigns/new_store_story_card.dart';
+import '../../../home/presentation/widgets/feed_campaigns/rewards_discovery_editorial_card.dart';
+import '../../../home/presentation/feed/feed_campaign_actions.dart';
 
 /// Matches route `?pillar=` to pillar chip id from GET `/pillars` (trimmed string equality).
 bool _pillarQueryMatchesChip(String? queryPillar, String itemId) =>
@@ -119,7 +133,16 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  void _applySearchQueryFromRoute(BuildContext context) {
+    final q = GoRouterState.of(context).uri.queryParameters['q']?.trim();
+    if (q == null || q.isEmpty) return;
+    if (_searchController.text == q && _query == q.toLowerCase()) return;
+    _searchController.text = q;
+    setState(() => _query = q.toLowerCase());
+  }
+
   void _scheduleTenantSyncFromRoute(BuildContext context) {
+    _applySearchQueryFromRoute(context);
     if (_tenantSyncSlug != widget.slug) {
       _tenantSyncSlug = widget.slug;
       _tenantSyncToken = null;
@@ -145,6 +168,7 @@ class _HomePageState extends State<HomePage> {
     try {
       final api = StorefrontApi(context.read<Dio>());
       final slug = widget.slug;
+      nmdFeedTrace('[HOME_MARKET] slug=$slug');
       final market = await withGuestBrowsingRetry(
         () => api.getMarketBySlug(slug),
       );
@@ -159,10 +183,13 @@ class _HomePageState extends State<HomePage> {
         () => api.getMarketBanners(slug),
         const <Map<String, dynamic>>[],
       );
-      final feedCampaignsRaw = await withGuestBrowsingFallback(
-        () => api.getMarketFeedCampaigns(slug),
-        const <Map<String, dynamic>>[],
+      final feedFetch = await _fetchFeedCampaignsRaw(api, slug);
+      final feedSettingsRaw = await withGuestBrowsingFallback(
+        () => api.getHomeFeedSettings(slug),
+        const <String, dynamic>{},
       );
+      final homeFeedSettings = HomeFeedSettings.fromJson(feedSettingsRaw);
+      final feedCampaignsRaw = feedFetch.rows;
       var feedCampaigns = feedCampaignsRaw
           .map(FeedCampaign.fromJson)
           .where((c) => c.active && c.isWithinSchedule)
@@ -183,6 +210,7 @@ class _HomePageState extends State<HomePage> {
       _logFeedCampaigns(
         slug: slug,
         apiCount: feedCampaignsRaw.length,
+        apiStatus: feedFetch.statusCode,
         visible: feedCampaigns,
         usedDebugFallback: usedDebugFallback,
       );
@@ -209,6 +237,7 @@ class _HomePageState extends State<HomePage> {
       final sections = sectionsRaw
           .map(
             (s) => _SectionItem(
+              id: (s['id']?.toString() ?? '').trim(),
               title: (s['title']?.toString() ?? '').trim(),
               storeIds: ((s['storeIds'] as List?) ?? const [])
                   .map((e) => e.toString())
@@ -218,12 +247,20 @@ class _HomePageState extends State<HomePage> {
           .where((s) => s.title.isNotEmpty && s.storeIds.isNotEmpty)
           .toList();
 
+      final homePageBlocksRaw = await withGuestBrowsingFallback(
+        () => api.getHomePageBlocks(slug),
+        const <Map<String, dynamic>>[],
+      );
+      final homePageBlocks = HomePageBlock.parseList(homePageBlocksRaw);
+
       nmdPostLoginTrace('HOME_API_SUCCESS slug=$slug');
       return _HomeLayoutPayload(
         marketName: _marketDisplayName(market),
         banners: banners,
         sections: sections,
         feedCampaigns: feedCampaigns,
+        homeFeedSettings: homeFeedSettings,
+        homePageBlocks: homePageBlocks,
       );
     } catch (e, st) {
       nmdPostLoginTrace('HOME_API_FAILED', '$e\n$st');
@@ -231,49 +268,76 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<({List<Map<String, dynamic>> rows, int? statusCode})>
+      _fetchFeedCampaignsRaw(StorefrontApi api, String slug) async {
+    try {
+      final rows = await withGuestBrowsingRetry(
+        () => api.getMarketFeedCampaigns(slug),
+      );
+      return (rows: rows, statusCode: 200);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (isGuestSafe401(e)) {
+        nmdFeedTrace(
+          '[FEED_CAMPAIGNS] apiCount=0 apiStatus=$status '
+          'reason=guest_safe_401 (public feed endpoint blocked or stale token)',
+        );
+        return (rows: const <Map<String, dynamic>>[], statusCode: status);
+      }
+      nmdFeedTrace(
+        '[FEED_CAMPAIGNS] apiCount=0 apiStatus=$status error=${e.message}',
+      );
+      rethrow;
+    }
+  }
+
   void _logFeedCampaigns({
     required String slug,
     required int apiCount,
+    required int? apiStatus,
     required List<FeedCampaign> visible,
     bool usedDebugFallback = false,
   }) {
-    if (!kDebugMode) return;
-    debugPrint(
-      '[FEED_CAMPAIGNS] slug=$slug apiCount=$apiCount '
+    nmdFeedTrace(
+      '[FEED_CAMPAIGNS] slug=$slug apiCount=$apiCount apiStatus=$apiStatus '
       'visibleCount=${visible.length} debugFallback=$usedDebugFallback',
     );
     if (visible.isEmpty) {
-      debugPrint(
-        '[FEED_CAMPAIGNS] reason=no_active_campaigns '
-        '(check API, schedule, active flag, market slug)',
+      nmdFeedTrace(
+        '[FEED_CAMPAIGNS] reason=empty_visible '
+        '(api blocked, inactive, schedule, or slug mismatch)',
       );
       return;
     }
-    for (final c in visible.take(6)) {
-      debugPrint(
-        '[FEED_CAMPAIGNS] id=${c.id} kind=${c.kind.name} '
-        'placement=${c.placement.name}',
-      );
+    if (kDebugMode) {
+      for (final c in visible.take(6)) {
+        nmdFeedTrace(
+          '[FEED_CAMPAIGNS] id=${c.id} kind=${c.kind.name} '
+          'placement=${c.placement.name}',
+          verbose: true,
+        );
+      }
     }
   }
 
   List<HomeFeedBlock> _composeFeedBlocks({
     required List<HomeFeedStoreSection> feedSections,
     required List<FeedCampaign> campaigns,
+    required bool hasLegacyTopBanner,
+    required HomeFeedSettings homeFeedSettings,
   }) {
-    final blocks = campaigns.isEmpty
-        ? feedSections.map((s) => StoreSectionFeedBlock(section: s)).toList()
-        : HomeFeedComposer.compose(
-            sections: feedSections,
-            campaigns: campaigns,
-          );
-    if (kDebugMode) {
-      final promos = blocks.where((b) => b is! StoreSectionFeedBlock).length;
-      debugPrint(
-        '[FEED_COMPOSER] insertedBlocks=$promos sections=${feedSections.length} '
-        'campaigns=${campaigns.length}',
-      );
-    }
+    final blocks = HomeFeedComposer.compose(
+      sections: feedSections,
+      campaigns: campaigns,
+      settings: homeFeedSettings,
+      marketSlug: widget.slug,
+      hasLegacyTopBanner: hasLegacyTopBanner,
+    );
+    final promos = blocks.where((b) => b is! StoreSectionFeedBlock).length;
+    nmdFeedTrace(
+      '[FEED_COMPOSER] insertedBlocks=$promos sections=${feedSections.length} '
+      'campaigns=${campaigns.length}',
+    );
     return blocks;
   }
 
@@ -312,7 +376,11 @@ class _HomePageState extends State<HomePage> {
               height: 26,
             ),
             leading: NmdAppHeader.backLeading(
-              onPressed: () => context.go('/main'),
+              onPressed: () => safeNmdBack(
+                context,
+                marketSlug: widget.slug,
+                preferMarketPicker: true,
+              ),
             ),
             actions: [
               NmdAppHeader.profileAction(
@@ -478,64 +546,38 @@ class _HomePageState extends State<HomePage> {
                               _matchesStoreQuery(s, _query))
                           .toList();
 
-                      final pillarFeedSections =
-                          syntheticSectionsFromStoreIds(
-                        flatStores.map((s) => s.id).toList(),
-                        sectionTitle: flatTitle,
-                      );
-                      final pillarFeedBlocks = _composeFeedBlocks(
-                        feedSections: pillarFeedSections,
-                        campaigns: layout.feedCampaigns,
-                      );
-
-                      List<HomeFeedStoreView> resolvePillarSection(
-                        HomeFeedStoreSection section,
-                      ) {
-                        return section.storeIds
-                            .map((id) {
-                              for (final s in flatStores) {
-                                if (s.id == id) return s;
-                              }
-                              return null;
-                            })
-                            .whereType<_StoreItem>()
-                            .map(
-                              (s) => HomeFeedStoreView(
-                                id: s.id,
-                                slug: s.slug,
-                                name: s.name,
-                                category: s.category,
-                                logoUrl: s.logoUrl,
-                                openStatus: s.openStatus,
-                              ),
-                            )
-                            .toList();
-                      }
-
-                      final pillarStoreIdBySlug = {
-                        for (final s in flatStores)
-                          if (s.slug.isNotEmpty) s.slug: s.id,
-                      };
-
                       return CustomScrollView(
                         primary: true,
                         slivers: [
-                          if (layout.banners.isNotEmpty)
-                            SliverToBoxAdapter(
-                                child:
-                                    _BannerCarousel(banners: layout.banners)),
                           SliverToBoxAdapter(
-                              child: _PillarNavStrip(marketSlug: widget.slug)),
-                          SliverToBoxAdapter(
-                              child: _SubCategoryNavStrip(
-                                  marketSlug: widget.slug)),
-                          ...HomeFeedSliverBuilder.buildSlivers(
-                            context: context,
-                            blocks: pillarFeedBlocks,
-                            marketSlug: widget.slug,
-                            resolveStores: resolvePillarSection,
-                            storeIdBySlug: pillarStoreIdBySlug,
+                            child: _PillarNavStrip(marketSlug: widget.slug),
                           ),
+                          SliverToBoxAdapter(
+                            child: _SubCategoryNavStrip(
+                              marketSlug: widget.slug,
+                            ),
+                          ),
+                          if (flatTitle.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  8,
+                                  16,
+                                  4,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    flatTitle,
+                                    style: NmdTypography.h2.copyWith(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           if (flatStores.isEmpty)
                             SliverToBoxAdapter(
                               child: NmdEmptyState(
@@ -543,8 +585,40 @@ class _HomePageState extends State<HomePage> {
                                 message: 'لا توجد محلات في هذا القسم حالياً.',
                                 icon: Icons.storefront_outlined,
                               ),
+                            )
+                          else
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                              sliver: SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: 0.78,
+                                ),
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                    final s = flatStores[index];
+                                    return RestaurantGridStoreCard(
+                                      marketSlug: widget.slug,
+                                      storeId: s.id,
+                                      storeName: s.name,
+                                      categoryLabel:
+                                          homeStoreCategoryLabel(s.category),
+                                      logoUrl: s.logoUrl,
+                                      openStatus: s.openStatus,
+                                    );
+                                  },
+                                  childCount: flatStores.length,
+                                ),
+                              ),
                             ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                          SliverToBoxAdapter(
+                            child: SizedBox(
+                              height: NmdBottomNav.navHeight + 24,
+                            ),
+                          ),
                         ],
                       );
                     }
@@ -577,10 +651,17 @@ class _HomePageState extends State<HomePage> {
                       tenantStoreIds: storesById.keys.toList(),
                     );
 
-                    final feedBlocks = _composeFeedBlocks(
-                      feedSections: feedSections,
-                      campaigns: layout.feedCampaigns,
-                    );
+                    final useHomeBuilder =
+                        layout.homePageBlocks.isNotEmpty;
+
+                    final feedBlocks = useHomeBuilder
+                        ? const <HomeFeedBlock>[]
+                        : _composeFeedBlocks(
+                            feedSections: feedSections,
+                            campaigns: layout.feedCampaigns,
+                            hasLegacyTopBanner: layout.banners.isNotEmpty,
+                            homeFeedSettings: layout.homeFeedSettings,
+                          );
 
                     final storeIdBySlug = <String, String>{
                       for (final e in storesBySlug.entries) e.key: e.value.id,
@@ -610,6 +691,42 @@ class _HomePageState extends State<HomePage> {
                             ),
                           )
                           .toList();
+                    }
+
+                    List<HomeFeedStoreView> resolveStoreIds(List<String> ids) {
+                      return ids
+                          .map((id) => storesById[id] ?? storesBySlug[id])
+                          .whereType<_StoreItem>()
+                          .where((s) => _matchesStoreQuery(s, _query))
+                          .map(
+                            (s) => HomeFeedStoreView(
+                              id: s.id,
+                              slug: s.slug,
+                              name: s.name,
+                              category: s.category,
+                              logoUrl: s.logoUrl,
+                              openStatus: s.openStatus,
+                            ),
+                          )
+                          .toList();
+                    }
+
+                    if (useHomeBuilder) {
+                      return CustomScrollView(
+                        primary: true,
+                        slivers: [
+                          ..._buildHomePageBlockSlivers(
+                            context: context,
+                            blocks: layout.homePageBlocks,
+                            layout: layout,
+                            marketSlug: widget.slug,
+                            resolveStoreIds: resolveStoreIds,
+                            storeIdBySlug: storeIdBySlug,
+                            strictMaps: strictMaps,
+                          ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                        ],
+                      );
                     }
 
                     return CustomScrollView(
@@ -652,6 +769,383 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  List<Widget> _buildHomePageBlockSlivers({
+    required BuildContext context,
+    required List<HomePageBlock> blocks,
+    required _HomeLayoutPayload layout,
+    required String marketSlug,
+    required List<HomeFeedStoreView> Function(List<String> ids) resolveStoreIds,
+    required Map<String, String> storeIdBySlug,
+    required List<Map<String, dynamic>> strictMaps,
+  }) {
+    final campaignById = {for (final c in layout.feedCampaigns) c.id: c};
+    final slivers = <Widget>[];
+    var promoIndex = 0;
+
+    for (final block in blocks) {
+      switch (block.type) {
+        case HomePageBlockType.heroBanners:
+          if (layout.banners.isNotEmpty) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: _BannerCarousel(banners: layout.banners),
+              ),
+            );
+          }
+          break;
+        case HomePageBlockType.pillars:
+          slivers.add(
+            SliverToBoxAdapter(child: _PillarNavStrip(marketSlug: marketSlug)),
+          );
+          slivers.add(
+            SliverToBoxAdapter(
+              child: _SubCategoryNavStrip(marketSlug: marketSlug),
+            ),
+          );
+          break;
+        case HomePageBlockType.storeSection:
+          final ids = _storeIdsForHomeBlock(
+            block,
+            layout: layout,
+            strictMaps: strictMaps,
+          );
+          final limit = (block.config['limit'] as num?)?.toInt() ?? 24;
+          final stores = resolveStoreIds(
+            ids.take(limit.clamp(1, 48)).toList(),
+          );
+          if (stores.isEmpty) break;
+          final isGrid =
+              block.config['layout']?.toString().toUpperCase() == 'GRID';
+          if (isGrid) {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      block.title,
+                      style: NmdTypography.h2.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            slivers.add(
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                sliver: SliverGrid(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.78,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (ctx, index) {
+                      final s = stores[index];
+                      return RestaurantGridStoreCard(
+                        marketSlug: marketSlug,
+                        storeId: s.id,
+                        storeName: s.name,
+                        categoryLabel: homeStoreCategoryLabel(s.category),
+                        logoUrl: s.logoUrl,
+                        openStatus: s.openStatus,
+                      );
+                    },
+                    childCount: stores.length,
+                  ),
+                ),
+              ),
+            );
+          } else {
+            slivers.add(
+              SliverToBoxAdapter(
+                child: HomeStoreSectionStrip(
+                  marketSlug: marketSlug,
+                  title: block.title,
+                  stores: stores,
+                ),
+              ),
+            );
+          }
+          break;
+        case HomePageBlockType.editorialPromo:
+          final cid = block.config['campaignId']?.toString() ?? '';
+          final campaign = campaignById[cid];
+          if (campaign == null) break;
+          final idx = promoIndex++;
+          slivers.add(
+            SliverToBoxAdapter(
+              child: _homeEditorialPromoWidget(
+                context,
+                campaign: campaign,
+                marketSlug: marketSlug,
+                storeIdBySlug: storeIdBySlug,
+                listIndex: idx,
+              ),
+            ),
+          );
+          break;
+        case HomePageBlockType.customImageBanner:
+          slivers.add(
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: _HomeCustomImageBanner(
+                  block: block,
+                  marketSlug: marketSlug,
+                ),
+              ),
+            ),
+          );
+          break;
+      }
+    }
+    return slivers;
+  }
+
+  List<String> _storeIdsForHomeBlock(
+    HomePageBlock block, {
+    required _HomeLayoutPayload layout,
+    required List<Map<String, dynamic>> strictMaps,
+  }) {
+    final cfg = block.config;
+    final source = cfg['source']?.toString() ?? 'LAYOUT_SECTION';
+    switch (source) {
+      case 'LAYOUT_SECTION':
+        final sid = cfg['layoutSectionId']?.toString() ?? '';
+        if (sid.isNotEmpty) {
+          for (final s in layout.sections) {
+            if (s.id == sid) return s.storeIds;
+          }
+        }
+        if (cfg['storeIds'] is List) {
+          return (cfg['storeIds'] as List)
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
+        }
+        return const [];
+      case 'FEATURED':
+        for (final s in layout.sections) {
+          if (s.id == 'featured') return s.storeIds;
+        }
+        return layout.sections.isNotEmpty
+            ? layout.sections.first.storeIds
+            : const [];
+      case 'MANUAL':
+        if (cfg['storeIds'] is List) {
+          return (cfg['storeIds'] as List)
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
+        }
+        return const [];
+      case 'ALL':
+        return strictMaps
+            .map((t) => t['id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+      case 'PILLAR':
+        final pid = cfg['pillarId']?.toString().trim() ?? '';
+        return strictMaps
+            .where((t) {
+              final p = t['pillarId'] ?? t['pillar_id'];
+              return p != null && p.toString().trim() == pid;
+            })
+            .map((t) => t['id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+      case 'SUB_CATEGORY':
+        final sid = cfg['subCategoryId']?.toString().trim() ?? '';
+        return strictMaps
+            .where((t) {
+              final sc = t['subCategoryId'] ?? t['sub_category_id'];
+              return sc != null && sc.toString().trim() == sid;
+            })
+            .map((t) => t['id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+      default:
+        return const [];
+    }
+  }
+
+  Widget _homeEditorialPromoWidget(
+    BuildContext context, {
+    required FeedCampaign campaign,
+    required String marketSlug,
+    required Map<String, String> storeIdBySlug,
+    required int listIndex,
+  }) {
+    void openCampaign() {
+      handleFeedCampaignAction(
+        context,
+        campaign: campaign,
+        marketSlug: marketSlug,
+        storeIdBySlug: storeIdBySlug,
+      );
+    }
+
+    switch (campaign.kind) {
+      case FeedCampaignKind.categoryDiscovery:
+        return FoodMoodDiscoveryBlock(
+          campaign: campaign,
+          listIndex: listIndex,
+          onChipTap: (chip) {
+            if (!chip.isActionable) return;
+            final target = chip.resolvedTarget;
+            handleFeedCampaignAction(
+              context,
+              campaign: FeedCampaign(
+                id: campaign.id,
+                marketSlug: campaign.marketSlug,
+                kind: campaign.kind,
+                title: campaign.title,
+                subtitle: campaign.subtitle,
+                ctaLabel: campaign.ctaLabel,
+                actionType: chip.actionType,
+                targetId: chip.actionType == FeedCampaignActionType.openSearch
+                    ? (target ?? chip.label.trim())
+                    : target,
+                targetUrl: campaign.targetUrl,
+              ),
+              marketSlug: marketSlug,
+              storeIdBySlug: storeIdBySlug,
+            );
+          },
+        );
+      case FeedCampaignKind.competitionCard:
+        return ChallengeEventEditorialCard(
+          campaign: campaign,
+          listIndex: listIndex,
+          onTap: openCampaign,
+        );
+      case FeedCampaignKind.rewardCard:
+        return RewardsDiscoveryEditorialCard(
+          campaign: campaign,
+          listIndex: listIndex,
+          onTap: openCampaign,
+        );
+      case FeedCampaignKind.storeFeature:
+        return NewStoreStoryCard(
+          campaign: campaign,
+          listIndex: listIndex,
+          onTap: openCampaign,
+        );
+      case FeedCampaignKind.offerStrip:
+        return FloatingGlassPromoStrip(
+          campaign: campaign,
+          listIndex: listIndex,
+          onTap: openCampaign,
+        );
+      default:
+        return CustomBannerBlock(
+          campaign: campaign,
+          listIndex: listIndex,
+          onTap: openCampaign,
+        );
+    }
+  }
+
+}
+
+class _HomeCustomImageBanner extends StatelessWidget {
+  const _HomeCustomImageBanner({
+    required this.block,
+    required this.marketSlug,
+  });
+
+  final HomePageBlock block;
+  final String marketSlug;
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = block.config;
+    final imageUrl = resolveImageUrl(cfg['imageUrl']?.toString());
+    final title = cfg['title']?.toString() ?? block.title;
+    final subtitle = cfg['subtitle']?.toString() ?? '';
+    final cta = cfg['ctaLabel']?.toString() ?? '';
+    final targetUrl = cfg['targetUrl']?.toString() ?? '';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: targetUrl.isEmpty
+            ? null
+            : () {
+                if (targetUrl.startsWith('/')) {
+                  context.push(targetUrl);
+                }
+              },
+        borderRadius: BorderRadius.circular(20),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              if (imageUrl.isNotEmpty)
+                CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  height: 108,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                )
+              else
+                Container(
+                  height: 108,
+                  color: NmdColors.brandPrimary.withValues(alpha: 0.15),
+                ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (title.isNotEmpty)
+                      Text(
+                        title,
+                        style: NmdTypography.h3.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          shadows: const [
+                            Shadow(blurRadius: 6, color: Colors.black54),
+                          ],
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    if (subtitle.isNotEmpty)
+                      Text(
+                        subtitle,
+                        style: NmdTypography.bodySmall
+                            .copyWith(color: Colors.white70),
+                        textAlign: TextAlign.right,
+                      ),
+                    if (cta.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          cta,
+                          style: NmdTypography.label.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Horizontal chips matching pillar row height — shown while GET `/pillars` loads.
@@ -1188,11 +1682,15 @@ class _HomeLayoutPayload {
     required this.banners,
     required this.sections,
     required this.feedCampaigns,
+    required this.homeFeedSettings,
+    this.homePageBlocks = const [],
   });
   final String marketName;
   final List<_BannerItem> banners;
   final List<_SectionItem> sections;
   final List<FeedCampaign> feedCampaigns;
+  final HomeFeedSettings homeFeedSettings;
+  final List<HomePageBlock> homePageBlocks;
 }
 
 class _BannerItem {
@@ -1202,7 +1700,12 @@ class _BannerItem {
 }
 
 class _SectionItem {
-  const _SectionItem({required this.title, required this.storeIds});
+  const _SectionItem({
+    required this.id,
+    required this.title,
+    required this.storeIds,
+  });
+  final String id;
   final String title;
   final List<String> storeIds;
 }

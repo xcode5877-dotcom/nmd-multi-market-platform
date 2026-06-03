@@ -10,6 +10,7 @@
 
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import type { ModifierIcon } from '@nmd/core';
 
 export interface MarketBanner {
   id: string;
@@ -152,6 +153,28 @@ interface MarketConfigStore {
   layout: Record<string, MarketSection[]>;
   feedCampaigns?: Record<string, MarketFeedCampaign[]> | MarketFeedCampaign[];
   homeFeedSettings?: Record<string, HomeFeedSettings>;
+  /** Per-market shared modifier icon library (Super Admin). */
+  modifierIconLibrary?: Record<string, ModifierIcon[]>;
+  /** Ordered homepage blocks (Super Admin visual builder). */
+  homePageBlocks?: Record<string, HomePageBlock[]>;
+  /** When true, customer app uses [homePageBlocks] instead of legacy composer. */
+  homePageBuilderEnabled?: Record<string, boolean>;
+}
+
+export type HomePageBlockType =
+  | 'HERO_BANNERS'
+  | 'PILLARS'
+  | 'STORE_SECTION'
+  | 'EDITORIAL_PROMO'
+  | 'CUSTOM_IMAGE_BANNER';
+
+export interface HomePageBlock {
+  id: string;
+  type: HomePageBlockType;
+  title: string;
+  visible: boolean;
+  sortOrder: number;
+  config: Record<string, unknown>;
 }
 
 /** Coerce slug campaigns to a safe array (never throws). */
@@ -260,6 +283,59 @@ const SEED_LAYOUT: Record<string, MarketSection[]> = {
     { id: 'new', title: 'جديد في دبورية', type: 'SLIDER', storeIds: ['buffalo'] },
   ],
   iksal: [{ id: 'featured', title: 'المحلات المميزة', type: 'SLIDER', storeIds: ['buffalo'] }],
+};
+
+function buildDefaultModifierIcon(
+  key: string,
+  labelAr: string,
+  keywords: string[],
+  sortOrder: number,
+  category = 'pizza',
+): ModifierIcon {
+  return {
+    id: `mi_${key}`,
+    key,
+    labelAr,
+    labelHe: undefined,
+    labelEn: key,
+    iconUrl: '',
+    keywords,
+    category,
+    active: true,
+    sortOrder,
+  };
+}
+
+/** Default library keys align with Flutter `PizzaToppingVisualCategory` + bundled assets. */
+const DEFAULT_MODIFIER_ICON_KEYS: Array<{
+  key: string;
+  labelAr: string;
+  keywords: string[];
+  sortOrder: number;
+}> = [
+  { key: 'olive', labelAr: 'زيتون', keywords: ['زيتون', 'olive', 'זית', 'זיתים'], sortOrder: 0 },
+  { key: 'mushroom', labelAr: 'فطر', keywords: ['فطر', 'mushroom', 'פטריה', 'פטריות'], sortOrder: 1 },
+  { key: 'corn', labelAr: 'ذرة', keywords: ['ذرة', 'corn', 'תירס'], sortOrder: 2 },
+  { key: 'onion', labelAr: 'بصل', keywords: ['بصل', 'onion', 'בצל'], sortOrder: 3 },
+  { key: 'pepper', labelAr: 'فلفل', keywords: ['فلفل', 'pepper', 'פלפל', 'חריף'], sortOrder: 4 },
+  { key: 'cheese', labelAr: 'جبنة', keywords: ['جبنة', 'جبن', 'cheese', 'mozzarella', 'גבינה'], sortOrder: 5 },
+  { key: 'meat', labelAr: 'لحم', keywords: ['لحم', 'meat', 'beef', 'كفتة', 'בשר'], sortOrder: 6 },
+  { key: 'chicken', labelAr: 'دجاج', keywords: ['دجاج', 'chicken', 'شاورما', 'עוף'], sortOrder: 7 },
+  { key: 'tuna', labelAr: 'تونة', keywords: ['تونة', 'tuna', 'טונה'], sortOrder: 8 },
+  { key: 'sauce', labelAr: 'صلصة', keywords: ['صلصة', 'sauce', 'ثوم', 'ranch', 'רוטב'], sortOrder: 9 },
+  { key: 'vegetable', labelAr: 'خضار', keywords: ['خضار', 'vegetable', 'ירק'], sortOrder: 10 },
+  { key: 'default', labelAr: 'إضافة', keywords: ['إضافة', 'extra', 'addon'], sortOrder: 11 },
+];
+
+function seedModifierIconsForMarket(): ModifierIcon[] {
+  return DEFAULT_MODIFIER_ICON_KEYS.map((row) =>
+    buildDefaultModifierIcon(row.key, row.labelAr, row.keywords, row.sortOrder),
+  );
+}
+
+const SEED_MODIFIER_ICON_LIBRARY: Record<string, ModifierIcon[]> = {
+  dabburiyya: seedModifierIconsForMarket(),
+  iksal: seedModifierIconsForMarket(),
 };
 
 /** Optional seed promos — deactivate in admin to restore plain home. */
@@ -416,6 +492,39 @@ function mergeMarketConfigLayers(layers: Partial<MarketConfigStore>[]): MarketCo
   }
   for (const k of feedKeys) settingsKeys.add(k);
 
+  const modifierIconKeys = new Set<string>();
+  const layerModifierMaps: Record<string, ModifierIcon[]>[] = [];
+  for (const L of layers) {
+    const raw = L.modifierIconLibrary;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      layerModifierMaps.push(
+        Object.fromEntries(
+          Object.entries(raw).map(([k, v]) => [
+            normalizeMarketSlugForConfig(k),
+            coerceModifierIconList(v),
+          ]),
+        ),
+      );
+      for (const k of Object.keys(raw)) modifierIconKeys.add(normalizeMarketSlugForConfig(k));
+    }
+  }
+  for (const k of Object.keys(SEED_MODIFIER_ICON_LIBRARY)) modifierIconKeys.add(k);
+  for (const k of bannerKeys) modifierIconKeys.add(k);
+  for (const k of layoutKeys) modifierIconKeys.add(k);
+
+  const modifierIconLibrary: Record<string, ModifierIcon[]> = {};
+  for (const k of modifierIconKeys) {
+    let chosen: ModifierIcon[] | undefined;
+    for (const norm of layerModifierMaps) {
+      const row = norm[k];
+      if (Array.isArray(row) && row.length > 0) {
+        chosen = row.map((x) => ({ ...x }));
+        break;
+      }
+    }
+    modifierIconLibrary[k] = chosen ?? SEED_MODIFIER_ICON_LIBRARY[k] ?? seedModifierIconsForMarket();
+  }
+
   const homeFeedSettings: Record<string, HomeFeedSettings> = {};
   for (const k of settingsKeys) {
     let chosen: HomeFeedSettings | undefined;
@@ -429,7 +538,88 @@ function mergeMarketConfigLayers(layers: Partial<MarketConfigStore>[]): MarketCo
     homeFeedSettings[k] = chosen ?? { ...DEFAULT_HOME_FEED_SETTINGS };
   }
 
-  return { banners, layout, feedCampaigns, homeFeedSettings };
+  const homePageBlockKeys = new Set<string>();
+  const layerHomeBlockMaps: Record<string, HomePageBlock[]>[] = [];
+  for (const L of layers) {
+    const raw = L.homePageBlocks;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      layerHomeBlockMaps.push(
+        Object.fromEntries(
+          Object.entries(raw).map(([k, v]) => [
+            normalizeMarketSlugForConfig(k),
+            coerceHomePageBlockList(v),
+          ]),
+        ),
+      );
+      for (const k of Object.keys(raw)) homePageBlockKeys.add(normalizeMarketSlugForConfig(k));
+    }
+    if (L.homePageBuilderEnabled) {
+      for (const k of Object.keys(L.homePageBuilderEnabled)) {
+        homePageBlockKeys.add(normalizeMarketSlugForConfig(k));
+      }
+    }
+  }
+  for (const k of bannerKeys) homePageBlockKeys.add(k);
+
+  const homePageBlocks: Record<string, HomePageBlock[]> = {};
+  const homePageBuilderEnabled: Record<string, boolean> = {};
+  for (const L of layers) {
+    if (L.homePageBuilderEnabled) {
+      for (const [k, v] of Object.entries(L.homePageBuilderEnabled)) {
+        if (v === true) homePageBuilderEnabled[normalizeMarketSlugForConfig(k)] = true;
+      }
+    }
+  }
+  for (const k of homePageBlockKeys) {
+    let chosen: HomePageBlock[] | undefined;
+    for (const norm of layerHomeBlockMaps) {
+      const row = norm[k];
+      if (Array.isArray(row) && row.length > 0) {
+        chosen = row.map((x) => ({ ...x, config: { ...x.config } }));
+        break;
+      }
+    }
+    if (chosen) homePageBlocks[k] = chosen;
+  }
+
+  return {
+    banners,
+    layout,
+    feedCampaigns,
+    homeFeedSettings,
+    modifierIconLibrary,
+    homePageBlocks,
+    homePageBuilderEnabled,
+  };
+}
+
+export function coerceModifierIconList(val: unknown): ModifierIcon[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .filter((x) => x != null && typeof x === 'object')
+    .map((x) => normalizeModifierIconRow(x as ModifierIcon));
+}
+
+function normalizeModifierIconRow(raw: ModifierIcon): ModifierIcon {
+  const key = String(raw.key ?? '').trim().toLowerCase() || 'default';
+  return {
+    id: String(raw.id ?? `mi_${key}`).trim(),
+    key,
+    labelAr: String(raw.labelAr ?? key).trim(),
+    labelHe: raw.labelHe != null ? String(raw.labelHe).trim() : undefined,
+    labelEn: raw.labelEn != null ? String(raw.labelEn).trim() : undefined,
+    iconUrl: String(raw.iconUrl ?? '').trim(),
+    keywords: Array.isArray(raw.keywords)
+      ? raw.keywords.map((k) => String(k).trim()).filter(Boolean)
+      : [],
+    category: raw.category != null ? String(raw.category).trim() : 'pizza',
+    active: raw.active !== false,
+    sortOrder: Number.isFinite(raw.sortOrder) ? Number(raw.sortOrder) : 0,
+  };
+}
+
+function sortModifierIcons(rows: ModifierIcon[]): ModifierIcon[] {
+  return [...rows].sort((a, b) => a.sortOrder - b.sortOrder || a.labelAr.localeCompare(b.labelAr, 'ar'));
 }
 
 const DEFAULT_HOME_FEED_SETTINGS: HomeFeedSettings = {
@@ -474,6 +664,7 @@ function load(): MarketConfigStore {
       banners: { ...SEED_BANNERS },
       layout: { ...SEED_LAYOUT },
       feedCampaigns: { ...SEED_FEED_CAMPAIGNS },
+      modifierIconLibrary: { ...SEED_MODIFIER_ICON_LIBRARY },
     };
   }
   const merged = mergeMarketConfigLayers(layers);
@@ -618,5 +809,228 @@ export function setFeedCampaignsForMarket(
   const store = getStore();
   const map = ensureFeedCampaignsMap(store);
   map[normalizeMarketSlugForConfig(marketSlug)] = coerceFeedCampaignList(campaigns);
+  save(store);
+}
+
+function ensureModifierIconLibraryMap(store: MarketConfigStore): Record<string, ModifierIcon[]> {
+  if (!store.modifierIconLibrary || typeof store.modifierIconLibrary !== 'object') {
+    store.modifierIconLibrary = {};
+  }
+  return store.modifierIconLibrary;
+}
+
+/** Storefront + merchant picker — active icons only. */
+export function getModifierIconsForMarket(marketSlug: string): ModifierIcon[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const store = getStore();
+  const map = ensureModifierIconLibraryMap(store);
+  const raw = coerceModifierIconList(map[key] ?? SEED_MODIFIER_ICON_LIBRARY[key] ?? []);
+  return sortModifierIcons(raw.filter((i) => i.active));
+}
+
+/** Super Admin — includes inactive/disabled entries. */
+export function getModifierIconsForMarketAdmin(marketSlug: string): ModifierIcon[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const store = getStore();
+  const map = ensureModifierIconLibraryMap(store);
+  const raw = coerceModifierIconList(map[key] ?? SEED_MODIFIER_ICON_LIBRARY[key] ?? []);
+  return sortModifierIcons(raw);
+}
+
+export function setModifierIconsForMarket(marketSlug: string, icons: ModifierIcon[]): void {
+  const store = getStore();
+  const map = ensureModifierIconLibraryMap(store);
+  map[normalizeMarketSlugForConfig(marketSlug)] = coerceModifierIconList(icons);
+  save(store);
+}
+
+const HOME_PAGE_BLOCK_TYPES: HomePageBlockType[] = [
+  'HERO_BANNERS',
+  'PILLARS',
+  'STORE_SECTION',
+  'EDITORIAL_PROMO',
+  'CUSTOM_IMAGE_BANNER',
+];
+
+export function coerceHomePageBlockList(val: unknown): HomePageBlock[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .filter((x) => x != null && typeof x === 'object')
+    .map((x) => normalizeHomePageBlock(x as HomePageBlock))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function normalizeHomePageBlock(raw: HomePageBlock): HomePageBlock {
+  const type = HOME_PAGE_BLOCK_TYPES.includes(raw.type as HomePageBlockType)
+    ? (raw.type as HomePageBlockType)
+    : 'STORE_SECTION';
+  const cfg =
+    raw.config != null && typeof raw.config === 'object' && !Array.isArray(raw.config)
+      ? { ...(raw.config as Record<string, unknown>) }
+      : {};
+  return {
+    id: String(raw.id ?? `block_${Date.now()}`).trim(),
+    type,
+    title: String(raw.title ?? '').trim() || defaultTitleForBlockType(type),
+    visible: raw.visible !== false,
+    sortOrder: Number.isFinite(raw.sortOrder) ? Number(raw.sortOrder) : 0,
+    config: cfg,
+  };
+}
+
+export function defaultTitleForBlockType(type: HomePageBlockType): string {
+  switch (type) {
+    case 'HERO_BANNERS':
+      return 'سلايدر البانرات الرئيسية';
+    case 'PILLARS':
+      return 'الأقسام الرئيسية';
+    case 'STORE_SECTION':
+      return 'قسم محلات';
+    case 'EDITORIAL_PROMO':
+      return 'إعلان تفاعلي';
+    case 'CUSTOM_IMAGE_BANNER':
+      return 'بانر صورة';
+    default:
+      return 'بلوك';
+  }
+}
+
+function ensureHomePageBlocksMap(store: MarketConfigStore): Record<string, HomePageBlock[]> {
+  if (!store.homePageBlocks || typeof store.homePageBlocks !== 'object') {
+    store.homePageBlocks = {};
+  }
+  return store.homePageBlocks;
+}
+
+function isHomePageBuilderEnabled(store: MarketConfigStore, key: string): boolean {
+  return store.homePageBuilderEnabled?.[key] === true;
+}
+
+/** Build a starting block list from legacy layout + active feed campaigns (admin template only). */
+export function buildLegacyHomePageBlocks(marketSlug: string): HomePageBlock[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const blocks: HomePageBlock[] = [];
+  let order = 0;
+  const settings = getHomeFeedSettingsForMarket(key);
+  if (settings.showLegacyBanners !== false) {
+    blocks.push({
+      id: 'block_hero_banners',
+      type: 'HERO_BANNERS',
+      title: 'سلايدر البانرات الرئيسية',
+      visible: true,
+      sortOrder: order++,
+      config: {},
+    });
+  }
+  if (settings.showPillars !== false) {
+    blocks.push({
+      id: 'block_pillars',
+      type: 'PILLARS',
+      title: 'الأقسام الرئيسية',
+      visible: true,
+      sortOrder: order++,
+      config: {},
+    });
+  }
+  const layout = getLayoutForMarket(key);
+  for (const section of layout) {
+    blocks.push({
+      id: `block_section_${section.id}`,
+      type: 'STORE_SECTION',
+      title: section.title || 'قسم محلات',
+      visible: true,
+      sortOrder: order++,
+      config: {
+        source: 'LAYOUT_SECTION',
+        layoutSectionId: section.id,
+        layout: 'HORIZONTAL',
+        limit: 24,
+        storeIds: section.storeIds ?? [],
+      },
+    });
+  }
+  const campaigns = getFeedCampaignsForMarketAdmin(key).filter(isCampaignActive);
+  for (const c of campaigns.slice(0, 3)) {
+    blocks.push({
+      id: `block_promo_${c.id}`,
+      type: 'EDITORIAL_PROMO',
+      title: c.title || 'إعلان',
+      visible: c.active !== false,
+      sortOrder: order++,
+      config: { campaignId: c.id },
+    });
+  }
+  return blocks;
+}
+
+export function validateHomePageBlocks(blocks: HomePageBlock[]): string[] {
+  const errors: string[] = [];
+  for (const b of blocks) {
+    const cfg = b.config ?? {};
+    if (b.type === 'STORE_SECTION') {
+      if (!b.title.trim()) errors.push(`قسم محلات بدون عنوان (${b.id})`);
+      const source = String(cfg.source ?? 'LAYOUT_SECTION');
+      if (
+        source === 'MANUAL' &&
+        (!Array.isArray(cfg.storeIds) || cfg.storeIds.length === 0)
+      ) {
+        errors.push(`«${b.title}»: حدد محلات يدوياً`);
+      }
+      if (source === 'PILLAR' && !String(cfg.pillarId ?? '').trim()) {
+        errors.push(`«${b.title}»: اختر عموداً`);
+      }
+      if (source === 'SUB_CATEGORY' && !String(cfg.subCategoryId ?? '').trim()) {
+        errors.push(`«${b.title}»: اختر تصنيفاً فرعياً`);
+      }
+      if (source === 'LAYOUT_SECTION' && !String(cfg.layoutSectionId ?? '').trim()) {
+        errors.push(`«${b.title}»: اختر قسم تخطيط`);
+      }
+    }
+    if (b.type === 'EDITORIAL_PROMO' && !String(cfg.campaignId ?? '').trim()) {
+      errors.push(`«${b.title}»: اختر حملة`);
+    }
+    if (b.type === 'CUSTOM_IMAGE_BANNER' && !String(cfg.imageUrl ?? '').trim()) {
+      errors.push(`«${b.title}»: أضف صورة البانر`);
+    }
+  }
+  return errors;
+}
+
+/** Customer app — visible blocks in order; empty if builder not enabled. */
+export function getHomePageBlocksForMarket(marketSlug: string): HomePageBlock[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const store = getStore();
+  if (!isHomePageBuilderEnabled(store, key)) return [];
+  const map = ensureHomePageBlocksMap(store);
+  const raw = coerceHomePageBlockList(map[key] ?? []);
+  return raw.filter((b) => b.visible);
+}
+
+/** Super Admin — all blocks; if never saved, returns legacy template (not enabled until PUT). */
+export function getHomePageBlocksForMarketAdmin(marketSlug: string): HomePageBlock[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const store = getStore();
+  if (!isHomePageBuilderEnabled(store, key)) {
+    return buildLegacyHomePageBlocks(key);
+  }
+  const map = ensureHomePageBlocksMap(store);
+  return coerceHomePageBlockList(map[key] ?? []);
+}
+
+export function setHomePageBlocksForMarket(marketSlug: string, blocks: HomePageBlock[]): void {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const normalized = coerceHomePageBlockList(blocks).map((b, i) => ({
+    ...b,
+    sortOrder: i,
+  }));
+  const validationErrors = validateHomePageBlocks(normalized);
+  if (validationErrors.length > 0) {
+    throw new Error(validationErrors.join(' · '));
+  }
+  const store = getStore();
+  if (!store.homePageBuilderEnabled) store.homePageBuilderEnabled = {};
+  store.homePageBuilderEnabled[key] = true;
+  const map = ensureHomePageBlocksMap(store);
+  map[key] = normalized;
   save(store);
 }

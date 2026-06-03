@@ -465,6 +465,30 @@ class StorefrontApi {
         .toList();
   }
 
+  /// GET `/markets/by-slug/:slug/home-page-blocks` — ordered visual home blocks.
+  Future<List<Map<String, dynamic>>> getHomePageBlocks(String slug) async {
+    try {
+      final response =
+          await dio.get<dynamic>('/markets/by-slug/$slug/home-page-blocks');
+      final rows = _extractMarketsRows(response.data);
+      return rows
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// GET `/markets/by-slug/:slug/home-feed-settings` — layout rules for editorial blocks.
+  Future<Map<String, dynamic>> getHomeFeedSettings(String slug) async {
+    final response =
+        await dio.get<dynamic>('/markets/by-slug/$slug/home-feed-settings');
+    final data = response.data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return const {};
+  }
+
   /// GET `/markets/by-slug/:slug/feed-campaigns` — home discovery promo blocks.
   Future<List<Map<String, dynamic>>> getMarketFeedCampaigns(String slug) async {
     final response =

@@ -71,12 +71,21 @@ import {
   setBannersForMarket,
   setLayoutForMarket,
   setFeedCampaignsForMarket,
+  getModifierIconsForMarket,
+  getModifierIconsForMarketAdmin,
+  setModifierIconsForMarket,
+  getHomePageBlocksForMarket,
+  getHomePageBlocksForMarketAdmin,
+  setHomePageBlocksForMarket,
+  validateHomePageBlocks,
   normalizeMarketSlugForConfig,
   type MarketBanner,
   type MarketSection,
   type MarketFeedCampaign,
   type HomeFeedSettings,
+  type HomePageBlock,
 } from './market-config.js';
+import type { ModifierIcon } from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
@@ -1022,6 +1031,8 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/banners$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/layout$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/feed-campaigns$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/modifier-icons$/ },
+  { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/home-page-blocks$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+\/home-feed-settings$/ },
   { method: 'GET', path: /^\/markets\/[^/]+\/tenants$/ },
   { method: 'GET', path: /^\/tenants\/by-slug\/[^/]+$/ },
@@ -6170,6 +6181,109 @@ app.put('/markets/by-slug/:slug/feed-campaigns', async (req, res) => {
   const saved = getFeedCampaignsForMarketAdmin(slugNorm);
   console.log(`[FEED_CAMPAIGNS_API] PUT saved count=${Array.isArray(saved) ? saved.length : 0}`);
   res.json(saved);
+});
+
+app.get('/markets/by-slug/:slug/modifier-icons', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const all = req.query.all === '1' || req.query.admin === '1';
+  try {
+    if (all) {
+      const user = req.user;
+      if (!user) return res.status(401).json({ error: 'Unauthorized' });
+      if (!isPlatformAdmin(user.role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const list = getModifierIconsForMarketAdmin(slugNorm);
+      return res.json(Array.isArray(list) ? list : []);
+    }
+    const list = getModifierIconsForMarket(slugNorm);
+    return res.json(Array.isArray(list) ? list : []);
+  } catch (err) {
+    console.error('[MODIFIER_ICONS_API] GET failed — returning []', err);
+    return res.json([]);
+  }
+});
+
+app.put('/markets/by-slug/:slug/modifier-icons', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const body = req.body as unknown;
+  if (!Array.isArray(body)) {
+    return res.status(400).json({ error: 'modifier icons payload must be an array' });
+  }
+  const icons = body as ModifierIcon[];
+  console.log(`[MODIFIER_ICONS_API] PUT slug=${slugNorm} count=${icons.length}`);
+  setModifierIconsForMarket(slugNorm, icons);
+  const saved = getModifierIconsForMarketAdmin(slugNorm);
+  res.json(Array.isArray(saved) ? saved : []);
+});
+
+app.get('/markets/by-slug/:slug/home-page-blocks', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const market = (await repos.markets.findAll()).find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  const all = req.query.all === '1' || req.query.admin === '1';
+  try {
+    if (all) {
+      const user = req.user;
+      if (!user) return res.status(401).json({ error: 'Unauthorized' });
+      if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const list = getHomePageBlocksForMarketAdmin(slugNorm);
+      return res.json(Array.isArray(list) ? list : []);
+    }
+    const list = getHomePageBlocksForMarket(slugNorm);
+    return res.json(Array.isArray(list) ? list : []);
+  } catch (err) {
+    console.error('[HOME_PAGE_BLOCKS_API] GET failed — returning []', err);
+    return res.json([]);
+  }
+});
+
+app.put('/markets/by-slug/:slug/home-page-blocks', async (req, res) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const slugNorm = normalizeMarketSlugForConfig(req.params.slug);
+  const markets = await repos.markets.findAll();
+  const market = markets.find((m) => m.slug === slugNorm || m.slug === req.params.slug.trim());
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+  if (!isPlatformAdmin(user.role) && (user.role !== 'MARKET_ADMIN' || user.marketId !== market.id)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const body = req.body as unknown;
+  if (!Array.isArray(body)) {
+    return res.status(400).json({ error: 'home page blocks payload must be an array' });
+  }
+  const blocks = body as HomePageBlock[];
+  const validationErrors = validateHomePageBlocks(
+    blocks.map((b, i) => ({ ...b, sortOrder: i })),
+  );
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ error: validationErrors.join(' · ') });
+  }
+  try {
+    setHomePageBlocksForMarket(slugNorm, blocks);
+    const saved = getHomePageBlocksForMarketAdmin(slugNorm);
+    console.log(`[HOME_PAGE_BLOCKS_API] PUT slug=${slugNorm} count=${saved.length}`);
+    return res.json(Array.isArray(saved) ? saved : []);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to save home page blocks';
+    return res.status(400).json({ error: msg });
+  }
 });
 
 app.put('/markets/by-slug/:slug/banners', async (req, res) => {

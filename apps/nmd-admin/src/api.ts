@@ -1,4 +1,6 @@
 import type { FeedCampaign, HomeFeedSettings } from './types/feedCampaign';
+import type { HomePageBlock } from './types/homePageBlock';
+import { normalizeHomePageBlocksList } from './types/homePageBlock';
 import {
   firstUploadUrl,
   normalizeFeedCampaignListFromApi,
@@ -462,4 +464,28 @@ export async function saveHomeFeedSettings(
     method: 'PUT',
     body: JSON.stringify(settings),
   });
+}
+
+/** GET ordered homepage blocks (admin — includes hidden). */
+export async function listMarketHomePageBlocks(marketSlug: string): Promise<HomePageBlock[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/home-page-blocks?all=1`);
+  return normalizeHomePageBlocksList(raw);
+}
+
+/** PUT ordered homepage blocks — enables visual builder for market. */
+export async function saveMarketHomePageBlocks(
+  marketSlug: string,
+  blocks: HomePageBlock[],
+): Promise<HomePageBlock[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  const payload = blocks.map((b, i) => ({ ...b, sortOrder: i }));
+  console.log('[HOME_PAGE_BUILDER_SAVE]', { marketSlug: marketSlug.trim(), blockCount: payload.length });
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/home-page-blocks`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  const saved = normalizeHomePageBlocksList(raw);
+  console.log('[HOME_PAGE_BUILDER_SAVE]', { savedCount: saved.length });
+  return saved;
 }
