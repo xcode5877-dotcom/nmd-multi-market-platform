@@ -6,7 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../data/reward_item.dart';
+import '../../../core/auth/auth_failure.dart';
 import '../../../core/errors/app_error_mapper.dart';
+import '../../../core/network/token_storage.dart';
 
 enum RewardsStatus { initial, loading, loaded, failure }
 
@@ -14,32 +16,56 @@ final class RedeemOutcome extends Equatable {
   const RedeemOutcome.success({
     required this.newBalance,
     required this.successMessage,
+    this.couponCode,
   })  : ok = true,
         errorMessage = null,
-        loginRequired = false;
+        loginRequired = false,
+        sessionExpired = false;
 
   const RedeemOutcome.failure(this.errorMessage)
       : ok = false,
         newBalance = null,
         successMessage = null,
-        loginRequired = false;
+        couponCode = null,
+        loginRequired = false,
+        sessionExpired = false;
 
   const RedeemOutcome.needsLogin()
       : ok = false,
         errorMessage = null,
         newBalance = null,
         successMessage = null,
-        loginRequired = true;
+        couponCode = null,
+        loginRequired = true,
+        sessionExpired = false;
+
+  const RedeemOutcome.sessionExpired()
+      : ok = false,
+        errorMessage = kSessionExpiredMessage,
+        newBalance = null,
+        successMessage = null,
+        couponCode = null,
+        loginRequired = false,
+        sessionExpired = true;
 
   final bool ok;
   final String? errorMessage;
   final bool loginRequired;
+  final bool sessionExpired;
   final int? newBalance;
   final String? successMessage;
+  final String? couponCode;
 
   @override
-  List<Object?> get props =>
-      [ok, errorMessage, loginRequired, newBalance, successMessage];
+  List<Object?> get props => [
+        ok,
+        errorMessage,
+        loginRequired,
+        sessionExpired,
+        newBalance,
+        successMessage,
+        couponCode,
+      ];
 }
 
 final class RewardsState extends Equatable {
@@ -85,9 +111,10 @@ final class RewardsState extends Equatable {
 }
 
 class RewardsCubit extends Cubit<RewardsState> {
-  RewardsCubit(this._dio) : super(const RewardsState());
+  RewardsCubit(this._dio, this._tokenStorage) : super(const RewardsState());
 
   final Dio _dio;
+  final TokenStorage _tokenStorage;
 
   void _trace(String message, [Map<String, Object?>? data]) {
     if (!kDebugMode) return;
@@ -111,12 +138,7 @@ class RewardsCubit extends Cubit<RewardsState> {
     }
     try {
       _trace('load start', {'silent': silent});
-      final rewardsRes = await _dio.get('/rewards');
-      final raw = rewardsRes.data as List<dynamic>? ?? [];
-      final rewards = raw
-          .map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-
+      final rewards = await _fetchRewardsList();
       final redeemedCount = rewards.where((r) => r.redeemed).length;
       _trace('load ok', {
         'count': rewards.length,
@@ -135,17 +157,59 @@ class RewardsCubit extends Cubit<RewardsState> {
       if (silent && state.status == RewardsStatus.loaded) {
         return;
       }
-      AppErrorMapper.log(e, context: 'rewards');
+      Object failure = e;
+      if (e is DioException && e.response?.statusCode == 401) {
+        final mode = classifyEndpointAuth(
+          e.requestOptions.uri.path.isNotEmpty
+              ? e.requestOptions.uri.path
+              : e.requestOptions.path,
+          method: e.requestOptions.method,
+        );
+        if (mode == EndpointAuthMode.optionalAuth) {
+          await _tokenStorage.clear();
+          try {
+            final rewards = await _fetchRewardsList();
+            emit(
+              RewardsState(
+                status: RewardsStatus.loaded,
+                rewards: rewards,
+                filter: state.filter,
+              ),
+            );
+            return;
+          } catch (retryError, retrySt) {
+            failure = retryError;
+            _trace('load retry failed', {'error': retryError.toString()});
+            if (kDebugMode) {
+              debugPrint('[RewardsCubit] retry stack: $retrySt');
+            }
+          }
+        }
+      }
+      AppErrorMapper.log(failure, context: 'rewards');
       emit(
         state.copyWith(
           status: RewardsStatus.failure,
-          errorMessage: AppErrorMapper.friendlyMessage(e),
+          errorMessage: AppErrorMapper.friendlyMessage(failure),
         ),
       );
     }
   }
 
+  Future<List<RewardItem>> _fetchRewardsList() async {
+    final rewardsRes = await _dio.get('/rewards');
+    final raw = rewardsRes.data as List<dynamic>? ?? [];
+    return raw
+        .map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<RedeemOutcome> redeem(String rewardId) async {
+    final token = await _tokenStorage.getCustomerToken();
+    if (token == null || token.trim().isEmpty) {
+      return const RedeemOutcome.needsLogin();
+    }
+
     emit(state.copyWith(redeemingId: rewardId));
     _trace('redeem start', {'rewardId': rewardId});
     try {
@@ -153,16 +217,25 @@ class RewardsCubit extends Cubit<RewardsState> {
         '/customer/rewards/$rewardId/redeem',
       );
       final data = res.data ?? const <String, dynamic>{};
-      final newBalance = (data['balance'] as num?)?.toInt();
+      final success = data['success'] != false;
+      if (!success) {
+        final msg = data['error']?.toString() ?? 'تعذّر إتمام العملية';
+        return RedeemOutcome.failure(msg);
+      }
+      final newBalance = (data['remainingCoins'] as num?)?.toInt() ??
+          (data['balance'] as num?)?.toInt();
       final redemptionStatus =
           (data['redemption_status'] as String?) ?? 'PENDING';
-      final redemptionId = data['id'] as String?;
+      final redemptionId =
+          (data['rewardRedemptionId'] as String?) ?? (data['id'] as String?);
+      final couponCode = data['couponCode']?.toString();
 
       _trace('redeem ok', {
         'rewardId': rewardId,
         'balance': newBalance,
         'status': redemptionStatus,
         'redemptionId': redemptionId,
+        'couponCode': couponCode,
       });
 
       final updatedRewards = state.rewards
@@ -184,12 +257,32 @@ class RewardsCubit extends Cubit<RewardsState> {
         ),
       );
 
-      // Sync redemption flags from server (requires auth on GET /rewards).
-      await load(silent: true);
+      // Best-effort refresh; do not fail a successful redeem if reload fails.
+      try {
+        await load(silent: true);
+      } catch (e, st) {
+        _trace('redeem reload failed (ignored)', {'error': e.toString()});
+        if (kDebugMode) debugPrint('[RewardsCubit] post-redeem reload: $st');
+      }
+
+      RewardItem? reward;
+      for (final r in state.rewards) {
+        if (r.id == rewardId) {
+          reward = r;
+          break;
+        }
+      }
+      final successMessage = couponCode != null && couponCode.isNotEmpty
+          ? 'تم الاستبدال! كود القسيمة: $couponCode'
+          : (reward?.type.toUpperCase() == 'TOURNAMENT' ||
+                  reward?.type.toUpperCase() == 'EVENT')
+              ? 'تمت المشاركة بنجاح'
+              : rewardRedeemSuccessMessageAr;
 
       return RedeemOutcome.success(
         newBalance: newBalance,
-        successMessage: rewardRedeemSuccessMessageAr,
+        successMessage: successMessage,
+        couponCode: couponCode,
       );
     } on DioException catch (e) {
       emit(state.copyWith(clearRedeeming: true));
@@ -201,6 +294,11 @@ class RewardsCubit extends Cubit<RewardsState> {
         'body': body,
       });
       if (status == 401) {
+        final kind = authFailureKindFromDio(e);
+        if (kind == AuthFailureKind.sessionExpired) {
+          await _tokenStorage.clear();
+          return const RedeemOutcome.sessionExpired();
+        }
         return const RedeemOutcome.needsLogin();
       }
       return RedeemOutcome.failure(_mapRedeemError(e));

@@ -87,7 +87,10 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: 'rewards',
               builder: (context, state) => BlocProvider(
-                create: (ctx) => RewardsCubit(ctx.read<Dio>())..load(),
+                create: (ctx) => RewardsCubit(
+                      ctx.read<Dio>(),
+                      ctx.read<TokenStorage>(),
+                    )..load(),
                 child: const RewardsPage(),
               ),
             ),

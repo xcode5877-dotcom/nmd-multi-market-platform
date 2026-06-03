@@ -427,10 +427,7 @@ class _RewardsCinematicCarouselState extends State<RewardsCinematicCarousel> {
                               HapticFeedback.lightImpact();
                               RewardCinematicDetailSheet.show(
                                 context,
-                                item: item,
-                                balance: widget.balance,
-                                isAuthenticated: widget.isAuthenticated,
-                                redeeming: widget.redeemingId == item.id,
+                                itemId: item.id,
                               );
                             },
                           ),
@@ -622,20 +619,39 @@ class RewardsCinematicEmpty extends StatelessWidget {
 class RewardCinematicDetailSheet {
   static Future<void> show(
     BuildContext context, {
-    required RewardItem item,
-    required int? balance,
-    required bool isAuthenticated,
-    required bool redeeming,
+    required String itemId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _RewardDetailBody(
-        item: item,
-        balance: balance,
-        isAuthenticated: isAuthenticated,
-        redeeming: redeeming,
+      builder: (sheetContext) => BlocBuilder<RewardsCubit, RewardsState>(
+        builder: (context, rewardsState) {
+          return BlocBuilder<CoinsBalanceCubit, CoinsBalanceState>(
+            builder: (context, coinsState) {
+              final auth = context.watch<AuthBloc>().state;
+              RewardItem? item;
+              for (final r in rewardsState.rewards) {
+                if (r.id == itemId) {
+                  item = r;
+                  break;
+                }
+              }
+              if (item == null) {
+                return const SizedBox.shrink();
+              }
+              final isAuth =
+                  auth.step == AuthStep.done || coinsState.isAuthenticated;
+              return _RewardDetailBody(
+                item: item,
+                balance: coinsState.balance,
+                isAuthenticated: isAuth,
+                redeeming: rewardsState.redeemingId == itemId,
+                sheetContext: sheetContext,
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -647,12 +663,14 @@ class _RewardDetailBody extends StatelessWidget {
     required this.balance,
     required this.isAuthenticated,
     required this.redeeming,
+    required this.sheetContext,
   });
 
   final RewardItem item;
   final int? balance;
   final bool isAuthenticated;
   final bool redeeming;
+  final BuildContext sheetContext;
 
   @override
   Widget build(BuildContext context) {
@@ -662,7 +680,9 @@ class _RewardDetailBody extends StatelessWidget {
     final canRedeem = canAfford && !item.locked && !item.redeemed;
     final url = item.imageUrl?.trim();
 
-    return DraggableScrollableSheet(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: DraggableScrollableSheet(
       initialChildSize: 0.88,
       minChildSize: 0.5,
       maxChildSize: 0.95,
@@ -742,8 +762,8 @@ class _RewardDetailBody extends StatelessWidget {
                             redeeming: redeeming,
                             isAuthenticated: isAuthenticated,
                             locked: item.locked,
-                            onRedeem: () => _handleRedeem(context),
-                            onLogin: () => _handleLogin(context),
+                            onRedeem: () => _handleRedeem(sheetContext),
+                            onLogin: () => _handleLogin(sheetContext),
                           ),
                         ]),
                       ),
@@ -757,13 +777,14 @@ class _RewardDetailBody extends StatelessWidget {
                 right: 0,
                 child: CinematicSheetGlassHeader(
                   title: title,
-                  onClose: () => Navigator.pop(context),
+                  onClose: () => Navigator.pop(sheetContext),
                 ),
               ),
             ],
           ),
         );
       },
+      ),
     );
   }
 
@@ -779,19 +800,30 @@ class _RewardDetailBody extends StatelessWidget {
   }
 
   Future<void> _handleRedeem(BuildContext context) async {
+    if (redeeming || item.redeemed) return;
     HapticFeedback.mediumImpact();
     if (!isAuthenticated) {
       await _handleLogin(context);
       return;
     }
+    final messenger = ScaffoldMessenger.maybeOf(context);
     final outcome = await context.read<RewardsCubit>().redeem(item.id);
     if (!context.mounted) return;
+    if (outcome.sessionExpired) {
+      final ok = await handleSessionExpired(context);
+      if (!context.mounted || !ok) return;
+      await Future.wait([
+        context.read<RewardsCubit>().load(),
+        context.read<CoinsBalanceCubit>().load(),
+      ]);
+      return;
+    }
     if (outcome.loginRequired) {
       await _handleLogin(context);
       return;
     }
     if (!outcome.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger?.showSnackBar(
         SnackBar(content: Text(outcome.errorMessage ?? 'تعذّر إتمام العملية')),
       );
       return;
@@ -803,8 +835,11 @@ class _RewardDetailBody extends StatelessWidget {
     }
     if (!context.mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(outcome.successMessage ?? rewardRedeemSuccessMessageAr)),
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(outcome.successMessage ?? rewardRedeemSuccessMessageAr),
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 }
@@ -863,7 +898,11 @@ class _DetailCta extends StatelessWidget {
       width: double.infinity,
       height: PremiumMarketplaceDesignSystem.ctaHeight,
       child: FilledButton(
-        onPressed: canRedeem && !redeeming ? onRedeem : null,
+        onPressed: (canRedeem && !redeeming)
+            ? () {
+                onRedeem();
+              }
+            : null,
         style: FilledButton.styleFrom(
           backgroundColor: NmdColors.brandPrimary,
           disabledBackgroundColor: Colors.white12,

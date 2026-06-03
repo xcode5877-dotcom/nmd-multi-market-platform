@@ -38,7 +38,8 @@ String requestPath(RequestOptions options) =>
 
 bool _isRewardsRedeem(String normalized, String method) {
   if (method != 'POST') return false;
-  return RegExp(r'^/customer/rewards/[^/]+/redeem$').hasMatch(normalized);
+  return RegExp(r'^/customer/rewards/[^/]+/redeem$').hasMatch(normalized) ||
+      RegExp(r'^/rewards/[^/]+/redeem$').hasMatch(normalized);
 }
 
 bool _isOptionalRewardsList(String normalized, String method) {

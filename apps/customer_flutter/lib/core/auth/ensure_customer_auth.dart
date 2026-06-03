@@ -4,10 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import 'auth_failure.dart';
 import '../network/token_storage.dart';
 import '../debug/nmd_post_login_trace.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/widgets/auth_bottom_sheet.dart';
+
+/// Clears stored JWT and resets [AuthBloc] after an invalid/expired session.
+Future<void> invalidateCustomerSession(BuildContext context) async {
+  await context.read<TokenStorage>().clear();
+  if (!context.mounted) return;
+  context.read<AuthBloc>().add(const AuthResetRequested());
+}
+
+/// Session expired UX: clear token, notify, then open OTP sheet.
+Future<bool> handleSessionExpired(BuildContext context) async {
+  await invalidateCustomerSession(context);
+  if (!context.mounted) return false;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text(kSessionExpiredMessage)),
+  );
+  return showNmdAuthBottomSheet(context);
+}
 
 /// True when [AuthBloc] is synced or a stored customer JWT restores successfully.
 Future<bool> isCustomerSessionActive(BuildContext context) async {

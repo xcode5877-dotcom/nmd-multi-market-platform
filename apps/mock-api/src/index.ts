@@ -2507,14 +2507,34 @@ class ContestParticipateError extends Error {
   }
 }
 
+/** Resolves Prisma Customer id for FK writes (coins, redemptions). Handles phone/id drift from JSON repos. */
 async function ensureCustomerInPrisma(customer: {
   id: string;
   phone: string;
   name?: string | null;
   createdAt?: string;
-}): Promise<void> {
-  const phone = String(customer.phone).trim();
+}): Promise<string> {
+  const phone = normalizePhoneForCoupon(customer.phone) || String(customer.phone).trim();
   const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
+  const existingByPhone = phone
+    ? await prisma.customer.findUnique({ where: { phone } })
+    : null;
+  if (existingByPhone) {
+    if (existingByPhone.id !== customer.id) {
+      console.warn('[ensureCustomerInPrisma] using existing row by phone', {
+        jwtCustomerId: customer.id,
+        prismaCustomerId: existingByPhone.id,
+        phone,
+      });
+    }
+    if (full?.name && !existingByPhone.name) {
+      await prisma.customer.update({
+        where: { id: existingByPhone.id },
+        data: { name: full.name },
+      });
+    }
+    return existingByPhone.id;
+  }
   await prisma.customer.upsert({
     where: { id: customer.id },
     create: {
@@ -2531,6 +2551,55 @@ async function ensureCustomerInPrisma(customer: {
       ...(full?.name != null ? { name: full.name } : {}),
     },
   });
+  return customer.id;
+}
+
+function parseCouponValueFromRewardDescription(description: string | null): {
+  type: 'FIXED' | 'PERCENT';
+  value: number;
+} {
+  const desc = (description ?? '').trim();
+  const percent = desc.match(/(\d+)\s*%/);
+  if (percent) {
+    return { type: 'PERCENT', value: Math.min(100, Math.max(1, parseInt(percent[1], 10))) };
+  }
+  const fixed = desc.match(/(\d+)/);
+  if (fixed) {
+    return { type: 'FIXED', value: Math.max(1, parseInt(fixed[1], 10)) };
+  }
+  return { type: 'FIXED', value: 10 };
+}
+
+async function createRewardCouponForCustomer(
+  reward: { description: string | null },
+  customerPhone: string,
+  now: string,
+): Promise<string> {
+  const { type, value } = parseCouponValueFromRewardDescription(reward.description);
+  let code = `OBR-${Math.random().toString(36).slice(2, 6).toUpperCase()}${Math.floor(10 + Math.random() * 90)}`;
+  for (let i = 0; i < 8; i++) {
+    const exists = await prisma.coupon.findUnique({ where: { code } });
+    if (!exists) break;
+    code = `OBR-${Math.random().toString(36).slice(2, 6).toUpperCase()}${Math.floor(10 + Math.random() * 90)}`;
+  }
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const phoneNorm = normalizePhoneForCoupon(customerPhone);
+  await prisma.coupon.create({
+    data: {
+      id: `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      code,
+      type,
+      value,
+      tenantId: null,
+      storeId: null,
+      oneTimeUse: true,
+      winnerPhone: phoneNorm || customerPhone,
+      usedAt: null,
+      createdAt: now,
+      expiresAt,
+    },
+  });
+  return code;
 }
 
 type ContestRow = {
@@ -2588,11 +2657,12 @@ app.get('/contest/active', wrapAsync(async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
   if (!contest) return res.json(null);
-  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
   let participation: { id: string; isWinner: boolean } | null = null;
   if (customer) {
+    const prismaCustomerId = await ensureCustomerInPrisma(customer);
     const row = await prisma.contestParticipation.findUnique({
-      where: { customerId_contestId: { customerId: customer.id, contestId: contest.id } },
+      where: { customerId_contestId: { customerId: prismaCustomerId, contestId: contest.id } },
       select: { id: true, isWinner: true },
     });
     if (row) participation = row;
@@ -2633,14 +2703,14 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
   const phoneNorm = normalizePhoneForCoupon(customer.phone);
   if (!phoneNorm && coinsCost > 0) return res.status(400).json({ error: 'Phone required' });
 
-  await ensureCustomerInPrisma(customer);
+  const prismaCustomerId = await ensureCustomerInPrisma(customer);
 
   const participationId = `cp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       const dup = await tx.contestParticipation.findUnique({
-        where: { customerId_contestId: { customerId: customer.id, contestId } },
+        where: { customerId_contestId: { customerId: prismaCustomerId, contestId } },
       });
       if (dup) {
         throw new ContestParticipateError('ALREADY_PARTICIPATED', 'Already participated', {
@@ -2715,7 +2785,7 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
       const participation = await tx.contestParticipation.create({
         data: {
           id: participationId,
-          customerId: customer.id,
+          customerId: prismaCustomerId,
           contestId,
           userAnswer,
           scoreA: scoreA ?? undefined,
@@ -2990,8 +3060,9 @@ app.get('/rewards', wrapAsync(async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
   const customerRedemptions = new Map<string, { status: string; id: string }>();
   if (customer) {
+    const prismaCustomerId = await ensureCustomerInPrisma(customer);
     const reds = await prisma.rewardRedemption.findMany({
-      where: { customerId: customer.id, status: { in: ['PENDING', 'COMPLETED'] } },
+      where: { customerId: prismaCustomerId, status: { in: ['PENDING', 'COMPLETED'] } },
       select: { rewardId: true, status: true, id: true },
     });
     for (const row of reds) {
@@ -3150,34 +3221,51 @@ app.delete('/admin/rewards/:id', wrapAsync(async (req, res) => {
 }));
 
 /** Customer joins / redeems a global reward: checks balance, deducts coins, creates PENDING redemption. */
-app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
+async function handleRewardRedeem(
+  req: express.Request,
+  res: express.Response,
+): Promise<void> {
   const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
-  if (!customer) return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+  if (!customer) {
+    res.status(401).json({ error: 'سجّل الدخول للمتابعة', code: 'LOGIN_REQUIRED' });
+    return;
+  }
   const rewardId = req.params.rewardId;
-  if (!rewardId) return res.status(400).json({ error: 'rewardId required' });
+  if (!rewardId) {
+    res.status(400).json({ error: 'rewardId required' });
+    return;
+  }
 
   const reward = await prisma.globalReward.findUnique({ where: { id: rewardId } });
-  if (!reward || !reward.isActive) return res.status(404).json({ error: 'Reward not found or inactive' });
+  if (!reward || !reward.isActive) {
+    res.status(404).json({ error: 'Reward not found or inactive' });
+    return;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   if (reward.expiryDate) {
     const exp = reward.expiryDate.slice(0, 10);
-    if (exp < today) return res.status(400).json({ error: 'Reward expired', code: 'EXPIRED' });
+    if (exp < today) {
+      res.status(400).json({ error: 'Reward expired', code: 'EXPIRED' });
+      return;
+    }
   }
 
   const coinsCost = Math.max(0, reward.coinsCost);
   const phoneNorm = normalizePhoneForCoupon(customer.phone);
-  if (!phoneNorm) return res.status(400).json({ error: 'Phone required' });
+  if (!phoneNorm) {
+    res.status(400).json({ error: 'Phone required' });
+    return;
+  }
 
   const now = new Date().toISOString();
   const redemptionId = `rred-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-  await ensureCustomerInPrisma(customer);
+  const prismaCustomerId = await ensureCustomerInPrisma(customer);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       const dup = await tx.rewardRedemption.findFirst({
-        where: { customerId: customer.id, rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
+        where: { customerId: prismaCustomerId, rewardId, status: { in: ['PENDING', 'COMPLETED'] } },
       });
       if (dup) {
         throw new RewardRedeemError('ALREADY_REDEEMED', 'Already redeemed this reward');
@@ -3247,7 +3335,7 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
       await tx.rewardRedemption.create({
         data: {
           id: redemptionId,
-          customerId: customer.id,
+          customerId: prismaCustomerId,
           rewardId,
           status: 'PENDING',
           coinsSpent: coinsCost,
@@ -3259,24 +3347,34 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
       return { redemptionId, newBalance, now };
     });
 
+    let couponCode: string | undefined;
+    if (reward.type === 'COUPON') {
+      couponCode = await createRewardCouponForCustomer(reward, customer.phone, now);
+    }
+
     console.log('[REWARD_REDEEM]', {
-      customerId: customer.id,
+      customerId: prismaCustomerId,
       rewardId,
       coinsCost,
       balanceBefore: result.newBalance + coinsCost,
       status: 'PENDING',
       balanceAfter: result.newBalance,
+      couponCode: couponCode ?? null,
     });
 
     res.status(201).json({
+      success: true,
       id: result.redemptionId,
+      rewardRedemptionId: result.redemptionId,
       rewardId,
       status: 'PENDING',
       coinsSpent: coinsCost,
       balance: result.newBalance,
+      remainingCoins: result.newBalance,
       redeemedAt: result.now,
       redeemed: true,
       redemption_status: 'PENDING',
+      ...(couponCode ? { couponCode } : {}),
     });
   } catch (e: unknown) {
     if (e instanceof RewardRedeemError) {
@@ -3286,7 +3384,7 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
         SOLD_OUT: 'SOLD_OUT',
       };
       console.log('[REWARD_REDEEM]', {
-        customerId: customer.id,
+        customerId: prismaCustomerId,
         rewardId,
         coinsCost,
         balanceBefore: (e.extra?.balance as number | undefined) ?? null,
@@ -3298,15 +3396,21 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
         ALREADY_REDEEMED: 'سبق أن شاركت في هذه المكافأة',
         SOLD_OUT: 'نفدت الكمية المتاحة',
       };
-      return res.status(400).json({
+      res.status(400).json({
+        success: false,
         error: messageAr[e.code] ?? e.message,
         code: e.code,
         ...e.extra,
       });
+      return;
     }
-    throw e;
+    console.error('[REWARD_REDEEM] unhandled', e);
+    res.status(500).json({ success: false, error: 'تعذّر إتمام الاستبدال' });
   }
-}));
+}
+
+app.post('/customer/rewards/:rewardId/redeem', wrapAsync(handleRewardRedeem));
+app.post('/rewards/:rewardId/redeem', wrapAsync(handleRewardRedeem));
 
 function redemptionToAdminRow(r: {
   id: string;
