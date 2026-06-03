@@ -28,9 +28,11 @@ import {
   FEED_CAMPAIGN_KIND_LABELS,
   FIXED_HOME_BLOCKS,
   HOME_FEED_PROMO_HELPER_AR,
+  PRIMARY_CAMPAIGN_TYPE_CARDS,
   PRIMARY_FEED_PLACEMENTS,
   FEED_CAMPAIGN_PLACEMENT_LABELS,
   createFeedCampaign,
+  defaultsForCampaignType,
   feedCampaignsSnapshotKey,
   isMoodType,
   normalizeFeedCampaignPlacement,
@@ -117,6 +119,20 @@ export default function HomePageBuilderPage() {
     queryFn: () => apiFetch<Array<{ slug: string; name?: string; nameAr?: string }>>('/markets'),
   });
 
+  const { data: marketTenants = [] } = useQuery({
+    queryKey: ['market-tenants-home-builder', marketSlug],
+    queryFn: () =>
+      apiFetch<Array<{ id: string; name?: string; slug?: string }>>(
+        `/markets/${encodeURIComponent(marketSlug)}/tenants`,
+      ),
+    enabled: !!marketSlug.trim(),
+  });
+
+  const { data: pillars = [] } = useQuery({
+    queryKey: ['pillars-home-builder'],
+    queryFn: () => apiFetch<Array<{ id: string; title?: string; nameAr?: string }>>('/pillars'),
+  });
+
   const {
     data: items = [],
     isLoading,
@@ -159,7 +175,11 @@ export default function HomePageBuilderPage() {
       setWorkingItems(sorted);
       setServerSnapshotKey(feedCampaignsSnapshotKey(sorted));
       await refetch();
-      addToast('تم حفظ الحملات على الخادم', 'success');
+      if (data.length !== workingItems.length) {
+        addToast(`تم الحفظ — ${data.length} حملة على الخادم`, 'success');
+      } else {
+        addToast('تم حفظ الحملات على الخادم', 'success');
+      }
     },
     onError: (e: Error) => addToast(e.message || 'فشل الحفظ', 'error'),
   });
@@ -182,10 +202,15 @@ export default function HomePageBuilderPage() {
       const errors = validateFeedCampaign(sanitizeFeedCampaignsForSave([c])[0]!);
       const blocking = errors.filter(
         (e) =>
-          e.startsWith('العنوان') ||
-          e.startsWith('معرّف') ||
-          e.startsWith('الصورة') ||
-          e.startsWith('عنصر'),
+          !e.startsWith('تحذير:') &&
+          (e.startsWith('العنوان') ||
+            e.startsWith('معرّف') ||
+            e.startsWith('المحل') ||
+            e.startsWith('الصورة') ||
+            e.startsWith('الوصف') ||
+            e.startsWith('هدف') ||
+            e.startsWith('أضف') ||
+            e.startsWith('عنصر')),
       );
       if (blocking.length) {
         addToast(`${c.title || 'كتلة'}: ${blocking[0]}`, 'error');
@@ -220,11 +245,12 @@ export default function HomePageBuilderPage() {
   const openCreate = (type?: FeedCampaignKind) => {
     setEditingId(null);
     const base = emptyDraft();
-    if (type) base.type = type;
+    if (type) {
+      Object.assign(base, defaultsForCampaignType(type));
+      base.type = type;
+    }
     if (isMoodType(base.type) && !base.chips?.length) {
       base.chips = DEFAULT_MOOD_CHIPS;
-      base.title = 'شو جاي عبالك اليوم؟';
-      base.placement = 'AFTER_FIRST_SECTION';
     }
     setDraft(base);
     setModalOpen(true);
@@ -285,10 +311,15 @@ export default function HomePageBuilderPage() {
     const errors = validateFeedCampaign(sanitized);
     const blocking = errors.filter(
       (e) =>
-        e.startsWith('العنوان') ||
-        e.startsWith('معرّف') ||
-        e.startsWith('الصورة') ||
-        e.startsWith('عنصر'),
+        !e.startsWith('تحذير:') &&
+        (e.startsWith('العنوان') ||
+          e.startsWith('معرّف') ||
+          e.startsWith('المحل') ||
+          e.startsWith('الصورة') ||
+          e.startsWith('الوصف') ||
+          e.startsWith('هدف') ||
+          e.startsWith('أضف') ||
+          e.startsWith('عنصر')),
     );
     if (blocking.length) {
       addToast(blocking[0]!, 'error');
@@ -389,18 +420,29 @@ export default function HomePageBuilderPage() {
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">{HOME_FEED_PROMO_HELPER_AR}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => openCreate('MOOD_DISCOVERY')}>
-            + Mood
-          </Button>
-          <Button variant="secondary" onClick={() => openCreate('GLASS_STRIP')}>
-            + Glass
-          </Button>
           <Button onClick={() => openCreate()} className="gap-2">
             <Plus className="h-4 w-4" />
-            كتلة جديدة
+            كتلة متقدمة
           </Button>
         </div>
       </div>
+
+      <Card className="p-4">
+        <h2 className="font-bold text-gray-900 mb-3">أنواع الحملات — اختر نوعاً لإنشاء كتلة</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {PRIMARY_CAMPAIGN_TYPE_CARDS.map((card) => (
+            <button
+              key={card.type}
+              type="button"
+              onClick={() => openCreate(card.type)}
+              className="text-right rounded-xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/60 p-4 hover:border-teal-300 hover:shadow-sm transition"
+            >
+              <p className="font-bold text-teal-900">{card.titleAr}</p>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{card.descriptionAr}</p>
+            </button>
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-4 flex flex-wrap gap-3 items-end">
         <div className="min-w-[180px]">
@@ -683,9 +725,39 @@ export default function HomePageBuilderPage() {
                   }
                 />
               )}
-              {(draft.ctaAction === 'OPEN_STORE' || draft.ctaAction === 'OPEN_CATEGORY') && (
+              {(draft.ctaAction === 'OPEN_STORE' ||
+                normalizeFeedCampaignType(draft.type) === 'STORE_FEATURE') && (
+                <Select
+                  label="المحل المستهدف *"
+                  options={[
+                    { value: '', label: '— اختر محل —' },
+                    ...marketTenants.map((t) => ({
+                      value: t.id,
+                      label: t.name || t.slug || t.id,
+                    })),
+                  ]}
+                  value={draft.targetId ?? ''}
+                  onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value, ctaAction: 'OPEN_STORE' }))}
+                />
+              )}
+              {(draft.ctaAction === 'OPEN_CATEGORY' &&
+                normalizeFeedCampaignType(draft.type) !== 'STORE_FEATURE') && (
+                <Select
+                  label="التصنيف / العمود *"
+                  options={[
+                    { value: '', label: '— اختر تصنيف —' },
+                    ...pillars.map((p) => ({
+                      value: p.id,
+                      label: p.nameAr || p.title || p.id,
+                    })),
+                  ]}
+                  value={draft.targetId ?? ''}
+                  onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value }))}
+                />
+              )}
+              {draft.ctaAction === 'OPEN_SEARCH' && (
                 <Input
-                  label="معرّف الهدف"
+                  label="عبارة البحث *"
                   value={draft.targetId ?? ''}
                   onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value }))}
                 />
@@ -695,6 +767,8 @@ export default function HomePageBuilderPage() {
                   chips={draft.chips ?? []}
                   onChange={(chips) => setDraft((d) => ({ ...d, chips }))}
                   onUploadError={(msg) => addToast(msg, 'error')}
+                  pillars={pillars}
+                  stores={marketTenants}
                 />
               )}
               <div className="flex flex-wrap items-center gap-3">

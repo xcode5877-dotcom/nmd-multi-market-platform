@@ -116,9 +116,41 @@ export const DEFAULT_HOME_FEED_SETTINGS: HomeFeedSettings = {
   showPillars: true,
 };
 
-/** Shown in Home Page Builder + Feed Campaigns admin. */
+/** Primary campaign types shown as cards in Home Page Builder. */
+export const PRIMARY_CAMPAIGN_TYPE_CARDS: Array<{
+  type: FeedCampaignKind;
+  titleAr: string;
+  descriptionAr: string;
+}> = [
+  {
+    type: 'MOOD_DISCOVERY',
+    titleAr: 'اكتشاف حسب المزاج',
+    descriptionAr:
+      'كرت مثل: شو جاي عبالك اليوم؟ يحتوي أيقونات يختارها الزبون وتفتح محل/تصنيف/بحث.',
+  },
+  {
+    type: 'CHALLENGE_CARD',
+    titleAr: 'إعلان تحدي / مسابقة',
+    descriptionAr: 'كرت لمسابقة أو بطولة أو جائزة مع زر مشاركة.',
+  },
+  {
+    type: 'REWARDS_DISCOVERY',
+    titleAr: 'تذكير بالمكافآت',
+    descriptionAr: 'كرت يشجع الزبون على استخدام العملات واستبدال الجوائز.',
+  },
+  {
+    type: 'FEATURED_STORE_STORY',
+    titleAr: 'محل جديد / مميز',
+    descriptionAr: 'كرت يعرّف بمحل جديد أو مميز، ويجب أن يفتح صفحة المحل عند الضغط.',
+  },
+  {
+    type: 'GLASS_STRIP',
+    titleAr: 'عروض الليلة',
+    descriptionAr: 'شريط عروض مختصر بين أقسام المحلات.',
+  },
+];
 export const HOME_FEED_PROMO_HELPER_AR =
-  'يمكن عرض حتى 3 إعلانات داخل الصفحة الرئيسية، بين أقسام المحلات فقط. لن تظهر الإعلانات داخل صفحات التصنيفات مثل المطاعم والخدمات.';
+  'يمكن عرض حتى 3 إعلانات داخل الصفحة الرئيسية، بين أقسام المحلات فقط. لن تظهر الإعلانات داخل صفحات التصنيفات مثل المطاعm والخدمات.';
 
 /** Where a placement appears on the home feed (admin cards). */
 export const FEED_PLACEMENT_PREVIEW_AR: Record<string, string> = {
@@ -250,14 +282,43 @@ export function createFeedCampaign(
 }
 
 export function validateFeedCampaign(c: FeedCampaign): string[] {
+  const type = normalizeFeedCampaignType(c.type);
   const errors: string[] = [];
   if (!c.title.trim()) errors.push('العنوان مطلوب');
   if (c.active && !c.placement) errors.push('موضع الإدراج مطلوب للكتلة النشطة');
+
+  if (isMoodType(type)) {
+    const chips = c.chips ?? [];
+    const activeChips = chips.filter((ch) => ch.active !== false && ch.label?.trim());
+    if (activeChips.length === 0) errors.push('أضف عنصر مزاج واحد على الأقل');
+    errors.push(...validateFeedCampaignChips(chips));
+  }
+
+  if (type === 'STORE_FEATURE') {
+    if (!c.targetId?.trim()) errors.push('المحل المستهدف مطلوب');
+    if (!c.imageUrl?.trim()) errors.push('صورة المحل مطلوبة');
+  }
+
+  if (type === 'COMPETITION_CARD') {
+    if (!c.subtitle.trim()) errors.push('الوصف الفرعي مطلوب');
+    if (c.ctaAction !== 'NONE' && !(c.targetId?.trim() || c.targetUrl?.trim())) {
+      errors.push('هدف الإجراء مطلوب عند تفعيل الزر');
+    }
+  }
+
+  if (type === 'REWARD_CARD' && !c.subtitle.trim()) {
+    errors.push('الوصف الفرعي مطلوب');
+  }
+
+  if (type === 'OFFER_STRIP' && !c.subtitle.trim()) {
+    errors.push('الوصف الفرعي مطلوب');
+  }
+
   if (
     (c.ctaAction === 'OPEN_STORE' || c.ctaAction === 'OPEN_CATEGORY') &&
     !(c.targetId?.trim())
   ) {
-    if (c.type !== 'CATEGORY_DISCOVERY' && c.type !== 'MOOD_DISCOVERY') {
+    if (!isMoodType(type) && type !== 'STORE_FEATURE') {
       errors.push('معرّف الهدف مطلوب لهذا الإجراء');
     }
   }
@@ -345,6 +406,12 @@ export function sanitizeFeedCampaignForSave(c: FeedCampaign): FeedCampaign {
     startDate: c.startDate?.trim() || undefined,
     endDate: c.endDate?.trim() || undefined,
     countdownEndsAt: c.countdownEndsAt?.trim() || undefined,
+    ctaAction:
+      type === 'STORE_FEATURE'
+        ? 'OPEN_STORE'
+        : type === 'REWARD_CARD'
+          ? 'OPEN_REWARD'
+          : c.ctaAction,
     categoryLabels:
       isMoodType(type) && !(chips?.length)
         ? (c.categoryLabels ?? []).map((l) => l.trim()).filter(Boolean)
@@ -359,4 +426,58 @@ export function sanitizeFeedCampaignsForSave(campaigns: FeedCampaign[]): FeedCam
 
 export function feedCampaignsSnapshotKey(campaigns: FeedCampaign[]): string {
   return JSON.stringify(sanitizeFeedCampaignsForSave(campaigns));
+}
+
+/** Defaults when admin picks a campaign type card. */
+export function defaultsForCampaignType(type: FeedCampaignKind): Partial<Omit<FeedCampaign, 'id' | 'sortOrder'>> {
+  switch (type) {
+    case 'MOOD_DISCOVERY':
+    case 'CATEGORY_DISCOVERY':
+      return {
+        type,
+        title: 'شو جاي عبالك اليوم؟',
+        subtitle: '',
+        ctaAction: 'NONE',
+        ctaLabel: '',
+        placement: 'AFTER_FIRST_SECTION',
+      };
+    case 'CHALLENGE_CARD':
+    case 'COMPETITION_CARD':
+      return {
+        type,
+        ctaAction: 'OPEN_REWARD',
+        ctaLabel: 'شارك الآن',
+        placement: 'AFTER_SECOND_SECTION',
+      };
+    case 'REWARDS_DISCOVERY':
+    case 'REWARD_CARD':
+      return {
+        type,
+        title: 'استبدل عملاتك',
+        subtitle: 'جوائز وقسائم بانتظارك',
+        ctaAction: 'OPEN_REWARD',
+        ctaLabel: 'المكافآt',
+        placement: 'AFTER_FIRST_SECTION',
+      };
+    case 'FEATURED_STORE_STORY':
+    case 'STORE_FEATURE':
+      return {
+        type,
+        ctaAction: 'OPEN_STORE',
+        ctaLabel: 'زور المحل',
+        placement: 'AFTER_FIRST_SECTION',
+      };
+    case 'GLASS_STRIP':
+    case 'OFFER_STRIP':
+      return {
+        type,
+        title: 'عروض الليلة',
+        subtitle: 'عروض مختارة لك',
+        ctaAction: 'NONE',
+        ctaLabel: '',
+        placement: 'AFTER_EVERY_2_SECTIONS',
+      };
+    default:
+      return { type };
+  }
 }

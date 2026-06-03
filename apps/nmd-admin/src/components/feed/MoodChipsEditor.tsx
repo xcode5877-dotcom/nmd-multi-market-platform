@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Input, Select } from '@nmd/ui';
 import { GripVertical, Plus, Trash2, Upload } from 'lucide-react';
 import { apiUploadSingleImage } from '../../api';
@@ -24,14 +24,26 @@ function emptyChip(sortOrder: number): FeedCampaignChip {
   };
 }
 
+type PillarOption = { id: string; title?: string; nameAr?: string };
+type StoreOption = { id: string; name?: string; slug?: string };
+
 type Props = {
   chips: FeedCampaignChip[];
   onChange: (chips: FeedCampaignChip[]) => void;
   onUploadError: (message: string) => void;
+  pillars?: PillarOption[];
+  stores?: StoreOption[];
 };
 
-export default function MoodChipsEditor({ chips, onChange, onUploadError }: Props) {
+export default function MoodChipsEditor({
+  chips,
+  onChange,
+  onUploadError,
+  pillars = [],
+  stores = [],
+}: Props) {
   const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
 
   const updateChip = (index: number, patch: Partial<FeedCampaignChip>) => {
     onChange(chips.map((c, i) => (i === index ? { ...c, ...patch } : c)));
@@ -58,12 +70,58 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
   };
 
   const uploadIcon = async (index: number, file: File) => {
+    setUploadingIndex(index);
     try {
       const url = await apiUploadSingleImage(file);
       updateChip(index, { iconUrl: url });
     } catch (e) {
       onUploadError(e instanceof Error ? e.message : 'فشل رفع الأيقونة');
+    } finally {
+      setUploadingIndex(null);
     }
+  };
+
+  const targetSelect = (chip: FeedCampaignChip, index: number) => {
+    const action = chip.action ?? 'OPEN_CATEGORY';
+    if (action === 'NONE') {
+      return (
+        <p className="text-xs text-gray-500 col-span-2">هذا العنصر غير قابل للنقر في التطبيق.</p>
+      );
+    }
+    if (action === 'OPEN_SEARCH') {
+      return (
+        <Input
+          label="عبارة البحث *"
+          value={chip.targetId ?? ''}
+          onChange={(e) => updateChip(index, { targetId: e.target.value })}
+          placeholder={chip.label || 'بيتزا'}
+        />
+      );
+    }
+    if (action === 'OPEN_STORE') {
+      return (
+        <Select
+          label="المحل *"
+          options={[
+            { value: '', label: '— اختر محل —' },
+            ...stores.map((s) => ({ value: s.id, label: s.name || s.slug || s.id })),
+          ]}
+          value={chip.targetId ?? ''}
+          onChange={(e) => updateChip(index, { targetId: e.target.value })}
+        />
+      );
+    }
+    return (
+      <Select
+        label="التصنيف / العمود *"
+        options={[
+          { value: '', label: '— اختر تصنيف —' },
+          ...pillars.map((p) => ({ value: p.id, label: p.nameAr || p.title || p.id })),
+        ]}
+        value={chip.targetId ?? ''}
+        onChange={(e) => updateChip(index, { targetId: e.target.value })}
+      />
+    );
   };
 
   return (
@@ -72,7 +130,7 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
         <div>
           <p className="text-sm font-bold text-gray-900">عناصر «شو جاي عبالك؟»</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            صورة الأيقونة أو إيموجي · الإجراء والهدف · ترتيب السحب
+            كل أيقونة لها إجراء مستقل — المتجر أو التصنيف أو البحث
           </p>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={addChip} className="gap-1">
@@ -88,7 +146,9 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
           {chips.map((chip, index) => (
             <div
               key={`${index}-${chip.sortOrder}`}
-              className="rounded-lg border border-gray-200 bg-white p-3 space-y-2"
+              className={`rounded-lg border p-3 space-y-2 ${
+                chip.active === false ? 'border-gray-200 bg-gray-50 opacity-80' : 'border-gray-200 bg-white'
+              }`}
             >
               <div className="flex items-center gap-2">
                 <GripVertical className="h-4 w-4 text-gray-300 shrink-0" />
@@ -128,7 +188,7 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
 
               <div className="grid gap-2 md:grid-cols-2">
                 <Input
-                  label="التسمية"
+                  label="التسمية *"
                   value={chip.label}
                   onChange={(e) => updateChip(index, { label: e.target.value })}
                   placeholder="بيتزا"
@@ -159,14 +219,15 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
                   type="button"
                   size="sm"
                   variant="secondary"
+                  disabled={uploadingIndex === index}
                   onClick={() => fileRefs.current[index]?.click()}
                   className="gap-1"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  أيقونة
+                  {uploadingIndex === index ? 'جاري الرفع...' : 'أيقونة'}
                 </Button>
                 {chip.iconUrl ? (
-                  <img src={chip.iconUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                  <img src={chip.iconUrl} alt="" className="h-10 w-10 rounded-lg object-cover border" />
                 ) : null}
                 <Input
                   label="رابط الأيقونة"
@@ -184,20 +245,12 @@ export default function MoodChipsEditor({ chips, onChange, onUploadError }: Prop
                   onChange={(e) =>
                     updateChip(index, {
                       action: e.target.value as FeedCampaignChip['action'],
+                      targetId: '',
                     })
                   }
                 />
-                <Input
-                  label="معرّف الهدف (pillar / store id)"
-                  value={chip.targetId ?? ''}
-                  onChange={(e) => updateChip(index, { targetId: e.target.value })}
-                />
+                {targetSelect(chip, index)}
               </div>
-              <Input
-                label="Slug الهدف (اختياري)"
-                value={chip.targetSlug ?? ''}
-                onChange={(e) => updateChip(index, { targetSlug: e.target.value })}
-              />
             </div>
           ))}
         </div>

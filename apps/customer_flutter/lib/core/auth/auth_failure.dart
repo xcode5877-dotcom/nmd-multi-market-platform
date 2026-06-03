@@ -56,6 +56,9 @@ bool isPublicBrowseEndpoint(String path) {
   if (RegExp(r'^/markets/by-slug/[^/]+/banners$').hasMatch(normalized)) {
     return true;
   }
+  if (RegExp(r'^/markets/by-slug/[^/]+/home-feed-settings$').hasMatch(normalized)) {
+    return true;
+  }
   if (RegExp(r'^/markets/by-slug/[^/]+/feed-campaigns$').hasMatch(normalized)) {
     return true;
   }
@@ -150,7 +153,6 @@ EndpointAuthMode classifyEndpointAuth(
 
 /// Whether a customer JWT should be sent when one is stored.
 bool shouldAttachCustomerToken(String path, {String method = 'GET'}) {
-  if (isPublicBrowseEndpoint(path)) return false;
   final mode = classifyEndpointAuth(path, method: method);
   return mode == EndpointAuthMode.optionalAuth ||
       mode == EndpointAuthMode.protected;

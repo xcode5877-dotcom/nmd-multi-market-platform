@@ -140,10 +140,20 @@ export async function apiUploadBanner(file: File): Promise<{ urls: string[]; rel
 
 /** Upload one image; returns the first CDN URL from the banner upload endpoint. */
 export async function apiUploadSingleImage(file: File): Promise<string> {
-  const { urls } = await apiUploadBanner(file);
-  const url = urls?.[0]?.trim() ?? '';
-  if (!url) throw new Error('لم يُرجع الخادم رابط الصورة');
-  return url;
+  try {
+    const { urls } = await apiUploadBanner(file);
+    const url = urls?.[0]?.trim() ?? '';
+    if (url) return url;
+  } catch (bannerErr) {
+    try {
+      const { urls } = await apiUpload([file]);
+      const url = urls?.[0]?.trim() ?? '';
+      if (url) return url;
+    } catch {
+      throw bannerErr instanceof Error ? bannerErr : new Error('فشل رفع الصورة');
+    }
+  }
+  throw new Error('لم يُرجع الخادم رابط الصورة');
 }
 
 // --- Contests (platform admin) ---

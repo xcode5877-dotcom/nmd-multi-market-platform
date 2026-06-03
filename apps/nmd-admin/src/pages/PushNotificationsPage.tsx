@@ -22,7 +22,14 @@ type SendResult = {
   error?: string;
   fcmConfigured?: boolean;
   ok?: boolean;
+  customerId?: string;
+  warning?: string;
 };
+
+function looksLikePhone(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 9 && !value.startsWith('cust-') && !value.startsWith('customer-');
+}
 
 export default function PushNotificationsPage() {
   const { addToast } = useToast();
@@ -32,8 +39,8 @@ export default function PushNotificationsPage() {
   const [route, setRoute] = useState('');
   const [target, setTarget] = useState<TargetAudience>('all');
   const [marketSlug, setMarketSlug] = useState('dabburiyya');
-  const [customerId, setCustomerId] = useState('');
-  const [testCustomerId, setTestCustomerId] = useState('');
+  const [customerIdentifier, setCustomerIdentifier] = useState('');
+  const [testCustomerIdentifier, setTestCustomerIdentifier] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [broadcastConfirmOpen, setBroadcastConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -80,11 +87,14 @@ export default function PushNotificationsPage() {
       addToast(data?.message ?? data?.error ?? 'لم يُرسل أي إشعار', 'error');
       return;
     }
-    addToast(
-      data?.message ??
-        `${successFallback} (${sent} ناجح${failed > 0 ? `، فشل ${failed}` : ''})`,
-      'success',
-    );
+    const detail =
+      failed > 0
+        ? ` (${sent} ناجح، فشل ${failed}${data.totalTokens != null ? ` من ${data.totalTokens}` : ''})`
+        : data.totalTokens != null && data.totalTokens > 1
+          ? ` (${sent} من ${data.totalTokens} أجهزة)`
+          : '';
+    addToast(`${data?.message ?? successFallback}${detail}`, 'success');
+    if (data.warning) addToast(data.warning, 'error');
     void loadStatus();
   };
 
@@ -107,21 +117,25 @@ export default function PushNotificationsPage() {
     }
   };
 
-  const sendToCustomer = async (id: string) => {
-    const trimmed = id.trim();
+  const sendToCustomer = async (identifier: string) => {
+    const trimmed = identifier.trim();
     if (!trimmed) {
-      addToast('أدخل معرف العميل', 'error');
+      addToast('أدخل رقم الهاتف أو معرف العميل', 'error');
       return;
     }
     setSending(true);
     try {
+      const payload = looksLikePhone(trimmed)
+        ? { phone: trimmed, ...buildPayload() }
+        : { customerId: trimmed, ...buildPayload() };
       const data = await apiFetch<SendResult>('/admin/notifications/send-to-customer', {
         method: 'POST',
-        body: JSON.stringify({ customerId: trimmed, ...buildPayload() }),
+        body: JSON.stringify(payload),
       });
       handleSendResult(data, 'تم إرسال الإشعار للعميل');
     } catch (e) {
-      addToast(e instanceof Error ? e.message : 'فشل الإرسال', 'error');
+      const msg = e instanceof Error ? e.message : 'فشل الإرسال';
+      addToast(msg, 'error');
     } finally {
       setSending(false);
     }
@@ -164,6 +178,7 @@ export default function PushNotificationsPage() {
             <p className="mt-2 text-gray-700">
               آخر إرسال: ناجح {lastResult.sent ?? 0} · فشل {lastResult.failed ?? 0}
               {lastResult.totalTokens != null ? ` · من أصل ${lastResult.totalTokens}` : ''}
+              {lastResult.customerId ? ` · عميل ${lastResult.customerId}` : ''}
             </p>
           )}
         </Card>
@@ -214,7 +229,7 @@ export default function PushNotificationsPage() {
             >
               <option value="all">جميع العملاء المسجّلين</option>
               <option value="market">عملاء سوق محدد (طلبات سابقة)</option>
-              <option value="specific">عميل محدد (Customer ID)</option>
+              <option value="specific">عميل محدد (هاتف أو معرف)</option>
             </select>
           </div>
           {target === 'market' && (
@@ -222,25 +237,25 @@ export default function PushNotificationsPage() {
           )}
           {target === 'specific' && (
             <Input
-              label="معرف العميل"
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              placeholder="customer-xxx"
+              label="رقم الهاتف أو معرف العميل"
+              value={customerIdentifier}
+              onChange={(e) => setCustomerIdentifier(e.target.value)}
+              placeholder="0546111668 أو +972546111668 أو customer-xxx"
             />
           )}
           <div className="border-t pt-4">
             <Input
-              label="إرسال تجريبي لنفسك (Customer ID)"
-              value={testCustomerId}
-              onChange={(e) => setTestCustomerId(e.target.value)}
-              placeholder="معرف عميلك في التطبيق"
+              label="إرسال تجريبي (هاتف أو معرف العميل)"
+              value={testCustomerIdentifier}
+              onChange={(e) => setTestCustomerIdentifier(e.target.value)}
+              placeholder="0546111668 أو customer-xxx"
             />
             <Button
               variant="outline"
               size="sm"
               className="mt-2 gap-2"
-              disabled={sending || pushDisabled || !testCustomerId.trim()}
-              onClick={() => void sendToCustomer(testCustomerId)}
+              disabled={sending || pushDisabled || !testCustomerIdentifier.trim()}
+              onClick={() => void sendToCustomer(testCustomerIdentifier)}
             >
               <FlaskConical className="w-4 h-4" />
               إرسال تجريبي
@@ -257,10 +272,10 @@ export default function PushNotificationsPage() {
                 إرسال للجميع
               </Button>
             )}
-            {target === 'specific' && customerId.trim() && (
+            {target === 'specific' && customerIdentifier.trim() && (
               <Button
                 variant="outline"
-                onClick={() => void sendToCustomer(customerId)}
+                onClick={() => void sendToCustomer(customerIdentifier)}
                 disabled={sending || pushDisabled}
                 className="gap-2"
               >

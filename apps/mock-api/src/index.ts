@@ -83,7 +83,11 @@ import type { OrderRecord } from './repos/types.js';
 import { PrismaClient } from '@prisma/client';
 import { createOtp, verifyOtp } from './customer-auth.js';
 import { isGooglePlayReviewPhone } from './google-play-review.js';
-import { normalizeInternationalPhoneDigits } from './utils/phone.js';
+import {
+  customerPhoneLookupVariants,
+  normalizeCustomerPhoneKey,
+  normalizeInternationalPhoneDigits,
+} from './utils/phone.js';
 import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
 import { sendWhatsAppNotification } from './services/CouponService.js';
 import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
@@ -142,17 +146,48 @@ const isStorageDb = () => (process.env.STORAGE_DRIVER ?? '').toLowerCase() === '
 
 /** Resolve customer FCM token: from latest CustomerFCMToken (DB, newest by createdAt) or customer.fcmToken (JSON). */
 async function getCustomerFcmToken(customerId: string): Promise<string | null> {
+  const tokens = await getCustomerFcmTokens(customerId);
+  return tokens[0] ?? null;
+}
+
+/** All registered FCM tokens for a customer (newest first). */
+async function getCustomerFcmTokens(customerId: string): Promise<string[]> {
   if (isStorageDb()) {
-    const row = await prisma.customerFCMToken.findFirst({
+    const rows = await prisma.customerFCMToken.findMany({
       where: { customerId },
       orderBy: { createdAt: 'desc' },
       select: { token: true },
     });
-    return row?.token ?? null;
+    return [...new Set(rows.map((r) => r.token.trim()).filter(Boolean))];
   }
   const customers = await repos.customers.findAll();
   const c = customers.find((x) => x.id === customerId);
-  return (c as { fcmToken?: string | null } | undefined)?.fcmToken ?? null;
+  const tok = (c as { fcmToken?: string | null } | undefined)?.fcmToken;
+  return tok?.trim() ? [tok.trim()] : [];
+}
+
+/** Resolve customer by id or any common phone format (054…, 972…, +972…). */
+async function findCustomerByPhoneOrId(input: {
+  customerId?: string;
+  phone?: string;
+}): Promise<{ id: string; phone: string } | null> {
+  const customers = await repos.customers.findAll();
+  const rawPhone = (input.phone ?? '').trim();
+  if (rawPhone) {
+    const key = normalizePhoneForMatch(rawPhone);
+    if (!key) return null;
+    return customers.find((c) => normalizePhoneForMatch(c.phone) === key) ?? null;
+  }
+  const rawId = (input.customerId ?? '').trim();
+  if (!rawId) return null;
+  const byId = customers.find((c) => c.id === rawId);
+  if (byId) return { id: byId.id, phone: byId.phone };
+  const digits = rawId.replace(/\D/g, '');
+  if (digits.length >= 9) {
+    const key = normalizePhoneForMatch(rawId);
+    if (key) return customers.find((c) => normalizePhoneForMatch(c.phone) === key) ?? null;
+  }
+  return null;
 }
 
 /** All customer FCM tokens for broadcast. */
@@ -999,7 +1034,6 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/customer\/auth\/check-phone$/ },
   { method: 'POST', path: /^\/customer\/auth\/start$/ },
   { method: 'POST', path: /^\/customer\/auth\/verify$/ },
-  { method: 'POST', path: /^\/customer\/save-fcm-token$/ },
   { method: 'GET', path: /^\/campaigns$/ },
   { method: 'GET', path: /^\/delivery\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/[^/]+\/delivery-zones$/ },
@@ -2146,33 +2180,44 @@ app.put('/customer/me/fcm-token', wrapAsync(async (req, res) => {
   res.status(204).send();
 }));
 
-/** Android app: save FCM token after OTP login. Uses CustomerFCMToken (DB) or customer.fcmToken (JSON).
- *  For testing: route is public; use Bearer JWT (req.customer) or body.customerId to identify customer. */
+/** Customer app: save FCM device token after login. Requires customer JWT (req.customer). */
 app.post('/customer/save-fcm-token', wrapAsync(async (req, res) => {
-  const customerFromAuth = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
-  const body = req.body as { fcmToken?: string; customerId?: string };
-  const customerId = customerFromAuth?.id ?? (typeof body.customerId === 'string' ? body.customerId.trim() : undefined);
-  if (!customerId) return res.status(401).json({ error: 'Unauthorized or provide customerId in body for testing' });
-  const raw = body.fcmToken;
-  const token = raw != null && typeof raw === 'string' ? raw.trim() : null;
-  if (!token) return res.status(400).json({ error: 'fcmToken required' });
-  const isDb = (process.env.STORAGE_DRIVER ?? '').toLowerCase() === 'db';
+  const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
+  if (!customer?.id) {
+    console.warn('[FCM_SAVE] customerId=(missing) unauthorized');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const body = req.body as { token?: string; fcmToken?: string; platform?: string; customerId?: string };
+  const raw =
+    (typeof body.token === 'string' ? body.token : undefined) ??
+    (typeof body.fcmToken === 'string' ? body.fcmToken : undefined);
+  const token = raw?.trim() ?? '';
+  const platform = typeof body.platform === 'string' ? body.platform.trim() : '';
+  const prefix = token ? `${token.slice(0, 12)}...` : '(empty)';
+  console.log(`[FCM_SAVE] customerId=${customer.id} tokenPrefix=${prefix} platform=${platform || 'unknown'}`);
+  if (!token) {
+    return res.status(400).json({ error: 'token required' });
+  }
+  const isDb = isStorageDb();
   if (isDb) {
-    await prisma.customerFCMToken.deleteMany({ where: { customerId } });
+    await prisma.customerFCMToken.deleteMany({ where: { customerId: customer.id } });
     await prisma.customerFCMToken.upsert({
       where: { token },
-      create: { customerId, token },
-      update: { customerId },
+      create: { customerId: customer.id, token },
+      update: { customerId: customer.id },
     });
-    console.log('[FCM] Customer FCM token saved (DB) for customer ID:', customerId);
+    console.log(`[FCM_SAVE] customerId=${customer.id} tokenPrefix=${prefix} persisted=true storage=CustomerFCMToken`);
   } else {
     const customers = await repos.customers.findAll();
-    const idx = customers.findIndex((c) => c.id === customerId);
-    if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
+    const idx = customers.findIndex((c) => c.id === customer.id);
+    if (idx === -1) {
+      console.warn(`[FCM_SAVE] customerId=${customer.id} persisted=false reason=notFound`);
+      return res.status(404).json({ error: 'Customer not found' });
+    }
     const updated = { ...customers[idx], fcmToken: token };
     customers[idx] = updated;
     await repos.customers.setAll(customers);
-    console.log('[FCM] Customer fcm-token saved (JSON) for customer ID:', customerId);
+    console.log(`[FCM_SAVE] customerId=${customer.id} tokenPrefix=${prefix} persisted=true storage=customer.fcmToken`);
   }
   res.status(204).send();
 }));
@@ -2919,8 +2964,33 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
         }
       }
 
-      const existingCoin = await tx.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+      const coinKey = normalizePhoneForCoupon(customer.phone);
+      let existingCoin = await tx.customerCoin.findUnique({ where: { customerPhone: coinKey } });
+      let walletKey = coinKey;
+      if (!existingCoin) {
+        for (const variant of customerPhoneLookupVariants(customer.phone)) {
+          if (variant === coinKey) continue;
+          const legacy = await tx.customerCoin.findUnique({ where: { customerPhone: variant } });
+          if (legacy) {
+            await tx.customerCoin.update({
+              where: { customerPhone: variant },
+              data: { customerPhone: coinKey, updatedAt: now },
+            });
+            existingCoin = { ...legacy, customerPhone: coinKey };
+            walletKey = coinKey;
+            break;
+          }
+        }
+      }
       const currentBalance = existingCoin?.balance ?? INITIAL_COINS;
+      console.log('[REWARD_REDEEM]', {
+        customerId: customer.id,
+        rewardId,
+        coinsCost,
+        balanceBefore: currentBalance,
+        status: 'attempt',
+        phoneNorm: walletKey,
+      });
       if (currentBalance < coinsCost) {
         throw new RewardRedeemError('INSUFFICIENT_COINS', 'Insufficient coins', {
           balance: currentBalance,
@@ -2931,7 +3001,7 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
       const newBalance = currentBalance - coinsCost;
       if (existingCoin) {
         const updated = await tx.customerCoin.updateMany({
-          where: { customerPhone: phoneNorm, balance: { gte: coinsCost } },
+          where: { customerPhone: walletKey, balance: { gte: coinsCost } },
           data: { balance: { decrement: coinsCost }, updatedAt: now },
         });
         if (updated.count === 0) {
@@ -2942,7 +3012,7 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
         }
       } else {
         await tx.customerCoin.create({
-          data: { customerPhone: phoneNorm, balance: newBalance, updatedAt: now },
+          data: { customerPhone: walletKey, balance: newBalance, updatedAt: now },
         });
       }
 
@@ -2961,12 +3031,13 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
       return { redemptionId, newBalance, now };
     });
 
-    console.log('[coins-audit] DEDUCT', {
-      customerPhone: phoneNorm,
-      amount: coinsCost,
-      newBalance: result.newBalance,
-      via: 'reward_redeem',
+    console.log('[REWARD_REDEEM]', {
+      customerId: customer.id,
       rewardId,
+      coinsCost,
+      balanceBefore: result.newBalance + coinsCost,
+      status: 'PENDING',
+      balanceAfter: result.newBalance,
     });
 
     res.status(201).json({
@@ -2981,7 +3052,29 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
     });
   } catch (e: unknown) {
     if (e instanceof RewardRedeemError) {
-      return res.status(400).json({ error: e.message, code: e.code, ...e.extra });
+      const statusMap: Record<string, string> = {
+        INSUFFICIENT_COINS: 'INSUFFICIENT',
+        ALREADY_REDEEMED: 'ALREADY_REDEEMED',
+        SOLD_OUT: 'SOLD_OUT',
+      };
+      console.log('[REWARD_REDEEM]', {
+        customerId: customer.id,
+        rewardId,
+        coinsCost,
+        balanceBefore: (e.extra?.balance as number | undefined) ?? null,
+        status: statusMap[e.code] ?? e.code,
+        balanceAfter: null,
+      });
+      const messageAr: Record<string, string> = {
+        INSUFFICIENT_COINS: 'رصيدك غير كافٍ',
+        ALREADY_REDEEMED: 'سبق أن شاركت في هذه المكافأة',
+        SOLD_OUT: 'نفدت الكمية المتاحة',
+      };
+      return res.status(400).json({
+        error: messageAr[e.code] ?? e.message,
+        code: e.code,
+        ...e.extra,
+      });
     }
     throw e;
   }
@@ -3187,7 +3280,27 @@ app.get('/contests/:id/participations', wrapAsync(async (req, res) => {
 
 // --- Coupons (winner / promo codes; validate at checkout) ---
 function normalizePhoneForCoupon(phone: string | undefined): string {
-  return String(phone ?? '').replace(/\D/g, '').trim();
+  return normalizeCustomerPhoneKey(phone);
+}
+
+/** Find coin row by canonical phone, migrating legacy phone keys when found. */
+async function findCustomerCoinRow(phone: string): Promise<{ row: { balance: number; customerPhone: string } | null; key: string }> {
+  const key = normalizePhoneForCoupon(phone);
+  if (!key) return { row: null, key: '' };
+  let row = await prisma.customerCoin.findUnique({ where: { customerPhone: key } });
+  if (row) return { row, key };
+  for (const variant of customerPhoneLookupVariants(phone)) {
+    if (variant === key) continue;
+    const legacy = await prisma.customerCoin.findUnique({ where: { customerPhone: variant } });
+    if (legacy) {
+      await prisma.customerCoin.update({
+        where: { customerPhone: variant },
+        data: { customerPhone: key, updatedAt: new Date().toISOString() },
+      });
+      return { row: { balance: legacy.balance, customerPhone: key }, key };
+    }
+  }
+  return { row: null, key };
 }
 
 app.get('/coupons/validate', wrapAsync(async (req, res) => {
@@ -5227,19 +5340,23 @@ app.post('/admin/notifications/broadcast', wrapAsync(async (req, res) => {
   });
 }));
 
-/** Super Admin: send a manual notification to a single customer by customerId. */
+/** Super Admin: send a manual notification to a single customer by customerId or phone. */
 app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => {
   const user = req.user as { role?: string } | undefined;
   if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
   const body = req.body as {
     customerId?: string;
+    phone?: string;
     title?: string;
     body?: string;
     imageUrl?: string;
     route?: string;
   };
-  const customerId = (body.customerId ?? '').toString().trim();
-  if (!customerId) return res.status(400).json({ error: 'customerId required' });
+  const inputPhone = (body.phone ?? '').toString().trim();
+  const inputCustomerId = (body.customerId ?? '').toString().trim();
+  if (!inputPhone && !inputCustomerId) {
+    return res.status(400).json({ error: 'phone or customerId required', message: 'أدخل رقم الهاتف أو معرف العميل' });
+  }
   const title = (body.title ?? '').toString().trim() || 'إشعار';
   const msgBody = (body.body ?? '').toString().trim() || '';
   if (!isFCMConfigured()) {
@@ -5252,44 +5369,120 @@ app.post('/admin/notifications/send-to-customer', wrapAsync(async (req, res) => 
       message: 'الإشعارات غير مفعلة بعد — تحتاج ربط FCM',
     });
   }
-  const token = await getCustomerFcmToken(customerId);
-  if (!token) {
+
+  const customer = await findCustomerByPhoneOrId({
+    phone: inputPhone || undefined,
+    customerId: inputCustomerId || undefined,
+  });
+  const lookupPhone = inputPhone || inputCustomerId;
+  const normalized = customer ? normalizePhoneForMatch(customer.phone) : normalizePhoneForMatch(lookupPhone);
+
+  if (!customer) {
+    console.log('[ADMIN_PUSH_TARGET]', {
+      phone: lookupPhone,
+      normalized,
+      customerId: '',
+      tokens: 0,
+      sent: 0,
+      failed: 0,
+      reason: 'customer_not_found',
+    });
+    return res.status(404).json({
+      ok: false,
+      sent: 0,
+      failed: 0,
+      fcmConfigured: true,
+      error: 'Customer not found',
+      message: 'لم يتم العثور على زبون بهذا الرقم',
+    });
+  }
+
+  const customerId = customer.id;
+  const tokens = await getCustomerFcmTokens(customerId);
+
+  console.log('[ADMIN_PUSH_TARGET]', {
+    phone: lookupPhone,
+    normalized,
+    customerId,
+    tokens: tokens.length,
+    sent: 0,
+    failed: 0,
+  });
+
+  if (tokens.length === 0) {
     return res.status(422).json({
       ok: false,
       sent: 0,
       failed: 0,
       fcmConfigured: true,
       error: 'No FCM token for customer',
-      message: 'العميل ليس لديه جهاز مسجّل لاستقبال الإشعارات',
+      message: 'لا يوجد جهاز مسجل لهذا الزبون',
+      customerId,
+      normalized,
     });
   }
+
   const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
   const route = typeof body.route === 'string' ? body.route.trim() : '';
-  const result = await sendAdminFCMToToken(
-    token,
-    {
-      title,
-      body: msgBody,
-      ...(imageUrl ? { imageUrl } : {}),
-      data: {
-        ...(route ? { route } : {}),
-        type: 'admin_direct',
-        customerId,
+  let sent = 0;
+  let failed = 0;
+  const failures: string[] = [];
+
+  for (const token of tokens) {
+    const result = await sendAdminFCMToToken(
+      token,
+      {
+        title,
+        body: msgBody,
+        ...(imageUrl ? { imageUrl } : {}),
+        data: {
+          ...(route ? { route } : {}),
+          type: 'admin_direct',
+          customerId,
+        },
       },
-    },
-    'customer_notifications'
-  );
-  if (!result.success) {
+      'customer_notifications',
+    );
+    if (result.success) sent++;
+    else {
+      failed++;
+      if (result.error) failures.push(result.error);
+    }
+  }
+
+  console.log('[ADMIN_PUSH_TARGET]', {
+    phone: lookupPhone,
+    normalized,
+    customerId,
+    tokens: tokens.length,
+    sent,
+    failed,
+    ...(failures.length ? { failureReason: failures[0] } : {}),
+  });
+
+  if (sent <= 0) {
     return res.status(502).json({
       ok: false,
       sent: 0,
-      failed: 1,
+      failed,
+      totalTokens: tokens.length,
       fcmConfigured: true,
-      error: result.error ?? 'FCM send failed',
+      error: failures[0] ?? 'FCM send failed',
       message: 'فشل إرسال الإشعار للعميل',
+      customerId,
     });
   }
-  res.json({ ok: true, sent: 1, failed: 0, fcmConfigured: true, message: 'تم الإرسال' });
+
+  res.json({
+    ok: true,
+    sent,
+    failed,
+    totalTokens: tokens.length,
+    fcmConfigured: true,
+    message: 'تم إرسال الإشعار بنجاح',
+    customerId,
+    ...(failed > 0 && failures[0] ? { warning: failures[0] } : {}),
+  });
 }));
 
 /** ROOT_ADMIN: Reset any user. MARKET_ADMIN: Reset only TENANT_ADMIN whose tenant is in their market. */

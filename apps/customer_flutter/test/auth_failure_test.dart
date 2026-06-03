@@ -149,5 +149,19 @@ void main() {
       );
       expect(shouldAttachCustomerToken('/catalog/t1'), isFalse);
     });
+
+    test('attaches on optional-auth GET /rewards when logged in', () {
+      expect(
+        shouldAttachCustomerToken('/rewards', method: 'GET'),
+        isTrue,
+      );
+    });
+
+    test('attaches on protected redeem', () {
+      expect(
+        shouldAttachCustomerToken('/customer/rewards/r1/redeem', method: 'POST'),
+        isTrue,
+      );
+    });
   });
 }
