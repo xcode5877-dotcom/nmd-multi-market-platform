@@ -258,6 +258,7 @@ model Contest {
   finalScoreA    Int? // Set after match ends
   finalScoreB    Int?
   expiresAt      String?
+  coinsCost      Int                    @default(0)
   createdAt      String
   participations ContestParticipation[]
 }

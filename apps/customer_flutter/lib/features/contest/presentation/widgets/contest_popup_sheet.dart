@@ -13,6 +13,7 @@ import '../../../../api/storefront_api.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/network/token_storage.dart';
+import '../../../loyalty/application/coins_balance_cubit.dart';
 import 'contest_celebration_overlay.dart';
 
 final class ContestSessionMemory {
@@ -79,6 +80,9 @@ class ActiveContestVm {
     required this.teamBName,
     this.bannerImageUrl,
     this.expiresAtRaw,
+    this.coinsCost = 0,
+    this.participated = false,
+    this.participationStatus,
   });
 
   final String id;
@@ -89,6 +93,9 @@ class ActiveContestVm {
   final List<Map<String, String>> options;
   final String teamAName;
   final String teamBName;
+  final int coinsCost;
+  final bool participated;
+  final String? participationStatus;
 
   /// Resolved for display; visibility follows server (no client-side expiry filter).
   final String? bannerImageUrl;
@@ -122,6 +129,12 @@ class ActiveContestVm {
       bannerImageUrl:
           banner != null && banner.isNotEmpty ? resolveImageUrl(banner) : null,
       expiresAtRaw: (exp != null && exp.isNotEmpty) ? exp : null,
+      coinsCost: (json['coinsCost'] as num?)?.toInt() ??
+          (json['coins_cost'] as num?)?.toInt() ??
+          0,
+      participated: json['participated'] == true,
+      participationStatus: json['participationStatus']?.toString() ??
+          json['participation_status']?.toString(),
     );
   }
 }
@@ -215,10 +228,13 @@ class _ContestSheetState extends State<_ContestSheet> {
   final _scoreAController = TextEditingController(text: '0');
   final _scoreBController = TextEditingController(text: '0');
   bool _submitting = false;
+  late bool _participated;
 
   @override
   void initState() {
     super.initState();
+    _participated = widget.contest.participated ||
+        ContestParticipationSessionCache.hasJoined(widget.contest.id);
     if (widget.contest.options.isNotEmpty) {
       _selectedOptionId = widget.contest.options.first['id'];
     }
@@ -269,6 +285,7 @@ class _ContestSheetState extends State<_ContestSheet> {
   }
 
   Future<void> _submit() async {
+    if (_participated) return;
     final isAuthed = await _ensureLoggedInForInteraction();
     if (!isAuthed || !mounted) return;
 
@@ -362,6 +379,8 @@ class _ContestSheetState extends State<_ContestSheet> {
           if (!mounted) return;
           if (_isAlreadyParticipatedError(e)) {
             _logContestErrorToConsole(e);
+            if (mounted) setState(() => _participated = true);
+            ContestParticipationSessionCache.markJoined(widget.contest.id);
             _showAlreadyParticipatedInfoCard(messenger);
             return;
           }
@@ -384,16 +403,26 @@ class _ContestSheetState extends State<_ContestSheet> {
       ContestSessionMemory.dismiss(widget.contest.id);
       ContestParticipationSessionCache.markJoined(widget.contest.id);
       if (!mounted) return;
-      final isQuizContest =
-          !widget.contest.isPrediction && !widget.contest.isQuickJoin;
-      // API returns 201 Created; treat any 2xx as successful participation (web parity).
       if (lastHttpStatus >= 200 && lastHttpStatus < 300) {
+        final balance = (lastBody['balance'] as num?)?.toInt();
+        if (balance != null) {
+          context.read<CoinsBalanceCubit>().applyBalance(balance);
+        }
+        setState(() => _participated = true);
+        final isQuizContest =
+            !widget.contest.isPrediction && !widget.contest.isQuickJoin;
         await showContestCelebration(
           context: context,
           httpStatus: lastHttpStatus,
           responseBody: lastBody,
           isPredictionContest: widget.contest.isPrediction,
           isQuizContest: isQuizContest,
+        );
+        if (!mounted) return;
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('تم الاشتراك', style: GoogleFonts.cairo()),
+          ),
         );
       }
       if (!mounted) return;
@@ -450,8 +479,12 @@ class _ContestSheetState extends State<_ContestSheet> {
     if (e.response?.statusCode != 400) return false;
     final d = e.response?.data;
     if (d is Map) {
+      if (d['code'] == 'ALREADY_PARTICIPATED') return true;
       final err = d['error']?.toString().toLowerCase() ?? '';
-      if (err.contains('already participated')) return true;
+      if (err.contains('already participated') ||
+          err.contains('تم الاشتراك مسبق')) {
+        return true;
+      }
       try {
         if (jsonEncode(d).toLowerCase().contains('already participated')) {
           return true;
@@ -525,9 +558,20 @@ class _ContestSheetState extends State<_ContestSheet> {
     if (error is String) return error;
     if (error is DioException) {
       final d = error.response?.data;
-      if (d is Map && d['error'] != null) {
-        final t = d['error']?.toString().trim() ?? '';
-        if (t.isNotEmpty) return t;
+      if (d is Map) {
+        final code = d['code']?.toString();
+        switch (code) {
+          case 'INSUFFICIENT_COINS':
+            return 'رصيدك غير كافٍ';
+          case 'ALREADY_PARTICIPATED':
+            return 'تم الاشتراك مسبقًا';
+          case 'LOGIN_REQUIRED':
+            return 'سجّل الدخول للمتابعة';
+        }
+        if (d['error'] != null) {
+          final t = d['error']?.toString().trim() ?? '';
+          if (t.isNotEmpty) return t;
+        }
       }
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout) {
@@ -617,6 +661,17 @@ class _ContestSheetState extends State<_ContestSheet> {
                       ),
                     ),
                   ],
+                  if (c.coinsCost > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'تكلفة الاشتراك: ${c.coinsCost} عملة',
+                      style: GoogleFonts.cairo(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF0D9488),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   if (c.isPrediction)
                     _PredictionInput(
@@ -648,14 +703,18 @@ class _ContestSheetState extends State<_ContestSheet> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: FilledButton(
-                          onPressed: _submitting ? null : _submit,
+                          onPressed: (_participated || _submitting) ? null : _submit,
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primaryTeal,
+                            disabledBackgroundColor:
+                                AppColors.primaryTeal.withValues(alpha: 0.35),
                           ),
                           child: Text(
-                            _submitting
-                                ? 'جارٍ الإرسال...'
-                                : (c.isQuickJoin ? 'انضم الآن' : 'إرسال'),
+                            _participated
+                                ? 'تم الاشتراك'
+                                : _submitting
+                                    ? 'جارٍ الإرسال...'
+                                    : (c.isQuickJoin ? 'انضم الآن' : 'إرسال'),
                             style: GoogleFonts.cairo(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,

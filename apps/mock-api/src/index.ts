@@ -2496,17 +2496,68 @@ app.get('/customer/orders', wrapAsync(async (req, res) => {
 }));
 
 // --- Contest & Prediction (logged-in customers only; DB/Prisma) ---
-app.get('/contest/active', wrapAsync(async (_req, res) => {
-  const now = new Date().toISOString();
-  const contest = await prisma.contest.findFirst({
-    where: {
-      isActive: true,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+class ContestParticipateError extends Error {
+  code: string;
+  extra?: Record<string, unknown>;
+  constructor(code: string, message: string, extra?: Record<string, unknown>) {
+    super(message);
+    this.name = 'ContestParticipateError';
+    this.code = code;
+    this.extra = extra;
+  }
+}
+
+async function ensureCustomerInPrisma(customer: {
+  id: string;
+  phone: string;
+  name?: string | null;
+  createdAt?: string;
+}): Promise<void> {
+  const phone = String(customer.phone).trim();
+  const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
+  await prisma.customer.upsert({
+    where: { id: customer.id },
+    create: {
+      id: customer.id,
+      phone,
+      name: full?.name ?? customer.name ?? null,
+      email: full?.email ?? null,
+      city: full?.city ?? null,
+      avatarUrl: full?.avatarUrl ?? null,
+      createdAt: full?.createdAt ?? customer.createdAt ?? new Date().toISOString(),
     },
-    orderBy: { createdAt: 'desc' },
+    update: {
+      phone,
+      ...(full?.name != null ? { name: full.name } : {}),
+    },
   });
-  if (!contest) return res.json(null);
-  res.json({
+}
+
+type ContestRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  options: string | null;
+  correctAnswer: string | null;
+  isActive: boolean;
+  rewardCode: string | null;
+  bannerImageUrl: string | null;
+  teamAName: string | null;
+  teamBName: string | null;
+  isPrediction: boolean | null;
+  finalScoreA: number | null;
+  finalScoreB: number | null;
+  expiresAt: string | null;
+  coinsCost: number;
+  createdAt: string;
+};
+
+function contestActiveJson(
+  contest: ContestRow,
+  participation?: { id: string; isWinner: boolean } | null,
+) {
+  return {
     id: contest.id,
     title: contest.title,
     description: contest.description,
@@ -2520,22 +2571,46 @@ app.get('/contest/active', wrapAsync(async (_req, res) => {
     finalScoreA: contest.finalScoreA ?? undefined,
     finalScoreB: contest.finalScoreB ?? undefined,
     expiresAt: contest.expiresAt,
+    coinsCost: Math.max(0, contest.coinsCost ?? 0),
+    participated: !!participation,
+    participationId: participation?.id ?? null,
+    participationStatus: participation ? 'PENDING' : null,
+  };
+}
+
+app.get('/contest/active', wrapAsync(async (req, res) => {
+  const now = new Date().toISOString();
+  const contest = await prisma.contest.findFirst({
+    where: {
+      isActive: true,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
   });
+  if (!contest) return res.json(null);
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  let participation: { id: string; isWinner: boolean } | null = null;
+  if (customer) {
+    const row = await prisma.contestParticipation.findUnique({
+      where: { customerId_contestId: { customerId: customer.id, contestId: contest.id } },
+      select: { id: true, isWinner: true },
+    });
+    if (row) participation = row;
+  }
+  res.json(contestActiveJson(contest as ContestRow, participation));
 }));
 
 app.post('/contest/participate', wrapAsync(async (req, res) => {
-  const customer = (req as express.Request & { customer?: { id: string } }).customer;
-  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
+  if (!customer) {
+    return res.status(401).json({ error: 'سجّل الدخول للمتابعة', code: 'LOGIN_REQUIRED' });
+  }
   const body = req.body as { contestId?: string; userAnswer?: string; scoreA?: number; scoreB?: number };
   const contestId = String(body?.contestId ?? '').trim();
   const contest = await prisma.contest.findUnique({ where: { id: contestId } });
   if (!contest || !contest.isActive) return res.status(404).json({ error: 'Contest not found or inactive' });
   const now = new Date().toISOString();
   if (contest.expiresAt && contest.expiresAt < now) return res.status(400).json({ error: 'Contest has expired' });
-  const existing = await prisma.contestParticipation.findUnique({
-    where: { customerId_contestId: { customerId: customer.id, contestId } },
-  });
-  if (existing) return res.status(400).json({ error: 'Already participated', participation: { id: existing.id, isWinner: existing.isWinner } });
 
   let userAnswer: string;
   let scoreA: number | null = null;
@@ -2543,7 +2618,9 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
   if (contest.isPrediction) {
     const a = typeof body?.scoreA === 'number' ? body.scoreA : parseInt(String(body?.scoreA ?? ''), 10);
     const b = typeof body?.scoreB === 'number' ? body.scoreB : parseInt(String(body?.scoreB ?? ''), 10);
-    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) return res.status(400).json({ error: 'scoreA and scoreB required (non-negative integers) for match prediction' });
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
+      return res.status(400).json({ error: 'scoreA and scoreB required (non-negative integers) for match prediction' });
+    }
     scoreA = a;
     scoreB = b;
     userAnswer = `${scoreA}-${scoreB}`;
@@ -2552,30 +2629,146 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
     if (!userAnswer) return res.status(400).json({ error: 'contestId and userAnswer required' });
   }
 
-  const correctAnswer = contest.correctAnswer?.trim();
-  const finalA = contest.finalScoreA;
-  const finalB = contest.finalScoreB;
-  const isWinner = contest.type === 'QUESTION'
-    ? !!correctAnswer && userAnswer === correctAnswer
-    : contest.isPrediction && finalA != null && finalB != null && scoreA === finalA && scoreB === finalB;
+  const coinsCost = Math.max(0, (contest as { coinsCost?: number }).coinsCost ?? 0);
+  const phoneNorm = normalizePhoneForCoupon(customer.phone);
+  if (!phoneNorm && coinsCost > 0) return res.status(400).json({ error: 'Phone required' });
 
-  const participation = await prisma.contestParticipation.create({
-    data: {
-      id: `cp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  await ensureCustomerInPrisma(customer);
+
+  const participationId = `cp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const dup = await tx.contestParticipation.findUnique({
+        where: { customerId_contestId: { customerId: customer.id, contestId } },
+      });
+      if (dup) {
+        throw new ContestParticipateError('ALREADY_PARTICIPATED', 'Already participated', {
+          participationId: dup.id,
+        });
+      }
+
+      const coinKey = normalizePhoneForCoupon(customer.phone);
+      let existingCoin = coinsCost > 0
+        ? await tx.customerCoin.findUnique({ where: { customerPhone: coinKey } })
+        : null;
+      let walletKey = coinKey;
+      if (coinsCost > 0 && !existingCoin) {
+        for (const variant of customerPhoneLookupVariants(customer.phone)) {
+          if (variant === coinKey) continue;
+          const legacy = await tx.customerCoin.findUnique({ where: { customerPhone: variant } });
+          if (legacy) {
+            await tx.customerCoin.update({
+              where: { customerPhone: variant },
+              data: { customerPhone: coinKey, updatedAt: now },
+            });
+            existingCoin = { ...legacy, customerPhone: coinKey };
+            walletKey = coinKey;
+            break;
+          }
+        }
+      }
+      const balanceBefore = existingCoin?.balance ?? INITIAL_COINS;
+      console.log('[CONTEST_PARTICIPATE]', {
+        customerId: customer.id,
+        contestId,
+        coinsCost,
+        balanceBefore,
+        status: 'attempt',
+      });
+
+      if (coinsCost > 0 && balanceBefore < coinsCost) {
+        throw new ContestParticipateError('INSUFFICIENT_COINS', 'Insufficient coins', {
+          balance: balanceBefore,
+          required: coinsCost,
+        });
+      }
+
+      let balanceAfter = balanceBefore;
+      if (coinsCost > 0) {
+        balanceAfter = balanceBefore - coinsCost;
+        if (existingCoin) {
+          const updated = await tx.customerCoin.updateMany({
+            where: { customerPhone: walletKey, balance: { gte: coinsCost } },
+            data: { balance: { decrement: coinsCost }, updatedAt: now },
+          });
+          if (updated.count === 0) {
+            throw new ContestParticipateError('INSUFFICIENT_COINS', 'Insufficient coins', {
+              balance: balanceBefore,
+              required: coinsCost,
+            });
+          }
+        } else {
+          await tx.customerCoin.create({
+            data: { customerPhone: walletKey, balance: balanceAfter, updatedAt: now },
+          });
+        }
+      }
+
+      const correctAnswer = contest.correctAnswer?.trim();
+      const finalA = contest.finalScoreA;
+      const finalB = contest.finalScoreB;
+      const isWinner = contest.type === 'QUESTION'
+        ? !!correctAnswer && userAnswer === correctAnswer
+        : contest.isPrediction && finalA != null && finalB != null && scoreA === finalA && scoreB === finalB;
+
+      const participation = await tx.contestParticipation.create({
+        data: {
+          id: participationId,
+          customerId: customer.id,
+          contestId,
+          userAnswer,
+          scoreA: scoreA ?? undefined,
+          scoreB: scoreB ?? undefined,
+          isWinner,
+          createdAt: now,
+        },
+      });
+
+      return { participation, balanceAfter, isWinner };
+    });
+
+    console.log('[CONTEST_PARTICIPATE]', {
       customerId: customer.id,
       contestId,
-      userAnswer,
-      scoreA: scoreA ?? undefined,
-      scoreB: scoreB ?? undefined,
-      isWinner,
-      createdAt: now,
-    },
-  });
-  res.status(201).json({
-    id: participation.id,
-    isWinner,
-    rewardCode: isWinner ? contest.rewardCode : undefined,
-  });
+      coinsCost,
+      balanceBefore: result.balanceAfter + coinsCost,
+      balanceAfter: result.balanceAfter,
+      status: 'PENDING',
+    });
+
+    res.status(201).json({
+      participated: true,
+      participationId: result.participation.id,
+      balance: result.balanceAfter,
+      status: 'PENDING',
+      isWinner: result.isWinner,
+      rewardCode: result.isWinner ? contest.rewardCode : undefined,
+      id: result.participation.id,
+    });
+  } catch (e: unknown) {
+    if (e instanceof ContestParticipateError) {
+      const messageAr: Record<string, string> = {
+        INSUFFICIENT_COINS: 'رصيدك غير كافٍ',
+        ALREADY_PARTICIPATED: 'تم الاشتراك مسبقًا',
+        LOGIN_REQUIRED: 'سجّل الدخول للمتابعة',
+      };
+      console.log('[CONTEST_PARTICIPATE]', {
+        customerId: customer.id,
+        contestId,
+        coinsCost,
+        balanceBefore: (e.extra?.balance as number | undefined) ?? null,
+        balanceAfter: null,
+        status: e.code,
+      });
+      return res.status(400).json({
+        error: messageAr[e.code] ?? e.message,
+        code: e.code,
+        ...e.extra,
+      });
+    }
+    throw e;
+  }
 }));
 
 app.get('/contest/me', wrapAsync(async (req, res) => {
@@ -2599,7 +2792,25 @@ function requireContestAdmin(req: express.Request, res: express.Response): boole
   return true;
 }
 
-function contestToJson(c: { id: string; title: string; description: string | null; type: string; options: string | null; correctAnswer: string | null; isActive: boolean; rewardCode: string | null; bannerImageUrl: string | null; teamAName: string | null; teamBName: string | null; isPrediction: boolean | null; finalScoreA: number | null; finalScoreB: number | null; expiresAt: string | null; createdAt: string }) {
+function contestToJson(c: {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  options: string | null;
+  correctAnswer: string | null;
+  isActive: boolean;
+  rewardCode: string | null;
+  bannerImageUrl: string | null;
+  teamAName: string | null;
+  teamBName: string | null;
+  isPrediction: boolean | null;
+  finalScoreA: number | null;
+  finalScoreB: number | null;
+  expiresAt: string | null;
+  coinsCost?: number | null;
+  createdAt: string;
+}) {
   return {
     id: c.id,
     title: c.title,
@@ -2616,6 +2827,7 @@ function contestToJson(c: { id: string; title: string; description: string | nul
     finalScoreA: c.finalScoreA ?? undefined,
     finalScoreB: c.finalScoreB ?? undefined,
     expiresAt: c.expiresAt,
+    coinsCost: Math.max(0, c.coinsCost ?? 0),
     createdAt: c.createdAt,
   };
 }
@@ -2628,11 +2840,12 @@ app.get('/contests', wrapAsync(async (req, res) => {
 
 app.post('/contests', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
-  const body = req.body as { title: string; description?: string; type: 'QUESTION' | 'PREDICTION'; options?: { id: string; label: string }[]; correctAnswer?: string; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string };
+  const body = req.body as { title: string; description?: string; type: 'QUESTION' | 'PREDICTION'; options?: { id: string; label: string }[]; correctAnswer?: string; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string; coinsCost?: number };
   const title = String(body?.title ?? '').trim();
   if (!title) return res.status(400).json({ error: 'title required' });
   const type = body.type === 'PREDICTION' ? 'PREDICTION' : 'QUESTION';
   const isPrediction = !!body?.isPrediction;
+  const coinsCost = Math.max(0, Number(body?.coinsCost ?? 0));
   const id = `contest-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const now = new Date().toISOString();
   await prisma.contest.create({
@@ -2650,6 +2863,7 @@ app.post('/contests', wrapAsync(async (req, res) => {
       teamBName: body.teamBName?.trim() || null,
       isPrediction,
       expiresAt: body.expiresAt?.trim() || null,
+      coinsCost,
       createdAt: now,
     },
   });
@@ -2660,7 +2874,7 @@ app.post('/contests', wrapAsync(async (req, res) => {
 app.put('/contests/:id', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
   const { id } = req.params;
-  const body = req.body as { title?: string; description?: string; options?: { id: string; label: string }[]; correctAnswer?: string; isActive?: boolean; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string; finalScoreA?: number; finalScoreB?: number };
+  const body = req.body as { title?: string; description?: string; options?: { id: string; label: string }[]; correctAnswer?: string; isActive?: boolean; rewardCode?: string; bannerImageUrl?: string; expiresAt?: string; isPrediction?: boolean; teamAName?: string; teamBName?: string; finalScoreA?: number; finalScoreB?: number; coinsCost?: number };
   const existing = await prisma.contest.findUnique({ where: { id } });
   if (!existing) return res.status(404).json({ error: 'Contest not found' });
   await prisma.contest.update({
@@ -2679,6 +2893,7 @@ app.put('/contests/:id', wrapAsync(async (req, res) => {
       ...(body.teamBName !== undefined && { teamBName: body.teamBName?.trim() || null }),
       ...(body.finalScoreA !== undefined && { finalScoreA: Number.isInteger(body.finalScoreA) ? body.finalScoreA : null }),
       ...(body.finalScoreB !== undefined && { finalScoreB: Number.isInteger(body.finalScoreB) ? body.finalScoreB : null }),
+      ...(body.coinsCost !== undefined && { coinsCost: Math.max(0, Number(body.coinsCost)) }),
     },
   });
   const c = await prisma.contest.findUnique({ where: { id } });
@@ -2956,6 +3171,8 @@ app.post('/customer/rewards/:rewardId/redeem', wrapAsync(async (req, res) => {
 
   const now = new Date().toISOString();
   const redemptionId = `rred-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  await ensureCustomerInPrisma(customer);
 
   try {
     const result = await prisma.$transaction(async (tx) => {

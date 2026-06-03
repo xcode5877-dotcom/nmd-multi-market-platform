@@ -217,7 +217,6 @@ export default function HomePageBuilderPage() {
         ...block.config,
         source: 'LAYOUT_SECTION',
         layoutSectionId: layoutSections[0].id,
-        storeIds: layoutSections[0].storeIds,
       };
       block.title = layoutSections[0].title;
     }
@@ -486,9 +485,9 @@ export default function HomePageBuilderPage() {
                       ...draft.config,
                       source,
                     };
-                    if (source === 'FEATURED') {
-                      const sec = layoutSections.find((s) => s.id === 'featured');
-                      if (sec) nextConfig.storeIds = [...sec.storeIds];
+                    if (source !== 'MANUAL') {
+                      delete nextConfig.storeIds;
+                      delete nextConfig.tenantIds;
                     }
                     setDraft({ ...draft, config: nextConfig });
                   }}
@@ -509,7 +508,7 @@ export default function HomePageBuilderPage() {
                         config: {
                           ...draft.config,
                           layoutSectionId: e.target.value,
-                          storeIds: sec?.storeIds ?? [],
+                          source: 'LAYOUT_SECTION',
                         },
                       });
                     }}
@@ -549,7 +548,7 @@ export default function HomePageBuilderPage() {
                 {String(draft.config.source) === 'FEATURED' && (
                   <>
                     <p className="text-sm text-gray-600">
-                      محلات مميزة من التخطيط — تُحفظ مع البلوك عند الحفظ.
+                      محلات مميزة من التخطيط — تُحدَّث تلقائياً عند تغيير التخطيط.
                     </p>
                     {layoutSections.find((s) => s.id === 'featured') && (
                       <p className="text-xs text-gray-500">

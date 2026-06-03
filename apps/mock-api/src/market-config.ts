@@ -1003,7 +1003,7 @@ export function getHomePageBlocksForMarket(marketSlug: string): HomePageBlock[] 
   if (!isHomePageBuilderEnabled(store, key)) return [];
   const map = ensureHomePageBlocksMap(store);
   const raw = coerceHomePageBlockList(map[key] ?? []);
-  return raw.filter((b) => b.visible);
+  return stripStaleStoreSectionStoreIds(raw.filter((b) => b.visible));
 }
 
 /** Super Admin — all blocks; if never saved, returns legacy template (not enabled until PUT). */
@@ -1014,39 +1014,31 @@ export function getHomePageBlocksForMarketAdmin(marketSlug: string): HomePageBlo
     return buildLegacyHomePageBlocks(key);
   }
   const map = ensureHomePageBlocksMap(store);
-  return coerceHomePageBlockList(map[key] ?? []);
+  return stripStaleStoreSectionStoreIds(coerceHomePageBlockList(map[key] ?? []));
 }
 
-/** Embed storeIds on STORE_SECTION blocks so the app never depends on legacy section loops. */
-function enrichStoreSectionBlockConfigs(
-  marketSlug: string,
-  blocks: HomePageBlock[],
-): HomePageBlock[] {
-  const key = normalizeMarketSlugForConfig(marketSlug);
-  const layout = getLayoutForMarket(key);
+/** Layout-driven STORE_SECTION blocks keep source + sectionId only — never freeze storeIds. */
+function normalizeStoreSectionBlockConfigs(blocks: HomePageBlock[]): HomePageBlock[] {
   return blocks.map((b) => {
     if (b.type !== 'STORE_SECTION') return b;
-    const cfg = { ...(b.config ?? {}) };
-    const embedded = Array.isArray(cfg.storeIds)
-      ? (cfg.storeIds as unknown[]).map((x) => String(x).trim()).filter(Boolean)
-      : [];
-    if (embedded.length > 0) return { ...b, config: cfg };
+    const cfg = { ...(b.config ?? {}) } as Record<string, unknown>;
     const source = String(cfg.source ?? 'LAYOUT_SECTION').toUpperCase();
-    if (source === 'LAYOUT_SECTION') {
-      const sid = String(cfg.layoutSectionId ?? '').trim();
-      const sec = layout.find((s) => String(s.id) === sid);
-      if (sec?.storeIds?.length) cfg.storeIds = [...sec.storeIds];
-    } else if (source === 'FEATURED') {
-      const sec = layout.find((s) => String(s.id) === 'featured');
-      if (sec?.storeIds?.length) cfg.storeIds = [...sec.storeIds];
+    if (source !== 'MANUAL') {
+      delete cfg.storeIds;
+      delete cfg.tenantIds;
     }
     return { ...b, config: cfg };
   });
 }
 
+/** Strip stale embedded storeIds when serving blocks (legacy saves). */
+export function stripStaleStoreSectionStoreIds(blocks: HomePageBlock[]): HomePageBlock[] {
+  return normalizeStoreSectionBlockConfigs(blocks);
+}
+
 export function setHomePageBlocksForMarket(marketSlug: string, blocks: HomePageBlock[]): void {
   const key = normalizeMarketSlugForConfig(marketSlug);
-  const enriched = enrichStoreSectionBlockConfigs(key, blocks);
+  const enriched = normalizeStoreSectionBlockConfigs(blocks);
   const normalized = coerceHomePageBlockList(enriched).map((b, i) => ({
     ...b,
     sortOrder: i,

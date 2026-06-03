@@ -12,64 +12,62 @@ class HomePageStoreBlockResolver {
     final source = _normSource(config['source']);
     final limit = (config['limit'] as num?)?.toInt() ?? 24;
     final cap = limit.clamp(1, 48);
-
-    List<String> keys = const [];
+    final sectionId = config['layoutSectionId']?.toString().trim() ?? '';
 
     final embedded = _keysFromConfig(config);
-    if (embedded.isNotEmpty && source != 'ALL' && source != 'PILLAR' && source != 'SUB_CATEGORY') {
-      keys = embedded;
-    } else {
-      switch (source) {
-        case 'MANUAL':
-          keys = embedded;
-          break;
-        case 'LAYOUT_SECTION':
-          final sid = config['layoutSectionId']?.toString().trim() ?? '';
-          keys = embedded.isNotEmpty
-              ? embedded
-              : _keysFromLayoutSection(layoutSections, sid);
-          break;
-        case 'FEATURED':
-          keys = embedded.isNotEmpty
-              ? embedded
-              : _keysFromLayoutSection(layoutSections, 'featured');
-          break;
-        case 'ALL':
-          keys = tenantMaps
-              .map((t) => _tenantKey(t))
-              .where((k) => k.isNotEmpty)
-              .toList();
-          break;
-        case 'PILLAR':
-          final pid = config['pillarId']?.toString().trim() ?? '';
-          keys = tenantMaps
-              .where((t) {
-                final p = t['pillarId'] ?? t['pillar_id'];
-                return p != null && p.toString().trim() == pid;
-              })
-              .map((t) => _tenantKey(t))
-              .where((k) => k.isNotEmpty)
-              .toList();
-          break;
-        case 'SUB_CATEGORY':
-          final scid = config['subCategoryId']?.toString().trim() ?? '';
-          keys = tenantMaps
-              .where((t) {
-                final sc = t['subCategoryId'] ?? t['sub_category_id'];
-                return sc != null && sc.toString().trim() == scid;
-              })
-              .map((t) => _tenantKey(t))
-              .where((k) => k.isNotEmpty)
-              .toList();
-          break;
-        default:
-          keys = embedded;
-      }
+    if (embedded.isNotEmpty && source != 'MANUAL') {
+      nmdFeedTrace(
+        '[HOME_STORE_BLOCK_STALE_IDS_IGNORED] source=$source count=${embedded.length}',
+        verbose: true,
+      );
+    }
+
+    final List<String> keys;
+    switch (source) {
+      case 'MANUAL':
+        keys = embedded;
+        break;
+      case 'LAYOUT_SECTION':
+        keys = _keysFromLayoutSection(layoutSections, sectionId);
+        break;
+      case 'FEATURED':
+        keys = _keysFromLayoutSection(layoutSections, 'featured');
+        break;
+      case 'ALL':
+        keys = tenantMaps
+            .map((t) => _tenantKey(t))
+            .where((k) => k.isNotEmpty)
+            .toList();
+        break;
+      case 'PILLAR':
+        final pid = config['pillarId']?.toString().trim() ?? '';
+        keys = tenantMaps
+            .where((t) {
+              final p = t['pillarId'] ?? t['pillar_id'];
+              return p != null && p.toString().trim() == pid;
+            })
+            .map((t) => _tenantKey(t))
+            .where((k) => k.isNotEmpty)
+            .toList();
+        break;
+      case 'SUB_CATEGORY':
+        final scid = config['subCategoryId']?.toString().trim() ?? '';
+        keys = tenantMaps
+            .where((t) {
+              final sc = t['subCategoryId'] ?? t['sub_category_id'];
+              return sc != null && sc.toString().trim() == scid;
+            })
+            .map((t) => _tenantKey(t))
+            .where((k) => k.isNotEmpty)
+            .toList();
+        break;
+      default:
+        keys = source == 'MANUAL' ? embedded : const [];
     }
 
     final out = _dedupePreserveOrder(keys).take(cap).toList();
     nmdFeedTrace(
-      '[HOME_STORE_BLOCK] source=$source keys=${out.length} embedded=${embedded.length}',
+      '[HOME_STORE_BLOCK_RESOLVE] source=$source sectionId=$sectionId resolvedCount=${out.length}',
       verbose: true,
     );
     return out;

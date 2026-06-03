@@ -119,6 +119,9 @@ EndpointAuthMode classifyEndpointAuth(
   if (m == 'GET' && normalized.contains('/contest/me')) {
     return EndpointAuthMode.optionalAuth;
   }
+  if (m == 'GET' && normalized.contains('/contest/active')) {
+    return EndpointAuthMode.optionalAuth;
+  }
   if (normalized.contains('/contest/participate')) {
     return EndpointAuthMode.protected;
   }
