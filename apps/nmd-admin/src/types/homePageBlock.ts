@@ -25,12 +25,34 @@ export type HomePageBlock = {
 };
 
 export const HOME_PAGE_BLOCK_TYPE_LABELS: Record<HomePageBlockType, string> = {
-  HERO_BANNERS: 'سلايدر بانرات',
-  PILLARS: 'أقسام رئيسية',
+  HERO_BANNERS: 'سلايدر البانرات',
+  PILLARS: 'الأقسام الرئيسية',
   STORE_SECTION: 'قسم محلات',
   EDITORIAL_PROMO: 'إعلان تفاعلي',
-  CUSTOM_IMAGE_BANNER: 'بانر صورة',
+  CUSTOM_IMAGE_BANNER: 'بانر مخصص',
 };
+
+/** Arabic labels for known editorial campaigns (block list + preview). */
+export const EDITORIAL_CAMPAIGN_DISPLAY_AR: Record<string, string> = {
+  fc_food_mood: 'شو جاي عبالك اليوم',
+  fc_weekly_challenge: 'تحدي / مسابقة',
+  fc_rewards_nudge: 'مكافآت',
+  fc_new_store_story: 'محل جديد / مميز',
+};
+
+export function displayBlockLabel(
+  block: Pick<HomePageBlock, 'type' | 'title' | 'config'>,
+  campaignTitle?: string,
+): string {
+  if (block.type === 'EDITORIAL_PROMO') {
+    const cid = String(block.config?.campaignId ?? '').trim();
+    if (cid && EDITORIAL_CAMPAIGN_DISPLAY_AR[cid]) {
+      return EDITORIAL_CAMPAIGN_DISPLAY_AR[cid];
+    }
+    if (campaignTitle?.trim()) return campaignTitle.trim();
+  }
+  return block.title.trim() || HOME_PAGE_BLOCK_TYPE_LABELS[block.type];
+}
 
 export const STORE_SECTION_SOURCE_LABELS: Record<StoreSectionSource, string> = {
   LAYOUT_SECTION: 'قسم من التخطيط الحالي',
@@ -75,14 +97,38 @@ export function createHomePageBlock(
   };
 }
 
+const BLOCK_TYPES: HomePageBlockType[] = [
+  'HERO_BANNERS',
+  'PILLARS',
+  'STORE_SECTION',
+  'EDITORIAL_PROMO',
+  'CUSTOM_IMAGE_BANNER',
+];
+
 export function normalizeHomePageBlocksList(raw: unknown): HomePageBlock[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((x) => x != null && typeof x === 'object')
     .map((x) => {
-      const row = x as HomePageBlock;
-      return createHomePageBlock(row.type, row);
+      const row = x as Record<string, unknown>;
+      const type = row.type as HomePageBlockType;
+      if (!BLOCK_TYPES.includes(type)) return null;
+      const cfgRaw = row.config;
+      const config =
+        cfgRaw != null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
+          ? { ...(cfgRaw as Record<string, unknown>) }
+          : {};
+      return {
+        id: String(row.id ?? `block_${Date.now()}`).trim(),
+        type,
+        title:
+          String(row.title ?? '').trim() || HOME_PAGE_BLOCK_TYPE_LABELS[type],
+        visible: row.visible !== false,
+        sortOrder: Number.isFinite(row.sortOrder) ? Number(row.sortOrder) : 0,
+        config,
+      } satisfies HomePageBlock;
     })
+    .filter((b): b is HomePageBlock => b != null)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 

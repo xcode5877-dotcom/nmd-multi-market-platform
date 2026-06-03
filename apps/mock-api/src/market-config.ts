@@ -1017,9 +1017,37 @@ export function getHomePageBlocksForMarketAdmin(marketSlug: string): HomePageBlo
   return coerceHomePageBlockList(map[key] ?? []);
 }
 
+/** Embed storeIds on STORE_SECTION blocks so the app never depends on legacy section loops. */
+function enrichStoreSectionBlockConfigs(
+  marketSlug: string,
+  blocks: HomePageBlock[],
+): HomePageBlock[] {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  const layout = getLayoutForMarket(key);
+  return blocks.map((b) => {
+    if (b.type !== 'STORE_SECTION') return b;
+    const cfg = { ...(b.config ?? {}) };
+    const embedded = Array.isArray(cfg.storeIds)
+      ? (cfg.storeIds as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    if (embedded.length > 0) return { ...b, config: cfg };
+    const source = String(cfg.source ?? 'LAYOUT_SECTION').toUpperCase();
+    if (source === 'LAYOUT_SECTION') {
+      const sid = String(cfg.layoutSectionId ?? '').trim();
+      const sec = layout.find((s) => String(s.id) === sid);
+      if (sec?.storeIds?.length) cfg.storeIds = [...sec.storeIds];
+    } else if (source === 'FEATURED') {
+      const sec = layout.find((s) => String(s.id) === 'featured');
+      if (sec?.storeIds?.length) cfg.storeIds = [...sec.storeIds];
+    }
+    return { ...b, config: cfg };
+  });
+}
+
 export function setHomePageBlocksForMarket(marketSlug: string, blocks: HomePageBlock[]): void {
   const key = normalizeMarketSlugForConfig(marketSlug);
-  const normalized = coerceHomePageBlockList(blocks).map((b, i) => ({
+  const enriched = enrichStoreSectionBlockConfigs(key, blocks);
+  const normalized = coerceHomePageBlockList(enriched).map((b, i) => ({
     ...b,
     sortOrder: i,
   }));

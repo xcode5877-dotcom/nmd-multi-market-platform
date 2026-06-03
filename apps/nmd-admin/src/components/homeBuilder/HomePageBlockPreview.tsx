@@ -1,5 +1,5 @@
 import type { HomePageBlock } from '../../types/homePageBlock';
-import { HOME_PAGE_BLOCK_TYPE_LABELS } from '../../types/homePageBlock';
+import { displayBlockLabel } from '../../types/homePageBlock';
 import FeedCampaignPreview from '../feed/FeedCampaignPreview';
 import type { FeedCampaign } from '../../types/feedCampaign';
 
@@ -40,7 +40,10 @@ export default function HomePageBlockPreview({ blocks, campaignById }: Props) {
   return (
     <div className="mx-auto max-w-[340px] rounded-[28px] border-4 border-gray-800 bg-gray-100 p-2 shadow-xl">
       <div className="rounded-[22px] bg-white overflow-hidden max-h-[520px] overflow-y-auto">
-        {visible.map((b, i) => (
+        {visible.map((b, i) => {
+          const camp = campaignById[String(b.config?.campaignId ?? '')];
+          const label = displayBlockLabel(b, camp?.title);
+          return (
           <div key={b.id} className="border-b border-gray-100 last:border-0">
             {b.type === 'HERO_BANNERS' && (
               <div className="h-28 bg-gradient-to-l from-teal-600 to-teal-800 flex items-end p-3">
@@ -105,10 +108,11 @@ export default function HomePageBlockPreview({ blocks, campaignById }: Props) {
               </div>
             )}
             <p className="px-3 pb-2 text-[10px] text-gray-400">
-              {i + 1}. {HOME_PAGE_BLOCK_TYPE_LABELS[b.type]} — {blockDescription(b)}
+              {i + 1}. {label} — {blockDescription(b)}
             </p>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

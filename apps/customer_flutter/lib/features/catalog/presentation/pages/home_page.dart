@@ -36,6 +36,7 @@ import '../../../home/domain/feed/home_feed_block.dart';
 import '../../../home/domain/feed/home_feed_composer.dart';
 import '../../../home/domain/feed/home_feed_sections_resolver.dart';
 import '../../../home/domain/home_page_block.dart';
+import '../../../home/domain/home_page_store_block_resolver.dart';
 import '../../../home/presentation/feed/home_feed_sliver_builder.dart';
 import '../../../home/presentation/feed/home_feed_store_view.dart';
 import '../../../home/presentation/feed/home_store_section_strip.dart';
@@ -183,37 +184,62 @@ class _HomePageState extends State<HomePage> {
         () => api.getMarketBanners(slug),
         const <Map<String, dynamic>>[],
       );
-      final feedFetch = await _fetchFeedCampaignsRaw(api, slug);
-      final feedSettingsRaw = await withGuestBrowsingFallback(
-        () => api.getHomeFeedSettings(slug),
-        const <String, dynamic>{},
+      final homePageBlocksRaw = await withGuestBrowsingFallback(
+        () => api.getHomePageBlocks(slug),
+        const <Map<String, dynamic>>[],
       );
-      final homeFeedSettings = HomeFeedSettings.fromJson(feedSettingsRaw);
-      final feedCampaignsRaw = feedFetch.rows;
-      var feedCampaigns = feedCampaignsRaw
-          .map(FeedCampaign.fromJson)
-          .where((c) => c.active && c.isWithinSchedule)
-          .toList();
+      final homePageBlocks = HomePageBlock.parseList(homePageBlocksRaw);
+      final builderActive = homePageBlocks.isNotEmpty;
 
-      final usedDebugFallback =
-          feedCampaigns.isEmpty && kDebugMode;
-      if (usedDebugFallback) {
-        feedCampaigns = debugFeedCampaignFallback(slug);
-        if (kDebugMode) {
-          debugPrint(
-            '[FEED_CAMPAIGNS] debugFallback=true slug=$slug '
-            'fallbackCount=${feedCampaigns.length}',
-          );
+      List<FeedCampaign> feedCampaigns = const [];
+      HomeFeedSettings homeFeedSettings = HomeFeedSettings.defaults;
+
+      if (builderActive) {
+        nmdFeedTrace(
+          '[HOME_BUILDER] builderEnabled=true blockCount=${homePageBlocks.length} '
+          'legacyDisabled=true',
+        );
+        final feedFetch = await _fetchFeedCampaignsRaw(api, slug);
+        feedCampaigns = feedFetch.rows
+            .map(FeedCampaign.fromJson)
+            .where((c) => c.active && c.isWithinSchedule)
+            .toList();
+        nmdFeedTrace(
+          '[HOME_LEGACY_DISABLED] reason=builder_active slug=$slug',
+        );
+      } else {
+        final feedFetch = await _fetchFeedCampaignsRaw(api, slug);
+        final feedSettingsRaw = await withGuestBrowsingFallback(
+          () => api.getHomeFeedSettings(slug),
+          const <String, dynamic>{},
+        );
+        homeFeedSettings = HomeFeedSettings.fromJson(feedSettingsRaw);
+        final feedCampaignsRaw = feedFetch.rows;
+        var parsed = feedCampaignsRaw
+            .map(FeedCampaign.fromJson)
+            .where((c) => c.active && c.isWithinSchedule)
+            .toList();
+
+        final usedDebugFallback = parsed.isEmpty && kDebugMode;
+        if (usedDebugFallback) {
+          parsed = debugFeedCampaignFallback(slug);
+          if (kDebugMode) {
+            debugPrint(
+              '[FEED_CAMPAIGNS] debugFallback=true slug=$slug '
+              'fallbackCount=${parsed.length}',
+            );
+          }
         }
-      }
+        feedCampaigns = parsed;
 
-      _logFeedCampaigns(
-        slug: slug,
-        apiCount: feedCampaignsRaw.length,
-        apiStatus: feedFetch.statusCode,
-        visible: feedCampaigns,
-        usedDebugFallback: usedDebugFallback,
-      );
+        _logFeedCampaigns(
+          slug: slug,
+          apiCount: feedCampaignsRaw.length,
+          apiStatus: feedFetch.statusCode,
+          visible: feedCampaigns,
+          usedDebugFallback: usedDebugFallback,
+        );
+      }
       final campaigns = <Map<String, dynamic>>[];
 
       final campaignBanners = campaigns
@@ -247,12 +273,6 @@ class _HomePageState extends State<HomePage> {
           .where((s) => s.title.isNotEmpty && s.storeIds.isNotEmpty)
           .toList();
 
-      final homePageBlocksRaw = await withGuestBrowsingFallback(
-        () => api.getHomePageBlocks(slug),
-        const <Map<String, dynamic>>[],
-      );
-      final homePageBlocks = HomePageBlock.parseList(homePageBlocksRaw);
-
       nmdPostLoginTrace('HOME_API_SUCCESS slug=$slug');
       return _HomeLayoutPayload(
         marketName: _marketDisplayName(market),
@@ -261,6 +281,7 @@ class _HomePageState extends State<HomePage> {
         feedCampaigns: feedCampaigns,
         homeFeedSettings: homeFeedSettings,
         homePageBlocks: homePageBlocks,
+        builderActive: builderActive,
       );
     } catch (e, st) {
       nmdPostLoginTrace('HOME_API_FAILED', '$e\n$st');
@@ -467,6 +488,15 @@ class _HomePageState extends State<HomePage> {
                     }
                     if (cState.tenantsStatus == TenantsStatus.loading ||
                         cState.tenantsStatus == TenantsStatus.initial) {
+                      if (layout.builderActive) {
+                        return const CustomScrollView(
+                          primary: true,
+                          slivers: [
+                            SliverToBoxAdapter(child: _HomeStoresShimmer()),
+                            SliverToBoxAdapter(child: SizedBox(height: 24)),
+                          ],
+                        );
+                      }
                       return CustomScrollView(
                         primary: true,
                         slivers: [
@@ -623,6 +653,60 @@ class _HomePageState extends State<HomePage> {
                       );
                     }
 
+                    final storeIdBySlug = <String, String>{
+                      for (final e in storesBySlug.entries) e.key: e.value.id,
+                    };
+
+                    List<HomeFeedStoreView> resolveStoreKeysOrdered(
+                      List<String> keys,
+                    ) {
+                      final sectionTitleMatch = _query.isNotEmpty;
+                      final out = <HomeFeedStoreView>[];
+                      for (final key in keys) {
+                        final k = key.trim();
+                        if (k.isEmpty) continue;
+                        final item = storesById[k] ?? storesBySlug[k];
+                        if (item == null) continue;
+                        if (!_matchesStoreQuery(item, _query) &&
+                            !(sectionTitleMatch &&
+                                item.name.toLowerCase().contains(_query))) {
+                          continue;
+                        }
+                        out.add(
+                          HomeFeedStoreView(
+                            id: item.id,
+                            slug: item.slug,
+                            name: item.name,
+                            category: item.category,
+                            logoUrl: item.logoUrl,
+                            openStatus: item.openStatus,
+                          ),
+                        );
+                      }
+                      return out;
+                    }
+
+                    if (layout.builderActive) {
+                      nmdFeedTrace(
+                        '[HOME_LEGACY_DISABLED] reason=builder_active_render slug=${widget.slug}',
+                      );
+                      return CustomScrollView(
+                        primary: true,
+                        slivers: [
+                          ..._buildHomePageBlockSlivers(
+                            context: context,
+                            blocks: layout.homePageBlocks,
+                            layout: layout,
+                            marketSlug: widget.slug,
+                            resolveStoreKeys: resolveStoreKeysOrdered,
+                            storeIdBySlug: storeIdBySlug,
+                            strictMaps: strictMaps,
+                          ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                        ],
+                      );
+                    }
+
                     var hasVisibleStore = false;
                     for (final section in layout.sections) {
                       final sectionTitleMatch = _query.isNotEmpty &&
@@ -651,21 +735,12 @@ class _HomePageState extends State<HomePage> {
                       tenantStoreIds: storesById.keys.toList(),
                     );
 
-                    final useHomeBuilder =
-                        layout.homePageBlocks.isNotEmpty;
-
-                    final feedBlocks = useHomeBuilder
-                        ? const <HomeFeedBlock>[]
-                        : _composeFeedBlocks(
-                            feedSections: feedSections,
-                            campaigns: layout.feedCampaigns,
-                            hasLegacyTopBanner: layout.banners.isNotEmpty,
-                            homeFeedSettings: layout.homeFeedSettings,
-                          );
-
-                    final storeIdBySlug = <String, String>{
-                      for (final e in storesBySlug.entries) e.key: e.value.id,
-                    };
+                    final feedBlocks = _composeFeedBlocks(
+                      feedSections: feedSections,
+                      campaigns: layout.feedCampaigns,
+                      hasLegacyTopBanner: layout.banners.isNotEmpty,
+                      homeFeedSettings: layout.homeFeedSettings,
+                    );
 
                     List<HomeFeedStoreView> resolveSectionStores(
                       HomeFeedStoreSection section,
@@ -691,42 +766,6 @@ class _HomePageState extends State<HomePage> {
                             ),
                           )
                           .toList();
-                    }
-
-                    List<HomeFeedStoreView> resolveStoreIds(List<String> ids) {
-                      return ids
-                          .map((id) => storesById[id] ?? storesBySlug[id])
-                          .whereType<_StoreItem>()
-                          .where((s) => _matchesStoreQuery(s, _query))
-                          .map(
-                            (s) => HomeFeedStoreView(
-                              id: s.id,
-                              slug: s.slug,
-                              name: s.name,
-                              category: s.category,
-                              logoUrl: s.logoUrl,
-                              openStatus: s.openStatus,
-                            ),
-                          )
-                          .toList();
-                    }
-
-                    if (useHomeBuilder) {
-                      return CustomScrollView(
-                        primary: true,
-                        slivers: [
-                          ..._buildHomePageBlockSlivers(
-                            context: context,
-                            blocks: layout.homePageBlocks,
-                            layout: layout,
-                            marketSlug: widget.slug,
-                            resolveStoreIds: resolveStoreIds,
-                            storeIdBySlug: storeIdBySlug,
-                            strictMaps: strictMaps,
-                          ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                        ],
-                      );
                     }
 
                     return CustomScrollView(
@@ -774,15 +813,24 @@ class _HomePageState extends State<HomePage> {
     required List<HomePageBlock> blocks,
     required _HomeLayoutPayload layout,
     required String marketSlug,
-    required List<HomeFeedStoreView> Function(List<String> ids) resolveStoreIds,
+    required List<HomeFeedStoreView> Function(List<String> keys) resolveStoreKeys,
     required Map<String, String> storeIdBySlug,
     required List<Map<String, dynamic>> strictMaps,
   }) {
     final campaignById = {for (final c in layout.feedCampaigns) c.id: c};
+    final layoutLookup = layout.sections
+        .map((s) => (id: s.id, storeIds: s.storeIds))
+        .toList();
     final slivers = <Widget>[];
     var promoIndex = 0;
+    var blockIndex = 0;
 
     for (final block in blocks) {
+      final idx = blockIndex++;
+      nmdFeedTrace(
+        '[HOME_BLOCK_RENDER] index=$idx type=${block.type.name} '
+        'title=${block.title}',
+      );
       switch (block.type) {
         case HomePageBlockType.heroBanners:
           if (layout.banners.isNotEmpty) {
@@ -804,16 +852,20 @@ class _HomePageState extends State<HomePage> {
           );
           break;
         case HomePageBlockType.storeSection:
-          final ids = _storeIdsForHomeBlock(
-            block,
-            layout: layout,
-            strictMaps: strictMaps,
+          final keys = HomePageStoreBlockResolver.resolveStoreKeys(
+            config: block.config,
+            tenantMaps: strictMaps,
+            layoutSections: layoutLookup,
           );
-          final limit = (block.config['limit'] as num?)?.toInt() ?? 24;
-          final stores = resolveStoreIds(
-            ids.take(limit.clamp(1, 48)).toList(),
-          );
-          if (stores.isEmpty) break;
+          final stores = resolveStoreKeys(keys);
+          if (stores.isEmpty) {
+            nmdFeedTrace(
+              '[HOME_BLOCK_RENDER] index=$idx type=STORE_SECTION skipped=empty_stores '
+              'source=${block.config['source']}',
+              verbose: true,
+            );
+            break;
+          }
           final isGrid =
               block.config['layout']?.toString().toUpperCase() == 'GRID';
           if (isGrid) {
@@ -907,73 +959,6 @@ class _HomePageState extends State<HomePage> {
       }
     }
     return slivers;
-  }
-
-  List<String> _storeIdsForHomeBlock(
-    HomePageBlock block, {
-    required _HomeLayoutPayload layout,
-    required List<Map<String, dynamic>> strictMaps,
-  }) {
-    final cfg = block.config;
-    final source = cfg['source']?.toString() ?? 'LAYOUT_SECTION';
-    switch (source) {
-      case 'LAYOUT_SECTION':
-        final sid = cfg['layoutSectionId']?.toString() ?? '';
-        if (sid.isNotEmpty) {
-          for (final s in layout.sections) {
-            if (s.id == sid) return s.storeIds;
-          }
-        }
-        if (cfg['storeIds'] is List) {
-          return (cfg['storeIds'] as List)
-              .map((e) => e.toString())
-              .where((e) => e.isNotEmpty)
-              .toList();
-        }
-        return const [];
-      case 'FEATURED':
-        for (final s in layout.sections) {
-          if (s.id == 'featured') return s.storeIds;
-        }
-        return layout.sections.isNotEmpty
-            ? layout.sections.first.storeIds
-            : const [];
-      case 'MANUAL':
-        if (cfg['storeIds'] is List) {
-          return (cfg['storeIds'] as List)
-              .map((e) => e.toString())
-              .where((e) => e.isNotEmpty)
-              .toList();
-        }
-        return const [];
-      case 'ALL':
-        return strictMaps
-            .map((t) => t['id']?.toString() ?? '')
-            .where((id) => id.isNotEmpty)
-            .toList();
-      case 'PILLAR':
-        final pid = cfg['pillarId']?.toString().trim() ?? '';
-        return strictMaps
-            .where((t) {
-              final p = t['pillarId'] ?? t['pillar_id'];
-              return p != null && p.toString().trim() == pid;
-            })
-            .map((t) => t['id']?.toString() ?? '')
-            .where((id) => id.isNotEmpty)
-            .toList();
-      case 'SUB_CATEGORY':
-        final sid = cfg['subCategoryId']?.toString().trim() ?? '';
-        return strictMaps
-            .where((t) {
-              final sc = t['subCategoryId'] ?? t['sub_category_id'];
-              return sc != null && sc.toString().trim() == sid;
-            })
-            .map((t) => t['id']?.toString() ?? '')
-            .where((id) => id.isNotEmpty)
-            .toList();
-      default:
-        return const [];
-    }
   }
 
   Widget _homeEditorialPromoWidget(
@@ -1684,6 +1669,7 @@ class _HomeLayoutPayload {
     required this.feedCampaigns,
     required this.homeFeedSettings,
     this.homePageBlocks = const [],
+    this.builderActive = false,
   });
   final String marketName;
   final List<_BannerItem> banners;
@@ -1691,6 +1677,7 @@ class _HomeLayoutPayload {
   final List<FeedCampaign> feedCampaigns;
   final HomeFeedSettings homeFeedSettings;
   final List<HomePageBlock> homePageBlocks;
+  final bool builderActive;
 }
 
 class _BannerItem {

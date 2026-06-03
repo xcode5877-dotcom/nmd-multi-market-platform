@@ -21,9 +21,12 @@ import {
   apiUploadSingleImage,
   listMarketFeedCampaigns,
   listMarketHomePageBlocks,
+  saveMarketFeedCampaigns,
   saveMarketHomePageBlocks,
 } from '../api';
 import HomePageBlockPreview from '../components/homeBuilder/HomePageBlockPreview';
+import HomePageStorePicker from '../components/homeBuilder/HomePageStorePicker';
+import MoodChipsEditor from '../components/feed/MoodChipsEditor';
 import {
   asArray,
   normalizeMarketsList,
@@ -32,10 +35,13 @@ import {
 } from '../lib/feedCampaignNormalize';
 import {
   FEED_CAMPAIGN_KIND_LABELS,
+  isMoodType,
   type FeedCampaign,
+  type FeedCampaignChip,
 } from '../types/feedCampaign';
 import {
   HOME_PAGE_BLOCK_TYPE_LABELS,
+  displayBlockLabel,
   STORE_SECTION_SOURCE_LABELS,
   createHomePageBlock,
   homePageBlocksSnapshotKey,
@@ -83,6 +89,7 @@ export default function HomePageBuilderPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<HomePageBlock | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [moodChipsDraft, setMoodChipsDraft] = useState<FeedCampaignChip[]>([]);
 
   const { data: markets = [] } = useQuery({
     queryKey: ['markets-list-home-builder'],
@@ -197,6 +204,9 @@ export default function HomePageBuilderPage() {
   const openEdit = (block: HomePageBlock) => {
     setEditId(block.id);
     setDraft({ ...block, config: { ...block.config } });
+    const cid = String(block.config?.campaignId ?? '');
+    const camp = campaignById[cid];
+    setMoodChipsDraft(camp?.chips ? [...camp.chips] : []);
   };
 
   const openAdd = (type: HomePageBlockType) => {
@@ -219,12 +229,28 @@ export default function HomePageBuilderPage() {
     setDraft(block);
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!draft) return;
     const errs = validateHomePageBlocksClient([draft]);
     if (errs.length > 0) {
       addToast(errs[0], 'error');
       return;
+    }
+    if (draft.type === 'EDITORIAL_PROMO') {
+      const cid = String(draft.config.campaignId ?? '');
+      const camp = campaignById[cid];
+      if (camp && isMoodType(camp.type) && moodChipsDraft.length > 0) {
+        try {
+          const nextCampaigns = campaigns.map((c) =>
+            c.id === cid ? { ...c, chips: moodChipsDraft } : c,
+          );
+          await saveMarketFeedCampaigns(marketSlug, nextCampaigns);
+          queryClient.setQueryData(['feed-campaigns-home-builder', marketSlug], nextCampaigns);
+        } catch (e) {
+          addToast(e instanceof Error ? e.message : 'فشل حفظ أيقونات المزاج', 'error');
+          return;
+        }
+      }
     }
     if (editId) {
       persistLocal(working.map((b) => (b.id === editId ? draft : b)));
@@ -233,6 +259,7 @@ export default function HomePageBuilderPage() {
     }
     setDraft(null);
     setEditId(null);
+    setMoodChipsDraft([]);
   };
 
   const handleSave = () => {
@@ -364,7 +391,9 @@ export default function HomePageBuilderPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-gray-400 font-mono">{index + 1}</span>
-                          <p className="font-bold text-gray-900 truncate">{block.title}</p>
+                          <p className="font-bold text-gray-900 truncate">
+                            {displayBlockLabel(block, campaignById[String(block.config?.campaignId ?? '')]?.title)}
+                          </p>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                             {HOME_PAGE_BLOCK_TYPE_LABELS[block.type]}
                           </span>
@@ -451,12 +480,18 @@ export default function HomePageBuilderPage() {
                 <Select
                   label="مصدر المحلات"
                   value={String(draft.config.source ?? 'LAYOUT_SECTION')}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      config: { ...draft.config, source: e.target.value as StoreSectionSource },
-                    })
-                  }
+                  onChange={(e) => {
+                    const source = e.target.value as StoreSectionSource;
+                    const nextConfig: Record<string, unknown> = {
+                      ...draft.config,
+                      source,
+                    };
+                    if (source === 'FEATURED') {
+                      const sec = layoutSections.find((s) => s.id === 'featured');
+                      if (sec) nextConfig.storeIds = [...sec.storeIds];
+                    }
+                    setDraft({ ...draft, config: nextConfig });
+                  }}
                   options={Object.entries(STORE_SECTION_SOURCE_LABELS).map(([value, label]) => ({
                     value,
                     label,
@@ -495,38 +530,34 @@ export default function HomePageBuilderPage() {
                   />
                 )}
                 {String(draft.config.source) === 'MANUAL' && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-2">محلات محددة</p>
-                    <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
-                      {tenants.map((t) => {
-                        const ids = asArray<string>(draft.config.storeIds);
-                        const checked = ids.includes(t.id);
-                        return (
-                          <label key={t.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                const next = checked
-                                  ? ids.filter((id) => id !== t.id)
-                                  : [...ids, t.id];
-                                setDraft({
-                                  ...draft,
-                                  config: { ...draft.config, storeIds: next },
-                                });
-                              }}
-                            />
-                            {t.name || t.slug}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <HomePageStorePicker
+                    tenants={tenants.map((t) => ({
+                      id: t.id,
+                      name: t.name,
+                      slug: t.slug,
+                      logoUrl: (t as { logoUrl?: string }).logoUrl,
+                    }))}
+                    selectedIds={asArray<string>(draft.config.storeIds)}
+                    onChange={(ids) =>
+                      setDraft({
+                        ...draft,
+                        config: { ...draft.config, storeIds: ids, source: 'MANUAL' },
+                      })
+                    }
+                  />
                 )}
                 {String(draft.config.source) === 'FEATURED' && (
-                  <p className="text-sm text-gray-600">
-                    يعرض قسم «المحلات المميزة» من التخطيط (featured).
-                  </p>
+                  <>
+                    <p className="text-sm text-gray-600">
+                      محلات مميزة من التخطيط — تُحفظ مع البلوك عند الحفظ.
+                    </p>
+                    {layoutSections.find((s) => s.id === 'featured') && (
+                      <p className="text-xs text-gray-500">
+                        {layoutSections.find((s) => s.id === 'featured')?.storeIds.length ?? 0}{' '}
+                        محل في القسم
+                      </p>
+                    )}
+                  </>
                 )}
                 <Select
                   label="التخطيط"
@@ -559,22 +590,44 @@ export default function HomePageBuilderPage() {
             )}
 
             {draft.type === 'EDITORIAL_PROMO' && (
-              <Select
-                label="الحملة / الإعلان"
-                value={String(draft.config.campaignId ?? '')}
-                onChange={(e) => {
-                  const camp = campaignById[e.target.value];
-                  setDraft({
-                    ...draft,
-                    title: camp?.title ?? draft.title,
-                    config: { ...draft.config, campaignId: e.target.value },
-                  });
-                }}
-                options={uniqueCampaignOptions.map((o) => ({
-                  value: o.campaignId,
-                  label: o.label,
-                }))}
-              />
+              <>
+                <Select
+                  label="الحملة / الإعلان"
+                  value={String(draft.config.campaignId ?? '')}
+                  onChange={(e) => {
+                    const camp = campaignById[e.target.value];
+                    setDraft({
+                      ...draft,
+                      title: camp?.title ?? draft.title,
+                      config: { ...draft.config, campaignId: e.target.value },
+                    });
+                    setMoodChipsDraft(camp?.chips ? [...camp.chips] : []);
+                  }}
+                  options={uniqueCampaignOptions.map((o) => ({
+                    value: o.campaignId,
+                    label: o.label,
+                  }))}
+                />
+                {(() => {
+                  const cid = String(draft.config.campaignId ?? '');
+                  const camp = campaignById[cid];
+                  if (!camp || !isMoodType(camp.type)) return null;
+                  return (
+                    <div className="border border-teal-100 rounded-xl p-3 bg-teal-50/40">
+                      <p className="text-sm font-bold text-teal-900 mb-2">
+                        شو جاي عبالك اليوم — أيقونات المزاج
+                      </p>
+                      <MoodChipsEditor
+                        chips={moodChipsDraft}
+                        onChange={setMoodChipsDraft}
+                        onUploadError={(msg) => addToast(msg, 'error')}
+                        pillars={pillars}
+                        stores={tenants}
+                      />
+                    </div>
+                  );
+                })()}
+              </>
             )}
 
             {draft.type === 'CUSTOM_IMAGE_BANNER' && (
