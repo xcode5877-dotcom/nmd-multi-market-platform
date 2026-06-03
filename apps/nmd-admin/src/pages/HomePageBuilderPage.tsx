@@ -20,6 +20,12 @@ import {
   saveHomeFeedSettings,
   saveMarketFeedCampaigns,
 } from '../api';
+import {
+  asArray,
+  normalizeMarketsList,
+  normalizePillarsList,
+  normalizeTenantsList,
+} from '../lib/feedCampaignNormalize';
 import FeedCampaignPreview from '../components/feed/FeedCampaignPreview';
 import MoodChipsEditor from '../components/feed/MoodChipsEditor';
 import {
@@ -98,6 +104,23 @@ function layoutSettingsKey(s: HomeFeedSettings): string {
   return JSON.stringify({ ...DEFAULT_HOME_FEED_SETTINGS, ...s });
 }
 
+function campaignNeedsImage(type: FeedCampaignKind): boolean {
+  const t = normalizeFeedCampaignType(type);
+  return (
+    t === 'STORE_FEATURE' ||
+    t === 'FEATURED_STORE_STORY' ||
+    t === 'HERO_BANNER' ||
+    t === 'CUSTOM_BANNER' ||
+    t === 'OFFER_STRIP' ||
+    t === 'COMPETITION_CARD'
+  );
+}
+
+function campaignShowsCtaFields(type: FeedCampaignKind): boolean {
+  const t = normalizeFeedCampaignType(type);
+  return !isMoodType(t) && t !== 'STORE_FEATURE';
+}
+
 export default function HomePageBuilderPage() {
   const addToast = useToast().addToast;
   const queryClient = useQueryClient();
@@ -116,21 +139,21 @@ export default function HomePageBuilderPage() {
 
   const { data: markets = [] } = useQuery({
     queryKey: ['markets-list-home-builder'],
-    queryFn: () => apiFetch<Array<{ slug: string; name?: string; nameAr?: string }>>('/markets'),
+    queryFn: async () => normalizeMarketsList(await apiFetch<unknown>('/markets')),
   });
 
   const { data: marketTenants = [] } = useQuery({
     queryKey: ['market-tenants-home-builder', marketSlug],
-    queryFn: () =>
-      apiFetch<Array<{ id: string; name?: string; slug?: string }>>(
-        `/markets/${encodeURIComponent(marketSlug)}/tenants`,
+    queryFn: async () =>
+      normalizeTenantsList(
+        await apiFetch<unknown>(`/markets/${encodeURIComponent(marketSlug)}/tenants`),
       ),
     enabled: !!marketSlug.trim(),
   });
 
   const { data: pillars = [] } = useQuery({
     queryKey: ['pillars-home-builder'],
-    queryFn: () => apiFetch<Array<{ id: string; title?: string; nameAr?: string }>>('/pillars'),
+    queryFn: async () => normalizePillarsList(await apiFetch<unknown>('/pillars')),
   });
 
   const {
@@ -169,17 +192,22 @@ export default function HomePageBuilderPage() {
   const saveMutation = useMutation({
     mutationFn: (next: FeedCampaign[]) =>
       saveMarketFeedCampaigns(marketSlug, sanitizeFeedCampaignsForSave(next)),
-    onSuccess: async (data) => {
-      const sorted = [...data].sort((a, b) => a.sortOrder - b.sortOrder || b.priority - a.priority);
+    onSuccess: async (data, variables) => {
+      const expectedKey = feedCampaignsSnapshotKey(sanitizeFeedCampaignsForSave(variables));
       queryClient.setQueryData(['feed-campaigns', marketSlug], data);
+      const { data: refetched } = await refetch();
+      const serverList = refetched ?? data;
+      const sorted = [...serverList].sort(
+        (a, b) => a.sortOrder - b.sortOrder || b.priority - a.priority,
+      );
       setWorkingItems(sorted);
-      setServerSnapshotKey(feedCampaignsSnapshotKey(sorted));
-      await refetch();
-      if (data.length !== workingItems.length) {
-        addToast(`تم الحفظ — ${data.length} حملة على الخادم`, 'success');
-      } else {
-        addToast('تم حفظ الحملات على الخادم', 'success');
+      const confirmedKey = feedCampaignsSnapshotKey(sorted);
+      setServerSnapshotKey(confirmedKey);
+      if (confirmedKey !== expectedKey) {
+        addToast('فشل التحقق من الحفظ — أعد تحميل الصفحة وتحقق من البيانات', 'error');
+        return;
       }
+      addToast(`تم حفظ ${sorted.length} حملة على الخادم`, 'success');
     },
     onError: (e: Error) => addToast(e.message || 'فشل الحفظ', 'error'),
   });
@@ -256,6 +284,20 @@ export default function HomePageBuilderPage() {
     setModalOpen(true);
   };
 
+  const draftType = normalizeFeedCampaignType(draft.type);
+  const draftValidation = useMemo(() => {
+    const probe: FeedCampaign = {
+      ...createFeedCampaign({
+        ...draft,
+        sortOrder: 0,
+        type: draftType,
+        placement: normalizeFeedCampaignPlacement(draft.placement),
+      }),
+      id: editingId ?? 'draft',
+    };
+    return validateFeedCampaign(sanitizeFeedCampaignsForSave([probe])[0]!);
+  }, [draft, draftType, editingId]);
+
   const openEdit = (c: FeedCampaign) => {
     setEditingId(c.id);
     setDraft({
@@ -276,8 +318,8 @@ export default function HomePageBuilderPage() {
       endDate: c.endDate ?? '',
       participantCount: c.participantCount,
       countdownEndsAt: c.countdownEndsAt ?? '',
-      categoryLabels: c.categoryLabels ?? [],
-      chips: c.chips ?? [],
+      categoryLabels: asArray<string>(c.categoryLabels),
+      chips: asArray<FeedCampaignChip>(c.chips),
       backgroundStyle: c.backgroundStyle ?? 'tealGradient',
       designVariant: c.designVariant ?? 'soft_teal',
       visualWeight: c.visualWeight ?? 'light',
@@ -685,30 +727,38 @@ export default function HomePageBuilderPage() {
               </div>
               <p className="text-xs text-gray-500 -mt-2">{HOME_FEED_PROMO_HELPER_AR}</p>
               <Input
-                label="العنوان"
+                label="العنوان *"
                 value={draft.title}
                 onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
               />
-              <Input
-                label="الوصف"
-                value={draft.subtitle}
-                onChange={(e) => setDraft((d) => ({ ...d, subtitle: e.target.value }))}
-              />
-              <div className="grid gap-3 md:grid-cols-2">
-                <Select
-                  label="إجراء الزر"
-                  options={ACTION_OPTIONS}
-                  value={draft.ctaAction}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, ctaAction: e.target.value as FeedCampaignAction }))
-                  }
-                />
+              {!isMoodType(draftType) && (
                 <Input
-                  label="نص الزر"
-                  value={draft.ctaLabel}
-                  onChange={(e) => setDraft((d) => ({ ...d, ctaLabel: e.target.value }))}
+                  label={
+                    draftType === 'COMPETITION_CARD' || draftType === 'OFFER_STRIP' || draftType === 'REWARD_CARD'
+                      ? 'الوصف *'
+                      : 'الوصف'
+                  }
+                  value={draft.subtitle}
+                  onChange={(e) => setDraft((d) => ({ ...d, subtitle: e.target.value }))}
                 />
-              </div>
+              )}
+              {campaignShowsCtaFields(draftType) && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Select
+                    label="إجراء الزر"
+                    options={ACTION_OPTIONS}
+                    value={draft.ctaAction}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, ctaAction: e.target.value as FeedCampaignAction }))
+                    }
+                  />
+                  <Input
+                    label="نص الزر"
+                    value={draft.ctaLabel}
+                    onChange={(e) => setDraft((d) => ({ ...d, ctaLabel: e.target.value }))}
+                  />
+                </div>
+              )}
               <Input
                 label="الأولوية"
                 type="number"
@@ -725,8 +775,7 @@ export default function HomePageBuilderPage() {
                   }
                 />
               )}
-              {(draft.ctaAction === 'OPEN_STORE' ||
-                normalizeFeedCampaignType(draft.type) === 'STORE_FEATURE') && (
+              {(draft.ctaAction === 'OPEN_STORE' || draftType === 'STORE_FEATURE') && (
                 <Select
                   label="المحل المستهدف *"
                   options={[
@@ -737,11 +786,14 @@ export default function HomePageBuilderPage() {
                     })),
                   ]}
                   value={draft.targetId ?? ''}
-                  onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value, ctaAction: 'OPEN_STORE' }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, targetId: e.target.value, ctaAction: 'OPEN_STORE' }))
+                  }
                 />
               )}
-              {(draft.ctaAction === 'OPEN_CATEGORY' &&
-                normalizeFeedCampaignType(draft.type) !== 'STORE_FEATURE') && (
+              {draft.ctaAction === 'OPEN_CATEGORY' &&
+                draftType !== 'STORE_FEATURE' &&
+                !isMoodType(draftType) && (
                 <Select
                   label="التصنيف / العمود *"
                   options={[
@@ -755,48 +807,57 @@ export default function HomePageBuilderPage() {
                   onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value }))}
                 />
               )}
-              {draft.ctaAction === 'OPEN_SEARCH' && (
+              {draft.ctaAction === 'OPEN_SEARCH' && !isMoodType(draftType) && (
                 <Input
                   label="عبارة البحث *"
                   value={draft.targetId ?? ''}
                   onChange={(e) => setDraft((d) => ({ ...d, targetId: e.target.value }))}
                 />
               )}
-              {isMoodType(draft.type) && (
+              {isMoodType(draftType) && (
                 <MoodChipsEditor
-                  chips={draft.chips ?? []}
+                  chips={asArray<FeedCampaignChip>(draft.chips)}
                   onChange={(chips) => setDraft((d) => ({ ...d, chips }))}
                   onUploadError={(msg) => addToast(msg, 'error')}
                   pillars={pillars}
                   stores={marketTenants}
                 />
               )}
-              <div className="flex flex-wrap items-center gap-3">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void handleUpload(f);
-                    e.target.value = '';
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                  className="gap-2"
-                >
-                  <Upload className="h-4 w-4" />
-                  {uploading ? 'جاري الرفع...' : 'رفع صورة'}
-                </Button>
-                {draft.imageUrl && (
-                  <img src={draft.imageUrl} alt="" className="h-14 w-24 object-cover rounded-lg" />
-                )}
-              </div>
+              {campaignNeedsImage(draftType) && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={uploading}
+                    onClick={() => fileRef.current?.click()}
+                    className="gap-2"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {uploading ? 'جاري الرفع...' : 'رفع صورة *'}
+                  </Button>
+                  {draft.imageUrl && (
+                    <img src={draft.imageUrl} alt="" className="h-14 w-24 object-cover rounded-lg" />
+                  )}
+                </div>
+              )}
+              {draftValidation.length > 0 && (
+                <ul className="text-xs text-red-600 space-y-1 rounded-lg bg-red-50 p-3">
+                  {draftValidation.map((msg) => (
+                    <li key={msg}>{msg}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
               <p className="text-xs font-semibold text-gray-600 mb-2 text-center">معاينة تقريبية</p>

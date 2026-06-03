@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Button, Input, Select } from '@nmd/ui';
 import { GripVertical, Plus, Trash2, Upload } from 'lucide-react';
 import { apiUploadSingleImage } from '../../api';
+import { asArray } from '../../lib/feedCampaignNormalize';
 import type { FeedCampaignAction, FeedCampaignChip } from '../../types/feedCampaign';
 
 const CHIP_ACTION_OPTIONS: { value: FeedCampaignAction | 'OPEN_SEARCH'; label: string }[] = [
@@ -36,12 +37,15 @@ type Props = {
 };
 
 export default function MoodChipsEditor({
-  chips,
+  chips: chipsProp,
   onChange,
   onUploadError,
-  pillars = [],
-  stores = [],
+  pillars: pillarsProp = [],
+  stores: storesProp = [],
 }: Props) {
+  const chips = asArray<FeedCampaignChip>(chipsProp);
+  const pillars = asArray<PillarOption>(pillarsProp);
+  const stores = asArray<StoreOption>(storesProp);
   const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
 

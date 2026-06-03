@@ -1,3 +1,5 @@
+import { asArray, asStringArray } from '../lib/feedCampaignNormalize';
+
 export type FeedCampaignKind =
   | 'HERO_BANNER'
   | 'OFFER_STRIP'
@@ -288,7 +290,7 @@ export function validateFeedCampaign(c: FeedCampaign): string[] {
   if (c.active && !c.placement) errors.push('موضع الإدراج مطلوب للكتلة النشطة');
 
   if (isMoodType(type)) {
-    const chips = c.chips ?? [];
+    const chips = asArray<FeedCampaignChip>(c.chips);
     const activeChips = chips.filter((ch) => ch.active !== false && ch.label?.trim());
     if (activeChips.length === 0) errors.push('أضف عنصر مزاج واحد على الأقل');
     errors.push(...validateFeedCampaignChips(chips));
@@ -336,7 +338,7 @@ export function validateFeedCampaign(c: FeedCampaign): string[] {
     errors.push('معرّف المتجر مطلوب');
   }
   if (isMoodType(c.type)) {
-    errors.push(...validateFeedCampaignChips(c.chips));
+    errors.push(...validateFeedCampaignChips(asArray<FeedCampaignChip>(c.chips)));
   }
   if (
     (c.placement === 'TOP' || c.placement === 'TOP_AFTER_LEGACY_BANNERS') &&
@@ -359,8 +361,9 @@ export function placementPreviewLabel(placement: FeedCampaignPlacement): string 
 
 export function validateFeedCampaignChips(chips: FeedCampaignChip[] | undefined): string[] {
   const errors: string[] = [];
-  if (!chips?.length) return errors;
-  chips.forEach((chip, i) => {
+  const list = asArray<FeedCampaignChip>(chips);
+  if (!list.length) return errors;
+  list.forEach((chip, i) => {
     if (chip.active === false) return;
     if (!chip.label?.trim()) errors.push(`عنصر ${i + 1}: التسمية مطلوبة`);
     const action = chip.action ?? 'OPEN_CATEGORY';
@@ -379,7 +382,7 @@ export function sanitizeFeedCampaignForSave(c: FeedCampaign): FeedCampaign {
   const type = normalizeFeedCampaignType(c.type);
   const placement = normalizeFeedCampaignPlacement(c.placement);
   const chips = isMoodType(type)
-    ? (c.chips ?? [])
+    ? asArray<FeedCampaignChip>(c.chips)
         .map((chip, i) => ({
           label: chip.label.trim(),
           emoji: chip.emoji?.trim() || undefined,
@@ -414,7 +417,7 @@ export function sanitizeFeedCampaignForSave(c: FeedCampaign): FeedCampaign {
           : c.ctaAction,
     categoryLabels:
       isMoodType(type) && !(chips?.length)
-        ? (c.categoryLabels ?? []).map((l) => l.trim()).filter(Boolean)
+        ? asStringArray(c.categoryLabels)
         : undefined,
     chips: chips?.length ? chips : isMoodType(type) ? [] : undefined,
   };

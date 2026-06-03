@@ -6165,8 +6165,11 @@ app.put('/markets/by-slug/:slug/feed-campaigns', async (req, res) => {
     return res.status(400).json({ error: 'feed campaigns payload must be an array' });
   }
   const campaigns = body as MarketFeedCampaign[];
+  console.log(`[FEED_CAMPAIGNS_API] PUT slug=${slugNorm} count=${campaigns.length}`);
   setFeedCampaignsForMarket(slugNorm, campaigns);
-  res.json(getFeedCampaignsForMarketAdmin(slugNorm));
+  const saved = getFeedCampaignsForMarketAdmin(slugNorm);
+  console.log(`[FEED_CAMPAIGNS_API] PUT saved count=${Array.isArray(saved) ? saved.length : 0}`);
+  res.json(saved);
 });
 
 app.put('/markets/by-slug/:slug/banners', async (req, res) => {

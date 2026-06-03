@@ -1,4 +1,8 @@
 import type { FeedCampaign, HomeFeedSettings } from './types/feedCampaign';
+import {
+  firstUploadUrl,
+  normalizeFeedCampaignListFromApi,
+} from './lib/feedCampaignNormalize';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 export const TOKEN_KEY = 'nmd-access-token';
@@ -42,14 +46,21 @@ export function apiHeaders(): Record<string, string> {
   return h;
 }
 
-function mergeEmergencyMeta(body: string | undefined, method: string): string | undefined {
+function mergeEmergencyMeta(body: string | undefined, method: string, path: string): string | undefined {
   if (!emergencyMode || !emergencyReason) return body;
   const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes((method || 'GET').toUpperCase());
   if (!isWrite) return body;
+  // Feed campaigns, banners, and other array payloads must stay arrays — never wrap as layout.
+  if (path.includes('/feed-campaigns') || path.includes('/banners')) {
+    return body;
+  }
   try {
     const parsed: unknown = body ? JSON.parse(body) : {};
     if (Array.isArray(parsed)) {
-      return JSON.stringify({ layout: parsed, _meta: { emergencyReason } });
+      if (path.includes('/layout')) {
+        return JSON.stringify({ layout: parsed, _meta: { emergencyReason } });
+      }
+      return body;
     }
     const obj: Record<string, unknown> =
       parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -67,7 +78,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const method = init?.method ?? 'GET';
   const url = `${MOCK_API_URL}${path}`;
   logFetchUrl(url, method);
-  const body = mergeEmergencyMeta(init?.body as string | undefined, method);
+  const body = mergeEmergencyMeta(init?.body as string | undefined, method, path);
   const initHeaders = init?.headers != null && typeof init.headers === 'object' && !Array.isArray(init.headers) && !(init.headers instanceof Headers)
     ? (init.headers as Record<string, string>)
     : {};
@@ -100,20 +111,28 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 /** Upload one or more images (multipart, field "files"). Returns { urls }. Used for market image, store logo, etc. */
 export async function apiUpload(files: File[]): Promise<{ urls: string[] }> {
+  const fileList = Array.isArray(files) ? files : [];
+  if (fileList.length === 0) throw new Error('لم يُحدد ملف للرفع');
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (emergencyMode) headers['X-Emergency-Mode'] = 'true';
   const form = new FormData();
-  files.forEach((f) => form.append('files', f));
+  fileList.forEach((f) => form.append('files', f));
   const url = `${MOCK_API_URL}/upload`;
   logFetchUrl(url, 'POST');
   const res = await fetch(url, { method: 'POST', headers, body: form });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(err.error ?? `Upload failed: ${res.status}`);
+    throw new Error(err.error ?? `فشل الرفع: ${res.status}`);
   }
-  return res.json();
+  const json = await res.json();
+  const single = firstUploadUrl(json);
+  if (single) return { urls: [single] };
+  const urls = Array.isArray((json as { urls?: unknown }).urls)
+    ? (json as { urls: string[] }).urls.filter(Boolean)
+    : [];
+  return { urls };
 }
 
 /** Upload a banner image (multipart). Returns { urls: [fullUrl], relativePath }. */
@@ -133,27 +152,37 @@ export async function apiUploadBanner(file: File): Promise<{ urls: string[]; rel
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(err.error ?? `Upload failed: ${res.status}`);
+    throw new Error(err.error ?? `فشل الرفع: ${res.status}`);
   }
-  return res.json();
+  const json = await res.json();
+  const single = firstUploadUrl(json);
+  if (single) return { urls: [single], relativePath: (json as { relativePath?: string }).relativePath };
+  const urls = Array.isArray((json as { urls?: unknown }).urls)
+    ? (json as { urls: string[] }).urls.filter(Boolean)
+    : [];
+  return { urls, relativePath: (json as { relativePath?: string }).relativePath };
 }
 
-/** Upload one image; returns the first CDN URL from the banner upload endpoint. */
+/** Upload one image; tries banner then generic upload; normalizes all response shapes. */
 export async function apiUploadSingleImage(file: File): Promise<string> {
-  try {
-    const { urls } = await apiUploadBanner(file);
-    const url = urls?.[0]?.trim() ?? '';
-    if (url) return url;
-  } catch (bannerErr) {
+  let lastError: Error | null = null;
+  for (const attempt of ['banner', 'upload'] as const) {
     try {
-      const { urls } = await apiUpload([file]);
-      const url = urls?.[0]?.trim() ?? '';
-      if (url) return url;
-    } catch {
-      throw bannerErr instanceof Error ? bannerErr : new Error('فشل رفع الصورة');
+      const json =
+        attempt === 'banner'
+          ? await apiUploadBanner(file)
+          : await apiUpload([file]);
+      const url = firstUploadUrl(json) ?? json.urls?.[0]?.trim() ?? '';
+      if (url) {
+        console.log('[HOME_BUILDER_UPLOAD]', { url, via: attempt });
+        return url;
+      }
+      lastError = new Error('لم يُرجع الخادم رابط الصورة');
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error('فشل رفع الصورة');
     }
   }
-  throw new Error('لم يُرجع الخادم رابط الصورة');
+  throw lastError ?? new Error('فشل رفع الصورة');
 }
 
 // --- Contests (platform admin) ---
@@ -392,8 +421,8 @@ export async function downloadRewardRedemptionsCsv(rewardId?: string): Promise<v
 /** GET home feed promo blocks for a market (persisted in market-config.json). */
 export async function listMarketFeedCampaigns(marketSlug: string): Promise<FeedCampaign[]> {
   const slug = encodeURIComponent(marketSlug.trim());
-  const raw = await apiFetch<FeedCampaign[]>(`/markets/by-slug/${slug}/feed-campaigns?all=1`);
-  return Array.isArray(raw) ? raw : [];
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/feed-campaigns?all=1`);
+  return normalizeFeedCampaignListFromApi(raw);
 }
 
 /** PUT home feed campaigns for a market. */
@@ -402,10 +431,21 @@ export async function saveMarketFeedCampaigns(
   campaigns: FeedCampaign[],
 ): Promise<FeedCampaign[]> {
   const slug = encodeURIComponent(marketSlug.trim());
-  return apiFetch<FeedCampaign[]>(`/markets/by-slug/${slug}/feed-campaigns`, {
+  const payloadCount = campaigns.length;
+  console.log('[HOME_BUILDER_SAVE]', { payloadCount, marketSlug: marketSlug.trim() });
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/feed-campaigns`, {
     method: 'PUT',
     body: JSON.stringify(campaigns),
   });
+  const saved = normalizeFeedCampaignListFromApi(raw);
+  console.log('[HOME_BUILDER_SAVE]', { savedCount: saved.length, payloadCount });
+  if (!Array.isArray(raw) && saved.length === 0 && payloadCount > 0) {
+    throw new Error('لم يتم حفظ الحملات — استجابة غير متوقعة من الخادم (ليست مصفوفة)');
+  }
+  if (saved.length !== payloadCount) {
+    console.warn('[HOME_BUILDER_SAVE] count mismatch', { payloadCount, savedCount: saved.length });
+  }
+  return saved;
 }
 
 export async function getHomeFeedSettings(marketSlug: string): Promise<HomeFeedSettings> {

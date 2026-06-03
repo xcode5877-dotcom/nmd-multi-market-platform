@@ -1,4 +1,5 @@
-import type { FeedCampaign } from '../../types/feedCampaign';
+import { asArray } from '../../lib/feedCampaignNormalize';
+import type { FeedCampaign, FeedCampaignChip } from '../../types/feedCampaign';
 import {
   FEED_CAMPAIGN_KIND_LABELS,
   isMoodType,
@@ -22,7 +23,7 @@ export default function FeedCampaignPreview({ campaign }: Props) {
       <div className="rounded-2xl bg-gradient-to-l from-teal-700 to-teal-900 p-4 text-white shadow-inner max-w-[320px] mx-auto">
         <p className="text-sm font-bold mb-3">{campaign.title || 'شو جاي عبالك اليوم؟'}</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {(campaign.chips ?? []).filter((c) => c.active !== false).slice(0, 6).map((chip, i) => (
+          {asArray<FeedCampaignChip>(campaign.chips).filter((c) => c.active !== false).slice(0, 6).map((chip, i) => (
             <div
               key={i}
               className="shrink-0 flex flex-col items-center gap-1 rounded-xl bg-white/15 px-3 py-2 min-w-[64px]"
