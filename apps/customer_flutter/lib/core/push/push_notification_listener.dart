@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -50,7 +52,7 @@ class _PushNotificationListenerState extends State<PushNotificationListener> {
     return BlocListener<AuthBloc, AuthState>(
       listenWhen: (prev, curr) => curr.step == AuthStep.done && prev.step != AuthStep.done,
       listener: (_, __) {
-        PushNotificationService.instance.syncTokenAfterLogin();
+        unawaited(PushNotificationService.instance.syncTokenAfterLogin());
       },
       child: widget.child,
     );

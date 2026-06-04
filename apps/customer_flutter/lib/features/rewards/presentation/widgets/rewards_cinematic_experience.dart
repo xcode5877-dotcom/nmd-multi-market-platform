@@ -621,15 +621,24 @@ class RewardCinematicDetailSheet {
     BuildContext context, {
     required String itemId,
   }) {
+    debugPrint('[REWARD_OPEN] rewardId=$itemId');
+    final rewardsCubit = context.read<RewardsCubit>();
+    final coinsCubit = context.read<CoinsBalanceCubit>();
+    final authBloc = context.read<AuthBloc>();
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => BlocBuilder<RewardsCubit, RewardsState>(
-        builder: (context, rewardsState) {
-          return BlocBuilder<CoinsBalanceCubit, CoinsBalanceState>(
-            builder: (context, coinsState) {
-              final auth = context.watch<AuthBloc>().state;
+      builder: (sheetContext) {
+        try {
+          return MultiBlocProvider(
+            providers: [
+              BlocProvider<RewardsCubit>.value(value: rewardsCubit),
+              BlocProvider<CoinsBalanceCubit>.value(value: coinsCubit),
+              BlocProvider<AuthBloc>.value(value: authBloc),
+            ],
+            child: BlocBuilder<RewardsCubit, RewardsState>(
+            builder: (context, rewardsState) {
               RewardItem? item;
               for (final r in rewardsState.rewards) {
                 if (r.id == itemId) {
@@ -637,22 +646,108 @@ class RewardCinematicDetailSheet {
                   break;
                 }
               }
+              debugPrint('[REWARD_OPEN] reward=$item');
+              debugPrint(
+                '[REWARD_OPEN] route args=itemId=$itemId loaded=${rewardsState.rewards.length}',
+              );
               if (item == null) {
-                return const SizedBox.shrink();
+                return _RewardDetailMissingSheet(sheetContext: sheetContext);
               }
-              final isAuth =
-                  auth.step == AuthStep.done || coinsState.isAuthenticated;
-              return _RewardDetailBody(
-                item: item,
-                balance: coinsState.balance,
-                isAuthenticated: isAuth,
-                redeeming: rewardsState.redeemingId == itemId,
-                sheetContext: sheetContext,
+              return BlocBuilder<CoinsBalanceCubit, CoinsBalanceState>(
+                builder: (context, coinsState) {
+                  final auth = context.watch<AuthBloc>().state;
+                  final isAuth =
+                      auth.step == AuthStep.done || coinsState.isAuthenticated;
+                  return _RewardDetailBody(
+                    item: item!,
+                    balance: coinsState.balance,
+                    isAuthenticated: isAuth,
+                    redeeming: rewardsState.redeemingId == itemId,
+                    sheetContext: sheetContext,
+                  );
+                },
               );
             },
+            ),
           );
-        },
-      ),
+        } catch (e, st) {
+          debugPrint('[REWARD_OPEN] error=$e');
+          debugPrintStack(stackTrace: st);
+          return _RewardDetailErrorSheet(
+            sheetContext: sheetContext,
+            message: 'تعذر عرض تفاصيل المكافأة',
+          );
+        }
+      },
+    );
+  }
+}
+
+class _RewardDetailMissingSheet extends StatelessWidget {
+  const _RewardDetailMissingSheet({required this.sheetContext});
+
+  final BuildContext sheetContext;
+
+  @override
+  Widget build(BuildContext context) {
+    return _RewardDetailErrorSheet(
+      sheetContext: sheetContext,
+      message: 'تعذر العثور على المكافأة',
+    );
+  }
+}
+
+class _RewardDetailErrorSheet extends StatelessWidget {
+  const _RewardDetailErrorSheet({
+    required this.sheetContext,
+    required this.message,
+  });
+
+  final BuildContext sheetContext;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.42,
+      minChildSize: 0.32,
+      maxChildSize: 0.55,
+      builder: (_, scrollController) {
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            color: Color(0xFF020617),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(PremiumMarketplaceDesignSystem.radiusHero),
+            ),
+          ),
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+            children: [
+              CinematicSheetGlassHeader(
+                onClose: () => Navigator.pop(sheetContext),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: NmdTypography.h2.copyWith(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('إغلاق'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -679,10 +774,9 @@ class _RewardDetailBody extends StatelessWidget {
         isAuthenticated && balance != null && balance! >= item.coinsCost;
     final canRedeem = canAfford && !item.locked && !item.redeemed;
     final url = item.imageUrl?.trim();
+    final description = item.description?.trim() ?? '';
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: DraggableScrollableSheet(
+    return DraggableScrollableSheet(
       initialChildSize: 0.88,
       minChildSize: 0.5,
       maxChildSize: 0.95,
@@ -691,100 +785,107 @@ class _RewardDetailBody extends StatelessWidget {
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(PremiumMarketplaceDesignSystem.radiusHero),
           ),
-          child: Stack(
-            children: [
-              ColoredBox(
-                color: const Color(0xFF020617),
-                child: CustomScrollView(
+          child: ColoredBox(
+            color: const Color(0xFF020617),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ListView(
                   controller: scrollCtrl,
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Stack(
-                        children: [
-                          AspectRatio(
-                            aspectRatio: PremiumMarketplaceDesignSystem
-                                .rewardCarouselAspect,
-                            child: url != null && url.isNotEmpty
-                                ? CachedNetworkImage(
-                                    imageUrl: resolveImageUrl(url),
-                                    fit: BoxFit.cover,
-                                  )
-                                : const ColoredBox(color: Color(0xFF1E293B)),
-                          ),
-                          const Positioned.fill(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: PremiumMarketplaceDesignSystem
-                                    .cinematicDarkOverlay,
-                              ),
+                  padding: const EdgeInsets.only(bottom: 40),
+                  children: [
+                    Stack(
+                      children: [
+                        AspectRatio(
+                          aspectRatio:
+                              PremiumMarketplaceDesignSystem.rewardCarouselAspect,
+                          child: url != null && url.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: resolveImageUrl(url),
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) =>
+                                      const ColoredBox(color: Color(0xFF1E293B)),
+                                  errorWidget: (_, __, ___) =>
+                                      const ColoredBox(color: Color(0xFF1E293B)),
+                                )
+                              : const ColoredBox(color: Color(0xFF1E293B)),
+                        ),
+                        const Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: PremiumMarketplaceDesignSystem
+                                  .cinematicDarkOverlay,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-                          Text(
-                            title,
-                            style: NmdTypography.display.copyWith(
-                              color: Colors.white.withValues(alpha: 0.94),
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              height: 1.08,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          if (item.description != null &&
-                              item.description!.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                      child: Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              item.description!.trim(),
-                              style: NmdTypography.body.copyWith(
-                                color: Colors.white.withValues(alpha: 0.52),
-                                height: 1.7,
-                                fontSize: 15,
+                              title,
+                              style: NmdTypography.display.copyWith(
+                                color: Colors.white.withValues(alpha: 0.94),
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                height: 1.08,
+                                letterSpacing: -0.4,
                               ),
                             ),
-                          const SizedBox(height: 28),
-                          Text(
-                            '${item.coinsCost} عملة',
-                            style: NmdTypography.h2.copyWith(
-                              color: NmdColors.accentGold.withValues(alpha: 0.9),
-                              fontWeight: FontWeight.w800,
+                            const SizedBox(height: 14),
+                            if (description.isNotEmpty)
+                              Text(
+                                description,
+                                style: NmdTypography.body.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.52),
+                                  height: 1.7,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            const SizedBox(height: 28),
+                            Text(
+                              '${item.coinsCost} عملة',
+                              style: NmdTypography.h2.copyWith(
+                                color:
+                                    NmdColors.accentGold.withValues(alpha: 0.9),
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 24),
-                          _DetailCta(
-                            item: item,
-                            canRedeem: canRedeem,
-                            redeeming: redeeming,
-                            isAuthenticated: isAuthenticated,
-                            locked: item.locked,
-                            onRedeem: () => _handleRedeem(sheetContext),
-                            onLogin: () => _handleLogin(sheetContext),
-                          ),
-                        ]),
+                            const SizedBox(height: 24),
+                            _DetailCta(
+                              item: item,
+                              canRedeem: canRedeem,
+                              redeeming: redeeming,
+                              isAuthenticated: isAuthenticated,
+                              locked: item.locked,
+                              onRedeem: () => _handleRedeem(context),
+                              onLogin: () => _handleLogin(context),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: CinematicSheetGlassHeader(
-                  title: title,
-                  onClose: () => Navigator.pop(sheetContext),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: CinematicSheetGlassHeader(
+                    title: title,
+                    onClose: () => Navigator.pop(sheetContext),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
-      ),
     );
   }
 
@@ -796,7 +897,7 @@ class _RewardDetailBody extends StatelessWidget {
       context.read<RewardsCubit>().load(),
       context.read<CoinsBalanceCubit>().load(),
     ]);
-    if (context.mounted) Navigator.pop(context);
+    if (sheetContext.mounted) Navigator.pop(sheetContext);
   }
 
   Future<void> _handleRedeem(BuildContext context) async {
@@ -833,8 +934,8 @@ class _RewardDetailBody extends StatelessWidget {
     } else {
       await context.read<CoinsBalanceCubit>().load();
     }
-    if (!context.mounted) return;
-    Navigator.pop(context);
+    if (!sheetContext.mounted) return;
+    Navigator.pop(sheetContext);
     messenger?.showSnackBar(
       SnackBar(
         content: Text(outcome.successMessage ?? rewardRedeemSuccessMessageAr),

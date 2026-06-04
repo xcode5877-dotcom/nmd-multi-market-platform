@@ -16,6 +16,7 @@ class PizzaSplitVisual extends StatelessWidget {
     required this.wholeLabels,
     this.groupName,
     this.pizzaSize = 148,
+    this.iconKeyForName,
   });
 
   final List<String> leftLabels;
@@ -23,6 +24,7 @@ class PizzaSplitVisual extends StatelessWidget {
   final List<String> wholeLabels;
   final String? groupName;
   final double pizzaSize;
+  final String? Function(String name)? iconKeyForName;
 
   bool get _halfMode => leftLabels.isNotEmpty || rightLabels.isNotEmpty;
   bool get _fullMode => !_halfMode && wholeLabels.isNotEmpty;
@@ -38,6 +40,7 @@ class PizzaSplitVisual extends StatelessWidget {
         modifierName: item.modifierName,
         groupName: groupName,
         placement: item.placement,
+        modifierIconKey: iconKeyForName?.call(item.modifierName),
       ),
     );
 
@@ -57,6 +60,7 @@ class PizzaSplitVisual extends StatelessWidget {
                   placement: PizzaPlacement.right,
                   groupName: groupName,
                   align: CrossAxisAlignment.end,
+                  iconKeyForName: iconKeyForName,
                 ),
               ),
               const SizedBox(width: 6),
@@ -75,6 +79,7 @@ class PizzaSplitVisual extends StatelessWidget {
                   placement: PizzaPlacement.left,
                   groupName: groupName,
                   align: CrossAxisAlignment.start,
+                  iconKeyForName: iconKeyForName,
                 ),
               ),
             ],
@@ -284,6 +289,7 @@ class _SideColumn extends StatelessWidget {
     required this.placement,
     required this.groupName,
     required this.align,
+    this.iconKeyForName,
   });
 
   final String title;
@@ -291,6 +297,7 @@ class _SideColumn extends StatelessWidget {
   final String placement;
   final String? groupName;
   final CrossAxisAlignment align;
+  final String? Function(String name)? iconKeyForName;
 
   @override
   Widget build(BuildContext context) {
@@ -321,6 +328,7 @@ class _SideColumn extends StatelessWidget {
               modifierName: name,
               groupName: groupName,
               placement: placement,
+              modifierIconKey: iconKeyForName?.call(name),
             );
             return Padding(
               padding: const EdgeInsets.only(bottom: 3),

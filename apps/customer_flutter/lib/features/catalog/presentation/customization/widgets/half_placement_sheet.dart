@@ -137,6 +137,7 @@ class _HalfPlacementSheetBody extends StatelessWidget {
                       tiles.add(
                         _ToppingPlacementRow(
                           name: item.name,
+                          modifierIconKey: item.modifierIconKey,
                           side: side,
                           onSideChanged: (p) {
                             HapticFeedback.selectionClick();
@@ -184,6 +185,8 @@ class _HalfPlacementSheetBody extends StatelessWidget {
                         leftLabels: left,
                         rightLabels: right,
                         wholeLabels: whole,
+                        iconKeyForName: (name) =>
+                            modifierIconKeyForOptionName(product.optionGroups, name),
                       ),
                       const SizedBox(height: CustomizationTokens.sm),
                       Text(
@@ -238,11 +241,13 @@ class _HalfPlacementSheetBody extends StatelessWidget {
 class _ToppingPlacementRow extends StatelessWidget {
   const _ToppingPlacementRow({
     required this.name,
+    this.modifierIconKey,
     required this.side,
     required this.onSideChanged,
   });
 
   final String name;
+  final String? modifierIconKey;
   final String side;
   final ValueChanged<String> onSideChanged;
 
@@ -255,7 +260,10 @@ class _ToppingPlacementRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = side.toUpperCase();
-    final visual = PizzaToppingVisualResolver.resolve(modifierName: name);
+    final visual = PizzaToppingVisualResolver.resolve(
+      modifierName: name,
+      modifierIconKey: modifierIconKey,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(

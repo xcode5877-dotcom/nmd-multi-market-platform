@@ -28,6 +28,7 @@ class ProductOptionItem {
     this.displayPriceDelta,
     this.allowSplitting,
     this.placement,
+    this.modifierIconKey,
   });
 
   final String id;
@@ -42,6 +43,9 @@ class ProductOptionItem {
 
   /// `WHOLE` | `HALF` from catalog; used with [ProductOptionGroup.allowHalfPlacement].
   final String? placement;
+
+  /// Key into Super Admin shared modifier icon library (e.g. olive).
+  final String? modifierIconKey;
 
   factory ProductOptionItem.fromJson(Map<String, dynamic> json) {
     return ProductOptionItem(
@@ -59,6 +63,9 @@ class ProductOptionItem {
           : null,
       allowSplitting: json['allowSplitting'] == true ? true : null,
       placement: json['placement']?.toString(),
+      modifierIconKey: (json['modifierIconKey'] ?? json['modifier_icon_key'])
+          ?.toString()
+          .trim(),
     );
   }
 }
@@ -78,6 +85,24 @@ bool productGroupHasHalfOptions(ProductOptionGroup g) {
   return g.allowHalfPlacement ||
       g.allowSplitting ||
       g.items.any((i) => productOptionSupportsHalf(i, g));
+}
+
+/// Lookup shared library key for an option display name (UI only).
+String? modifierIconKeyForOptionName(
+  List<ProductOptionGroup> groups,
+  String optionName,
+) {
+  final target = optionName.trim();
+  if (target.isEmpty) return null;
+  for (final g in groups) {
+    for (final item in g.items) {
+      if (item.name == target) {
+        final key = item.modifierIconKey?.trim();
+        if (key != null && key.isNotEmpty) return key;
+      }
+    }
+  }
+  return null;
 }
 
 /// Snapshot for order payload / cart (Arabic names for admin & receipts). Web `CartItem.optionGroups` shape.

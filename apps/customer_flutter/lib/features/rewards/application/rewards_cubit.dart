@@ -199,9 +199,26 @@ class RewardsCubit extends Cubit<RewardsState> {
   Future<List<RewardItem>> _fetchRewardsList() async {
     final rewardsRes = await _dio.get('/rewards');
     final raw = rewardsRes.data as List<dynamic>? ?? [];
-    return raw
-        .map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
+    final rewards = <RewardItem>[];
+    for (final entry in raw) {
+      if (entry is! Map) {
+        _trace('skip reward entry (not a map)', {'type': entry.runtimeType});
+        continue;
+      }
+      try {
+        final map = Map<String, dynamic>.from(entry);
+        final item = RewardItem.tryFromJson(map);
+        if (item == null) {
+          _trace('skip reward entry (missing id)', {'keys': map.keys.toList()});
+          continue;
+        }
+        rewards.add(item);
+      } catch (e, st) {
+        _trace('reward parse failed', {'error': e.toString()});
+        if (kDebugMode) debugPrintStack(stackTrace: st);
+      }
+    }
+    return rewards;
   }
 
   Future<RedeemOutcome> redeem(String rewardId) async {

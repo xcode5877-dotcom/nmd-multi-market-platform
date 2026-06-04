@@ -32,9 +32,11 @@ class OtpVerifyResult {
 class CustomerMeResult {
   const CustomerMeResult({
     required this.phone,
+    this.id,
     this.name,
   });
 
   final String phone;
+  final String? id;
   final String? name;
 }

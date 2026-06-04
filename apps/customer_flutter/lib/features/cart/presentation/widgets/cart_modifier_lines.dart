@@ -181,9 +181,10 @@ class ModifierLinesColumn extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: NmdTypography.label.copyWith(
-                    fontSize: compact ? 11.5 : 12.5,
-                    color: NmdColors.textSecondary,
-                    height: 1.25,
+                    fontSize: compact ? 11 : 12,
+                    color: NmdColors.textSecondary.withValues(alpha: 0.98),
+                    height: compact ? 1.3 : 1.35,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

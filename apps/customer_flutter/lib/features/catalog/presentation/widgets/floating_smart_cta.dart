@@ -88,6 +88,8 @@ class FloatingSmartCta extends StatelessWidget {
 
 /// Scroll padding so content clears the persistent dock + optional bottom nav.
 double productCtaScrollInset(BuildContext context, {bool clearBottomNav = true}) {
-  final nav = clearBottomNav ? NmdBottomNav.navHeight : 0.0;
-  return PremiumDockLayout.scrollInset + nav;
+  return PremiumDockLayout.scrollBottomInset(
+    context,
+    clearBottomNav: clearBottomNav,
+  );
 }

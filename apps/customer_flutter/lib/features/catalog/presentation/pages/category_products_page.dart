@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../../core/navigation/safe_back_navigation.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../api/models/product.dart';
@@ -114,7 +116,10 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            onPressed: () => context.pop(),
+            onPressed: () => safeNmdBack(
+              context,
+              marketSlug: widget.marketSlug,
+            ),
           ),
         ),
         body: FutureBuilder<_CategoryProductsPayload>(

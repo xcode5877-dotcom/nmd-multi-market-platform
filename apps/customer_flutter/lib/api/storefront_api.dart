@@ -7,6 +7,7 @@ import '../features/catalog/data/pillar_nav_item.dart';
 import '../features/catalog/data/sub_category_nav_item.dart';
 import 'markets_picker_load_result.dart';
 import 'models/market.dart';
+import 'models/modifier_icon.dart';
 import 'models/product.dart';
 import 'api_base.dart';
 
@@ -244,6 +245,26 @@ class StorefrontApi {
     final data = response.data;
     if (data is Map) return Map<String, dynamic>.from(data);
     throw Exception('Invalid market payload for slug=$slug');
+  }
+
+  /// Shared Super Admin modifier icon library for a market (active entries only).
+  Future<List<ModifierIconEntry>> fetchModifierIcons(String marketSlug) async {
+    final slug = Uri.encodeComponent(marketSlug.trim());
+    try {
+      final response = await dio.get<dynamic>(
+        '/markets/by-slug/$slug/modifier-icons',
+      );
+      final data = response.data;
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((e) => ModifierIconEntry.fromJson(Map<String, dynamic>.from(e)))
+          .where((e) => e.active && e.key.isNotEmpty)
+          .toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// All tenants for a market (no server-side pillar filter).
@@ -1162,8 +1183,7 @@ class StorefrontApi {
                   .map((id) => id.toString())
                   .toList();
 
-          if ((productMap['optionGroups'] as List?) == null ||
-              (productMap['optionGroups'] as List).isEmpty) {
+          if (optionGroupIds.isNotEmpty) {
             final resolvedGroups = optionGroupIds
                 .map((id) => groupsById[id])
                 .whereType<Map<String, dynamic>>()
@@ -1171,6 +1191,11 @@ class StorefrontApi {
             if (resolvedGroups.isNotEmpty) {
               productMap['optionGroups'] = resolvedGroups;
             }
+          } else {
+            productMap['optionGroups'] = _hydrateEmbeddedOptionGroups(
+              productMap['optionGroups'],
+              groupsById,
+            );
           }
 
           return Product.fromJson(productMap);
@@ -1179,6 +1204,28 @@ class StorefrontApi {
         .toList();
     return rows;
   }
+}
+
+/// Product JSON often embeds stale option group snapshots without [modifierIconKey].
+/// Canonical groups from catalog.optionGroups carry Super Admin icon assignments.
+List<dynamic> _hydrateEmbeddedOptionGroups(
+  dynamic embeddedRaw,
+  Map<String, Map<String, dynamic>> groupsById,
+) {
+  if (embeddedRaw is! List || embeddedRaw.isEmpty) return const [];
+  final out = <dynamic>[];
+  for (final raw in embeddedRaw) {
+    if (raw is! Map) continue;
+    final embedded = Map<String, dynamic>.from(raw);
+    final groupId = (embedded['id']?.toString() ?? '').trim();
+    final canonical = groupId.isNotEmpty ? groupsById[groupId] : null;
+    if (canonical != null) {
+      out.add(Map<String, dynamic>.from(canonical));
+    } else {
+      out.add(embedded);
+    }
+  }
+  return out;
 }
 
 String _padJwtBase64Url(String s) {

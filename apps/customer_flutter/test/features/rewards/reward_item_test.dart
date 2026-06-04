@@ -30,6 +30,15 @@ void main() {
       expect(rewardRedeemedLabelAr('COUPON'), 'تم الاستبدال');
     });
 
+    test('tryFromJson returns null when id missing', () {
+      expect(RewardItem.tryFromJson({'title_ar': 'x'}), isNull);
+    });
+
+    test('tryFromJson coerces numeric id', () {
+      final item = RewardItem.tryFromJson({'id': 42, 'coins_cost': 5});
+      expect(item?.id, '42');
+    });
+
     test('copyWith updates redemption state', () {
       const item = RewardItem(
         id: 'r1',

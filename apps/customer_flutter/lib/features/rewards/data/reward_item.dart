@@ -39,21 +39,32 @@ final class RewardItem extends Equatable {
 
   bool get isParticipated => redeemed;
 
-  factory RewardItem.fromJson(Map<String, dynamic> json) {
+  /// Returns null when the payload is missing a usable id.
+  static RewardItem? tryFromJson(Map<String, dynamic> json) {
+    final id = json['id']?.toString().trim();
+    if (id == null || id.isEmpty) return null;
     return RewardItem(
-      id: json['id'] as String,
-      titleAr: json['title_ar'] as String? ?? '',
-      titleEn: json['title_en'] as String? ?? '',
-      type: (json['type'] as String? ?? 'COUPON').toUpperCase(),
+      id: id,
+      titleAr: json['title_ar']?.toString() ?? '',
+      titleEn: json['title_en']?.toString() ?? '',
+      type: (json['type']?.toString() ?? 'COUPON').toUpperCase(),
       coinsCost: (json['coins_cost'] as num?)?.toInt() ?? 0,
       locked: json['locked'] as bool? ?? false,
-      lockReason: json['lock_reason'] as String?,
-      description: json['description'] as String?,
-      imageUrl: json['image_url'] as String?,
+      lockReason: json['lock_reason']?.toString(),
+      description: json['description']?.toString(),
+      imageUrl: json['image_url']?.toString(),
       redeemed: json['redeemed'] as bool? ?? false,
-      redemptionStatus: json['redemption_status'] as String?,
-      redemptionId: json['redemption_id'] as String?,
+      redemptionStatus: json['redemption_status']?.toString(),
+      redemptionId: json['redemption_id']?.toString(),
     );
+  }
+
+  factory RewardItem.fromJson(Map<String, dynamic> json) {
+    final item = tryFromJson(json);
+    if (item == null) {
+      throw FormatException('RewardItem requires non-empty id', json);
+    }
+    return item;
   }
 
   RewardItem copyWith({

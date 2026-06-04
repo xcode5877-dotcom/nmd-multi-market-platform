@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 
+import '../../../../core/auth/auth_failure.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../widgets/app_error_view.dart';
@@ -184,7 +185,7 @@ class _OrdersPageState extends State<OrdersPage> {
     final token = await context.read<TokenStorage>().getCustomerToken();
     if (!mounted) return;
     if (token == null || token.trim().isEmpty) {
-      context.read<OrdersCubit>().reportUnauthorized();
+      context.read<OrdersCubit>().reportLoginRequired();
       return;
     }
     await context.read<OrdersCubit>().load();
@@ -321,11 +322,26 @@ class _OrdersPageState extends State<OrdersPage> {
                     message: 'جاري تحميل طلباتك...',
                   );
                 }
-                if (state.status == OrdersStatus.unauthorized) {
-                  return _Unauthorized(
+                if (state.status == OrdersStatus.loginRequired) {
+                  return _AuthGate(
+                    title: kLoginRequiredMessage,
+                    subtitle:
+                        'سجّل دخولك لعرض طلباتك ومتابعة حالتها بكل وضوح.',
                     onShop: () => context.go('/market/$slug'),
                     onLogin: () async {
                       final ok = await ensureCustomerAuth(context);
+                      if (!context.mounted || !ok) return;
+                      await context.read<OrdersCubit>().load();
+                    },
+                  );
+                }
+                if (state.status == OrdersStatus.sessionExpired) {
+                  return _AuthGate(
+                    title: kSessionExpiredMessage,
+                    subtitle: kSessionExpiredMessage,
+                    onShop: () => context.go('/market/$slug'),
+                    onLogin: () async {
+                      final ok = await handleSessionExpired(context);
                       if (!context.mounted || !ok) return;
                       await context.read<OrdersCubit>().load();
                     },
@@ -1037,12 +1053,16 @@ class _EmptyOrders extends StatelessWidget {
   }
 }
 
-class _Unauthorized extends StatelessWidget {
-  const _Unauthorized({
+class _AuthGate extends StatelessWidget {
+  const _AuthGate({
+    required this.title,
+    required this.subtitle,
     required this.onShop,
     required this.onLogin,
   });
 
+  final String title;
+  final String subtitle;
   final VoidCallback onShop;
   final Future<void> Function() onLogin;
 
@@ -1060,13 +1080,13 @@ class _Unauthorized extends StatelessWidget {
           ),
           const SizedBox(height: NmdSpacing.md),
           Text(
-            'يرجى تسجيل الدخول',
+            title,
             textAlign: TextAlign.center,
             style: NmdTypography.h2,
           ),
           const SizedBox(height: NmdSpacing.xs),
           Text(
-            'سجّل دخولك لعرض طلباتك ومتابعة حالتها بكل وضوح.',
+            subtitle,
             textAlign: TextAlign.center,
             style: NmdTypography.bodySmall.copyWith(height: 1.45),
           ),

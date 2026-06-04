@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../api/models/modifier_icon.dart';
 import '../../../../../api/models/pizza_placement.dart';
+import '../../data/modifier_icon_library.dart';
 
 /// Visual category for pizza topping representation (UI-only).
 enum PizzaToppingVisualCategory {
@@ -26,12 +29,16 @@ class PizzaToppingVisual {
     required this.colorFallback,
     required this.displayLabel,
     this.assetPath,
+    this.networkIconUrl,
   });
 
   final PizzaToppingVisualCategory category;
 
-  /// Future: `assets/toppings/olive.png` when art is available.
+  /// Bundled `assets/images/pizza_builder/toppings/{category}.png`.
   final String? assetPath;
+
+  /// Super Admin library URL when set.
+  final String? networkIconUrl;
   final String emojiFallback;
   final Color colorFallback;
   final String displayLabel;
@@ -65,13 +72,42 @@ abstract final class PizzaToppingVisualResolver {
     String? modifierName,
     String? groupName,
     String? placement,
+    String? modifierIconKey,
   }) {
     final label = _displayLabel(modifierName, groupName);
-    final haystack = _searchText(modifierName, groupName);
 
-    // TODO(admin): check admin override map before heuristic matching.
+    final libraryEntry = _resolveLibraryEntry(modifierIconKey);
+    if (libraryEntry != null) {
+      final category = _categoryFromLibraryKey(libraryEntry.key) ??
+          _matchCategory(_searchText(modifierName, groupName, libraryEntry.keywords));
+      final meta = _metaFor(category);
+      final url = libraryEntry.iconUrl.trim();
+      if (kDebugMode) {
+        debugPrint(
+          '[MODIFIER_ICON] modifier=$modifierName iconKey=$modifierIconKey '
+          'iconUrl=$url resolved=library',
+        );
+      }
+      return PizzaToppingVisual(
+        category: category,
+        assetPath: assetPathForCategory(category),
+        networkIconUrl: url.isNotEmpty ? url : null,
+        emojiFallback: meta.emoji,
+        colorFallback: meta.color,
+        displayLabel: _labelWithPlacement(label, placement),
+      );
+    }
+
+    final haystack = _searchText(modifierName, groupName);
     final category = _matchCategory(haystack);
     final meta = _metaFor(category);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[MODIFIER_ICON] modifier=$modifierName iconKey=$modifierIconKey '
+        'iconUrl= resolved=fallback:${category.name}',
+      );
+    }
 
     return PizzaToppingVisual(
       category: category,
@@ -80,6 +116,19 @@ abstract final class PizzaToppingVisualResolver {
       colorFallback: meta.color,
       displayLabel: _labelWithPlacement(label, placement),
     );
+  }
+
+  static ModifierIconEntry? _resolveLibraryEntry(String? modifierIconKey) {
+    return ModifierIconLibrary.instance.byKey(modifierIconKey);
+  }
+
+  static PizzaToppingVisualCategory? _categoryFromLibraryKey(String key) {
+    final k = key.trim().toLowerCase();
+    for (final c in PizzaToppingVisualCategory.values) {
+      if (c.name == k) return c;
+    }
+    if (k == 'default') return PizzaToppingVisualCategory.fallback;
+    return null;
   }
 
   /// Normalizes modifier/group text for deterministic matching.
@@ -100,13 +149,16 @@ abstract final class PizzaToppingVisualResolver {
     return s;
   }
 
-  static String _searchText(String? modifierName, String? groupName) {
+  static String _searchText(
+    String? modifierName,
+    String? groupName, [
+    List<String> extraKeywords = const [],
+  ]) {
     final mod = normalize(modifierName);
     final grp = normalize(groupName);
-    if (mod.isEmpty && grp.isEmpty) return '';
-    if (mod.isEmpty) return grp;
-    if (grp.isEmpty) return mod;
-    return '$mod $grp';
+    final extra = extraKeywords.map(normalize).where((s) => s.isNotEmpty).join(' ');
+    final parts = [mod, grp, extra].where((s) => s.isNotEmpty);
+    return parts.join(' ');
   }
 
   static String _displayLabel(String? modifierName, String? groupName) {

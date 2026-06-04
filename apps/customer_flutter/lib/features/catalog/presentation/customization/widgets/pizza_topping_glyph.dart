@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../api/resolve_image_url.dart';
 import '../pizza_topping_visual_resolver.dart';
 
 /// Renders topping asset; emoji text only when asset load fails.
@@ -17,23 +19,29 @@ class PizzaToppingGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final path = visual.assetPath;
-    if (path == null || path.isEmpty) {
-      return _EmojiOnlyFallback(visual: visual, size: size);
+    final network = visual.networkIconUrl?.trim() ?? '';
+    if (network.isNotEmpty) {
+      return _wrapShadow(
+        SizedBox(
+          width: size,
+          height: size,
+          child: CachedNetworkImage(
+            imageUrl: resolveImageUrl(network),
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            placeholder: (_, __) => _PlaceholderBox(size: size),
+            errorWidget: (_, __, ___) => _AssetOrEmoji(visual: visual, size: size),
+          ),
+        ),
+      );
     }
 
-    final image = Image.asset(
-      path,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.medium,
-      errorBuilder: (_, __, ___) =>
-          _EmojiOnlyFallback(visual: visual, size: size),
-    );
+    return _wrapShadow(_AssetOrEmoji(visual: visual, size: size));
+  }
 
-    if (!dropShadow) return image;
-
+  Widget _wrapShadow(Widget child) {
+    if (!dropShadow) return child;
     return DecoratedBox(
       decoration: BoxDecoration(
         boxShadow: [
@@ -44,7 +52,51 @@ class PizzaToppingGlyph extends StatelessWidget {
           ),
         ],
       ),
-      child: image,
+      child: child,
+    );
+  }
+}
+
+class _PlaceholderBox extends StatelessWidget {
+  const _PlaceholderBox({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(size * 0.2),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssetOrEmoji extends StatelessWidget {
+  const _AssetOrEmoji({required this.visual, required this.size});
+
+  final PizzaToppingVisual visual;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = visual.assetPath;
+    if (path == null || path.isEmpty) {
+      return _EmojiOnlyFallback(visual: visual, size: size);
+    }
+
+    return Image.asset(
+      path,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) => _EmojiOnlyFallback(visual: visual, size: size),
     );
   }
 }

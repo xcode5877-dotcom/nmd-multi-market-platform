@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/navigation/safe_back_navigation.dart';
+
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../widgets/app_error_view.dart';
@@ -111,13 +113,10 @@ class _RewardsCinematicBody extends StatelessWidget {
               backgroundColor: NmdColors.surfaceCommunity,
               leading: CinematicGlassIconButton(
                 icon: Icons.arrow_back_ios_new_rounded,
-                onPressed: () {
-                  if (context.canPop()) {
-                    context.pop();
-                  } else if (marketSlug.isNotEmpty) {
-                    context.go('/market/$marketSlug');
-                  }
-                },
+                onPressed: () => safeNmdBack(
+                  context,
+                  marketSlug: marketSlug,
+                ),
               ),
               actions: [
                 CinematicGlassIconButton(

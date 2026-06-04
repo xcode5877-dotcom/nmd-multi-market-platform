@@ -4,21 +4,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../tokens/nmd_motion.dart';
+import '../../widgets/nmd_bottom_nav.dart';
 import '../tokens/nmd_spacing.dart';
 import '../tokens/nmd_typography.dart';
 import '../tokens/nmd_colors.dart';
 
 /// Unified premium floating dock system (add-to-cart, cart, checkout).
 abstract final class PremiumDockLayout {
-  static const double radius = 14;
-  static const double ctaRadius = 11;
-  static const double ctaHeight = 40;
-  static const double padV = 6;
-  static const double padH = 10;
-  static const double gapAboveNav = 10;
-  static const double blurSigma = 10;
+  static const double radius = 22;
+  static const double ctaRadius = 14;
+  static const double ctaHeight = 48;
+  static const double padV = 8;
+  static const double padH = 12;
+  static const double gapAboveNav = 8;
+  static const double blurSigma = 12;
   static const double height = padV * 2 + ctaHeight;
-  static const double scrollInset = height + gapAboveNav + 6;
+  static const double scrollExtra = 32;
+
+  /// Bottom padding for scroll content: dock + nav + safe area + breathing room.
+  static double scrollBottomInset(
+    BuildContext context, {
+    bool clearBottomNav = true,
+  }) {
+    final nav = clearBottomNav ? NmdBottomNav.navHeight : 0.0;
+    final safe = MediaQuery.paddingOf(context).bottom;
+    return height + gapAboveNav + nav + safe + scrollExtra;
+  }
 
   static EdgeInsets margin(
     BuildContext context, {
@@ -29,7 +40,7 @@ abstract final class PremiumDockLayout {
         0,
         NmdSpacing.screenHorizontal,
         gapAboveNav +
-            MediaQuery.paddingOf(context).bottom * 0.15 +
+            MediaQuery.paddingOf(context).bottom +
             extraBottom,
       );
 }

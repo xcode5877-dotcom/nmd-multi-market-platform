@@ -20,7 +20,7 @@ final class PushNotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  bool _initialized = false;
+  Future<void>? _bindFuture;
   bool _firebaseReady = false;
   GoRouter? _router;
   Dio? _dio;
@@ -32,23 +32,50 @@ final class PushNotificationService {
     required GoRouter router,
     required Dio dio,
     required TokenStorage tokenStorage,
-  }) async {
+  }) {
     _router = router;
     _dio = dio;
     _tokenStorage = tokenStorage;
-    if (_initialized) return;
-    _initialized = true;
+    _bindFuture ??= _bindInternal();
+    return _bindFuture!;
+  }
 
+  Future<void> syncTokenAfterLogin() async {
+    if (_bindFuture != null) {
+      await _bindFuture;
+    }
+    if (!_firebaseReady) {
+      debugPrint('[FCM_CLIENT] saveStatus=skipped firebaseNotReady');
+      return;
+    }
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) {
+        debugPrint('[FCM_CLIENT] tokenPrefix=(null)');
+        debugPrint('[FCM_CLIENT] saveStatus=skipped noToken');
+        return;
+      }
+      debugPrint('[FCM_CLIENT] tokenPrefix=${token.substring(0, token.length.clamp(0, 12))}...');
+      await _uploadToken(token);
+    } catch (e, st) {
+      debugPrint('[FCM_CLIENT] saveStatus=error getToken $e\n$st');
+    }
+  }
+
+  Future<void> _bindInternal() async {
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       _firebaseReady = true;
+      debugPrint('[FCM_CLIENT] firebaseInitialized=true');
     } catch (e, st) {
-      debugPrint('[Push] Firebase init skipped (add google-services / GoogleService-Info): $e\n$st');
+      _firebaseReady = false;
+      debugPrint('[FCM_CLIENT] firebaseInitialized=false $e\n$st');
       return;
     }
 
     await _setupLocalNotifications();
-    await _requestPermissions();
+    final permission = await _requestPermissions();
+    debugPrint('[FCM_CLIENT] permission=$permission');
 
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
     FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationTap);
@@ -62,16 +89,11 @@ final class PushNotificationService {
     });
 
     final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) {
+    if (token != null && token.isNotEmpty) {
+      debugPrint('[FCM_CLIENT] tokenPrefix=${token.substring(0, token.length.clamp(0, 12))}...');
       await _uploadToken(token);
-    }
-  }
-
-  Future<void> syncTokenAfterLogin() async {
-    if (!_firebaseReady) return;
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) {
-      await _uploadToken(token);
+    } else {
+      debugPrint('[FCM_CLIENT] tokenPrefix=(null)');
     }
   }
 
@@ -101,41 +123,69 @@ final class PushNotificationService {
     }
   }
 
-  Future<void> _requestPermissions() async {
+  /// Returns a short permission summary for logs.
+  Future<String> _requestPermissions() async {
     if (Platform.isIOS) {
-      await FirebaseMessaging.instance.requestPermission(
+      final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-    } else if (Platform.isAndroid) {
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
+      return 'ios:${settings.authorizationStatus.name}';
     }
+    if (Platform.isAndroid) {
+      final granted = await _localNotifications
+              .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin>()
+              ?.requestNotificationsPermission() ??
+          false;
+      return 'android:${granted ? 'granted' : 'denied'}';
+    }
+    return 'other';
+  }
+
+  String _platformLabel() {
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    return 'other';
   }
 
   Future<void> _uploadToken(String token) async {
     final dio = _dio;
     final storage = _tokenStorage;
-    if (dio == null || storage == null) return;
+    if (dio == null || storage == null) {
+      debugPrint('[FCM_CLIENT] saveStatus=skipped noDioOrStorage');
+      return;
+    }
     final jwt = await storage.getCustomerToken();
-    if (jwt == null || jwt.trim().isEmpty) return;
+    if (jwt == null || jwt.trim().isEmpty) {
+      debugPrint('[FCM_CLIENT] saveStatus=skipped noCustomerJwt');
+      return;
+    }
     try {
-      await dio.post<void>(
+      final response = await dio.post<void>(
         '/customer/save-fcm-token',
-        data: {'fcmToken': token},
+        data: {
+          'token': token,
+          'fcmToken': token,
+          'platform': _platformLabel(),
+        },
         options: Options(
           headers: {
             'Authorization': 'Bearer $jwt',
             'X-Client': 'NMD-Flutter-Customer',
           },
+          validateStatus: (status) => status != null && status >= 200 && status < 300,
         ),
       );
-      if (kDebugMode) debugPrint('[Push] FCM token saved');
+      debugPrint('[FCM_CLIENT] saveStatus=ok http=${response.statusCode}');
     } on DioException catch (e) {
-      debugPrint('[Push] token upload failed: ${e.response?.statusCode} ${e.message}');
+      debugPrint(
+        '[FCM_CLIENT] saveStatus=fail http=${e.response?.statusCode} '
+        '${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      debugPrint('[FCM_CLIENT] saveStatus=error $e');
     }
   }
 

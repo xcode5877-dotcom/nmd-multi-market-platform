@@ -4,13 +4,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
+import '../../../../core/navigation/safe_back_navigation.dart';
 
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
+import '../../data/modifier_icon_library.dart';
 import '../../data/pillar_kind.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../application/service_lead_actions.dart';
@@ -97,6 +98,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         isServicesPillarForTenant(pillarIdRaw?.toString(), pillars);
     final tenantIdForLeads = (tenant['id'] ?? widget.storeId).toString().trim();
     final officeContact = tenantContactFromTenantMap(tenant);
+    await ModifierIconLibrary.instance.ensureLoaded(api, widget.marketSlug);
     final products = await api.getCatalogProducts(widget.storeId);
     final product = products.where((p) => p.id == widget.productId).toList();
     if (product.isEmpty) throw Exception('Product not found');
@@ -371,7 +373,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                     backgroundColor: NmdColors.surfaceBase,
                     leading: CinematicGlassIconButton(
                       icon: Icons.arrow_back_ios_new_rounded,
-                      onPressed: () => context.pop(),
+                      onPressed: () => safeNmdBack(
+                        context,
+                        marketSlug: widget.marketSlug,
+                      ),
                     ),
                     body: _buildProductScrollView(
                       product: product,
@@ -718,7 +723,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     return NmdAppHeader(
       title: '',
       center: const SizedBox.shrink(),
-      leading: NmdAppHeader.backLeading(onPressed: () => context.pop()),
+      leading: NmdAppHeader.backLeading(
+        onPressed: () => safeNmdBack(context, marketSlug: widget.marketSlug),
+      ),
       actions: [
         if (showCart)
           GlobalCartIcon(

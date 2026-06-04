@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/ensure_customer_auth.dart';
 import '../../core/debug/nmd_post_login_trace.dart';
+import '../../core/navigation/safe_back_navigation.dart';
 import '../../widgets/global_nmd_header.dart';
 import '../../widgets/nmd_bottom_nav.dart';
 
@@ -70,13 +71,10 @@ class _MainLayoutState extends State<MainLayout> {
             GlobalNmdHeader(
               marketSlug: widget.marketSlug,
               title: 'Now Market',
-              onLeadingPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/market/${widget.marketSlug}');
-                }
-              },
+              onLeadingPressed: () => safeNmdBack(
+                context,
+                marketSlug: widget.marketSlug,
+              ),
             ),
           Expanded(
             child: ColoredBox(

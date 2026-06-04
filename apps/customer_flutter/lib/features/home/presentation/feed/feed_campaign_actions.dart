@@ -31,6 +31,11 @@ void handleFeedCampaignAction(
       if (pillar.isEmpty) return;
       context.push('/market/$marketSlug?pillar=$pillar');
       return;
+    case FeedCampaignActionType.openSearch:
+      final query = campaign.targetId?.trim() ?? '';
+      if (query.isEmpty) return;
+      context.push('/market/$marketSlug?q=${Uri.encodeComponent(query)}');
+      return;
     case FeedCampaignActionType.openPopup:
       showFeedCampaignPopup(context, campaign: campaign, marketSlug: marketSlug);
       return;

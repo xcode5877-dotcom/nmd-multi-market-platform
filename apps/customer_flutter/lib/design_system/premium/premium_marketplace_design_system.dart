@@ -14,7 +14,11 @@ abstract final class PremiumMarketplaceDesignSystem {
 
   // Layout ratios
   static const double rewardCarouselAspect = 16 / 9;
-  static const double serviceTileHeightBase = 252;
+  static const double storeHeroHeightRatio = 0.36;
+  static const double immersiveHeroHeightRatio = 0.88;
+  static const double experienceSectionRatio = 0.72;
+  static const double serviceTileHeightBase = 228;
+  static const double serviceCarouselViewportFraction = 0.86;
   static const double carouselViewportFraction = 0.82;
 
   // Radii
@@ -32,17 +36,21 @@ abstract final class PremiumMarketplaceDesignSystem {
   // CTA
   static const double ctaHeight = 44;
   static const double dockHeight = 50;
+  static const double heroBookPillHeight = 44;
   static const double iconContainerMd = 40;
 
-  // Motion — slower, calmer luxury
-  static const Duration entrance = Duration(milliseconds: 680);
-  static const Duration micro = Duration(milliseconds: 360);
+  // Motion — luxury restraint
+  static const Duration entrance = Duration(milliseconds: 580);
+  static const Duration micro = Duration(milliseconds: 420);
+  static const Duration snapDuration = Duration(milliseconds: 480);
+  static const Duration chapterReveal = Duration(milliseconds: 680);
   static const Duration shimmer = Duration(milliseconds: 1800);
-  static const Duration ambientDrift = Duration(milliseconds: 6200);
-  static const Duration glowBreath = Duration(milliseconds: 3400);
-  static const Curve entranceCurve = Curves.easeOutQuart;
+  static const Duration ambientDrift = Duration(milliseconds: 6800);
+  static const Duration glowBreath = Duration(milliseconds: 3600);
+  static const Curve entranceCurve = Curves.easeInOutQuart;
   static const Curve pressCurve = Curves.easeOutCubic;
   static const Curve cinematicCurve = Curves.easeInOutCubic;
+  static const Curve snapCurve = Curves.easeOutCubic;
   static const ScrollPhysics carouselPhysics =
       BouncingScrollPhysics(parent: PageScrollPhysics());
 
@@ -123,11 +131,45 @@ abstract final class PremiumMarketplaceDesignSystem {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
+      Color(0x22000000),
       Color(0x44000000),
       Color(0x88000000),
-      Color(0xE6000000),
     ],
-    stops: [0.0, 0.42, 1.0],
+    stops: [0.0, 0.45, 1.0],
+  );
+
+  static const LinearGradient immersiveHeroScrim = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color(0x12000000),
+      Color(0x28000000),
+      Color(0x55000000),
+      Color(0x78000000),
+    ],
+    stops: [0.0, 0.35, 0.72, 1.0],
+  );
+
+  static const LinearGradient storeHeroLightOverlay = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color(0x18000000),
+      Color(0x28000000),
+      Color(0x52000000),
+    ],
+    stops: [0.0, 0.55, 1.0],
+  );
+
+  static const RadialGradient storeHeroWarmVignette = RadialGradient(
+    center: Alignment(0.2, 0.35),
+    radius: 1.15,
+    colors: [
+      Color(0x18D4A574),
+      Colors.transparent,
+      Color(0x33000000),
+    ],
+    stops: [0.0, 0.45, 1.0],
   );
 
   static const LinearGradient businessHeroOverlay = storeHeroOverlay;
@@ -135,19 +177,19 @@ abstract final class PremiumMarketplaceDesignSystem {
   static const RadialGradient storeHeroVignette = RadialGradient(
     center: Alignment.center,
     radius: 1.1,
-    colors: [Colors.transparent, Color(0x66000000)],
-    stops: [0.55, 1.0],
+    colors: [Colors.transparent, Color(0x44000000)],
+    stops: [0.6, 1.0],
   );
 
   static LinearGradient serviceImageOverlay = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      Colors.black.withValues(alpha: 0.08),
-      Colors.black.withValues(alpha: 0.35),
-      Colors.black.withValues(alpha: 0.88),
+      Colors.black.withValues(alpha: 0.04),
+      Colors.black.withValues(alpha: 0.22),
+      const Color(0xFF1A1F26).withValues(alpha: 0.62),
     ],
-    stops: const [0.0, 0.55, 1.0],
+    stops: const [0.0, 0.58, 1.0],
   );
 
   static LinearGradient glassSurface = LinearGradient(
@@ -175,4 +217,78 @@ abstract final class PremiumMarketplaceDesignSystem {
     ],
     stops: const [0.0, 0.06, 0.94, 1.0],
   );
+
+  // ---------------------------------------------------------------------------
+  // Services storefront — premium wellness (Now Market DNA)
+  // ---------------------------------------------------------------------------
+
+  static const double serviceHeroHeightMin = 300;
+  static const double serviceHeroHeightMax = 340;
+  static const double heroRadius = 32;
+  static const double serviceBottomSheetRadius = 28;
+  static const double serviceHeroVisualSize = 172;
+  static const double serviceCardRadius = 28;
+  static const double serviceCardMinHeight = 198;
+  static const double serviceCardImageSize = 132;
+  static const double serviceCardCtaHeight = 36;
+  static const double sectionSpacing = 32;
+  static const double heroTitleSize = 24;
+  static const double cardTitleSize = 19;
+  static const double sectionTitleSize = 18;
+  static const double bodySize = 13;
+  static const double microChipHeight = 28;
+
+  static const Duration serviceMotionEntrance = Duration(milliseconds: 380);
+  static const Duration serviceMotionScroll = Duration(milliseconds: 400);
+
+  /// Back-compat aliases used elsewhere in the monorepo widget tree.
+  static const double wellnessHeroHeightMin = serviceHeroHeightMin;
+  static const double wellnessHeroHeightMax = serviceHeroHeightMax;
+  static const double wellnessSectionRadius = heroRadius;
+  static const double wellnessServiceCardRadius = serviceCardRadius;
+  static const Duration wellnessEntrance = serviceMotionEntrance;
+  static const Duration wellnessScroll = serviceMotionScroll;
+
+  static double serviceHeroHeight(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height * 0.34;
+    return h.clamp(serviceHeroHeightMin, serviceHeroHeightMax);
+  }
+
+  static double wellnessHeroHeight(BuildContext context) =>
+      serviceHeroHeight(context);
+
+  static List<BoxShadow> serviceCardShadow() => [
+        BoxShadow(
+          color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+          blurRadius: 16,
+          offset: const Offset(0, 4),
+          spreadRadius: -2,
+        ),
+      ];
+
+  static List<BoxShadow> wellnessCardShadow() => serviceCardShadow();
+
+  static const LinearGradient serviceHeroGradient = LinearGradient(
+    begin: Alignment.topRight,
+    end: Alignment.bottomLeft,
+    colors: [
+      NmdColors.surfaceBase,
+      NmdColors.tintAliveSoft,
+      Color(0xFFF4FAF9),
+    ],
+    stops: [0.0, 0.55, 1.0],
+  );
+
+  static const LinearGradient wellnessHeroBackdrop = serviceHeroGradient;
+
+  static const RadialGradient serviceImageGlow = RadialGradient(
+    colors: [
+      Color(0x1A0E7C72),
+      Color(0x080E7C72),
+      Colors.transparent,
+    ],
+    stops: [0.0, 0.55, 1.0],
+  );
+
+  static const RadialGradient wellnessImageGlow = serviceImageGlow;
 }

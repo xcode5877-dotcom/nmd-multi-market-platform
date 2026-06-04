@@ -43,3 +43,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release signing secrets and backups (never commit)
+*.jks
+*.jks.bak
+key.properties
+key.properties.bak
+upload_certificate.pem
+/android/app/nmd_upload_key.jks.bak
+/android/key.properties.bak
+
+# Local iOS regen backup
+/ios_backup_before_regen/

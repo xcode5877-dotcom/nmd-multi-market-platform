@@ -11,10 +11,11 @@ import '../../../../api/storefront_api.dart';
 import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
-import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/cart_cubit.dart';
 import '../widgets/cart_modifier_lines.dart';
+import '../widgets/premium_checkout_dock.dart';
+import '../widgets/premium_coupon_apply_row.dart';
 import '../../../../widgets/app_error_view.dart';
 
 /// Maps Hyp session API errors (502/503) to a snackbar string with result code when present.
@@ -680,65 +681,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 primary: true,
                                 padding: const EdgeInsets.fromLTRB(
                                   NmdSpacing.screenHorizontal,
-                                  NmdSpacing.xs,
+                                  NmdSpacing.xxs,
                                   NmdSpacing.screenHorizontal,
-                                  NmdSpacing.lg,
+                                  NmdSpacing.xxs,
                                 ),
                                 children: [
-                                  NmdSurface(
-                                    mode: NmdSurfaceMode.alive,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: NmdSpacing.md,
-                                      vertical: NmdSpacing.sm,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.verified_user_outlined,
-                                          size: 20,
-                                          color: NmdColors.brandPrimary
-                                              .withValues(alpha: 0.85),
-                                        ),
-                                        const SizedBox(width: NmdSpacing.xs),
-                                        Expanded(
-                                          child: Text(
-                                            'راجع بياناتك ثم أكّد الطلب بأمان',
-                                            style: NmdTypography.bodySmall
-                                                .copyWith(
-                                              color: NmdColors.textPrimary,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  _CheckoutTrustBadge(),
                                   if (!data.sameMarketOk) ...[
-                                    const SizedBox(height: NmdSpacing.sm),
+                                    const SizedBox(height: NmdSpacing.xs),
                                     _CheckoutSection(
                                       child: Text(
                                         'لا يمكن الجمع بين متاجر من أسواق مختلفة في طلب واحد.',
-                                        style: NmdTypography.bodyBold.copyWith(
+                                        style: NmdTypography.label.copyWith(
                                           color: NmdColors.error,
                                         ),
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(height: NmdSpacing.sm),
-                                  BlocBuilder<AuthBloc, AuthState>(
-                                    builder: (context, auth) {
-                                      final hint = auth.step == AuthStep.done &&
-                                              auth.phone.isNotEmpty
-                                          ? 'مرحباً بك'
-                                          : 'سجّل دخولك لإتمام الطلب';
-                                      return Align(
-                                        alignment: Alignment.centerRight,
-                                        child: Text(hint,
-                                            style: NmdTypography.bodySmall),
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: NmdSpacing.sm),
+                                  const SizedBox(height: NmdSpacing.xxs),
                                   _CheckoutSection(
                                     title: 'طريقة الاستلام',
                                     child: _FulfillmentToggle(
@@ -751,7 +711,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   ),
                                   if (_fulfillment ==
                                       _Fulfillment.delivery) ...[
-                                    const SizedBox(height: NmdSpacing.sm),
+                                    const SizedBox(height: NmdSpacing.xs),
                                     _CheckoutSection(
                                       title: 'العنوان والمنطقة',
                                       child: Column(
@@ -760,7 +720,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         children: [
                                           if (data.zones.isNotEmpty)
                                             DropdownButtonFormField<String>(
-                                              // Controlled selection; `value` tracks updates when zone list changes.
                                               // ignore: deprecated_member_use
                                               value: _selectedZoneId != null &&
                                                       data.zones.any((z) =>
@@ -777,8 +736,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                           z['id']?.toString(),
                                                       child: Text(
                                                         '${z['name'] ?? ''} — ₪${((z['fee'] is num) ? (z['fee'] as num).toStringAsFixed(0) : '0')}',
-                                                        style:
-                                                            NmdTypography.body,
+                                                        style: NmdTypography
+                                                            .bodySmall,
                                                       ),
                                                     ),
                                                   )
@@ -788,11 +747,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                             ),
                                           if (data.zones.isNotEmpty)
                                             const SizedBox(
-                                                height: NmdSpacing.sm),
+                                                height: NmdSpacing.xs),
                                           TextField(
                                             controller: _addressCtrl,
                                             minLines: 2,
-                                            maxLines: 4,
+                                            maxLines: 3,
                                             onChanged: (_) => setState(() {}),
                                             decoration: _inputDecoration(
                                                     'عنوان التوصيل',
@@ -814,7 +773,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(height: NmdSpacing.sm),
+                                  const SizedBox(height: NmdSpacing.xs),
                                   _CheckoutSection(
                                     title: 'بيانات التواصل',
                                     child: Column(
@@ -834,7 +793,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                           onTap: () => setState(
                                               () => _touched.add('name')),
                                         ),
-                                        const SizedBox(height: NmdSpacing.sm),
+                                        const SizedBox(height: NmdSpacing.xs),
                                         _LabeledField(
                                           label: 'رقم الجوال',
                                           controller: _phoneCtrl,
@@ -852,14 +811,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: NmdSpacing.sm),
+                                  const SizedBox(height: NmdSpacing.xs),
                                   _CheckoutSection(
                                     title: 'طريقة الدفع',
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        if (cashEnabled) ...[
+                                        if (cashEnabled)
                                           _PaymentOptionTile(
                                             title: 'نقداً عند الاستلام',
                                             subtitle: 'الدفع نقداً عند التسليم',
@@ -869,9 +828,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                 _paymentMethod =
                                                     _PaymentMethod.cash),
                                           ),
-                                          const SizedBox(
-                                              height: NmdSpacing.sm),
-                                        ],
+                                        const SizedBox(height: NmdSpacing.xs),
                                         _PaymentOptionTile(
                                           title: 'بطاقة ائتمان — قريبًا',
                                           subtitle: 'سيتوفر قريباً',
@@ -882,8 +839,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         if (!hasPaymentOption)
                                           Text(
                                             'لا توجد طرق دفع مفعّلة حالياً لهذا المتجر.',
-                                            style: NmdTypography.bodySmall
-                                                .copyWith(
+                                            style: NmdTypography.micro.copyWith(
                                               color: NmdColors.error,
                                               fontWeight: FontWeight.w600,
                                             ),
@@ -891,144 +847,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: NmdSpacing.xs),
                                   _CheckoutSection(
-                                    title: 'كود الخصم',
+                                    title: 'ملخص الطلب',
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
-                                      children: [
-                                        Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Expanded(
-                                              child: TextField(
-                                                controller: _couponCtrl,
-                                                textCapitalization:
-                                                    TextCapitalization
-                                                        .characters,
-                                                decoration: _inputDecoration(
-                                                    'أدخل الكود'),
-                                                onChanged: (_) =>
-                                                    setState(() {}),
-                                              ),
-                                            ),
-                                            const SizedBox(
-                                                width: NmdSpacing.xs),
-                                            NmdButton(
-                                              label: 'تطبيق',
-                                              size: NmdButtonSize.medium,
-                                              expand: false,
-                                              loading: _couponLoading,
-                                              onPressed: _couponLoading
-                                                  ? null
-                                                  : () => _applyCoupon(
-                                                        api,
-                                                        code: _couponCtrl.text,
-                                                        primaryTenantId: data
-                                                            .primaryTenantId,
-                                                        cartStoreIds: data
-                                                            .orderedTenantIds,
-                                                        subtotalAll:
-                                                            subtotalAll,
-                                                        customerPhone:
-                                                            _phoneCtrl.text
-                                                                    .trim()
-                                                                    .isNotEmpty
-                                                                ? _phoneCtrl
-                                                                    .text
-                                                                    .trim()
-                                                                : null,
-                                                      ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (_couponError != null) ...[
-                                          const SizedBox(
-                                              height: NmdSpacing.xxs),
-                                          Text(
-                                            _couponError!,
-                                            style: NmdTypography.label.copyWith(
-                                              color: NmdColors.error,
-                                            ),
-                                          ),
-                                        ],
-                                        if (_appliedCoupon != null) ...[
-                                          const SizedBox(height: NmdSpacing.xs),
-                                          NmdBadge(
-                                            label:
-                                                'تم تطبيق ${_appliedCoupon!.code} — خصم ₪${_appliedCoupon!.discountAmount.toStringAsFixed(2)}',
-                                            tone: NmdBadgeTone.success,
-                                          ),
-                                        ],
-                                        if (_suggestedCoupons.isNotEmpty) ...[
-                                          const SizedBox(height: NmdSpacing.sm),
-                                          Text(
-                                            'عروض مقترحة',
-                                            style: NmdTypography.label,
-                                          ),
-                                          const SizedBox(height: NmdSpacing.xs),
-                                          SizedBox(
-                                            height: 40,
-                                            child: ListView.separated(
-                                              scrollDirection: Axis.horizontal,
-                                              primary: false,
-                                              shrinkWrap: true,
-                                              itemCount:
-                                                  _suggestedCoupons.length,
-                                              separatorBuilder: (_, __) =>
-                                                  const SizedBox(
-                                                      width: NmdSpacing.xs),
-                                              itemBuilder: (context, i) {
-                                                final c = _suggestedCoupons[i];
-                                                final code =
-                                                    c['code']?.toString() ?? '';
-                                                return NmdChip(
-                                                  label: code,
-                                                  selected: false,
-                                                  onTap: _couponLoading
-                                                      ? null
-                                                      : () {
-                                                          _couponCtrl.text =
-                                                              code;
-                                                          _applyCoupon(
-                                                            api,
-                                                            code: code,
-                                                            primaryTenantId: data
-                                                                .primaryTenantId,
-                                                            cartStoreIds: data
-                                                                .orderedTenantIds,
-                                                            subtotalAll:
-                                                                subtotalAll,
-                                                            customerPhone:
-                                                                _phoneCtrl.text
-                                                                        .trim()
-                                                                        .isNotEmpty
-                                                                    ? _phoneCtrl
-                                                                        .text
-                                                                        .trim()
-                                                                    : null,
-                                                          );
-                                                        },
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _CheckoutSection(
-                                    title: 'السلة',
-                                    child: Column(
                                       children: [
                                         for (var ti = 0;
                                             ti < data.orderedTenantIds.length;
                                             ti++) ...[
                                           if (ti > 0)
-                                            const SizedBox(height: 12),
+                                            const SizedBox(height: NmdSpacing.xs),
                                           if (data.orderedTenantIds.length > 1)
                                             Align(
                                               alignment: Alignment.centerRight,
@@ -1037,14 +867,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                         data.orderedTenantIds[
                                                             ti]] ??
                                                     'متجر',
-                                                style: NmdTypography.label
+                                                style: NmdTypography.micro
                                                     .copyWith(
                                                   color: NmdColors.brandPrimary,
+                                                  fontWeight: FontWeight.w700,
                                                 ),
                                               ),
                                             ),
-                                          if (data.orderedTenantIds.length > 1)
-                                            const SizedBox(height: 8),
                                           ...lines
                                               .where((l) =>
                                                   l.tenantId ==
@@ -1052,114 +881,182 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                               .map((line) => Padding(
                                                     padding:
                                                         const EdgeInsets.only(
-                                                            bottom: 10),
+                                                            bottom: 6),
                                                     child: _CheckoutItemTile(
                                                         line: line),
                                                   )),
                                         ],
+                                        const SizedBox(height: NmdSpacing.xs),
+                                        const Divider(
+                                          height: 1,
+                                          color: NmdColors.divider,
+                                        ),
+                                        const SizedBox(height: NmdSpacing.xs),
+                                        _checkoutSumRow(
+                                          'المجموع',
+                                          NmdFormat.money(subtotalAll),
+                                          NmdColors.textPrimary,
+                                        ),
+                                        if (_fulfillment ==
+                                            _Fulfillment.delivery) ...[
+                                          const SizedBox(height: 4),
+                                          _checkoutSumRow(
+                                            'التوصيل',
+                                            NmdFormat.money(deliveryFee),
+                                            NmdColors.textPrimary,
+                                          ),
+                                        ],
+                                        if (couponDiscount > 0) ...[
+                                          const SizedBox(height: 4),
+                                          _checkoutSumRow(
+                                            'خصم',
+                                            NmdFormat.moneySigned(
+                                              couponDiscount,
+                                              negative: true,
+                                            ),
+                                            NmdColors.error,
+                                          ),
+                                        ],
+                                        const SizedBox(height: NmdSpacing.xs),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              NmdFormat.money(grandTotal),
+                                              style: NmdTypography.price.copyWith(
+                                                fontSize: 17,
+                                              ),
+                                            ),
+                                            Text(
+                                              'الإجمالي',
+                                              style: NmdTypography.bodyBold,
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: NmdSpacing.xs),
                                   _CheckoutSection(
-                                    title: 'ملاحظات للمتجر',
-                                    child: NmdInput(
-                                      controller: _notesCtrl,
-                                      label: 'ملاحظات',
-                                      hint: 'اختياري',
-                                      maxLines: 4,
+                                    title: 'كود الخصم',
+                                    child: PremiumCouponApplyRow(
+                                      controller: _couponCtrl,
+                                      loading: _couponLoading,
+                                      error: _couponError,
+                                      appliedCode: _appliedCoupon?.code,
+                                      onApply: _couponLoading
+                                          ? () {}
+                                          : () => _applyCoupon(
+                                                api,
+                                                code: _couponCtrl.text,
+                                                primaryTenantId:
+                                                    data.primaryTenantId,
+                                                cartStoreIds:
+                                                    data.orderedTenantIds,
+                                                subtotalAll: subtotalAll,
+                                                customerPhone: _phoneCtrl.text
+                                                        .trim()
+                                                        .isNotEmpty
+                                                    ? _phoneCtrl.text.trim()
+                                                    : null,
+                                              ),
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  _SummaryBlock(
-                                    subtotal: subtotalAll,
-                                    delivery: deliveryFee,
-                                    couponDiscount: couponDiscount,
-                                    grandTotal: grandTotal,
-                                    showDelivery:
-                                        _fulfillment == _Fulfillment.delivery,
+                                  if (_suggestedCoupons.isNotEmpty) ...[
+                                    const SizedBox(height: NmdSpacing.xxs),
+                                    SizedBox(
+                                      height: 34,
+                                      child: ListView.separated(
+                                        scrollDirection: Axis.horizontal,
+                                        reverse: true,
+                                        primary: false,
+                                        itemCount: _suggestedCoupons.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(width: 6),
+                                        itemBuilder: (context, i) {
+                                          final code = _suggestedCoupons[i]
+                                                  ['code']
+                                              ?.toString() ??
+                                              '';
+                                          return NmdChip(
+                                            label: code,
+                                            selected: false,
+                                            onTap: _couponLoading
+                                                ? null
+                                                : () {
+                                                    _couponCtrl.text = code;
+                                                    _applyCoupon(
+                                                      api,
+                                                      code: code,
+                                                      primaryTenantId:
+                                                          data.primaryTenantId,
+                                                      cartStoreIds:
+                                                          data.orderedTenantIds,
+                                                      subtotalAll: subtotalAll,
+                                                      customerPhone: _phoneCtrl
+                                                              .text
+                                                              .trim()
+                                                              .isNotEmpty
+                                                          ? _phoneCtrl.text
+                                                              .trim()
+                                                          : null,
+                                                    );
+                                                  },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: NmdSpacing.xxs),
+                                  _CheckoutSection(
+                                    title: 'ملاحظات',
+                                    child: NmdInput(
+                                      controller: _notesCtrl,
+                                      label: 'ملاحظات للمتجر',
+                                      hint: 'اختياري',
+                                      maxLines: 2,
+                                    ),
                                   ),
-                                  const SizedBox(height: 120),
+                                  const SizedBox(height: kPremiumCheckoutDockScrollInset),
                                 ],
                               ),
                             ),
-                            SafeArea(
-                              top: false,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: NmdColors.surfaceBase,
-                                  boxShadow: NmdShadows.md,
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: NmdColors.borderSubtle.withValues(
-                                        alpha: 0.9,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    NmdSpacing.screenHorizontal,
-                                    NmdSpacing.sm,
-                                    NmdSpacing.screenHorizontal,
-                                    NmdSpacing.md,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text('الإجمالي',
-                                              style: NmdTypography.h3),
-                                          Text(
-                                            NmdFormat.money(grandTotal),
-                                            style: NmdTypography.priceTotal.copyWith(
-                                              fontSize: 24,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: NmdSpacing.sm),
-                                      NmdButton(
-                                        label: 'تأكيد الطلب',
-                                        loading: _submitting,
-                                        onPressed: (!canSubmit || _submitting)
-                                            ? null
-                                            : () async {
-                                                setState(() {
-                                                  _touched.addAll({
-                                                    'name',
-                                                    'phone',
-                                                    'address',
-                                                    'zone',
-                                                  });
-                                                });
-                                                final ok =
-                                                    await ensureCustomerAuth(
-                                                  context,
-                                                );
-                                                if (!context.mounted || !ok)
-                                                  return;
-                                                await _refreshProfileAndRewards(
-                                                    api);
-                                                if (!context.mounted) return;
-                                                await _submit(
-                                                  context,
-                                                  data,
-                                                  lines,
-                                                  deliveryFee,
-                                                  couponDiscount,
-                                                  grandTotal,
-                                                );
-                                              },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                            PremiumCheckoutDock(
+                              total: grandTotal,
+                              label: 'تأكيد الطلب',
+                              loading: _submitting,
+                              enabled: canSubmit,
+                              onPressed: (!canSubmit || _submitting)
+                                  ? null
+                                  : () async {
+                                      setState(() {
+                                        _touched.addAll({
+                                          'name',
+                                          'phone',
+                                          'address',
+                                          'zone',
+                                        });
+                                      });
+                                      final ok = await ensureCustomerAuth(
+                                        context,
+                                      );
+                                      if (!context.mounted || !ok) {
+                                        return;
+                                      }
+                                      await _refreshProfileAndRewards(api);
+                                      if (!context.mounted) {
+                                        return;
+                                      }
+                                      await _submit(
+                                        context,
+                                        data,
+                                        lines,
+                                        deliveryFee,
+                                        couponDiscount,
+                                        grandTotal,
+                                      );
+                                    },
                             ),
                           ],
                         );
@@ -1179,6 +1076,62 @@ class _CheckoutPageState extends State<CheckoutPage> {
 enum _Fulfillment { delivery, pickup }
 
 enum _PaymentMethod { cash, card }
+
+class _CheckoutTrustBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: NmdSpacing.sm,
+        vertical: 7,
+      ),
+      decoration: BoxDecoration(
+        color: NmdColors.tintAliveSoft.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: NmdColors.brandPrimary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          Icon(
+            Icons.verified_user_outlined,
+            size: 16,
+            color: NmdColors.brandPrimary.withValues(alpha: 0.85),
+          ),
+          const SizedBox(width: NmdSpacing.xs),
+          Expanded(
+            child: Text(
+              'راجع بياناتك ثم أكّد الطلب بأمان',
+              style: NmdTypography.micro.copyWith(
+                fontSize: 11,
+                color: NmdColors.textPrimary.withValues(alpha: 0.88),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _checkoutSumRow(String label, String value, Color valueColor) {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        value,
+        style: NmdTypography.label.copyWith(
+          color: valueColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      Text(label, style: NmdTypography.micro),
+    ],
+  );
+}
 
 class _PaymentOptionTile extends StatelessWidget {
   const _PaymentOptionTile({
@@ -1200,46 +1153,64 @@ class _PaymentOptionTile extends StatelessWidget {
     final inactive = !enabled;
     return Opacity(
       opacity: inactive ? 0.55 : 1,
-      child: NmdCard(
-        variant: NmdCardVariant.flat,
-        padding: const EdgeInsets.symmetric(
-          horizontal: NmdSpacing.sm + 2,
-          vertical: NmdSpacing.sm,
-        ),
+      child: InkWell(
         onTap: enabled ? onTap : null,
-        child: Row(
-          children: [
-            Icon(
-              inactive
-                  ? Icons.lock_outline
-                  : (selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off),
-              color: inactive
-                  ? NmdColors.textTertiary
-                  : (selected
-                      ? NmdColors.brandPrimary
-                      : NmdColors.textTertiary),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: NmdSpacing.xs,
+            vertical: NmdSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? NmdColors.tintAliveSoft
+                : NmdColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? NmdColors.brandPrimary.withValues(alpha: 0.35)
+                  : NmdColors.borderSubtle,
             ),
-            const SizedBox(width: NmdSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: NmdTypography.bodyBold.copyWith(
-                      color: inactive
-                          ? NmdColors.textSecondary
-                          : NmdColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: NmdTypography.bodySmall),
-                ],
+          ),
+          child: Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Icon(
+                inactive
+                    ? Icons.lock_outline
+                    : (selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off),
+                size: 18,
+                color: inactive
+                    ? NmdColors.textTertiary
+                    : (selected
+                        ? NmdColors.brandPrimary
+                        : NmdColors.textTertiary),
               ),
-            ),
-          ],
+              const SizedBox(width: NmdSpacing.xs),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      title,
+                      style: NmdTypography.label.copyWith(
+                        color: inactive
+                            ? NmdColors.textSecondary
+                            : NmdColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(subtitle, style: NmdTypography.micro.copyWith(
+                      fontSize: 10,
+                      color: NmdColors.textSecondary.withValues(alpha: 0.92),
+                    )),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1310,18 +1281,45 @@ class _CheckoutSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NmdCard(
-      variant: NmdCardVariant.outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (title != null) ...[
-            Text(title!, style: NmdTypography.h3),
-            const SizedBox(height: NmdSpacing.sm),
-          ],
-          child,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (title != null) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 1, bottom: 4),
+            child: Text(
+              title!,
+              textAlign: TextAlign.right,
+              style: NmdTypography.micro.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: NmdColors.textSecondary.withValues(alpha: 0.95),
+                letterSpacing: 0.25,
+              ),
+            ),
+          ),
         ],
-      ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: NmdColors.surfaceBase,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: NmdSpacing.sm,
+              vertical: 7,
+            ),
+            child: child,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1349,14 +1347,14 @@ class _FulfillmentToggle extends StatelessWidget {
         if (delivery)
           ButtonSegment(
             value: _Fulfillment.delivery,
-            label: Text('توصيل', style: NmdTypography.bodyBold),
-            icon: const Icon(Icons.local_shipping_outlined, size: 20),
+            label: Text('توصيل', style: NmdTypography.label),
+            icon: const Icon(Icons.local_shipping_outlined, size: 18),
           ),
         if (pickup)
           ButtonSegment(
             value: _Fulfillment.pickup,
-            label: Text('استلام', style: NmdTypography.bodyBold),
-            icon: const Icon(Icons.storefront_outlined, size: 20),
+            label: Text('استلام', style: NmdTypography.label),
+            icon: const Icon(Icons.storefront_outlined, size: 18),
           ),
       ],
       selected: {value},
@@ -1364,7 +1362,8 @@ class _FulfillmentToggle extends StatelessWidget {
         if (s.isNotEmpty) onChanged(s.first);
       },
       style: ButtonStyle(
-        visualDensity: VisualDensity.standard,
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         backgroundColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return NmdColors.tintAlive;
@@ -1426,23 +1425,23 @@ class _CheckoutItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NmdSurface(
-      mode: NmdSurfaceMode.muted,
-      padding: const EdgeInsets.all(NmdSpacing.sm + 2),
-      borderRadius: NmdRadius.borderMd,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
+        textDirection: TextDirection.rtl,
         children: [
           ClipRRect(
-            borderRadius: NmdRadius.borderSm,
+            borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 56,
-              height: 56,
+              width: 44,
+              height: 44,
               child: line.imageUrl.isEmpty
                   ? ColoredBox(
                       color: NmdColors.tintAliveSoft,
                       child: Icon(
                         Icons.fastfood_outlined,
+                        size: 18,
                         color: NmdColors.brandPrimary.withValues(alpha: 0.35),
                       ),
                     )
@@ -1454,7 +1453,7 @@ class _CheckoutItemTile extends StatelessWidget {
                     ),
             ),
           ),
-          const SizedBox(width: NmdSpacing.sm),
+          const SizedBox(width: NmdSpacing.xs),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -1464,104 +1463,35 @@ class _CheckoutItemTile extends StatelessWidget {
                   textAlign: TextAlign.right,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: NmdTypography.bodyBold,
+                  style: NmdTypography.label.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                const SizedBox(height: NmdSpacing.xxs),
                 Text(
-                  'الكمية: ${line.quantity} × ₪${line.unitPrice.toStringAsFixed(2)}',
-                  style: NmdTypography.bodySmall,
+                  '${line.quantity} × ${NmdFormat.money(line.unitPrice)}',
+                  style: NmdTypography.micro.copyWith(
+                    color: NmdColors.textSecondary,
+                  ),
                 ),
-                if (line.selectedOptions.isNotEmpty) ...[
-                  const SizedBox(height: NmdSpacing.xxs),
+                if (line.selectedOptions.isNotEmpty)
                   CartModifierLines(
                     selectedOptions: line.selectedOptions,
                     optionGroupsJson: line.optionGroupsJson,
                     compact: true,
                   ),
-                ],
               ],
             ),
           ),
           const SizedBox(width: NmdSpacing.xxs),
           Text(
-            '₪${line.lineTotal.toStringAsFixed(2)}',
-            style: NmdTypography.bodyBold.copyWith(
+            NmdFormat.money(line.lineTotal),
+            style: NmdTypography.label.copyWith(
               color: NmdColors.brandPrimary,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SummaryBlock extends StatelessWidget {
-  const _SummaryBlock({
-    required this.subtotal,
-    required this.delivery,
-    required this.couponDiscount,
-    required this.grandTotal,
-    required this.showDelivery,
-  });
-
-  final double subtotal;
-  final double delivery;
-  final double couponDiscount;
-  final double grandTotal;
-  final bool showDelivery;
-
-  @override
-  Widget build(BuildContext context) {
-    return _CheckoutSection(
-      title: 'ملخص الفاتورة',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _sumRow('المجموع', NmdFormat.money(subtotal), NmdColors.textPrimary),
-          if (showDelivery) ...[
-            const SizedBox(height: NmdSpacing.xs),
-            _sumRow(
-              'رسوم التوصيل',
-              NmdFormat.money(delivery),
-              NmdColors.textPrimary,
-            ),
-          ],
-          if (couponDiscount > 0) ...[
-            const SizedBox(height: NmdSpacing.xs),
-            _sumRow(
-              'خصم الكوبون',
-              NmdFormat.moneySigned(couponDiscount, negative: true),
-              NmdColors.error,
-            ),
-          ],
-          const SizedBox(height: NmdSpacing.sm),
-          const Divider(height: 1, color: NmdColors.borderSubtle),
-          const SizedBox(height: NmdSpacing.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('الإجمالي النهائي', style: NmdTypography.h3),
-              Text(
-                NmdFormat.money(grandTotal),
-                style: NmdTypography.priceTotal,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sumRow(String label, String value, Color valueColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          value,
-          style: NmdTypography.bodyBold.copyWith(color: valueColor),
-        ),
-        Text(label, style: NmdTypography.bodySmall),
-      ],
     );
   }
 }

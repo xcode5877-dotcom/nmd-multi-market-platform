@@ -5,6 +5,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../../core/navigation/safe_back_navigation.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../../api/resolve_image_url.dart';
@@ -295,23 +297,6 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                 );
               }
 
-              void onProfessionalPrimaryContact() {
-                final dio = context.read<Dio>();
-                final auth = context.read<AuthBloc>().state;
-                final customerPhone =
-                    auth.step == AuthStep.done ? auth.phone : null;
-                final office = data.contact;
-                launchWhatsAppInquiry(
-                  dio: dio,
-                  tenantId: data.tenantIdForLeads,
-                  contact: const TenantContactInfo(),
-                  tenantContact: office,
-                  messageOverride: storeServicesInquiryWhatsAppMessage(),
-                  customerPhone: customerPhone,
-                  context: context,
-                );
-              }
-
               if (data.isServicesStore) {
                 final serviceProducts =
                     sections.expand((s) => s.products).toList();
@@ -321,7 +306,10 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                   backgroundColor: NmdColors.surfaceBase,
                   leading: CinematicGlassIconButton(
                     icon: Icons.arrow_back_ios_new_rounded,
-                    onPressed: () => context.pop(),
+                    onPressed: () => safeNmdBack(
+                      context,
+                      marketSlug: widget.marketSlug,
+                    ),
                   ),
                   actions: [
                     CinematicGlassIconButton(
@@ -339,55 +327,20 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                       CustomScrollView(
                         controller: _servicesScrollController,
                         primary: false,
-                        slivers: [
-                          SliverToBoxAdapter(
-                            child: CinematicStoreHero(
-                              storeName: data.storeName,
-                              logoUrl: data.logoUrl,
-                              bannerUrl: data.bannerUrl,
-                              openTime: data.openTime,
-                              closeTime: data.closeTime,
-                              operatingStatus: data.operatingStatus,
-                              isAdminClosed: data.isAdminClosed,
-                              aboutPlain: data.aboutPlain,
-                            ),
-                          ),
-                          if (serviceProducts.isEmpty)
-                            const SliverToBoxAdapter(
-                              child: Padding(
-                                padding: EdgeInsets.all(48),
-                                child: NmdEmptyState(
-                                  title: 'لا توجد خدمات',
-                                  message: 'عد لاحقاً',
-                                  icon: Icons.handyman_outlined,
-                                ),
-                              ),
-                            )
-                          else
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(0, 16, 0, 96),
-                              sliver: SliverList.separated(
-                                itemCount: serviceProducts.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 26),
-                                itemBuilder: (context, i) =>
-                                    CinematicServicePanel(
-                                  product: serviceProducts[i],
-                                  marketSlug: widget.marketSlug,
-                                  storeId: widget.storeId,
-                                  tenantIdForLeads: data.tenantIdForLeads,
-                                  officeContact: data.contact,
-                                  index: i,
-                                  scrollController: _servicesScrollController,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (tenantHasDialableContact(data.contact))
-                        CinematicServiceDock(
-                          onPressed: onProfessionalPrimaryContact,
+                        slivers: ImmersiveLuxuryStoreExperience.buildSlivers(
+                          scrollController: _servicesScrollController,
+                          storeName: data.storeName,
+                          bannerUrl: data.bannerUrl,
+                          logoUrl: data.logoUrl,
+                          aboutPlain: data.aboutPlain,
+                          pillarTag: data.pillarTag,
+                          products: serviceProducts,
+                          marketSlug: widget.marketSlug,
+                          storeId: widget.storeId,
+                          tenantIdForLeads: data.tenantIdForLeads,
+                          officeContact: data.contact,
                         ),
+                      ),
                     ],
                   ),
                 );
@@ -465,7 +418,9 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     return NmdAppHeader(
       title: '',
       center: const SizedBox.shrink(),
-      leading: NmdAppHeader.backLeading(onPressed: () => context.pop()),
+      leading: NmdAppHeader.backLeading(
+        onPressed: () => safeNmdBack(context, marketSlug: widget.marketSlug),
+      ),
       actions: [
         NmdAppHeader.profileAction(
           onPressed: () async {

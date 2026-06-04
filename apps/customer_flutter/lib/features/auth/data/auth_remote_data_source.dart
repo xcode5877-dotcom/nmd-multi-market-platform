@@ -19,6 +19,7 @@ class AuthRemoteDataSource {
     if (phone.isEmpty) return null;
     return CustomerMeResult(
       phone: phone,
+      id: data['id']?.toString(),
       name: data['name']?.toString(),
     );
   }
