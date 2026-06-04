@@ -62,16 +62,13 @@ final GoRouter appRouter = GoRouter(
     ShellRoute(
       builder: (context, state, child) {
         final slug = state.pathParameters['slug']!;
-        return BlocProvider(
-          create: (ctx) => CoinsBalanceCubit(ctx.read<Dio>())..refresh(),
-          child: BlocListener<AuthBloc, AuthState>(
-            listenWhen: (prev, curr) =>
-                curr.step == AuthStep.done && prev.step != AuthStep.done,
-            listener: (ctx, _) {
-              ctx.read<CoinsBalanceCubit>().load();
-            },
-            child: MainLayout(marketSlug: slug, child: child),
-          ),
+        return BlocListener<AuthBloc, AuthState>(
+          listenWhen: (prev, curr) =>
+              curr.step == AuthStep.done && prev.step != AuthStep.done,
+          listener: (ctx, _) {
+            ctx.read<CoinsBalanceCubit>().loadForReason('auth');
+          },
+          child: MainLayout(marketSlug: slug, child: child),
         );
       },
       routes: [

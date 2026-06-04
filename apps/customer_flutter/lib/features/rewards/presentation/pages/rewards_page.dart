@@ -29,7 +29,7 @@ class _RewardsPageState extends State<RewardsPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<CoinsBalanceCubit>().load();
+      context.read<CoinsBalanceCubit>().loadForReason('redeem');
     });
   }
 

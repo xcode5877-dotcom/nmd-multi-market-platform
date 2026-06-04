@@ -222,7 +222,15 @@ async function sendFCMNotification(
       console.log('[FCM] sendFCMNotification: no token for customerId', customerId);
       return;
     }
-    await sendAdminFCMToToken(token, { title, body, data });
+    const payload = { title, body, data };
+    if (data?.type === 'coins_earned') {
+      console.log('[PUSH_COINS]', {
+        customerId,
+        amount: data?.coinsEarned ?? data?.amount ?? null,
+        payload,
+      });
+    }
+    await sendAdminFCMToToken(token, payload, 'customer_notifications');
   } catch (e) {
     console.warn('[FCM] sendFCMNotification failed for customerId', customerId, e);
   }
@@ -258,6 +266,7 @@ async function runLoyaltyAwardForOrderAtIndex(
         `حصلت على ${result.coinsEarned} عملة من اكتمال طلبك!`,
         {
           type: 'coins_earned',
+          amount: String(result.coinsEarned),
           coinsEarned: String(result.coinsEarned),
           newBalance: String(result.newBalance ?? ''),
         }

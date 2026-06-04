@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 final class CoinsBalanceState extends Equatable {
@@ -35,11 +36,25 @@ class CoinsBalanceCubit extends Cubit<CoinsBalanceState> {
 
   final Dio _dio;
 
-  Future<void> refresh() => _fetch(bustCache: false);
+  Future<void> refresh() => loadForReason('startup');
 
   /// Same balance fetch as [refresh], but adds cache-busting query params and
   /// no-cache headers so the client does not reuse a stale GET /customer/coins.
-  Future<void> load() => _fetch(bustCache: true);
+  Future<void> load() => loadForReason('manual');
+
+  /// Server-backed refresh with structured logs (`reason`: push, resume, redeem, startup, …).
+  Future<void> loadForReason(String reason) async {
+    final before = state.balance;
+    debugPrint(
+      '[COINS_REFRESH] reason=$reason before=$before success=pending',
+    );
+    await _fetch(bustCache: true);
+    final after = state.balance;
+    final success = !state.loading && (state.isAuthenticated || after != null);
+    debugPrint(
+      '[COINS_REFRESH] reason=$reason before=$before after=$after success=$success',
+    );
+  }
 
   void applyBalance(int balance) {
     emit(

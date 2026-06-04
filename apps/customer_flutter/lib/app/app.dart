@@ -8,6 +8,7 @@ import '../features/auth/data/auth_remote_data_source.dart';
 import '../features/auth/data/auth_repository_impl.dart';
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/cart/application/cart_cubit.dart';
+import '../features/loyalty/application/coins_balance_cubit.dart';
 import '../core/push/push_notification_listener.dart';
 import 'app_scroll_behavior.dart';
 import 'router.dart';
@@ -27,6 +28,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
   late final AuthRepositoryImpl _authRepository;
   late final AuthBloc _authBloc;
   late final CartCubit _cartCubit;
+  late final CoinsBalanceCubit _coinsBalanceCubit;
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
     );
     _authBloc = AuthBloc(_authRepository);
     _cartCubit = CartCubit();
+    _coinsBalanceCubit = CoinsBalanceCubit(_dio);
     // Warm session before first tap (coalesced with splash restore).
     _authBloc.restoreSession();
   }
@@ -47,6 +50,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
   @override
   void dispose() {
     _cartCubit.close();
+    _coinsBalanceCubit.close();
     _authBloc.close();
     _dio.close();
     super.dispose();
@@ -64,6 +68,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
         providers: [
           BlocProvider<AuthBloc>.value(value: _authBloc),
           BlocProvider<CartCubit>.value(value: _cartCubit),
+          BlocProvider<CoinsBalanceCubit>.value(value: _coinsBalanceCubit),
         ],
         child: PushNotificationListener(
           router: appRouter,

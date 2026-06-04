@@ -11,11 +11,16 @@ import 'package:go_router/go_router.dart';
 import '../../firebase_options.dart';
 import '../network/token_storage.dart';
 
+/// Refreshes customer coins from `GET /customer/coins` (server wallet).
+typedef CoinsBalanceRefresh = Future<void> Function(String reason);
+
 /// Customer FCM: permissions, token upload, foreground display, tap routing.
 final class PushNotificationService {
   PushNotificationService._();
 
   static final PushNotificationService instance = PushNotificationService._();
+
+  static const String _coinsRefreshPayload = '__nmd_coins_refresh__';
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -25,8 +30,13 @@ final class PushNotificationService {
   GoRouter? _router;
   Dio? _dio;
   TokenStorage? _tokenStorage;
+  CoinsBalanceRefresh? _coinsBalanceRefresh;
 
   bool get isReady => _firebaseReady;
+
+  void setCoinsBalanceRefresh(CoinsBalanceRefresh? refresh) {
+    _coinsBalanceRefresh = refresh;
+  }
 
   Future<void> bind({
     required GoRouter router,
@@ -62,6 +72,11 @@ final class PushNotificationService {
     }
   }
 
+  /// Refresh wallet once when app returns to foreground (resume).
+  Future<void> refreshCoinsOnAppResume() async {
+    await _refreshCoinsBalance(reason: 'resume', source: 'resume');
+  }
+
   Future<void> _bindInternal() async {
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -78,10 +93,12 @@ final class PushNotificationService {
     debugPrint('[FCM_CLIENT] permission=$permission');
 
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationTap);
+    FirebaseMessaging.onMessageOpenedApp.listen(
+      (message) => _onNotificationTap(message, source: 'tap'),
+    );
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
-      _onNotificationTap(initial);
+      _onNotificationTap(initial, source: 'initial');
     }
 
     FirebaseMessaging.instance.onTokenRefresh.listen((token) {
@@ -103,8 +120,14 @@ final class PushNotificationService {
     await _localNotifications.initialize(
       const InitializationSettings(android: android, iOS: ios),
       onDidReceiveNotificationResponse: (details) {
-        final route = details.payload;
-        if (route != null && route.isNotEmpty) {
+        final payload = details.payload;
+        if (payload == _coinsRefreshPayload) {
+          unawaited(_refreshCoinsBalance(reason: 'push', source: 'tap'));
+        }
+        final route = payload;
+        if (route != null &&
+            route.isNotEmpty &&
+            route != _coinsRefreshPayload) {
           _navigate(route);
         }
       },
@@ -194,6 +217,12 @@ final class PushNotificationService {
     final title = notification?.title ?? message.data['title']?.toString() ?? 'Now Market';
     final body = notification?.body ?? message.data['body']?.toString() ?? '';
     final route = message.data['route']?.toString() ?? '';
+    final isCoins = _isCoinsPush(message);
+
+    if (isCoins) {
+      _logCoinsPush(message, 'foreground');
+      unawaited(_refreshCoinsBalance(reason: 'push', source: 'foreground'));
+    }
 
     _localNotifications.show(
       message.hashCode,
@@ -209,11 +238,18 @@ final class PushNotificationService {
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      payload: route.isNotEmpty ? route : null,
+      payload: isCoins
+          ? _coinsRefreshPayload
+          : (route.isNotEmpty ? route : null),
     );
   }
 
-  void _onNotificationTap(RemoteMessage message) {
+  void _onNotificationTap(RemoteMessage message, {required String source}) {
+    if (_isCoinsPush(message)) {
+      _logCoinsPush(message, source);
+      unawaited(_refreshCoinsBalance(reason: 'push', source: source));
+    }
+
     final route = message.data['route']?.toString();
     final orderId = message.data['orderId']?.toString();
     if (route != null && route.isNotEmpty) {
@@ -225,6 +261,38 @@ final class PushNotificationService {
       return;
     }
     _navigate('/main');
+  }
+
+  bool _isCoinsPush(RemoteMessage message) {
+    final type = message.data['type']?.toString().toLowerCase() ?? '';
+    if (type == 'coins_earned' || type == 'coins') return true;
+    final amount = message.data['amount'] ?? message.data['coinsEarned'];
+    return amount != null && amount.toString().trim().isNotEmpty;
+  }
+
+  void _logCoinsPush(RemoteMessage message, String source) {
+    debugPrint(
+      '[COINS_PUSH] messageId=${message.messageId} '
+      'type=${message.data['type']} '
+      'amount=${message.data['amount'] ?? message.data['coinsEarned']} '
+      'source=$source',
+    );
+  }
+
+  Future<void> _refreshCoinsBalance({
+    required String reason,
+    required String source,
+  }) async {
+    final refresh = _coinsBalanceRefresh;
+    if (refresh == null) {
+      debugPrint('[COINS_PUSH] refresh skipped (no handler) source=$source');
+      return;
+    }
+    try {
+      await refresh(reason);
+    } catch (e, st) {
+      debugPrint('[COINS_PUSH] refresh failed source=$source $e\n$st');
+    }
   }
 
   void _navigate(String path) {
