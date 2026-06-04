@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,16 +9,33 @@ import '../../../../core/app_update/app_update_gate.dart';
 
 const String _playStorePackageId = 'com.nowmarket.app';
 
-/// Full-screen blocking update prompt (Android force-update gate).
+/// Full-screen blocking update prompt (force-update gate).
 class ForceUpdatePage extends StatelessWidget {
   const ForceUpdatePage({
     super.key,
     required this.messageAr,
+    this.iosAppStoreId,
   });
 
   final String messageAr;
 
-  Future<void> _openPlayStore() async {
+  /// Required on iOS to open the App Store; ignored on Android.
+  final String? iosAppStoreId;
+
+  Future<void> _openStore() async {
+    if (!kIsWeb && Platform.isIOS) {
+      final id = iosAppStoreId?.trim();
+      if (id == null || id.isEmpty) return;
+      final itmsUri = Uri.parse('itms-apps://itunes.apple.com/app/id$id');
+      if (await canLaunchUrl(itmsUri)) {
+        await launchUrl(itmsUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+      final webUri = Uri.parse('https://apps.apple.com/app/id$id');
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
     final marketUri = Uri.parse('market://details?id=$_playStorePackageId');
     if (await canLaunchUrl(marketUri)) {
       await launchUrl(marketUri, mode: LaunchMode.externalApplication);
@@ -72,7 +92,7 @@ class ForceUpdatePage extends StatelessWidget {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton(
-                    onPressed: _openPlayStore,
+                    onPressed: _openStore,
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF0F6F6B),

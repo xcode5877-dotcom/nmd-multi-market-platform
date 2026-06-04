@@ -24,6 +24,7 @@ class SplashPage extends StatefulWidget {
 class _SplashPageState extends State<SplashPage> {
   bool _forceUpdate = false;
   String _forceUpdateMessage = kDefaultForceUpdateMessageAr;
+  String? _forceUpdateAppStoreId;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _SplashPageState extends State<SplashPage> {
       setState(() {
         _forceUpdate = true;
         _forceUpdateMessage = updateGate.messageAr;
+        _forceUpdateAppStoreId = updateGate.iosAppStoreId;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WidgetsBinding.instance.allowFirstFrame();
@@ -108,7 +110,10 @@ class _SplashPageState extends State<SplashPage> {
   @override
   Widget build(BuildContext context) {
     if (_forceUpdate) {
-      return ForceUpdatePage(messageAr: _forceUpdateMessage);
+      return ForceUpdatePage(
+        messageAr: _forceUpdateMessage,
+        iosAppStoreId: _forceUpdateAppStoreId,
+      );
     }
     return Scaffold(
       backgroundColor: const Color(0xFF0F6F6B),

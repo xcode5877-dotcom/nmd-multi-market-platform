@@ -87,6 +87,7 @@
 		<false/>
 		<key>LSApplicationQueriesSchemes</key>
 		<array>
+			<string>itms-apps</string>
 			<string>whatsapp</string>
 			<string>tel</string>
 			<string>https</string>

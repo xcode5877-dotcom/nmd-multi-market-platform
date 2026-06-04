@@ -10,11 +10,15 @@ Package: `com.nowmarket.app`
 
 ## iOS
 
-1. Add iOS app in the same Firebase project (bundle ID from Xcode).
-2. Download `GoogleService-Info.plist` into `apps/customer_flutter/ios/Runner/`.
+1. Add iOS app in the same Firebase project (bundle ID **`com.nowmarket.app`**).
+2. Download **`GoogleService-Info.plist`** from Firebase Console and place it at:
+   `apps/customer_flutter/ios/Runner/GoogleService-Info.plist`
+   **Do not commit a hand-edited or placeholder plist** — use the file from Firebase only.
 3. Upload **APNs Authentication Key** (.p8) in Firebase → Project settings → Cloud Messaging.
-4. Enable Push Notifications capability in Xcode for the Runner target.
-5. Rebuild: `flutter build ios --release`.
+4. On macOS, refresh pods: `cd apps/customer_flutter/ios && pod install`
+5. Xcode Runner target: **Push Notifications** capability (repo includes `Runner/Runner.entitlements` with `aps-environment`).
+6. Set **`IOS_APP_STORE_ID`** on mock-api for iOS force-update App Store links (numeric id only).
+7. Rebuild: `flutter build ios --release` or `flutter build ipa --release`.
 
 ## Backend
 

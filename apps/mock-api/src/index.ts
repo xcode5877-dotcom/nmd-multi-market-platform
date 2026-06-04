@@ -10160,10 +10160,28 @@ app.get('/health', async (_req, res) => {
 
 /** Public mobile app version policy (force-update gate). */
 app.get('/app-config', (_req, res) => {
+  const iosAppStoreId = String(
+    process.env.IOS_APP_STORE_ID ?? process.env.NMD_IOS_APP_STORE_ID ?? '',
+  ).trim();
+  const iosMinimumBuild = Number.parseInt(
+    process.env.IOS_MINIMUM_BUILD_NUMBER ?? '24',
+    10,
+  );
+  const iosLatestBuild = Number.parseInt(
+    process.env.IOS_LATEST_BUILD_NUMBER ?? '30',
+    10,
+  );
   res.json({
     android: {
       minimumVersionCode: 29,
       latestVersionCode: 30,
+      forceUpdateMessageAr: 'يرجى تحديث التطبيق للاستمرار',
+      optionalUpdateMessageAr: 'يتوفر تحديث جديد للتطبيق',
+    },
+    ios: {
+      minimumBuildNumber: Number.isFinite(iosMinimumBuild) ? iosMinimumBuild : 24,
+      latestBuildNumber: Number.isFinite(iosLatestBuild) ? iosLatestBuild : 30,
+      appStoreId: iosAppStoreId,
       forceUpdateMessageAr: 'يرجى تحديث التطبيق للاستمرار',
       optionalUpdateMessageAr: 'يتوفر تحديث جديد للتطبيق',
     },
