@@ -1025,6 +1025,7 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'POST', path: /^\/auth\/login$/ },
   { method: 'POST', path: /^\/auth\/verify-otp$/ },
   { method: 'GET', path: /^\/health$/ },
+  { method: 'GET', path: /^\/app-config$/ },
   { method: 'GET', path: /^\/storefront\/tenants$/ },
   { method: 'GET', path: /^\/markets$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+$/ },
@@ -3111,6 +3112,24 @@ app.get('/rewards', wrapAsync(async (req, res) => {
     } as Record<string, unknown>);
   }
   res.json(out);
+}));
+
+/** GET /rewards/:rewardId — single reward for detail/debug (public catalog item). */
+app.get('/rewards/:rewardId', wrapAsync(async (req, res) => {
+  const rewardId = String(req.params.rewardId ?? '').trim();
+  const reward = rewardId
+    ? await prisma.globalReward.findUnique({ where: { id: rewardId } })
+    : null;
+  const found = !!(reward && reward.isActive);
+  console.log('[REWARD_DETAILS]', {
+    rewardId,
+    found,
+    payload: reward ? rewardToPublicJson(reward) : null,
+  });
+  if (!found || !reward) {
+    return res.status(404).json({ error: 'Reward not found' });
+  }
+  res.json(rewardToPublicJson(reward));
 }));
 
 /** GET /admin/rewards — platform admin full list. */
@@ -7637,6 +7656,46 @@ function enrichOptionItemForCustomer(
   };
 }
 
+/** Products often embed stale optionGroups; merge canonical modifierIconKey from catalog.optionGroups. */
+function hydrateProductOptionGroupsFromCanonical<
+  T extends {
+    products?: Array<{ optionGroups?: Array<{ id?: string; items?: unknown[] }>; [key: string]: unknown }>;
+    optionGroups?: Array<{ id?: string; items?: unknown[]; [key: string]: unknown }>;
+  },
+>(catalog: T): T {
+  const canonicalById = new Map<string, { id?: string; items?: unknown[]; [key: string]: unknown }>();
+  for (const g of catalog.optionGroups ?? []) {
+    const id = String((g as { id?: string }).id ?? '').trim();
+    if (id) canonicalById.set(id, g as { id?: string; items?: unknown[]; [key: string]: unknown });
+  }
+  const products = (catalog.products ?? []).map((p) => {
+    const embedded = p.optionGroups;
+    if (!Array.isArray(embedded) || embedded.length === 0) return p;
+    const hydrated = embedded.map((eg) => {
+      const groupId = String((eg as { id?: string }).id ?? '').trim();
+      const canon = groupId ? canonicalById.get(groupId) : undefined;
+      if (!canon) return eg;
+      const items = (canon.items ?? []) as Array<Record<string, unknown>>;
+      for (const it of items) {
+        const modifierId = String(it.id ?? '').trim();
+        const iconKey = String(it.modifierIconKey ?? it.modifier_icon_key ?? '').trim();
+        const iconUrl = String(it.iconUrl ?? it.icon_url ?? '').trim();
+        if (iconKey) {
+          console.log('[MODIFIER_ICON]', {
+            modifierId,
+            iconKey,
+            iconUrl: iconUrl || null,
+            source: 'catalog.optionGroups',
+          });
+        }
+      }
+      return canon;
+    });
+    return { ...p, optionGroups: hydrated };
+  });
+  return { ...catalog, products };
+}
+
 function enrichCatalogForCustomerView(
   catalog: {
     categories?: unknown[];
@@ -7683,14 +7742,12 @@ app.get('/catalog/:tenantId', wrapAsync(async (req, res) => {
     const pricingCtx = await resolveTenantPricingContext(tenantId);
     const sortByOrder = (a: { sortOrder?: number }, b: { sortOrder?: number }) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
     const products = [...(catalog.products ?? [])].sort(sortByOrder);
-    const sorted = enrichCatalogForCustomerView(
-      {
-        ...catalog,
-        categories: [...(catalog.categories ?? [])].sort(sortByOrder),
-        products,
-      },
-      pricingCtx
-    );
+    const hydrated = hydrateProductOptionGroupsFromCanonical({
+      ...catalog,
+      categories: [...(catalog.categories ?? [])].sort(sortByOrder),
+      products,
+    });
+    const sorted = enrichCatalogForCustomerView(hydrated, pricingCtx);
     res.json(sorted);
   } catch (err) {
     console.error('[catalog] getCatalog failed:', err instanceof Error ? err.message : err);
@@ -10099,6 +10156,18 @@ app.get('/', (_req, res) => {
 
 app.get('/health', async (_req, res) => {
   res.json({ ok: true });
+});
+
+/** Public mobile app version policy (force-update gate). */
+app.get('/app-config', (_req, res) => {
+  res.json({
+    android: {
+      minimumVersionCode: 29,
+      latestVersionCode: 30,
+      forceUpdateMessageAr: 'يرجى تحديث التطبيق للاستمرار',
+      optionalUpdateMessageAr: 'يتوفر تحديث جديد للتطبيق',
+    },
+  });
 });
 
 /** Verification: return tenant list and whether شغف (Shaghaf) appears (for volume/cache checks). Public. */

@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../api/storefront_api.dart';
+import '../../../../core/app_update/app_update_gate.dart';
+import '../../../app_update/presentation/pages/force_update_page.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 
 void _logSplash(Object message) {
@@ -20,6 +22,9 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage> {
+  bool _forceUpdate = false;
+  String _forceUpdateMessage = kDefaultForceUpdateMessageAr;
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +35,19 @@ class _SplashPageState extends State<SplashPage> {
     if (!mounted) return;
     final authBloc = context.read<AuthBloc>();
     final dio = context.read<Dio>();
+
+    final updateGate = await AppUpdateGate.check(dio);
+    if (!mounted) return;
+    if (updateGate.mustForceUpdate) {
+      setState(() {
+        _forceUpdate = true;
+        _forceUpdateMessage = updateGate.messageAr;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.allowFirstFrame();
+      });
+      return;
+    }
     if (authBloc.state.step != AuthStep.done) {
       try {
         await authBloc
@@ -89,6 +107,9 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_forceUpdate) {
+      return ForceUpdatePage(messageAr: _forceUpdateMessage);
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0F6F6B),
       body: const SizedBox.expand(),

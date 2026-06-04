@@ -68,6 +68,7 @@ bool isPublicBrowseEndpoint(String path) {
   if (RegExp(r'^/catalog/[^/]+$').hasMatch(normalized)) return true;
   if (normalized == '/pillars' || normalized == '/sub-categories') return true;
   if (normalized == '/markets') return true;
+  if (normalized == '/app-config') return true;
   return classifyEndpointAuth(normalized) == EndpointAuthMode.public;
 }
 
