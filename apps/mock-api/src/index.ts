@@ -102,6 +102,7 @@ import { sendWhatsAppNotification } from './services/CouponService.js';
 import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
 import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast, isFCMConfigured } from './firebase-admin.js';
 import { awardLoyaltyCoinsIfNeeded, INITIAL_COINS } from './loyalty-coins.js';
+import { findCustomerCoinRow } from './customer-coin-wallet.js';
 import {
   loadHypConfig,
   loadHypConfigDiagnostics,
@@ -3643,25 +3644,6 @@ function normalizePhoneForCoupon(phone: string | undefined): string {
   return normalizeCustomerPhoneKey(phone);
 }
 
-/** Find coin row by canonical phone, migrating legacy phone keys when found. */
-async function findCustomerCoinRow(phone: string): Promise<{ row: { balance: number; customerPhone: string } | null; key: string }> {
-  const key = normalizePhoneForCoupon(phone);
-  if (!key) return { row: null, key: '' };
-  let row = await prisma.customerCoin.findUnique({ where: { customerPhone: key } });
-  if (row) return { row, key };
-  for (const variant of customerPhoneLookupVariants(phone)) {
-    if (variant === key) continue;
-    const legacy = await prisma.customerCoin.findUnique({ where: { customerPhone: variant } });
-    if (legacy) {
-      await prisma.customerCoin.update({
-        where: { customerPhone: variant },
-        data: { customerPhone: key, updatedAt: new Date().toISOString() },
-      });
-      return { row: { balance: legacy.balance, customerPhone: key }, key };
-    }
-  }
-  return { row: null, key };
-}
 
 app.get('/coupons/validate', wrapAsync(async (req, res) => {
   const code = (req.query.code as string)?.trim()?.toUpperCase();
@@ -3837,14 +3819,17 @@ function withPaymentWebViewToken(req: express.Request, paymentUrl: string): stri
 app.get('/customer/coins', wrapAsync(async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
-  const phoneNorm = normalizePhoneForCoupon(customer.phone);
-  if (!phoneNorm) return res.json({ balance: INITIAL_COINS, spinCost: SPIN_COST });
   try {
-    const row = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
+    const { row, key } = await findCustomerCoinRow(prisma, customer.phone);
     const balance = row?.balance ?? INITIAL_COINS;
+    console.log('[COINS_READ]', {
+      jwtCustomerId: customer.id,
+      phone: customer.phone,
+      walletKey: key,
+      balance,
+    });
     return res.json({ balance, spinCost: SPIN_COST });
   } catch {
-    // Hard fallback to keep UI alive even if DB lookup fails.
     return res.json({ balance: INITIAL_COINS, spinCost: SPIN_COST });
   }
 }));

@@ -1,11 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
 import type { RegistryTenant } from './store.js';
 import type { Repos } from './repos/types.js';
+import { findCustomerCoinRow, walletPhoneKey } from './customer-coin-wallet.js';
 
 export const INITIAL_COINS = 50;
 
+/** @deprecated Use walletPhoneKey / normalizeCustomerPhoneKey — kept for imports. */
 export function normalizeCouponPhone(phone: string | undefined): string {
-  return String(phone ?? '').replace(/\D/g, '').trim();
+  return walletPhoneKey(phone);
 }
 
 /** Every 10 ILS spent → 5 coins (floor). */
@@ -256,21 +258,14 @@ export async function awardLoyaltyCoinsIfNeeded(options: {
   }
 
   const now = new Date().toISOString();
-  const existing = await prisma.customerCoin.findUnique({ where: { customerPhone: phoneNorm } });
-  const balanceBefore = existing?.balance ?? INITIAL_COINS;
-  let newBalance: number;
-  if (existing) {
-    newBalance = existing.balance + coinsEarned;
-    await prisma.customerCoin.update({
-      where: { customerPhone: phoneNorm },
-      data: { balance: newBalance, updatedAt: now },
-    });
-  } else {
-    newBalance = INITIAL_COINS + coinsEarned;
-    await prisma.customerCoin.create({
-      data: { customerPhone: phoneNorm, balance: newBalance, updatedAt: now },
-    });
-  }
+  const { row: existingCoin, key: walletKey } = await findCustomerCoinRow(prisma, phoneNorm);
+  const balanceBefore = existingCoin?.balance ?? INITIAL_COINS;
+  const newBalance = balanceBefore + coinsEarned;
+  await prisma.customerCoin.upsert({
+    where: { customerPhone: walletKey },
+    create: { customerPhone: walletKey, balance: newBalance, updatedAt: now },
+    update: { balance: newBalance, updatedAt: now },
+  });
 
   let customerId: string | undefined;
   const customers = await repos.customers.findAll();
@@ -279,6 +274,7 @@ export async function awardLoyaltyCoinsIfNeeded(options: {
 
   console.log('[COINS_GRANT]', {
     customerId: customerId ?? phoneNorm,
+    walletKey,
     amount: coinsEarned,
     balanceBefore,
     balanceAfter: newBalance,
