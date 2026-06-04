@@ -76,6 +76,7 @@ import {
   setModifierIconsForMarket,
   getHomePageBlocksForMarket,
   getHomePageBlocksForMarketAdmin,
+  logHomePageBlocksGet,
   setHomePageBlocksForMarket,
   validateHomePageBlocks,
   normalizeMarketSlugForConfig,
@@ -6578,9 +6579,11 @@ app.get('/markets/by-slug/:slug/home-page-blocks', async (req, res) => {
         return res.status(403).json({ error: 'Forbidden' });
       }
       const list = getHomePageBlocksForMarketAdmin(slugNorm);
+      logHomePageBlocksGet(slugNorm, list, true);
       return res.json(Array.isArray(list) ? list : []);
     }
     const list = getHomePageBlocksForMarket(slugNorm);
+    logHomePageBlocksGet(slugNorm, list, false);
     return res.json(Array.isArray(list) ? list : []);
   } catch (err) {
     console.error('[HOME_PAGE_BLOCKS_API] GET failed — returning []', err);
@@ -6612,7 +6615,6 @@ app.put('/markets/by-slug/:slug/home-page-blocks', async (req, res) => {
   try {
     setHomePageBlocksForMarket(slugNorm, blocks);
     const saved = getHomePageBlocksForMarketAdmin(slugNorm);
-    console.log(`[HOME_PAGE_BLOCKS_API] PUT slug=${slugNorm} count=${saved.length}`);
     return res.json(Array.isArray(saved) ? saved : []);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to save home page blocks';

@@ -1,4 +1,6 @@
 import type { FeedCampaign, HomeFeedSettings } from './types/feedCampaign';
+import type { ModifierIcon } from './types/modifierIcon';
+import { normalizeModifierIconsList } from './types/modifierIcon';
 import type { HomePageBlock } from './types/homePageBlock';
 import { normalizeHomePageBlocksList } from './types/homePageBlock';
 import {
@@ -466,6 +468,26 @@ export async function saveHomeFeedSettings(
   });
 }
 
+/** GET shared modifier icon library (Super Admin — includes inactive). */
+export async function listMarketModifierIcons(marketSlug: string): Promise<ModifierIcon[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/modifier-icons?all=1`);
+  return normalizeModifierIconsList(raw);
+}
+
+/** PUT shared modifier icon library (Super Admin only). */
+export async function saveMarketModifierIcons(
+  marketSlug: string,
+  icons: ModifierIcon[],
+): Promise<ModifierIcon[]> {
+  const slug = encodeURIComponent(marketSlug.trim());
+  const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/modifier-icons`, {
+    method: 'PUT',
+    body: JSON.stringify(icons),
+  });
+  return normalizeModifierIconsList(raw);
+}
+
 /** GET ordered homepage blocks (admin — includes hidden). */
 export async function listMarketHomePageBlocks(marketSlug: string): Promise<HomePageBlock[]> {
   const slug = encodeURIComponent(marketSlug.trim());
@@ -480,12 +502,35 @@ export async function saveMarketHomePageBlocks(
 ): Promise<HomePageBlock[]> {
   const slug = encodeURIComponent(marketSlug.trim());
   const payload = blocks.map((b, i) => ({ ...b, sortOrder: i }));
-  console.log('[HOME_PAGE_BUILDER_SAVE]', { marketSlug: marketSlug.trim(), blockCount: payload.length });
+  console.log(
+    '[HOME_BUILDER_SAVE]',
+    JSON.stringify({
+      marketSlug: marketSlug.trim(),
+      blockCount: payload.length,
+      payloadOrder: payload.map((b, i) => ({ id: b.id, type: b.type, sortOrder: i })),
+      payloadImages: payload
+        .filter((b) => b.type === 'CUSTOM_IMAGE_BANNER')
+        .map((b) => ({
+          blockId: b.id,
+          blockType: b.type,
+          imageUrl: String(b.config?.imageUrl ?? ''),
+        })),
+    }),
+  );
   const raw = await apiFetch<unknown>(`/markets/by-slug/${slug}/home-page-blocks`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
   const saved = normalizeHomePageBlocksList(raw);
-  console.log('[HOME_PAGE_BUILDER_SAVE]', { savedCount: saved.length });
+  console.log(
+    '[HOME_BUILDER_SAVE]',
+    JSON.stringify({
+      marketSlug: marketSlug.trim(),
+      savedCount: saved.length,
+      savedImages: saved
+        .filter((b) => b.type === 'CUSTOM_IMAGE_BANNER')
+        .map((b) => ({ blockId: b.id, imageUrl: String(b.config?.imageUrl ?? '') })),
+    }),
+  );
   return saved;
 }

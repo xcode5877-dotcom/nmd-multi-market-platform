@@ -3,13 +3,13 @@
  * Path: /data/market-config.json (persistent volume in Docker). Override with MARKET_CONFIG_FILE.
  * API: GET/PUT /markets/by-slug/:slug/banners, GET/PUT /markets/by-slug/:slug/layout
  *
- * Load order: tries several paths in priority order; for each market slug the first file with a
- * non-empty banners/layout array wins. Repo `data/market-config.json` fills gaps when the volume
- * file is missing keys or has empty arrays (so real image URLs from source control are used).
+ * Load order: merges legacy/repo paths, then the persistent file (MARKET_CONFIG_FILE or
+ * DATA_DIR/market-config.json) wins for banners, layout, and home-page builder data.
+ * Saves always write to that persistent file only.
  */
 
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import type { ModifierIcon } from '@nmd/core';
 
 export interface MarketBanner {
@@ -227,9 +227,16 @@ function ensureFeedCampaignsMap(store: MarketConfigStore): Record<string, Market
   return normalized;
 }
 
-/** Primary write target (same as first read candidate when env set). */
-const PRIMARY_CONFIG_FILE = process.env.MARKET_CONFIG_FILE || join(process.cwd(), 'market-config.json');
-/** Legacy path for one-time migration into persistent dir. */
+/** Persistent market config (Docker volume: /app/data/market-config.json). */
+function resolvePrimaryMarketConfigFile(): string {
+  const fromEnv = process.env.MARKET_CONFIG_FILE?.trim();
+  if (fromEnv) return fromEnv;
+  const dataDir = process.env.DATA_DIR?.trim() || join(process.cwd(), '../../data');
+  return join(dataDir, 'market-config.json');
+}
+
+const PRIMARY_CONFIG_FILE = resolvePrimaryMarketConfigFile();
+/** Legacy cwd file (ephemeral in Docker — merged only as fallback). */
 const LEGACY_CONFIG_FILE = join(process.cwd(), 'market-config.json');
 
 const DEFAULT_BANNERS: MarketBanner[] = [
@@ -385,19 +392,36 @@ const SEED_FEED_CAMPAIGNS: Record<string, MarketFeedCampaign[]> = {
   ],
 };
 
+/** Read candidates: legacy/repo paths first, persistent PRIMARY last (wins on merge). */
 function marketConfigPathCandidates(): string[] {
   const list = [
-    process.env.MARKET_CONFIG_FILE?.trim(),
-    join(process.cwd(), 'market-config.json'),
+    LEGACY_CONFIG_FILE,
     join(process.cwd(), 'data', 'market-config.json'),
     join(process.cwd(), '..', '..', 'data', 'market-config.json'),
-  ].filter((p): p is string => Boolean(p));
+    PRIMARY_CONFIG_FILE,
+  ];
   const seen = new Set<string>();
   return list.filter((p) => {
     if (seen.has(p)) return false;
     seen.add(p);
     return true;
   });
+}
+
+function homePageBlocksLogSummary(blocks: HomePageBlock[]): Array<{
+  id: string;
+  type: string;
+  sortOrder: number;
+  imageUrl?: string;
+}> {
+  return blocks.map((b, i) => ({
+    id: b.id,
+    type: b.type,
+    sortOrder: Number.isFinite(b.sortOrder) ? b.sortOrder : i,
+    ...(b.type === 'CUSTOM_IMAGE_BANNER'
+      ? { imageUrl: String((b.config as Record<string, unknown>)?.imageUrl ?? '').trim() }
+      : {}),
+  }));
 }
 
 function tryReadMarketConfigFile(path: string): Partial<MarketConfigStore> | null {
@@ -432,8 +456,8 @@ function mergeMarketConfigLayers(layers: Partial<MarketConfigStore>[]): MarketCo
 
   for (const k of bannerKeys) {
     let chosen: MarketBanner[] | undefined;
-    for (const L of layers) {
-      const row = L.banners?.[k];
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const row = layers[i].banners?.[k];
       if (Array.isArray(row) && row.length > 0) {
         chosen = row.map((b) => ({ ...b }));
         break;
@@ -443,8 +467,8 @@ function mergeMarketConfigLayers(layers: Partial<MarketConfigStore>[]): MarketCo
   }
   for (const k of layoutKeys) {
     let chosen: MarketSection[] | undefined;
-    for (const L of layers) {
-      const row = L.layout?.[k];
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const row = layers[i].layout?.[k];
       if (Array.isArray(row) && row.length > 0) {
         chosen = row.map((s) => ({ ...s }));
         break;
@@ -563,17 +587,19 @@ function mergeMarketConfigLayers(layers: Partial<MarketConfigStore>[]): MarketCo
 
   const homePageBlocks: Record<string, HomePageBlock[]> = {};
   const homePageBuilderEnabled: Record<string, boolean> = {};
-  for (const L of layers) {
-    if (L.homePageBuilderEnabled) {
-      for (const [k, v] of Object.entries(L.homePageBuilderEnabled)) {
-        if (v === true) homePageBuilderEnabled[normalizeMarketSlugForConfig(k)] = true;
+  for (const k of homePageBlockKeys) {
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const en = layers[i].homePageBuilderEnabled;
+      if (en && Object.prototype.hasOwnProperty.call(en, k) && en[k] === true) {
+        homePageBuilderEnabled[normalizeMarketSlugForConfig(k)] = true;
+        break;
       }
     }
   }
   for (const k of homePageBlockKeys) {
     let chosen: HomePageBlock[] | undefined;
-    for (const norm of layerHomeBlockMaps) {
-      const row = norm[k];
+    for (let i = layerHomeBlockMaps.length - 1; i >= 0; i--) {
+      const row = layerHomeBlockMaps[i][k];
       if (Array.isArray(row) && row.length > 0) {
         chosen = row.map((x) => ({ ...x, config: { ...x.config } }));
         break;
@@ -636,15 +662,45 @@ const DEFAULT_HOME_FEED_SETTINGS: HomeFeedSettings = {
 /** One-time migration: copy legacy market-config.json to persistent path if it exists and new path is missing. */
 function migrateFromLegacyIfNeeded(): void {
   if (!existsSync(LEGACY_CONFIG_FILE)) return;
-  const target = process.env.MARKET_CONFIG_FILE || join(process.cwd(), 'market-config.json');
-  if (existsSync(target)) return;
+  const target = PRIMARY_CONFIG_FILE;
+  if (resolve(LEGACY_CONFIG_FILE) === resolve(target)) return;
+  if (!existsSync(target)) {
+    try {
+      const dir = dirname(target);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      copyFileSync(LEGACY_CONFIG_FILE, target);
+      console.log('[market-config] Migrated from', LEGACY_CONFIG_FILE, 'to', target);
+      return;
+    } catch (err) {
+      console.warn('[market-config] Migration copy failed (will use defaults):', err instanceof Error ? err.message : err);
+    }
+  }
   try {
-    const dir = dirname(target);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    copyFileSync(LEGACY_CONFIG_FILE, target);
-    console.log('[market-config] Migrated from', LEGACY_CONFIG_FILE, 'to', target);
+    const legacy = JSON.parse(readFileSync(LEGACY_CONFIG_FILE, 'utf-8')) as Partial<MarketConfigStore>;
+    const primary = JSON.parse(readFileSync(target, 'utf-8')) as Partial<MarketConfigStore>;
+    const legacyBlocks = legacy.homePageBlocks ?? {};
+    const primaryBlocks = primary.homePageBlocks ?? {};
+    const legacyEnabled = legacy.homePageBuilderEnabled ?? {};
+    let merged = false;
+    for (const [slug, rows] of Object.entries(legacyBlocks)) {
+      const key = normalizeMarketSlugForConfig(slug);
+      if (legacyEnabled[slug] !== true && legacyEnabled[key] !== true) continue;
+      const hasPrimary =
+        Array.isArray(primaryBlocks[key]) && (primaryBlocks[key] as HomePageBlock[]).length > 0;
+      if (!hasPrimary && Array.isArray(rows) && rows.length > 0) {
+        if (!primary.homePageBlocks) primary.homePageBlocks = {};
+        primary.homePageBlocks[key] = rows;
+        if (!primary.homePageBuilderEnabled) primary.homePageBuilderEnabled = {};
+        primary.homePageBuilderEnabled[key] = true;
+        merged = true;
+      }
+    }
+    if (merged) {
+      writeFileSync(target, JSON.stringify(primary, null, 2), 'utf-8');
+      console.log('[market-config] Merged ephemeral home builder data into', target);
+    }
   } catch (err) {
-    console.warn('[market-config] Migration copy failed (will use defaults):', err instanceof Error ? err.message : err);
+    console.warn('[market-config] Ephemeral builder merge skipped:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -673,14 +729,16 @@ function load(): MarketConfigStore {
 }
 
 function save(store: MarketConfigStore): void {
+  const target = PRIMARY_CONFIG_FILE;
+  const dir = dirname(target);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   try {
-    const target = PRIMARY_CONFIG_FILE;
-    const dir = dirname(target);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(target, JSON.stringify(store, null, 2), 'utf-8');
     cache = null;
   } catch (err) {
-    console.error('[market-config] Failed to persist:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[market-config] Failed to persist:', msg, 'path=', target);
+    throw new Error(`Failed to persist market config: ${msg}`);
   }
 }
 
@@ -1038,6 +1096,9 @@ export function stripStaleStoreSectionStoreIds(blocks: HomePageBlock[]): HomePag
 
 export function setHomePageBlocksForMarket(marketSlug: string, blocks: HomePageBlock[]): void {
   const key = normalizeMarketSlugForConfig(marketSlug);
+  const store = getStore();
+  const mapBefore = ensureHomePageBlocksMap(store);
+  const existingBlocks = coerceHomePageBlockList(mapBefore[key] ?? []);
   const enriched = normalizeStoreSectionBlockConfigs(blocks);
   const normalized = coerceHomePageBlockList(enriched).map((b, i) => ({
     ...b,
@@ -1047,10 +1108,37 @@ export function setHomePageBlocksForMarket(marketSlug: string, blocks: HomePageB
   if (validationErrors.length > 0) {
     throw new Error(validationErrors.join(' · '));
   }
-  const store = getStore();
+  console.log(
+    '[HOME_BUILDER_SAVE]',
+    JSON.stringify({
+      marketSlug: key,
+      incomingBlocks: blocks.length,
+      existingBlocks: existingBlocks.length,
+      mergedBlocks: normalized.length,
+      persistedBlocks: homePageBlocksLogSummary(normalized),
+      persistPath: PRIMARY_CONFIG_FILE,
+    }),
+  );
   if (!store.homePageBuilderEnabled) store.homePageBuilderEnabled = {};
   store.homePageBuilderEnabled[key] = true;
   const map = ensureHomePageBlocksMap(store);
   map[key] = normalized;
   save(store);
+}
+
+/** Log summary for GET /home-page-blocks (admin + storefront). */
+export function logHomePageBlocksGet(marketSlug: string, blocks: HomePageBlock[], admin: boolean): void {
+  const key = normalizeMarketSlugForConfig(marketSlug);
+  console.log(
+    '[HOME_BUILDER_GET]',
+    JSON.stringify({
+      marketSlug: key,
+      admin,
+      blockCount: blocks.length,
+      blocks: homePageBlocksLogSummary(blocks),
+      images: blocks
+        .filter((b) => b.type === 'CUSTOM_IMAGE_BANNER')
+        .map((b) => String((b.config as Record<string, unknown>)?.imageUrl ?? '')),
+    }),
+  );
 }

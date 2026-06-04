@@ -141,7 +141,11 @@ export default function HomePageBuilderPage() {
     return m;
   }, [campaigns]);
 
+  const dirtyRef = useRef(false);
+  dirtyRef.current = homePageBlocksSnapshotKey(working) !== serverKey;
+
   useEffect(() => {
+    if (dirtyRef.current) return;
     const sorted = normalizeHomePageBlocksList(blocks);
     setWorking(sorted);
     setServerKey(homePageBlocksSnapshotKey(sorted));

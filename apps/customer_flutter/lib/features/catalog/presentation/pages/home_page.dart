@@ -47,6 +47,7 @@ import '../../../home/presentation/widgets/feed_campaigns/food_mood_discovery_bl
 import '../../../home/presentation/widgets/feed_campaigns/new_store_story_card.dart';
 import '../../../home/presentation/widgets/feed_campaigns/rewards_discovery_editorial_card.dart';
 import '../../../home/presentation/feed/feed_campaign_actions.dart';
+import '../../../loyalty/application/coins_balance_cubit.dart';
 
 /// Matches route `?pillar=` to pillar chip id from GET `/pillars` (trimmed string equality).
 bool _pillarQueryMatchesChip(String? queryPillar, String itemId) =>
@@ -125,6 +126,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _layoutFuture = _fetchLayout();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CoinsBalanceCubit>().loadForReason('home');
+    });
   }
 
   @override
@@ -834,6 +839,10 @@ class _HomePageState extends State<HomePage> {
       switch (block.type) {
         case HomePageBlockType.heroBanners:
           if (layout.banners.isNotEmpty) {
+            nmdFeedTrace(
+              '[HOME_BUILDER_RENDER] blockId=${block.id} blockType=HERO_BANNERS '
+              'imageUrl=${layout.banners.first.imageUrl} source=api',
+            );
             slivers.add(
               SliverToBoxAdapter(
                 child: _BannerCarousel(banners: layout.banners),
@@ -944,6 +953,11 @@ class _HomePageState extends State<HomePage> {
           );
           break;
         case HomePageBlockType.customImageBanner:
+          final customUrl = block.config['imageUrl']?.toString() ?? '';
+          nmdFeedTrace(
+            '[HOME_BUILDER_RENDER] blockId=${block.id} blockType=CUSTOM_IMAGE_BANNER '
+            'imageUrl=$customUrl source=${customUrl.trim().isEmpty ? 'fallback' : 'api'}',
+          );
           slivers.add(
             SliverToBoxAdapter(
               child: Padding(

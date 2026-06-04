@@ -1,3 +1,8 @@
+# syntax=docker/dockerfile:1
+# Build context MUST be the monorepo root (folder with package.json, pnpm-workspace.yaml, apps/, packages/).
+#   docker compose build mock-api
+#   docker build -f Dockerfile.mock-api .
+# (run both from the repository root — same directory as Dockerfile.mock-api)
 FROM node:20-alpine
 
 # Prisma/OpenSSL: Alpine has /bin/sh for RUN; openssl + libc6-compat for @prisma/client
@@ -30,16 +35,18 @@ RUN test -f /app/apps/mock-api/dist/index.js || (echo "ERROR: dist/index.js not 
 
 WORKDIR /app/apps/mock-api
 
-# Uploads dir for volume mount; ensure it exists and is writable by container user
-RUN mkdir -p /app/apps/mock-api/uploads /app/apps/mock-api/uploads/banners && chown -R node:node /app/apps/mock-api/uploads
+# Uploads: path must match UPLOADS_DIR and compose volume uploads_data:/app/uploads
+RUN mkdir -p /app/uploads /app/uploads/banners && chmod -R 755 /app/uploads
 
 # Override in docker-compose: STORAGE_DRIVER=db + DATABASE_URL for persistent Postgres. Else JSON + DATA_FILE/ORDERS_FILE.
 ENV PORT=5190
 ENV STORAGE_DRIVER=json
-ENV DATA_FILE=/data/data.json
-ENV ORDERS_FILE=/data/orders.json
-# Uploads: use volume path so uploads_data persists images
-ENV UPLOADS_DIR=/app/apps/mock-api/uploads
+ENV DATA_FILE=/app/data/data.json
+ENV ORDERS_FILE=/app/data/orders.json
+ENV DATA_DIR=/app/data
+ENV MARKET_CONFIG_FILE=/app/data/market-config.json
+# Uploads: use /app/uploads (docker-compose mounts uploads_data here; must match UPLOADS_DIR in compose)
+ENV UPLOADS_DIR=/app/uploads
 
 EXPOSE 5190
 

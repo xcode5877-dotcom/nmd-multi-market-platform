@@ -126,6 +126,8 @@ services:
       UPLOADS_DIR: "/app/uploads"
       STORAGE_DRIVER: "db"
       DATA_FILE: "/app/data/data.json"
+      DATA_DIR: "/app/data"
+      MARKET_CONFIG_FILE: "/app/data/market-config.json"
       DATABASE_URL: "postgresql://nmd:nmd@postgres:5432/nmd?schema=public"
       PUBLIC_URL: "https://nmd.marketing/api"
       USE_LEGACY_WHATSAPP_GATEWAY: "1"
@@ -135,6 +137,10 @@ services:
       API_KEY: "c522d724baaaf9a3213dcf17590f0fd8"
       # Platform service fee — customer-visible repricing (Phase 1). Rollback: set false and redeploy mock-api.
       PLATFORM_FEE_ENABLED: "true"
+      # iOS force-update gate (public GET /app-config)
+      IOS_APP_STORE_ID: "6762514042"
+      IOS_MINIMUM_BUILD_NUMBER: "24"
+      IOS_LATEST_BUILD_NUMBER: "30"
     volumes:
       - uploads_data:/app/uploads
       - mock_api_data:/app/data
