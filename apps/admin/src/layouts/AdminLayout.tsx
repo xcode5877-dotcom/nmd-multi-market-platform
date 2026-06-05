@@ -23,6 +23,7 @@ import {
   Bell,
   BellOff,
   Volume2,
+  Wallet,
 } from 'lucide-react';
 import { getStorage, setStorage } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -63,6 +64,7 @@ function getNavSections(showDelivery: boolean): NavSection[] {
       sectionLabel: 'الإدارة',
       items: [
         { to: '/settings/store', icon: Store, label: 'إعدادات المحل' },
+        { to: '/settings/settlement', icon: Wallet, label: 'تسوية Now Market' },
         { to: '/settings/staff', icon: Users, label: 'الفريق' },
         { to: '/branding', icon: Palette, label: 'واجهة المحل' },
         { to: '/homepage', icon: LayoutList, label: 'الصفحة الرئيسية' },

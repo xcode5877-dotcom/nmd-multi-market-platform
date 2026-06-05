@@ -1443,6 +1443,42 @@ export class MockApiClient implements ApiClient {
     };
   }
 
+  async getTenantSettlementSummary(
+    tenantId: string,
+    preset: string = 'month'
+  ): Promise<{
+    period: { from: string; to: string };
+    pickupCommissionOwed: number;
+    paymentsMade: number;
+    remainingBalance: number;
+    currency: string;
+  }> {
+    if (this.useApi) {
+      return apiFetch(
+        `/tenants/${encodeURIComponent(tenantId)}/settlement/summary?preset=${encodeURIComponent(preset)}`
+      );
+    }
+    return {
+      period: { from: '', to: '' },
+      pickupCommissionOwed: 0,
+      paymentsMade: 0,
+      remainingBalance: 0,
+      currency: 'ILS',
+    };
+  }
+
+  async getTenantSettlementLedger(
+    tenantId: string,
+    preset: string = 'month'
+  ): Promise<Array<{ entryType: string; amount: number; occurredAt: string; note?: string }>> {
+    if (this.useApi) {
+      return apiFetch(
+        `/tenants/${encodeURIComponent(tenantId)}/settlement/ledger?preset=${encodeURIComponent(preset)}`
+      );
+    }
+    return [];
+  }
+
   async updateOrderStatus(orderId: string, status: Order['status']): Promise<Order | null> {
     if (this.useApi) {
       try {

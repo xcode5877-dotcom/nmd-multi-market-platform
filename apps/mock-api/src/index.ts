@@ -123,11 +123,19 @@ import {
   enrichProductDisplayPricing,
   isPlatformFeeEnabled,
   roundMoney,
+  ceilShekel,
   buildPlatformFeePayment,
   enrichLegacyPaymentWithSnapshot,
   type CheckoutPricingStoreInput,
   type MarketplacePricingContext,
 } from './platform-fee.js';
+import {
+  postOrderSettlement,
+  computeSettlementReport,
+  recordManualSettlementPayment,
+  dateRangePreset,
+  isSettlementEligibleStatus,
+} from './settlement.js';
 import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
 
@@ -4990,6 +4998,7 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   orders[idx] = updated;
   await repos.orders.setAll(orders);
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevOrderStatusForLoyalty);
+  orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.setAll(orders);
   res.json(orders[idx]);
 });
@@ -7641,15 +7650,48 @@ async function resolveTenantPricingContext(tenantId: string): Promise<Marketplac
 
 function enrichOptionItemForCustomer(
   item: { priceDelta?: number; priceModifier?: number; [key: string]: unknown },
-  ctx: MarketplacePricingContext
+  ctx: MarketplacePricingContext,
+  markupExempt = false
 ) {
   if (!isPlatformFeeEnabled()) return item;
   const delta = Number(item.priceDelta ?? item.priceModifier ?? 0);
   if (!Number.isFinite(delta) || delta === 0) return item;
+  const displayDelta = markupExempt
+    ? Math.ceil(Math.max(0, delta))
+    : displayMarketplaceUnitPrice(delta, ctx, false);
   return {
     ...item,
-    displayPriceDelta: displayMarketplaceUnitPrice(delta, ctx),
+    displayPriceDelta: displayDelta,
   };
+}
+
+async function buildCatalogExemptionMaps(tenantId: string): Promise<{
+  categoryExemptById: Map<string, boolean>;
+  productCategoryById: Map<string, string>;
+}> {
+  const catalog = await repos.catalog.getCatalog(tenantId);
+  const categoryExemptById = new Map<string, boolean>();
+  for (const c of catalog.categories ?? []) {
+    const cat = c as { id?: string; markupExempt?: boolean };
+    if (cat.id) categoryExemptById.set(cat.id, cat.markupExempt === true);
+  }
+  const productCategoryById = new Map<string, string>();
+  for (const p of catalog.products ?? []) {
+    const prod = p as { id?: string; categoryId?: string };
+    if (prod.id && prod.categoryId) productCategoryById.set(prod.id, prod.categoryId);
+  }
+  return { categoryExemptById, productCategoryById };
+}
+
+async function applySettlementToOrderIfEligible(
+  order: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!isSettlementEligibleStatus(String(order.status ?? ''))) return order;
+  const tenantId = String(order.tenantId ?? '');
+  if (!tenantId) return order;
+  const pricingCtx = await resolveTenantPricingContext(tenantId);
+  const { categoryExemptById, productCategoryById } = await buildCatalogExemptionMaps(tenantId);
+  return postOrderSettlement(order, pricingCtx, categoryExemptById, productCategoryById);
 }
 
 /** Products often embed stale optionGroups; merge canonical modifierIconKey from catalog.optionGroups. */
@@ -7704,28 +7746,44 @@ function enrichCatalogForCustomerView(
   if (!isPlatformFeeEnabled()) {
     return { ...catalog, marketplaceRepricing: false };
   }
-  const enrichGroups = (groups: Array<{ items?: unknown[]; [key: string]: unknown }> | undefined) =>
+  const exemptByCategoryId = new Map<string, boolean>();
+  for (const c of catalog.categories ?? []) {
+    const cat = c as { id?: string; markupExempt?: boolean };
+    if (cat.id) exemptByCategoryId.set(cat.id, cat.markupExempt === true);
+  }
+  const enrichGroups = (
+    groups: Array<{ items?: unknown[]; [key: string]: unknown }> | undefined,
+    markupExempt: boolean
+  ) =>
     (groups ?? []).map((g) => ({
       ...g,
-      items: (g.items ?? []).map((it) => enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx)),
+      items: (g.items ?? []).map((it) =>
+        enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx, markupExempt)
+      ),
     }));
   const products = (catalog.products ?? []).map((p) => {
+    const catExempt = exemptByCategoryId.get(String(p.categoryId ?? '')) === true;
     const pricing = enrichProductDisplayPricing(
-      { basePrice: Number(p.basePrice) || 0, compareAtPrice: (p as { compareAtPrice?: number }).compareAtPrice },
+      {
+        basePrice: Number(p.basePrice) || 0,
+        compareAtPrice: (p as { compareAtPrice?: number }).compareAtPrice,
+        markupExempt: catExempt,
+      },
       ctx
     );
     return {
       ...p,
       ...pricing,
-      optionGroups: enrichGroups(p.optionGroups as Array<{ items?: unknown[] }> | undefined),
+      markupExempt: catExempt,
+      optionGroups: enrichGroups(p.optionGroups as Array<{ items?: unknown[] }> | undefined, catExempt),
     };
   });
   return {
     ...catalog,
     products,
-    optionGroups: enrichGroups(catalog.optionGroups as Array<{ items?: unknown[] }> | undefined),
+    optionGroups: enrichGroups(catalog.optionGroups as Array<{ items?: unknown[] }> | undefined, false),
     optionItems: (catalog.optionItems ?? []).map((it) =>
-      enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx)
+      enrichOptionItemForCustomer(it as { priceDelta?: number; priceModifier?: number }, ctx, false)
     ),
     marketplaceRepricing: true,
   };
@@ -8057,12 +8115,25 @@ app.post('/orders', wrapAsync(async (req, res) => {
     tenantFeeOverride: tenant?.financialConfig?.platformFee,
     featureFlagEnabled: isPlatformFeeEnabled(),
   };
-  const displayLines = orderItems.map((i, idx) => ({
-    lineId: String(idx),
-    baseAmount: roundMoney(Number(i.totalPrice) || 0),
-    quantity: Math.max(1, Number(i.quantity) || 1),
-    itemCount: Math.max(0, Math.floor(Number(i.quantity) || 1)),
-  }));
+  const tenantIdForCatalog = created.tenantId ?? '';
+  const { categoryExemptById, productCategoryById } = tenantIdForCatalog
+    ? await buildCatalogExemptionMaps(tenantIdForCatalog)
+    : { categoryExemptById: new Map<string, boolean>(), productCategoryById: new Map<string, string>() };
+  const displayLines = orderItems.map((i, idx) => {
+    const item = i as { productId?: string; categoryId?: string; totalPrice?: number; quantity?: number };
+    const catId =
+      item.categoryId ||
+      (item.productId ? productCategoryById.get(String(item.productId)) : undefined);
+    const markupExempt = catId ? categoryExemptById.get(String(catId)) === true : false;
+    return {
+      lineId: String(idx),
+      baseAmount: roundMoney(Number(item.totalPrice) || 0),
+      quantity: Math.max(1, Number(item.quantity) || 1),
+      itemCount: Math.max(0, Math.floor(Number(item.quantity) || 1)),
+      markupExempt,
+      categoryId: catId,
+    };
+  });
   const displayPricing = computeMarketplaceDisplayPricing(displayLines, pricingCtx, {
     discountAmount: couponDiscount,
   });
@@ -8076,7 +8147,7 @@ app.post('/orders', wrapAsync(async (req, res) => {
     featureFlagEnabled: isPlatformFeeEnabled(),
   });
   const finalTotal = isPlatformFeeEnabled()
-    ? roundMoney(displayPricing.displayMerchandiseTotal + orderDeliveryFee)
+    ? ceilShekel(displayPricing.displayMerchandiseTotal + orderDeliveryFee)
     : legacyTotal;
   if (isPlatformFeeEnabled()) {
     feeResult.platformFee = displayPricing.platformFee;
@@ -8244,6 +8315,7 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
     // do not break order update if push lookup/send fails
   }
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyInternal);
+  orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.setAll(orders);
   res.json(orders[idx]);
 }));
@@ -8314,6 +8386,7 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
   }
 
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyPatch);
+  orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.setAll(orders);
   res.json(orders[idx]);
 }));
@@ -9575,6 +9648,129 @@ app.get('/tenants/:tenantId/dashboard-stats', wrapAsync(async (req, res) => {
     merchantBalance: totalMerchantBalance,
     platformCommissionPercent: commissionPercent,
   });
+}));
+
+function settlementDateRange(req: express.Request): { from: string; to: string } {
+  const preset = String(req.query.preset ?? '').toLowerCase();
+  if (preset === 'today' || preset === 'week' || preset === 'month') {
+    return dateRangePreset(preset);
+  }
+  const from = (req.query.from as string) || new Date().toISOString().slice(0, 10);
+  const to = (req.query.to as string) || from;
+  return { from, to };
+}
+
+function canAccessTenantSettlement(req: express.Request, tenantId: string, tenantMarketId?: string): boolean {
+  if (!req.user) return false;
+  if (req.user.role === 'ROOT_ADMIN' || req.user.role === 'SUPER_ADMIN') return true;
+  if (req.user.role === 'TENANT_ADMIN' && req.user.tenantId === tenantId) return true;
+  if (req.user.role === 'MARKET_ADMIN' && req.user.marketId && tenantMarketId === req.user.marketId) return true;
+  return false;
+}
+
+/** Merchant + Super Admin: store settlement summary for date range. */
+app.get('/tenants/:tenantId/settlement/summary', wrapAsync(async (req, res) => {
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (!canAccessTenantSettlement(req, tenantId, tenant.marketId)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { from, to } = settlementDateRange(req);
+  const allOrders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const report = await computeSettlementReport(tenantId, from, to, allOrders);
+  const isMerchant = req.user?.role === 'TENANT_ADMIN';
+  if (isMerchant) {
+    return res.json({
+      period: report.period,
+      pickupCommissionOwed: report.pickupCommissionOwedByStore,
+      paymentsMade: report.storePaymentsToPlatform,
+      remainingBalance: report.remainingStoreBalance,
+      currency: 'ILS',
+    });
+  }
+  res.json(report);
+}));
+
+/** Settlement ledger entries for a store. */
+app.get('/tenants/:tenantId/settlement/ledger', wrapAsync(async (req, res) => {
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (!canAccessTenantSettlement(req, tenantId, tenant.marketId)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { from, to } = settlementDateRange(req);
+  const entries = await prisma.storeSettlementLedgerEntry.findMany({
+    where: {
+      tenantId,
+      occurredAt: { gte: from, lte: `${to}T23:59:59.999Z` },
+    },
+    orderBy: { occurredAt: 'desc' },
+  });
+  const isMerchant = req.user?.role === 'TENANT_ADMIN';
+  const filtered = isMerchant
+    ? entries.filter((e) =>
+        ['PICKUP_COMMISSION_DEBIT', 'STORE_PAYMENT_CREDIT', 'ADJUSTMENT'].includes(e.entryType)
+      )
+    : entries;
+  res.json(filtered);
+}));
+
+/** Manual settlement payments list. */
+app.get('/tenants/:tenantId/settlement/payments', wrapAsync(async (req, res) => {
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (!canAccessTenantSettlement(req, tenantId, tenant.marketId)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { from, to } = settlementDateRange(req);
+  const payments = await prisma.storeSettlementPayment.findMany({
+    where: {
+      tenantId,
+      paidAt: { gte: from, lte: `${to}T23:59:59.999Z` },
+    },
+    orderBy: { paidAt: 'desc' },
+  });
+  res.json(payments);
+}));
+
+/** Super Admin: record manual store ↔ platform payment. */
+app.post('/admin/settlement/stores/:tenantId/payments', wrapAsync(async (req, res) => {
+  if (req.user?.role !== 'ROOT_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  const body = req.body as {
+    amount?: number;
+    paidAt?: string;
+    paymentMethod?: string;
+    note?: string;
+    direction?: string;
+    periodFrom?: string;
+    periodTo?: string;
+  };
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'amount required' });
+  }
+  const direction =
+    body.direction === 'PLATFORM_TO_STORE' ? 'PLATFORM_TO_STORE' : 'STORE_TO_PLATFORM';
+  const result = await recordManualSettlementPayment({
+    tenantId,
+    amount,
+    paidAt: body.paidAt || new Date().toISOString().slice(0, 10),
+    paymentMethod: body.paymentMethod || 'CASH',
+    note: body.note,
+    createdBy: req.user?.id,
+    direction,
+    periodFrom: body.periodFrom,
+    periodTo: body.periodTo,
+  });
+  res.status(201).json(result);
 }));
 
 /** Market finance by tenant. MARKET_ADMIN: own market; ROOT_ADMIN: read-only. */

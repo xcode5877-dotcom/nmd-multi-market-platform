@@ -16,6 +16,7 @@ model Market {
   isActive            Boolean @default(true)
   sortOrder           Int?
   paymentCapabilities String? // JSON { cash, card }
+  paymentMethods     String? // JSON { cash, card, installments }
 }
 
 model Tenant {
@@ -46,6 +47,7 @@ model Tenant {
   defaultPrepTimeMin         Int?
   financialConfig            String? // JSON
   paymentCapabilities        String? // JSON
+  paymentMethods             String? // JSON { cash, card, installments }
   // Merchant Settings (Store Settings page)
   operationalStatus          String? // open | closed | busy
   orderPolicy                String? // accept_always | accept_only_when_open
@@ -96,25 +98,33 @@ model UserFCMToken {
 }
 
 model Courier {
-  id            String   @id
-  scopeType     String
-  scopeId       String
-  marketId      String?
-  name          String
-  phone         String?
-  isActive      Boolean  @default(true)
-  isOnline      Boolean  @default(false)
-  capacity      Int      @default(1)
-  isAvailable   Boolean?
-  deliveryCount Int?
+  id              String   @id
+  scopeType       String
+  scopeId         String
+  marketId        String?
+  name            String
+  phone           String?
+  password        String?
+  allowedStoreIds String? // JSON array of tenant/store ids allowed for external manual orders
+  isActive        Boolean  @default(true)
+  isOnline        Boolean  @default(false)
+  capacity        Int      @default(1)
+  isAvailable     Boolean?
+  deliveryCount   Int?
 }
 
 model Customer {
-  id        String             @id
-  phone     String             @unique
-  name      String?
-  createdAt String
-  fcmTokens CustomerFCMToken[]
+  id                String             @id
+  phone             String             @unique
+  name              String?
+  email             String?
+  city              String?
+  avatarUrl         String?
+  /// JSON: addresses, paymentMethods, notification prefs (see customer-account-extras in mock-api).
+  accountExtras     Json?
+  createdAt         String
+  fcmTokens         CustomerFCMToken[]
+  rewardRedemptions RewardRedemption[]
 }
 
 // FCM tokens for customer push (Android app). One row per device; link by customerId.
@@ -129,19 +139,38 @@ model CustomerFCMToken {
 }
 
 model Order {
-  id               String   @id
-  tenantId         String?
-  courierId        String?
-  marketId         String?
-  status           String?
-  fulfillmentType  String?
-  orderType        String?  @default("PRODUCT") // PRODUCT | FOOD | SERVICE (multi-sector)
-  total            Float?
-  createdAt        String?
-  payment          String? // JSON (kept for response shape; Payment table is source of truth for finance)
-  deliveryTimeline String? // JSON
-  payload          String? // JSON: items, delivery, customerName, etc.
-  paymentRecord    Payment?
+  id                  String   @id
+  tenantId            String?
+  courierId           String?
+  marketId            String?
+  status              String?
+  fulfillmentType     String?
+  orderType           String?  @default("PRODUCT") // PRODUCT | FOOD | SERVICE | EXTERNAL (multi-sector)
+  total               Float?
+  createdAt           String?
+  payment             String? // JSON (kept for response shape; Payment table is source of truth for finance)
+  deliveryTimeline    String? // JSON
+  payload             String? // JSON: items, delivery, customerName, etc.
+  isExternal          Boolean  @default(false) // manual driver-entered delivery (off-app)
+  externalDestination String? // city / village label
+  manualStoreName     String? // free-text store name when no tenant/store was selected
+  paymentRecord       Payment?
+}
+
+/// Driver fuel & repair expenses (daily P&L with external orders).
+model CourierExpense {
+  id        String  @id
+  courierId String
+  marketId  String
+  category  String // FUEL | REPAIR
+  amount    Float
+  currency  String  @default("ILS")
+  note      String?
+  createdAt String
+
+  @@index([courierId])
+  @@index([marketId])
+  @@index([createdAt])
 }
 
 // --- Payments (cash-first, card-ready; no gateway integration yet) ---
@@ -172,8 +201,47 @@ model CatalogCategory {
   sortOrder   Int
   parentId    String?
   isVisible   Boolean? @default(true)
+  markupExempt Boolean @default(false)
 
   @@index([tenantId])
+}
+
+/// Append-only store settlement ledger (pickup debt, payments, delivery/online revenue).
+model StoreSettlementLedgerEntry {
+  id         String  @id
+  tenantId   String
+  marketId   String?
+  orderId    String?
+  entryType  String
+  direction  String // DEBIT | CREDIT
+  amount     Float
+  currency   String  @default("ILS")
+  occurredAt String
+  createdAt  String
+  createdBy  String?
+  note       String?
+  metadata   String? // JSON
+
+  @@index([tenantId, occurredAt])
+  @@index([orderId])
+}
+
+/// Manual settlement payments between store and Now Market platform.
+model StoreSettlementPayment {
+  id            String  @id
+  tenantId      String
+  amount        Float
+  paidAt        String
+  paymentMethod String
+  note          String?
+  createdBy     String?
+  direction     String // STORE_TO_PLATFORM | PLATFORM_TO_STORE
+  periodFrom    String?
+  periodTo      String?
+  ledgerEntryId String?
+  createdAt     String
+
+  @@index([tenantId, paidAt])
 }
 
 model CatalogProduct {
@@ -279,6 +347,28 @@ model ContestParticipation {
   @@index([customerId])
 }
 
+// --- Wheel Prizes (Lucky Wheel; admin-managed segments) ---
+model WheelPrize {
+  id           String  @id
+  label        String
+  type         String // PERCENT | FIXED | COINS | NO_WIN
+  value        Int     @default(0) // percent 1-100, fixed amount, or coins count
+  chanceWeight Int     @default(1) // for probability (higher = more likely)
+  isActive     Boolean @default(true)
+  sortOrder    Int     @default(0)
+
+  @@index([isActive])
+}
+
+// --- Now Coins (Lucky Wheel; per-customer balance) ---
+model CustomerCoin {
+  customerPhone String @unique // normalized phone
+  balance       Int    @default(0)
+  updatedAt     String
+
+  @@index([customerPhone])
+}
+
 // --- Coupons (winner / promo codes; validated at checkout) ---
 model Coupon {
   id          String  @id
@@ -296,4 +386,42 @@ model Coupon {
   @@index([code])
   @@index([winnerPhone])
   @@index([storeId])
+}
+
+// --- Global Rewards & Activities (Super Admin; storefront lists via GET /rewards) ---
+model GlobalReward {
+  id          String             @id
+  titleAr     String
+  titleEn     String
+  description String?
+  imageUrl    String?
+  type        String // COUPON | EVENT | PRIZE | TOURNAMENT
+  coinsCost   Int                @default(0)
+  stockLimit  Int                @default(0)
+  expiryDate  String? // ISO date (YYYY-MM-DD) or full ISO
+  isActive    Boolean            @default(true)
+  createdAt   String
+  updatedAt   String
+  redemptions RewardRedemption[]
+
+  @@index([isActive])
+  @@index([type])
+}
+
+// --- Reward redemptions (customer spends coins; admin completes / cancels) ---
+model RewardRedemption {
+  id         String       @id
+  customerId String
+  rewardId   String
+  status     String // PENDING | COMPLETED | CANCELLED
+  coinsSpent Int          @default(0)
+  redeemedAt String // ISO timestamp
+  updatedAt  String?
+  customer   Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reward     GlobalReward @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([rewardId])
+  @@index([status])
+  @@index([redeemedAt])
 }

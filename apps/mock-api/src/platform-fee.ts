@@ -69,6 +69,11 @@ export function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Customer-facing price: round UP to nearest whole shekel (₪). */
+export function ceilShekel(n: number): number {
+  return Math.ceil(Math.max(0, n));
+}
+
 /** Resolve effective fee config: tenant override beats market default. */
 export function resolvePlatformFeeConfig(
   marketFeeConfig?: PlatformFeeConfig | null,
@@ -374,6 +379,9 @@ export type MarketplaceDisplayLineInput = {
   baseAmount: number;
   quantity: number;
   itemCount?: number;
+  /** When true, no platform markup is applied (e.g. drinks category). */
+  markupExempt?: boolean;
+  categoryId?: string;
 };
 
 export type MarketplaceDisplayLineResult = {
@@ -397,7 +405,7 @@ export type MarketplaceDisplayPricingResult = {
 
 /**
  * Allocate marketplace markup across cart/catalog lines (server-authoritative).
- * Uses computePlatformFee() then distributes display total proportionally by merchant fee base share.
+ * Exempt lines skip markup; customer prices use ceil to whole shekels.
  */
 export function computeMarketplaceDisplayPricing(
   lines: MarketplaceDisplayLineInput[],
@@ -414,90 +422,150 @@ export function computeMarketplaceDisplayPricing(
     0
   );
 
-  if (!flagEnabled || lines.length === 0) {
-    const mapped = lines.map((l) => {
-      const baseAmount = roundMoney(Math.max(0, l.baseAmount));
-      const qty = Math.max(1, Number(l.quantity) || 1);
-      return {
-        lineId: l.lineId,
-        baseAmount,
-        displayAmount: baseAmount,
-        displayUnitPrice: roundMoney(baseAmount / qty),
-        quantity: qty,
-      };
-    });
-    const feeBase = roundMoney(Math.max(itemsSubtotal - discountAmount, 0));
+  const mapLineNoMarkup = (l: MarketplaceDisplayLineInput, displayAmount: number): MarketplaceDisplayLineResult => {
+    const baseAmount = roundMoney(Math.max(0, l.baseAmount));
+    const qty = Math.max(1, Number(l.quantity) || 1);
     return {
-      lines: mapped,
-      itemsSubtotal,
+      lineId: l.lineId,
+      baseAmount,
+      displayAmount,
+      displayUnitPrice: qty > 0 ? roundMoney(displayAmount / qty) : displayAmount,
+      quantity: qty,
+    };
+  };
+
+  if (lines.length === 0) {
+    return {
+      lines: [],
+      itemsSubtotal: 0,
       discountAmount,
-      feeBase,
+      feeBase: 0,
       platformFee: 0,
-      merchantPayout: feeBase,
-      displayMerchandiseTotal: feeBase,
+      merchantPayout: 0,
+      displayMerchandiseTotal: 0,
       appliedConfigSource: 'DISABLED',
     };
   }
 
+  const feeBaseTotal = roundMoney(Math.max(itemsSubtotal - discountAmount, 0));
+
+  if (!flagEnabled) {
+    const mapped = lines.map((l) => {
+      const baseAmount = roundMoney(Math.max(0, l.baseAmount));
+      const share = itemsSubtotal > 0 ? (baseAmount / itemsSubtotal) * feeBaseTotal : 0;
+      return mapLineNoMarkup(l, ceilShekel(share));
+    });
+    const displayMerchandiseTotal = mapped.reduce((s, x) => s + x.displayAmount, 0);
+    return {
+      lines: mapped,
+      itemsSubtotal,
+      discountAmount,
+      feeBase: feeBaseTotal,
+      platformFee: roundMoney(Math.max(0, displayMerchandiseTotal - feeBaseTotal)),
+      merchantPayout: feeBaseTotal,
+      displayMerchandiseTotal,
+      appliedConfigSource: 'DISABLED',
+    };
+  }
+
+  const taxableLines = lines.filter((l) => !l.markupExempt);
+  const exemptLines = lines.filter((l) => l.markupExempt);
+  const taxableSubtotal = roundMoney(
+    taxableLines.reduce((s, l) => s + Math.max(0, Number(l.baseAmount) || 0), 0)
+  );
+  const exemptSubtotal = roundMoney(
+    exemptLines.reduce((s, l) => s + Math.max(0, Number(l.baseAmount) || 0), 0)
+  );
+  const taxableDiscount =
+    itemsSubtotal > 0 ? roundMoney((taxableSubtotal / itemsSubtotal) * discountAmount) : 0;
+  const exemptDiscount =
+    itemsSubtotal > 0 ? roundMoney((exemptSubtotal / itemsSubtotal) * discountAmount) : 0;
+  const taxableFeeBase = roundMoney(Math.max(taxableSubtotal - taxableDiscount, 0));
+  const exemptFeeBase = roundMoney(Math.max(exemptSubtotal - exemptDiscount, 0));
+
+  const taxableItemCount = taxableLines.reduce(
+    (s, l) => s + Math.max(0, Math.floor(Number(l.itemCount ?? l.quantity) || 0)),
+    0
+  );
+
   const feeResult = computePlatformFee({
-    itemsSubtotal,
-    discountAmount,
-    itemCount,
+    itemsSubtotal: taxableSubtotal,
+    discountAmount: taxableDiscount,
+    itemCount: taxableItemCount || itemCount,
     deliveryFee: 0,
     marketFeeConfig: ctx.marketFeeConfig,
     tenantFeeOverride: ctx.tenantFeeOverride,
     featureFlagEnabled: true,
   });
 
-  const feeBase = feeResult.feeBase;
-  const displayMerchandiseTotal = roundMoney(feeBase + feeResult.platformFee);
+  const platformFeeOnTaxable = feeResult.platformFee;
+  const appliedConfigSource = feeResult.appliedConfigSource;
 
   const resultLines: MarketplaceDisplayLineResult[] = lines.map((l) => {
     const baseAmount = roundMoney(Math.max(0, l.baseAmount));
     const qty = Math.max(1, Number(l.quantity) || 1);
-    let displayAmount = baseAmount;
-    if (feeBase > 0 && itemsSubtotal > 0) {
-      const lineFeeBaseShare = roundMoney((baseAmount / itemsSubtotal) * feeBase);
+    const lineMerchantShare =
+      itemsSubtotal > 0 ? roundMoney((baseAmount / itemsSubtotal) * feeBaseTotal) : 0;
+
+    if (l.markupExempt) {
+      return {
+        lineId: l.lineId,
+        baseAmount,
+        displayAmount: ceilShekel(lineMerchantShare),
+        displayUnitPrice: qty > 0 ? roundMoney(ceilShekel(lineMerchantShare) / qty) : 0,
+        quantity: qty,
+      };
+    }
+
+    let displayAmount = lineMerchantShare;
+    if (taxableFeeBase > 0 && taxableSubtotal > 0) {
+      const lineTaxableShare = roundMoney((baseAmount / taxableSubtotal) * taxableFeeBase);
       const lineFeeShare =
-        feeResult.platformFee > 0
-          ? roundMoney((lineFeeBaseShare / feeBase) * feeResult.platformFee)
+        platformFeeOnTaxable > 0
+          ? roundMoney((lineTaxableShare / taxableFeeBase) * platformFeeOnTaxable)
           : 0;
-      displayAmount = roundMoney(lineFeeBaseShare + lineFeeShare);
-    } else if (feeBase === 0) {
+      displayAmount = lineTaxableShare + lineFeeShare;
+    } else if (taxableFeeBase === 0 && baseAmount > 0 && !l.markupExempt) {
       displayAmount = 0;
     }
+    const ceiled = ceilShekel(displayAmount);
     return {
       lineId: l.lineId,
       baseAmount,
-      displayAmount,
-      displayUnitPrice: roundMoney(displayAmount / qty),
+      displayAmount: ceiled,
+      displayUnitPrice: qty > 0 ? roundMoney(ceiled / qty) : ceiled,
       quantity: qty,
     };
   });
+
+  const displayMerchandiseTotal = resultLines.reduce((s, x) => s + x.displayAmount, 0);
+  const merchantPayout = feeBaseTotal;
+  const platformFee = roundMoney(Math.max(0, displayMerchandiseTotal - merchantPayout));
 
   return {
     lines: resultLines,
     itemsSubtotal,
     discountAmount,
-    feeBase,
-    platformFee: feeResult.platformFee,
-    merchantPayout: feeResult.merchantPayout,
+    feeBase: feeBaseTotal,
+    platformFee,
+    merchantPayout,
     displayMerchandiseTotal,
-    appliedConfigSource: feeResult.appliedConfigSource,
+    appliedConfigSource,
   };
 }
 
 /** Single-unit catalog/card price (assumes qty=1 line context). */
 export function displayMarketplaceUnitPrice(
   baseUnitPrice: number,
-  ctx: MarketplacePricingContext
+  ctx: MarketplacePricingContext,
+  markupExempt = false
 ): number {
   const base = roundMoney(Math.max(0, baseUnitPrice));
   const result = computeMarketplaceDisplayPricing(
-    [{ baseAmount: base, quantity: 1, itemCount: 1 }],
+    [{ baseAmount: base, quantity: 1, itemCount: 1, markupExempt }],
     ctx
   );
-  return result.lines[0]?.displayUnitPrice ?? base;
+  return result.lines[0]?.displayUnitPrice ?? ceilShekel(base);
 }
 
 export type CatalogProductPricingFields = {
@@ -506,22 +574,23 @@ export type CatalogProductPricingFields = {
 };
 
 export function enrichProductDisplayPricing(
-  product: { basePrice: number; compareAtPrice?: number | null },
+  product: { basePrice: number; compareAtPrice?: number | null; markupExempt?: boolean },
   ctx: MarketplacePricingContext
 ): CatalogProductPricingFields {
   const flagEnabled = ctx.featureFlagEnabled ?? isPlatformFeeEnabled();
+  const exempt = product.markupExempt === true;
   if (!flagEnabled) {
     return {
-      displayPrice: roundMoney(Math.max(0, product.basePrice)),
+      displayPrice: ceilShekel(Math.max(0, product.basePrice)),
       ...(product.compareAtPrice != null
-        ? { displayComparePrice: roundMoney(Math.max(0, product.compareAtPrice)) }
+        ? { displayComparePrice: ceilShekel(Math.max(0, product.compareAtPrice)) }
         : {}),
     };
   }
-  const displayPrice = displayMarketplaceUnitPrice(product.basePrice, ctx);
+  const displayPrice = displayMarketplaceUnitPrice(product.basePrice, ctx, exempt);
   const displayComparePrice =
     product.compareAtPrice != null && Number.isFinite(product.compareAtPrice)
-      ? displayMarketplaceUnitPrice(Number(product.compareAtPrice), ctx)
+      ? displayMarketplaceUnitPrice(Number(product.compareAtPrice), ctx, exempt)
       : undefined;
   return { displayPrice, ...(displayComparePrice != null ? { displayComparePrice } : {}) };
 }

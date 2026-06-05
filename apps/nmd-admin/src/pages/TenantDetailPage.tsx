@@ -6,7 +6,7 @@ import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
 import { formatPrice, formatDateGregorian } from '@nmd/core';
-import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign, Settings2 } from 'lucide-react';
+import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign, Settings2, Wallet } from 'lucide-react';
 import { apiFetch, apiHeaders } from '../api';
 import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
 import { canUsePlatformOrderOps, formatOrderStatusLabel } from '../lib/platform-order-ops';
@@ -715,6 +715,25 @@ export default function TenantDetailPage() {
                 </div>
               </div>
             </Card>
+            {platformAdmin && (
+              <Card className="p-6 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Wallet className="w-5 h-5" />
+                    تسوية المتجر
+                  </h2>
+                  <Link
+                    to={`/tenants/${id}/settlement`}
+                    className="text-sm text-primary font-medium hover:underline"
+                  >
+                    عرض التقرير والمدفوعات ←
+                  </Link>
+                </div>
+                <p className="text-sm text-gray-500">
+                  عمولة طلبات الاستلام (نقداً)، المدفوعات اليدوية، والرصيد المتبقي على المتجر.
+                </p>
+              </Card>
+            )}
             {platformAdmin && (
               <Card className="p-6 bg-white">
                 <div className="flex flex-wrap items-center gap-2 mb-2">

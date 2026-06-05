@@ -733,6 +733,13 @@ function OrderDrawerContent({
   onRequestHardDelete?: () => void;
 }) {
   const { merchantAmount, platformDeliveryFee, grandTotal } = getOrderAmounts(order);
+  const settlement = (order as { settlement?: {
+    customerGrandTotal?: number;
+    platformCommission?: number;
+    merchantPayout?: number;
+    pickupCommissionDebt?: number;
+    settlementClass?: string;
+  } }).settlement;
   const [updating, setUpdating] = useState(false);
   const [assignDriverOpen, setAssignDriverOpen] = useState(false);
   const addToast = useToast().addToast;
@@ -914,6 +921,28 @@ function OrderDrawerContent({
             <div className="flex justify-between items-center text-sm">
               <span className="text-gray-600">رسوم التوصيل</span>
               <span>{formatPrice(platformDeliveryFee)}</span>
+            </div>
+          )}
+          {settlement && (
+            <div className="mt-2 pt-2 border-t border-dashed border-gray-200 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">إجمالي الطلب للزبون</span>
+                <span>{formatPrice(settlement.customerGrandTotal ?? grandTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">عمولة Now Market</span>
+                <span>{formatPrice(settlement.platformCommission ?? 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">مستحقات المحل</span>
+                <span>{formatPrice(settlement.merchantPayout ?? merchantAmount)}</span>
+              </div>
+              {(settlement.pickupCommissionDebt ?? 0) > 0 && (
+                <div className="flex justify-between text-amber-800">
+                  <span>مستحق لـ Now Market (استلام)</span>
+                  <span>{formatPrice(settlement.pickupCommissionDebt ?? 0)}</span>
+                </div>
+              )}
             </div>
           )}
           <div className="flex justify-between items-center pt-1">

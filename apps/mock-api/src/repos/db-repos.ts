@@ -431,7 +431,7 @@ export function createDbOrdersRepo(): OrdersRepo {
 }
 
 function catalogToDomain(
-  categories: { id: string; tenantId: string; name: string; slug: string; description: string | null; imageUrl: string | null; sortOrder: number; parentId: string | null; isVisible: boolean | null }[],
+  categories: { id: string; tenantId: string; name: string; slug: string; description: string | null; imageUrl: string | null; sortOrder: number; parentId: string | null; isVisible: boolean | null; markupExempt?: boolean }[],
   products: { id: string; tenantId: string; categoryId: string; name: string; slug: string; description: string | null; type: string; basePrice: number; currency: string; imageUrl: string | null; images: string | null; optionGroups: string | null; variants: string | null; stock: number | null; isAvailable: boolean; createdAt: string | null; isFeatured: boolean | null; isArchived: boolean | null; sortOrder: number | null }[],
   optionGroups: { id: string; tenantId: string; name: string; type: string | null; required: boolean; minSelected: number; maxSelected: number; selectionType: string; scope: string | null; scopeId: string | null; allowHalfPlacement: boolean | null; items: string | null }[]
 ): TenantCatalog {
@@ -445,6 +445,7 @@ function catalogToDomain(
     sortOrder: c.sortOrder,
     parentId: c.parentId ?? undefined,
     isVisible: c.isVisible ?? true,
+    markupExempt: c.markupExempt ?? false,
   }));
   const prodArr = products.map((p) => {
     const base: Record<string, unknown> = {
@@ -512,7 +513,7 @@ export function createDbCatalogRepo(): CatalogRepo {
         prisma.catalogProduct.deleteMany({ where: { tenantId } }),
         prisma.catalogOptionGroup.deleteMany({ where: { tenantId } }),
       ]);
-      const cats = (catalog.categories ?? []) as { id?: string; tenantId?: string; name?: string; slug?: string; description?: string; imageUrl?: string; sortOrder?: number; parentId?: string | null; isVisible?: boolean }[];
+      const cats = (catalog.categories ?? []) as { id?: string; tenantId?: string; name?: string; slug?: string; description?: string; imageUrl?: string; sortOrder?: number; parentId?: string | null; isVisible?: boolean; markupExempt?: boolean }[];
       const prods = (catalog.products ?? []) as { id?: string; tenantId?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; createdAt?: string; isFeatured?: boolean; isArchived?: boolean; sortOrder?: number }[];
       const grps = (catalog.optionGroups ?? []) as { id?: string; tenantId?: string; name?: string; type?: string; required?: boolean; minSelected?: number; maxSelected?: number; selectionType?: string; scope?: string; scopeId?: string; allowHalfPlacement?: boolean; items?: unknown[] }[];
       for (const c of cats) {
@@ -528,6 +529,7 @@ export function createDbCatalogRepo(): CatalogRepo {
               sortOrder: c.sortOrder ?? 0,
               parentId: c.parentId ?? null,
               isVisible: c.isVisible ?? true,
+              markupExempt: c.markupExempt ?? false,
             },
           });
         }

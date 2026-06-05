@@ -217,9 +217,9 @@ console.log('\n11. Cart display allocation — fixed order ₪3 on two lines');
     ],
     ctx
   );
-  assert(approx(r.displayMerchandiseTotal, 103), 'display merchandise = 100 + 3');
-  assert(approx(r.lines[0]!.displayAmount + r.lines[1]!.displayAmount, 103), 'lines sum to display total');
-  assert(approx(r.platformFee, 3), 'platform fee = 3');
+  assert(approx(r.displayMerchandiseTotal, 104), 'display merchandise = 100 + 4 (ceil allocation)');
+  assert(approx(r.lines[0]!.displayAmount + r.lines[1]!.displayAmount, 104), 'lines sum to display total');
+  assert(approx(r.platformFee, 4), 'platform fee = 4 after ceil');
   assert(approx(r.merchantPayout, 100), 'merchant payout = 100');
 }
 
@@ -228,7 +228,7 @@ console.log('\n12. Flag OFF — display equals base');
   process.env.PLATFORM_FEE_ENABLED = 'false';
   const ctx = { marketFeeConfig: { enabled: true, model: 'PERCENTAGE' as const, percentage: 5 } };
   const enriched = enrichProductDisplayPricing({ basePrice: 50 }, ctx);
-  assert(approx(enriched.displayPrice, 50), 'displayPrice equals base when flag off');
+  assert(approx(enriched.displayPrice, 50), 'displayPrice equals ceil base when flag off');
 }
 
 console.log('\n13. Tenant CUSTOM FIXED_ITEM ₪5 — catalog unit price');

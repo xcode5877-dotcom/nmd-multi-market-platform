@@ -25,7 +25,7 @@ export default function CategoriesPage() {
   }, [adminData.isLoading]);
   const [editing, setEditing] = useState<Category | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', slug: '', parentId: null as string | null });
+  const [form, setForm] = useState({ name: '', slug: '', parentId: null as string | null, markupExempt: false });
   const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [reorderMode, setReorderMode] = useState(false);
@@ -91,7 +91,9 @@ export default function CategoriesPage() {
     const slug = form.slug || form.name.toLowerCase().replace(/\s/g, '-');
     if (editing) {
       const next = categories.map((c) =>
-        c.id === editing.id ? { ...c, name: form.name, slug, parentId: form.parentId ?? null } : c
+        c.id === editing.id
+          ? { ...c, name: form.name, slug, parentId: form.parentId ?? null, markupExempt: form.markupExempt }
+          : c
       );
       setCategories(next);
       adminData.setCategories(next);
@@ -107,6 +109,7 @@ export default function CategoriesPage() {
           sortOrder: siblings.length,
           parentId: form.parentId ?? null,
           isVisible: true,
+          markupExempt: form.markupExempt,
         },
       ];
       setCategories(next);
@@ -114,7 +117,7 @@ export default function CategoriesPage() {
     }
     setModalOpen(false);
     setEditing(null);
-    setForm({ name: '', slug: '', parentId: null });
+    setForm({ name: '', slug: '', parentId: null, markupExempt: false });
   };
 
   const remove = (id: string) => {
@@ -127,13 +130,13 @@ export default function CategoriesPage() {
 
   const openEdit = (cat: Category) => {
     setEditing(cat);
-    setForm({ name: cat.name, slug: cat.slug, parentId: cat.parentId ?? null });
+    setForm({ name: cat.name, slug: cat.slug, parentId: cat.parentId ?? null, markupExempt: cat.markupExempt ?? false });
     setModalOpen(true);
   };
 
   const openAdd = (parentId?: string | null) => {
     setEditing(null);
-    setForm({ name: '', slug: '', parentId: parentId ?? null });
+    setForm({ name: '', slug: '', parentId: parentId ?? null, markupExempt: false });
     setModalOpen(true);
   };
 
@@ -263,6 +266,15 @@ export default function CategoriesPage() {
           ]}
           className="mt-4"
         />
+        <label className="mt-4 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.markupExempt}
+            onChange={(e) => setForm((f) => ({ ...f, markupExempt: e.target.checked }))}
+            className="rounded border-gray-300"
+          />
+          <span className="text-sm text-gray-800">معفى من عمولة المنصة (مشروبات / ماء / كولا)</span>
+        </label>
         <div className="mt-6 flex gap-2">
           <Button onClick={save}>حفظ</Button>
           <Button variant="ghost" onClick={() => setModalOpen(false)}>

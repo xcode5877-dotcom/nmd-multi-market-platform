@@ -10,4 +10,6 @@ export interface Category {
   parentId?: string | null;
   /** default true; hide from storefront when false */
   isVisible?: boolean;
+  /** When true, platform markup is not applied to products in this category (e.g. drinks). */
+  markupExempt?: boolean;
 }

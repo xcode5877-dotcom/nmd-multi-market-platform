@@ -24,6 +24,7 @@ const StaffPage = lazy(() => import('./pages/StaffPage'));
 const BrandingPage = lazy(() => import('./pages/BrandingPage'));
 const HomepageManagerPage = lazy(() => import('./pages/HomepageManagerPage'));
 const StoreSettingsPage = lazy(() => import('./pages/StoreSettingsPage'));
+const SettlementPage = lazy(() => import('./pages/SettlementPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
 const LeadsPage = lazy(() => import('./pages/LeadsPage'));
@@ -186,6 +187,7 @@ function AdminApp() {
                     <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
                     <Route path="settings/delivery" element={<DeliverySettingsPage />} />
                     <Route path="settings/store" element={<StoreSettingsPage />} />
+                    <Route path="settings/settlement" element={<SettlementPage />} />
                     <Route path="settings/staff" element={<StaffPage />} />
                     <Route path="branding" element={<BrandingPage />} />
                     <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
