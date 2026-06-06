@@ -1,13 +1,9 @@
 node_modules
-dist
-build
 .env
 .env.*
 db.sqlite
-*.log
 coverage
 .vscode
-.DS_Store
 
 # Tooling / local caches (never commit)
 .pnpm-store/
@@ -23,5 +19,25 @@ certs/**/*.base64.txt
 
 # Full backup lives on disk only (see BACKUP_MARCH_2026/README.md if present)
 BACKUP_MARCH_2026/
-node_modules
-node_modules
+
+# Generated artifacts, backups, and local temp (Tier A)
+backups/
+tmp/
+**/build/
+**/dist/
+*.apk
+*.aab
+*.ipa
+*.tar.gz
+*.zip
+*.jks.bak
+*.pem
+key.properties.bak
+.env.local
+.DS_Store
+**/*.tsbuildinfo
+*.log
+apps/mock-api/uploads/*.apk
+nmd-market-*.apk
+soundmir.tar.gz
+crm2.zip
