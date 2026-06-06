@@ -74,6 +74,264 @@ function applyCampaign(price, campaigns, productId, categoryId) {
   return { discount, campaign: best };
 }
 
+// src/permissions/admin-permissions.ts
+function isPlatformSuperAdmin(role) {
+  return role === "ROOT_ADMIN" || role === "SUPER_ADMIN";
+}
+function isMarketAdminRole(role) {
+  return role === "MARKET_ADMIN";
+}
+function isTenantAdminRole(role) {
+  return role === "TENANT_ADMIN";
+}
+function isStaffAdminRole(role) {
+  return isPlatformSuperAdmin(role) || isMarketAdminRole(role) || isTenantAdminRole(role);
+}
+var MARKET_ADMIN_MODULES = /* @__PURE__ */ new Set([
+  "dashboard",
+  "marketOverview",
+  "marketStores",
+  "marketOrders",
+  "marketReports",
+  "marketBanners",
+  "marketDispatch",
+  "marketCouriers",
+  "deliveryLeads",
+  "customers",
+  "storeSettings",
+  "orders",
+  "products",
+  "categories",
+  "options",
+  "workingHours",
+  "branding",
+  "homepage",
+  "deliveryZones"
+]);
+var TENANT_ADMIN_MODULES = /* @__PURE__ */ new Set([
+  "dashboard",
+  "orders",
+  "orderBoard",
+  "products",
+  "categories",
+  "options",
+  "campaigns",
+  "storeSettings",
+  "workingHours",
+  "coupons",
+  "settlementSummary",
+  "staff",
+  "branding",
+  "homepage",
+  "deliveryLeads",
+  "customers"
+]);
+var ROUTE_MODULE_MAP = {
+  "/monitoring": "monitoring",
+  "/economics": "platformEconomics",
+  "/markets": "marketsList",
+  "/tenants": "allTenants",
+  "/platform-fees": "platformFees",
+  "/categories": "platformCatalog",
+  "/pillars": "platformCatalog",
+  "/system/templates": "platformCatalog",
+  "/delivery-leads": "deliveryLeads",
+  "/drivers": "drivers",
+  "/drivers/couriers": "drivers",
+  "/drivers/markets": "drivers",
+  "/drivers/reports": "superAdminReports",
+  "/drivers/finance": "settlementPayments",
+  "/external-orders": "externalOrders",
+  "/contests": "contests",
+  "/rewards": "globalRewards",
+  "/coupons": "coupons",
+  "/lucky-wheel": "luckyWheel",
+  "/push-notifications": "pushBroadcast",
+  "/home-builder": "homeBuilder",
+  "/modifier-icons": "modifierIcons",
+  "/customers": "customers",
+  "/settings": "platformSettings",
+  "/settings/payments": "platformSettings",
+  "/settings/category-policies": "platformSettings",
+  "/settings/home-layout": "homeBuilder",
+  "/audit": "audit",
+  "/plans": "platformSettings",
+  "/modules": "platformSettings",
+  "/api": "platformSettings",
+  "/tenant": "dashboard",
+  "/tenant/products": "products",
+  "/tenant/orders": "orders",
+  "/tenant/delivery-zones": "deliveryZones",
+  "/tenant/customers": "customers",
+  "/tenant/account/security": "storeSettings"
+};
+var MERCHANT_ROUTE_MODULE_MAP = {
+  "/": "dashboard",
+  "/orders": "orders",
+  "/orders/board": "orderBoard",
+  "/leads": "deliveryLeads",
+  "/catalog/products": "products",
+  "/catalog/categories": "categories",
+  "/catalog/options": "options",
+  "/campaigns": "campaigns",
+  "/settings/store": "storeSettings",
+  "/settings/settlement": "settlementSummary",
+  "/settings/staff": "staff",
+  "/settings/delivery": "deliveryZones",
+  "/branding": "branding",
+  "/homepage": "homepage"
+};
+function canViewModule(role, module) {
+  if (!role) return false;
+  if (isPlatformSuperAdmin(role)) return true;
+  if (isMarketAdminRole(role)) return MARKET_ADMIN_MODULES.has(module);
+  if (isTenantAdminRole(role)) return TENANT_ADMIN_MODULES.has(module);
+  return false;
+}
+function canEditField(role, field) {
+  if (!role) return false;
+  if (isPlatformSuperAdmin(role)) return true;
+  if (field === "markupExempt" || field === "platformFee" || field === "financialConfig") return false;
+  if (field === "commissionType" || field === "commissionValue" || field === "deliveryFeeModel") return false;
+  if (field === "loyaltyBonus") return isMarketAdminRole(role);
+  if (field === "marketId" || field === "enabled") return isMarketAdminRole(role);
+  if (isTenantAdminRole(role)) {
+    return field !== "markupExempt" && field !== "platformFee" && field !== "financialConfig";
+  }
+  return false;
+}
+function normalizeRoutePath(route) {
+  const path = route.split("?")[0]?.trim() ?? "/";
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path || "/";
+}
+function resolveRouteModule(route, map) {
+  const normalized = normalizeRoutePath(route);
+  if (map[normalized]) return map[normalized];
+  if (normalized.startsWith("/markets/") && normalized.includes("/tenants/")) {
+    if (normalized.includes("/settings/delivery")) return "deliveryZones";
+    return "marketStores";
+  }
+  if (normalized.match(/^\/markets\/[^/]+\/orders/)) return "marketOrders";
+  if (normalized.match(/^\/markets\/[^/]+\/dispatch/)) return "marketDispatch";
+  if (normalized.match(/^\/markets\/[^/]+\/finance/)) return "marketFinance";
+  if (normalized.match(/^\/markets\/[^/]+\/platform-fee/)) return "marketPlatformFee";
+  if (normalized.match(/^\/markets\/[^/]+\/reports/)) return "marketReports";
+  if (normalized.match(/^\/markets\/[^/]+\/banners/)) return "marketBanners";
+  if (normalized.match(/^\/markets\/[^/]+\/layout/)) return "marketBanners";
+  if (normalized.match(/^\/markets\/[^/]+\/tenants/)) return "marketStores";
+  if (normalized.match(/^\/markets\/[^/]+$/)) return "marketOverview";
+  if (normalized.startsWith("/tenants/") && normalized.endsWith("/settlement")) return "settlementLedger";
+  if (normalized.startsWith("/tenants/")) return "allTenants";
+  if (normalized.startsWith("/tenant/")) {
+    const sub = normalized.replace(/^\/tenant/, "") || "/";
+    return map[`/tenant${sub === "/" ? "" : sub}`] ?? map["/tenant"] ?? "dashboard";
+  }
+  if (normalized.startsWith("/drivers/")) return "drivers";
+  if (normalized.startsWith("/settings/")) return "platformSettings";
+  if (normalized.startsWith("/campaigns")) return "campaigns";
+  if (normalized.startsWith("/catalog/")) {
+    const merchantMap = MERCHANT_ROUTE_MODULE_MAP;
+    return merchantMap[normalized];
+  }
+  return void 0;
+}
+function canAccessRoute(role, route) {
+  if (!role || role === "CUSTOMER" || role === "COURIER") return false;
+  if (isPlatformSuperAdmin(role)) return true;
+  const nmdModule = resolveRouteModule(route, ROUTE_MODULE_MAP);
+  const merchantModule = resolveRouteModule(route, MERCHANT_ROUTE_MODULE_MAP);
+  const module = nmdModule ?? merchantModule;
+  if (!module) return isMarketAdminRole(role) || isTenantAdminRole(role);
+  return canViewModule(role, module);
+}
+function getTenantMerchantPortalUrl(tenantSlug) {
+  const base = "/merchant";
+  const slug = tenantSlug?.trim();
+  if (slug) return `${base}?tenant=${encodeURIComponent(slug)}`;
+  return base;
+}
+function isExternalAdminRedirect(path) {
+  return path.startsWith("/merchant");
+}
+function getSafeDashboardRoute(role, context = "nmd-admin", tenantSlug) {
+  if (isPlatformSuperAdmin(role)) return "/monitoring";
+  if (isMarketAdminRole(role)) return "/markets";
+  if (isTenantAdminRole(role)) {
+    if (context === "merchant") return "/";
+    return getTenantMerchantPortalUrl(tenantSlug);
+  }
+  return "/login";
+}
+var TENANT_ADMIN_TENANT_PATCH_FIELDS = [
+  "name",
+  "about",
+  "phone",
+  "whatsappPhone",
+  "officeHours",
+  "openTime",
+  "closeTime",
+  "forceClosed",
+  "operationalStatus",
+  "overrideStatus",
+  "orderPolicy",
+  "businessHours",
+  "busyBannerEnabled",
+  "busyBannerText",
+  "bookingEnabled",
+  "storeType",
+  "addressLine",
+  "location",
+  "supportsWeightSelling",
+  "paymentMethods",
+  "paymentCapabilities",
+  "banners",
+  "hero",
+  "logoUrl",
+  "primaryColor",
+  "secondaryColor",
+  "fontFamily",
+  "radiusScale",
+  "layoutStyle",
+  "collections"
+];
+function filterTenantPatchForRole(role, updates) {
+  if (isPlatformSuperAdmin(role)) return updates;
+  if (isMarketAdminRole(role)) {
+    const allowed = [
+      "marketCategory",
+      "isListedInMarket",
+      "marketSortOrder",
+      "marketId",
+      "pillarId",
+      "subCategoryId",
+      "supportsWeightSelling",
+      "overrideStatus"
+    ];
+    return Object.fromEntries(Object.entries(updates).filter(([k]) => allowed.includes(k)));
+  }
+  if (isTenantAdminRole(role)) {
+    return Object.fromEntries(
+      Object.entries(updates).filter(
+        ([k]) => TENANT_ADMIN_TENANT_PATCH_FIELDS.includes(k)
+      )
+    );
+  }
+  return {};
+}
+function stripProtectedCategoryFields(role, categories, existing) {
+  if (isPlatformSuperAdmin(role)) return categories;
+  const existingById = new Map(existing.map((c) => [c.id, c]));
+  return categories.map((cat) => {
+    const id = cat.id;
+    const prev = id ? existingById.get(id) : void 0;
+    if (!canEditField(role, "markupExempt")) {
+      return { ...cat, markupExempt: prev?.markupExempt ?? false };
+    }
+    return cat;
+  });
+}
+
 // src/tenant.ts
 function parseSubdomainTenant(hostname) {
   const parts = hostname.split(".");
@@ -178,7 +436,7 @@ var PLATFORM_BRANDING = {
   primaryColor: "#0f766e",
   secondaryColor: "#f0fdfa",
   fontFamily: '"Cairo", system-ui, sans-serif',
-  radiusScale: 1,
+  radiusScale: 1.5,
   layoutStyle: "default"
 };
 function tenantBrandingToCssVars(branding) {
@@ -255,6 +513,18 @@ function formatDateISO(date) {
   return `${y}-${m}-${day}`;
 }
 
+// src/utils/customer-price.ts
+function customerUnitPrice(product, variantPriceOverride) {
+  const base = variantPriceOverride ?? product.displayPrice ?? product.basePrice;
+  return Number.isFinite(base) ? base : 0;
+}
+function customerComparePrice(product) {
+  if (product.displayComparePrice != null && Number.isFinite(product.displayComparePrice)) {
+    return product.displayComparePrice;
+  }
+  return void 0;
+}
+
 // src/utils.ts
 function formatPrice(amount) {
   return formatMoney(amount);
@@ -265,9 +535,9 @@ function generateId() {
 
 // src/utils/placements.ts
 var PLACEMENT_LABELS_AR = {
-  WHOLE: "\u0643\u0627\u0645\u0644",
-  LEFT: "\u0646\u0635\u0641 \u062B\u0627\u0646\u064A",
-  RIGHT: "\u0646\u0635\u0641 \u0623\u0648\u0644"
+  WHOLE: "\u0643\u0627\u0645\u0644\u0629",
+  LEFT: "\u0646\u0635\u0641 \u064A\u0633\u0627\u0631",
+  RIGHT: "\u0646\u0635\u0641 \u064A\u0645\u064A\u0646"
 };
 var PLACEMENT_OPTIONS_AR = [
   { value: "WHOLE", label: PLACEMENT_LABELS_AR.WHOLE },
@@ -276,7 +546,9 @@ var PLACEMENT_OPTIONS_AR = [
 ];
 function formatPlacementAr(p) {
   if (!p) return void 0;
-  return PLACEMENT_LABELS_AR[p] ?? p;
+  const u = p;
+  if (u === "WHOLE") return void 0;
+  return PLACEMENT_LABELS_AR[u] ?? p;
 }
 function formatAddonNameWithPlacement(name, p) {
   const label = formatPlacementAr(p);
@@ -580,17 +852,26 @@ export {
   DeliverySettingsSchema,
   DeliveryZoneSchema,
   LAST_TENANT_KEY,
+  MERCHANT_ROUTE_MODULE_MAP,
   PLACEMENT_LABELS_AR,
   PLACEMENT_OPTIONS_AR,
   PLATFORM_BRANDING,
   ROLE_PERMISSIONS,
+  ROUTE_MODULE_MAP,
+  TENANT_ADMIN_TENANT_PATCH_FIELDS,
   applyCampaign,
   applyOptionDeltas,
   buildOrderActionLinksSection,
   buildWhatsAppDeepLink,
   buildWhatsAppMessage,
   buildWhatsAppUrl,
+  canAccessRoute,
+  canEditField,
+  canViewModule,
+  customerComparePrice,
+  customerUnitPrice,
   filterOptionGroupsForTenant,
+  filterTenantPatchForRole,
   formatAddonNameWithPlacement,
   formatDateGregorian,
   formatDateISO,
@@ -602,8 +883,15 @@ export {
   formatTimeGregorian,
   generateId,
   getOperationalStatus,
+  getSafeDashboardRoute,
+  getTenantMerchantPortalUrl,
   haversineDistanceKm,
+  isExternalAdminRedirect,
+  isMarketAdminRole,
+  isPlatformSuperAdmin,
+  isStaffAdminRole,
   isStoreOpen,
+  isTenantAdminRole,
   isValidWhatsAppPhone,
   mockCategories,
   mockProducts,
@@ -613,6 +901,7 @@ export {
   resolveTenantId,
   roundMoney,
   setLastTenant,
+  stripProtectedCategoryFields,
   tenantBrandingToCssVars
 };
 //# sourceMappingURL=index.js.map

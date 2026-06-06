@@ -67,7 +67,13 @@ export default function ContestsPage() {
   });
 
   const resultMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: { correctAnswer?: string } | { finalScoreA: number; finalScoreB: number } }) => setContestResult(id, payload),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: { correctAnswer?: string; correctAnswerIds?: string[] } | { finalScoreA: number; finalScoreB: number };
+    }) => setContestResult(id, payload),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['contests'] });
       setResultOpen(null);
@@ -204,10 +210,10 @@ function EnterResultModal({
 }: {
   contest: Contest;
   onClose: () => void;
-  onSubmit: (payload: { correctAnswer?: string } | { finalScoreA: number; finalScoreB: number }) => void;
+  onSubmit: (payload: { correctAnswer?: string; correctAnswerIds?: string[] } | { finalScoreA: number; finalScoreB: number }) => void;
   isSubmitting: boolean;
 }) {
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [finalScoreA, setFinalScoreA] = useState<string>(contest.finalScoreA != null ? String(contest.finalScoreA) : '');
   const [finalScoreB, setFinalScoreB] = useState<string>(contest.finalScoreB != null ? String(contest.finalScoreB) : '');
   const options = contest.options || [];
@@ -263,11 +269,14 @@ function EnterResultModal({
         {options.map((opt) => (
           <label key={opt.id} className="flex items-center gap-2 cursor-pointer">
             <input
-              type="radio"
-              name="result"
-              value={opt.id}
-              checked={selectedId === opt.id}
-              onChange={() => setSelectedId(opt.id)}
+              type="checkbox"
+              checked={selectedIds.includes(opt.id)}
+              onChange={() => {
+                setSelectedIds((prev) => {
+                  if (prev.includes(opt.id)) return prev.filter((id) => id !== opt.id);
+                  return [...prev, opt.id];
+                });
+              }}
               disabled={isSubmitting}
             />
             <span>{opt.label}</span>
@@ -277,7 +286,13 @@ function EnterResultModal({
       {options.length === 0 && <p className="text-sm text-amber-600">لا توجد خيارات. أضف خيارات للمسابقة أولاً.</p>}
       <div className="flex gap-2 justify-end">
         <Button variant="outline" onClick={onClose}>إلغاء</Button>
-        <Button onClick={() => selectedId && onSubmit({ correctAnswer: selectedId })} disabled={!selectedId || isSubmitting}>
+        <Button
+          onClick={() => {
+            if (selectedIds.length === 0) return;
+            onSubmit({ correctAnswer: selectedIds[0], correctAnswerIds: selectedIds });
+          }}
+          disabled={selectedIds.length === 0 || isSubmitting}
+        >
           {isSubmitting ? 'جاري الحفظ...' : 'تأكيد النتيجة'}
         </Button>
       </div>

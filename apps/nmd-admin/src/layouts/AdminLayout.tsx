@@ -27,7 +27,9 @@ import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { MarketOrderAlarmProvider, useMarketOrderAlarm } from '../contexts/MarketOrderAlarmContext';
-import { SUPER_ADMIN_NAV_SECTIONS, type SuperAdminNavSection } from '../config/superAdminNav';
+import type { SuperAdminNavSection } from '../config/superAdminNav';
+import { filterSuperAdminNavSections } from '../lib/permissions';
+import { canViewModule, type AdminModule } from '@nmd/core';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const api = new MockApiClient();
@@ -37,6 +39,7 @@ type FlatNavItem = {
   icon: ComponentType<{ className?: string }>;
   label: string;
   end: boolean;
+  module: AdminModule;
 };
 
 /** Parse marketId and tenantId from pathname when inside markets/:id/tenants/:tenantId (or nested). */
@@ -148,27 +151,31 @@ export default function AdminLayout() {
     setEmergencyHeaders(emergency?.enabled ?? false, emergency?.reason ?? '');
   }, [emergency?.enabled, emergency?.reason]);
 
-  const marketNav: FlatNavItem[] = marketId
+  const marketNav: FlatNavItem[] = (marketId
     ? [
-        { to: `/markets/${marketId}`, icon: LayoutDashboard, label: 'Overview', end: true },
-        { to: `/markets/${marketId}/tenants`, icon: Building2, label: 'Tenants', end: false },
-        { to: `/markets/${marketId}/orders`, icon: Store, label: 'Orders', end: false },
-        { to: '/customers', icon: Users, label: 'المشتركون', end: true },
-        { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
+        { to: `/markets/${marketId}`, icon: LayoutDashboard, label: 'Overview', end: true, module: 'marketOverview' },
+        { to: `/markets/${marketId}/tenants`, icon: Building2, label: 'Tenants', end: false, module: 'marketStores' },
+        { to: `/markets/${marketId}/orders`, icon: Store, label: 'Orders', end: false, module: 'marketOrders' },
+        { to: `/markets/${marketId}/dispatch`, icon: Truck, label: 'Dispatch', end: false, module: 'marketDispatch' },
+        { to: `/markets/${marketId}/reports`, icon: ClipboardList, label: 'Reports', end: false, module: 'marketReports' },
+        { to: '/customers', icon: Users, label: 'المشتركون', end: true, module: 'customers' },
+        { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true, module: 'deliveryLeads' },
       ]
-    : [];
+    : []) as FlatNavItem[];
+  const marketNavFiltered = marketNav.filter((item) => canViewModule(me?.role, item.module));
 
   const tenantNav: FlatNavItem[] = [
-    { to: '/tenant', icon: LayoutDashboard, label: 'الرئيسية', end: true },
-    { to: '/tenant/products', icon: Package, label: 'المنتجات', end: false },
-    { to: '/tenant/delivery-zones', icon: MapPin, label: 'مناطق التوصيل', end: false },
-    { to: '/tenant/orders', icon: ShoppingCart, label: 'الطلبات', end: false },
-    { to: '/tenant/customers', icon: Users, label: 'العملاء', end: false },
-    { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true },
-    { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false },
-  ];
+    { to: '/tenant', icon: LayoutDashboard, label: 'الرئيسية', end: true, module: 'dashboard' },
+    { to: '/tenant/products', icon: Package, label: 'المنتجات', end: false, module: 'products' },
+    { to: '/tenant/delivery-zones', icon: MapPin, label: 'مناطق التوصيل', end: false, module: 'deliveryZones' },
+    { to: '/tenant/orders', icon: ShoppingCart, label: 'الطلبات', end: false, module: 'orders' },
+    { to: '/tenant/customers', icon: Users, label: 'العملاء', end: false, module: 'customers' },
+    { to: '/delivery-leads', icon: ClipboardList, label: 'طلبات واتساب / اتصال', end: true, module: 'deliveryLeads' },
+    { to: '/tenant/account/security', icon: Shield, label: 'الأمان', end: false, module: 'storeSettings' },
+  ] as FlatNavItem[];
+  const tenantNavFiltered = tenantNav.filter((item) => canViewModule(me?.role, item.module));
 
-  const baseNavItems: FlatNavItem[] = isTenantAdmin ? tenantNav : isMarketAdmin ? marketNav : [];
+  const baseNavItems: FlatNavItem[] = isTenantAdmin ? tenantNavFiltered : isMarketAdmin ? marketNavFiltered : [];
   const deliveryLink: FlatNavItem | null =
     isInsideStoreDashboard && marketIdFromUrl && tenantIdFromUrl
       ? {
@@ -176,9 +183,13 @@ export default function AdminLayout() {
           icon: Truck,
           label: 'مناطق التوصيل',
           end: false,
+          module: 'deliveryZones',
         }
       : null;
-  const navItems = deliveryLink ? [...baseNavItems, deliveryLink] : baseNavItems;
+  const navItems = (deliveryLink && canViewModule(me?.role, deliveryLink.module)
+    ? [...baseNavItems, deliveryLink]
+    : baseNavItems
+  ).filter((item) => canViewModule(me?.role, item.module));
   const navLoading =
     (isMarketAdmin && !marketId) ||
     (isTenantAdmin && !me?.tenantId) ||
@@ -285,7 +296,7 @@ export default function AdminLayout() {
             {navLoading ? (
               <div className="px-3 py-2 text-xs text-gray-500">جاري التحميل...</div>
             ) : isRootAdmin ? (
-              SUPER_ADMIN_NAV_SECTIONS.map((section) => (
+              filterSuperAdminNavSections(me?.role).map((section) => (
                 <div key={section.id} className="space-y-0.5">
                   <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold tracking-wide text-gray-500 border-b border-[#334155]/60 mb-1">
                     {section.title}

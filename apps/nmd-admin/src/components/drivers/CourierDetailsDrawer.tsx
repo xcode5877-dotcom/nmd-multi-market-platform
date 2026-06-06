@@ -38,7 +38,11 @@ export function CourierDetailsDrawer({
     queryFn: async () => {
       const orders = await api.getMarketOrders(marketId!);
       return orders
-        .filter((o) => o.courierId === courierId && o.fulfillmentType === 'DELIVERY')
+        .filter(
+          (o) =>
+            (o as { courierId?: string }).courierId === courierId &&
+            o.fulfillmentType === 'DELIVERY',
+        )
         .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
         .slice(0, 8);
     },

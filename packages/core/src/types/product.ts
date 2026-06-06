@@ -43,6 +43,8 @@ export interface OptionItem {
   placement?: OptionPlacement;
   /** Explicit per-topping split switch from store admin. */
   allowSplitting?: boolean;
+  /** Key into shared Super Admin modifier icon library (e.g. olive, cheese). */
+  modifierIconKey?: string;
 }
 
 export interface OptionGroup {

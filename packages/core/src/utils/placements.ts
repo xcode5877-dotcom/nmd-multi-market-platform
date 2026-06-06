@@ -3,11 +3,11 @@ import type { PizzaPlacement } from '../types/cart.js';
 /** Re-export for addon placement (WHOLE/LEFT/RIGHT). */
 export type Placement = PizzaPlacement;
 
-/** Arabic labels for addon placement. Single source of truth. Half & Half: "First Half" / "Second Half". */
+/** Arabic labels for addon placement (pizza half-and-half). */
 export const PLACEMENT_LABELS_AR = {
-  WHOLE: 'كامل',
-  LEFT: 'نصف ثاني',
-  RIGHT: 'نصف أول',
+  WHOLE: 'كاملة',
+  LEFT: 'نصف يسار',
+  RIGHT: 'نصف يمين',
 } as const;
 
 /** Options for placement selector (value + Arabic label). */
@@ -17,13 +17,18 @@ export const PLACEMENT_OPTIONS_AR: { value: Placement; label: string }[] = [
   { value: 'LEFT', label: PLACEMENT_LABELS_AR.LEFT },
 ];
 
-/** Format placement to Arabic label, or undefined if no placement. */
+/** Format placement to Arabic label, or undefined if no placement / whole. */
 export function formatPlacementAr(p?: Placement | null): string | undefined {
   if (!p) return undefined;
-  return PLACEMENT_LABELS_AR[p as keyof typeof PLACEMENT_LABELS_AR] ?? p;
+  const u = p as Placement;
+  if (u === 'WHOLE') return undefined;
+  return PLACEMENT_LABELS_AR[u as keyof typeof PLACEMENT_LABELS_AR] ?? p;
 }
 
-/** Format addon name with optional placement. Returns "name" or "name (label)". */
+/**
+ * Format addon name with optional placement.
+ * Whole pizza: name only; left/right: `name (نصف …)`.
+ */
 export function formatAddonNameWithPlacement(name: string, p?: Placement | null): string {
   const label = formatPlacementAr(p);
   return label ? `${name} (${label})` : name;

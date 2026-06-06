@@ -23,6 +23,7 @@ import {
   classifyFeeSource,
   FEE_SOURCE_LABELS,
 } from '../lib/platform-fee';
+import { canEditField } from '../lib/permissions';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
@@ -49,6 +50,7 @@ export default function TenantDetailPage() {
   const { user } = useAuth();
   const id = params.tenantId ?? params.id;
   const platformAdmin = isPlatformAdminRole(user?.role);
+  const canEditCommission = canEditField(user?.role, 'commissionType');
   const superAdmin = isSuperAdmin(user?.role);
   const canPlatformOrderOps = canUsePlatformOrderOps(user?.role);
   const showDeleteStore = canDeleteStore(user?.role);
@@ -641,6 +643,7 @@ export default function TenantDetailPage() {
                 <span className="font-medium text-gray-900">المتجر مفعّل (يظهر ويقبل الطلبات)</span>
               </label>
             </Card>
+            {canEditCommission ? (
             <Card className="p-6 bg-white">
               <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <DollarSign className="w-5 h-5" />
@@ -715,6 +718,7 @@ export default function TenantDetailPage() {
                 </div>
               </div>
             </Card>
+            ) : null}
             {platformAdmin && (
               <Card className="p-6 bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -738,7 +742,7 @@ export default function TenantDetailPage() {
               <Card className="p-6 bg-white">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h2 className="text-lg font-semibold text-gray-900">رسوم منصة Now Market</h2>
-                  <Badge variant="secondary">{tenantFeeSourceLabel}</Badge>
+                  <Badge variant="default">{tenantFeeSourceLabel}</Badge>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
                   يُضاف على سعر الزبون ولا يظهر كسطر «رسوم منصة» في التطبيق. يمكن للمتجر استخدام إعداد السوق أو override

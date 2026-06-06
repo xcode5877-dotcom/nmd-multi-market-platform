@@ -43,3 +43,48 @@ main table tbody tr {
 main table tbody tr:hover {
   @apply bg-[#F8FAFC];
 }
+
+@media (max-width: 767px) {
+  main {
+    overflow-x: hidden;
+  }
+
+  /* Keep desktop table behavior intact; mobile gets safe horizontal scroll. */
+  main .overflow-x-auto,
+  main table {
+    max-width: 100%;
+  }
+
+  main table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  main th,
+  main td {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  /* Touch-friendly controls in admin forms on mobile. */
+  main input,
+  main select,
+  main textarea,
+  main button,
+  main [role="button"],
+  main a.inline-flex {
+    min-height: 44px;
+  }
+
+  main input,
+  main select,
+  main textarea {
+    font-size: 16px; /* Prevent iOS zoom and improve readability */
+  }
+
+  main .grid {
+    gap: 0.75rem;
+  }
+}

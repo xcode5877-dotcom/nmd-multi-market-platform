@@ -28,56 +28,65 @@ import {
 import { getStorage, setStorage } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
+import { canViewModule, MERCHANT_ROUTE_MODULE_MAP, type AdminModule } from '@nmd/core';
 import { useOrderAlarm } from '../contexts/OrderAlarmContext';
 
 const SIDEBAR_KEY = 'sidebar-collapsed';
 
-type NavItem = { to: string; icon: React.ComponentType<{ className?: string }>; label: string };
+type NavItem = { to: string; icon: React.ComponentType<{ className?: string }>; label: string; module: AdminModule };
 type NavSection = { sectionLabel: string; items: NavItem[] };
 
 // All paths must be absolute (leading /) so they resolve correctly under basename /merchant. Use NavLink only (no <a>).
 // Delivery Settings link is added only for ROOT_ADMIN/SUPER_ADMIN (see render).
-function getNavSections(showDelivery: boolean): NavSection[] {
+function getNavSections(role: string | undefined, showDelivery: boolean): NavSection[] {
   const sections: NavSection[] = [
     {
       sectionLabel: 'نظرة عامة',
       items: [
-        { to: '/', icon: LayoutDashboard, label: 'لوحة التحكم' },
-        { to: '/orders', icon: ShoppingCart, label: 'الطلبات' },
-        { to: '/orders/board', icon: LayoutGrid, label: 'لوحة الطلبات' },
-        { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات' },
+        { to: '/', icon: LayoutDashboard, label: 'لوحة التحكم', module: 'dashboard' },
+        { to: '/orders', icon: ShoppingCart, label: 'الطلبات', module: 'orders' },
+        { to: '/orders/board', icon: LayoutGrid, label: 'لوحة الطلبات', module: 'orderBoard' },
+        { to: '/leads', icon: ClipboardList, label: 'سجل الطلبات', module: 'deliveryLeads' },
       ],
     },
     {
       sectionLabel: 'الكتالوج',
       items: [
-        { to: '/catalog/products', icon: Package, label: 'المنتجات' },
-        { to: '/catalog/categories', icon: FolderTree, label: 'التصنيفات' },
-        { to: '/catalog/options', icon: Sliders, label: 'مجموعات الخيارات' },
+        { to: '/catalog/products', icon: Package, label: 'المنتجات', module: 'products' },
+        { to: '/catalog/categories', icon: FolderTree, label: 'التصنيفات', module: 'categories' },
+        { to: '/catalog/options', icon: Sliders, label: 'مجموعات الخيارات', module: 'options' },
       ],
     },
     {
       sectionLabel: 'الحملات',
-      items: [{ to: '/campaigns', icon: Megaphone, label: 'الحملات' }],
+      items: [{ to: '/campaigns', icon: Megaphone, label: 'الحملات', module: 'campaigns' }],
     },
     {
       sectionLabel: 'الإدارة',
       items: [
-        { to: '/settings/store', icon: Store, label: 'إعدادات المحل' },
-        { to: '/settings/settlement', icon: Wallet, label: 'تسوية Now Market' },
-        { to: '/settings/staff', icon: Users, label: 'الفريق' },
-        { to: '/branding', icon: Palette, label: 'واجهة المحل' },
-        { to: '/homepage', icon: LayoutList, label: 'الصفحة الرئيسية' },
+        { to: '/settings/store', icon: Store, label: 'إعدادات المحل', module: 'storeSettings' },
+        { to: '/settings/settlement', icon: Wallet, label: 'تسوية Now Market', module: 'settlementSummary' },
+        { to: '/settings/staff', icon: Users, label: 'الفريق', module: 'staff' },
+        { to: '/branding', icon: Palette, label: 'واجهة المحل', module: 'branding' },
+        { to: '/homepage', icon: LayoutList, label: 'الصفحة الرئيسية', module: 'homepage' },
       ],
     },
   ];
   if (showDelivery) {
     sections.push({
       sectionLabel: 'الأمان',
-      items: [{ to: '/settings/delivery', icon: Truck, label: 'مناطق التوصيل' }],
+      items: [{ to: '/settings/delivery', icon: Truck, label: 'مناطق التوصيل', module: 'deliveryZones' }],
     });
   }
-  return sections;
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        const module = MERCHANT_ROUTE_MODULE_MAP[item.to] ?? item.module;
+        return canViewModule(role, module);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 }
 
 function toAbsolutePath(path: string): string {
@@ -150,7 +159,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(() => getStorage<boolean>(SIDEBAR_KEY) ?? false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const navSections = getNavSections(isPlatformAdmin(user?.role));
+  const navSections = getNavSections(user?.role, isPlatformAdmin(user?.role));
 
   useEffect(() => {
     setStorage(SIDEBAR_KEY, collapsed);

@@ -135,8 +135,8 @@ export default function MarketplaceEconomicsPage() {
   const tenantCtx = useMemo(
     () =>
       buildTenantContextMap(
-        tenants as { id: string; name: string; marketId?: string; financialConfig?: unknown }[],
-        markets as { id: string; name: string; platformFeeConfig?: unknown }[]
+        tenants as Parameters<typeof buildTenantContextMap>[0],
+        markets as Parameters<typeof buildTenantContextMap>[1]
       ),
     [tenants, markets]
   );

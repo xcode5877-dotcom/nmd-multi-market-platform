@@ -46,6 +46,7 @@ const CouponsPage = lazy(() => import('./pages/CouponsPage'));
 const LuckyWheelAdmin = lazy(() => import('./pages/LuckyWheelAdmin'));
 const PushNotificationsPage = lazy(() => import('./pages/PushNotificationsPage'));
 const HomePageBuilderPage = lazy(() => import('./pages/HomePageBuilderPage'));
+const ModifierIconsPage = lazy(() => import('./pages/ModifierIconsPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const ExternalOrdersAdminPage = lazy(() => import('./pages/ExternalOrdersAdminPage'));
 const DriversSectionLayout = lazy(() => import('./components/drivers/DriversSectionLayout'));
@@ -54,6 +55,7 @@ const DriversReportsHubPage = lazy(() => import('./pages/drivers/DriversReportsH
 const DriversFinanceHubPage = lazy(() => import('./pages/drivers/DriversFinanceHubPage'));
 const DriversMarketsHubPage = lazy(() => import('./pages/drivers/DriversMarketsHubPage'));
 const DriversCouriersPage = lazy(() => import('./pages/drivers/DriversCouriersPage'));
+const PermissionRoute = lazy(() => import('./components/PermissionRoute').then((m) => ({ default: m.PermissionRoute })));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 const LOADING = <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -110,9 +112,9 @@ function Content() {
         <Route path="system/templates" element={<RootOnlyRoute><SystemTemplatesPage /></RootOnlyRoute>} />
         <Route path="monitoring" element={<RootOnlyRoute><MonitoringPage /></RootOnlyRoute>} />
         <Route path="audit" element={<RootOnlyRoute><AuditLogPage /></RootOnlyRoute>} />
-        <Route path="delivery-leads" element={<LeadsPage />} />
+        <Route path="delivery-leads" element={<PermissionRoute route="/delivery-leads"><LeadsPage /></PermissionRoute>} />
         <Route path="leads" element={<Navigate to="/delivery-leads" replace />} />
-        <Route path="customers" element={<CustomersPage />} />
+        <Route path="customers" element={<PermissionRoute route="/customers"><CustomersPage /></PermissionRoute>} />
         <Route path="contests" element={<ContestsPage />} />
         <Route path="coupons" element={<RootOnlyRoute><CouponsPage /></RootOnlyRoute>} />
         <Route path="lucky-wheel" element={<RootOnlyRoute><LuckyWheelAdmin /></RootOnlyRoute>} />
@@ -129,6 +131,7 @@ function Content() {
         </Route>
         <Route path="push-notifications" element={<RootOnlyRoute><PushNotificationsPage /></RootOnlyRoute>} />
         <Route path="home-builder" element={<RootOnlyRoute><HomePageBuilderPage /></RootOnlyRoute>} />
+        <Route path="modifier-icons" element={<RootOnlyRoute><ModifierIconsPage /></RootOnlyRoute>} />
         <Route path="feed-campaigns" element={<Navigate to="/home-builder" replace />} />
         <Route path="tenant" element={<RequireTenant><TenantLayout /></RequireTenant>}>
           {tenantRouteElements}

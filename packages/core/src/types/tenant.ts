@@ -112,6 +112,8 @@ export interface Tenant {
   marketId?: string | null;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
   paymentCapabilities?: { cash: boolean; card: boolean };
+  /** Granular payment toggles resolved per store. */
+  paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
   /** Manual override: open | closed | busy. If set, overrides businessHours. */
   operationalStatus?: OperationalStatus;
   /** accept_always = accept orders even when closed; accept_only_when_open = block when closed */

@@ -640,9 +640,6 @@ export function computeProfitabilityEstimates(
 ): ProfitabilityEstimates {
   const msPerDay = 86400000;
   const periodDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / msPerDay));
-  const ordersPerDay = overview.orderCount / periodDays;
-  const ordersPerMonth = ordersPerDay * 30;
-
   const avgContribution =
     overview.orderCount > 0 ? overview.estimatedNetContribution / overview.orderCount : 0;
   const breakEvenOrdersPerMonth =

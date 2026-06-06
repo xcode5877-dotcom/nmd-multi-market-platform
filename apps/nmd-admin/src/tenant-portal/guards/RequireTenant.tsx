@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { TenantProvider, useTenant } from '../contexts/TenantContext';
 import { ROLE } from '../../rbac';
+import { AdminSafeRedirect } from '../../lib/permissions';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -32,7 +33,7 @@ function RequireTenantInner({ children }: { children: ReactNode }) {
         </div>
       );
     }
-    return <>{children}</>;
+    return <AdminSafeRedirect me={me} context="nmd-admin" />;
   }
 
   return <Navigate to="/" replace />;

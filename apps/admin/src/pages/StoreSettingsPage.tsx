@@ -61,7 +61,7 @@ export default function StoreSettingsPage() {
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant-by-id', tenantId],
-    queryFn: () => api.getTenant(tenantId) as Promise<{ name?: string; operationalStatus?: string; orderPolicy?: string; businessHours?: BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; bookingEnabled?: boolean; about?: string; officeHours?: string; phone?: string; whatsappPhone?: string } | null>,
+    queryFn: () => api.getTenant(tenantId) as Promise<{ name?: string; operationalStatus?: string; orderPolicy?: string; businessHours?: BusinessHours; busyBannerEnabled?: boolean; busyBannerText?: string; storeType?: 'RESTAURANT' | 'PROFESSIONAL'; bookingEnabled?: boolean; about?: string; officeHours?: string; phone?: string; whatsappPhone?: string; paymentCapabilities?: { allowInstallments?: boolean; installmentOptions?: number[] } } | null>,
     enabled: !!tenantId,
   });
 
@@ -107,6 +107,25 @@ export default function StoreSettingsPage() {
   const bookingEnabled = tenant?.bookingEnabled ?? false;
   const isProfessional = tenant?.storeType === 'PROFESSIONAL';
   const supportsWeightSelling = (tenant as { supportsWeightSelling?: boolean })?.supportsWeightSelling ?? false;
+  const allowInstallments = (tenant as { paymentCapabilities?: { allowInstallments?: boolean } })?.paymentCapabilities?.allowInstallments ?? false;
+  const installmentOptionsRaw = (tenant as { paymentCapabilities?: { installmentOptions?: number[] } })?.paymentCapabilities?.installmentOptions;
+  const installmentOptions = Array.isArray(installmentOptionsRaw) && installmentOptionsRaw.length > 0 ? installmentOptionsRaw : [3, 6, 12];
+  const installmentPresets = [3, 6, 12];
+
+  const saveInstallments = async (enabled: boolean, options: number[]) => {
+    const normalized = [...new Set(options.map((n) => Math.floor(Number(n))).filter((n) => n >= 2 && n <= 36))].sort((a, b) => a - b);
+    try {
+      await api.updateOperationalSettingsApi(tenantId, {
+        allowInstallments: enabled,
+        installmentOptions: normalized.length > 0 ? normalized : [3, 6, 12],
+      });
+      queryClient.invalidateQueries({ queryKey: ['tenant-by-id', tenantId] });
+      broadcastTenantUpdate(tenantId);
+      addToast(enabled ? 'تم تفعيل الأقساط لبطاقات الائتمان' : 'تم إيقاف الأقساط', 'success');
+    } catch {
+      addToast('حدث خطأ أثناء حفظ إعدادات الأقساط', 'error');
+    }
+  };
 
   const handleStatusOverride = async (status: 'open' | 'closed' | 'busy') => {
     try {
@@ -754,6 +773,49 @@ export default function StoreSettingsPage() {
                 <span className="text-sm font-medium text-gray-700">{supportsWeightSelling ? 'مفعّل' : 'غير مفعّل'}</span>
               </label>
             </div>
+          </div>
+          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900">تقسيط بطاقات الائتمان (الأقساط)</p>
+                <p className="text-sm text-gray-500 mt-0.5">عند التفعيل، صفحة الدفع تعرض خيارات التقسيط للعملاء حسب الإعدادات.</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={allowInstallments}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    void saveInstallments(checked, installmentOptions);
+                  }}
+                  className="rounded border-gray-300 text-primary focus:ring-primary w-5 h-5"
+                />
+                <span className="text-sm font-medium text-gray-700">{allowInstallments ? 'مفعّل' : 'غير مفعّل'}</span>
+              </label>
+            </div>
+            {allowInstallments && (
+              <div className="mt-3 flex items-center gap-4 flex-wrap">
+                {installmentPresets.map((months) => {
+                  const checked = installmentOptions.includes(months);
+                  return (
+                    <label key={months} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...installmentOptions, months]
+                            : installmentOptions.filter((n) => n !== months);
+                          void saveInstallments(true, next.length > 0 ? next : [months]);
+                        }}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-gray-700">{months} أشهر</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
           {canSeeDelivery ? (
             <div>

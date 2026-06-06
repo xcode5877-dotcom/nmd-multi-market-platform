@@ -12,13 +12,22 @@ import { filterOptionGroupsForTenant, generateId, formatMoney } from '@nmd/core'
 import { Card, Button, Input, Modal } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
+import ModifierIconKeySelect from '../components/ModifierIconKeySelect';
+import { resolveMarketSlugFromId } from '../lib/modifierIcons';
 
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
 const api = new MockApiClient();
 
 export default function OptionsPage() {
   const { tenantId, tenantType } = useAdminContext();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { data: marketSlug = 'dabburiyya' } = useQuery({
+    queryKey: ['market-slug', user?.marketId],
+    queryFn: () => resolveMarketSlugFromId(user?.marketId),
+    enabled: !!user?.marketId,
+  });
   const { data: catalog } = useQuery({
     queryKey: ['catalog', tenantId],
     queryFn: () => api.getCatalogApi(tenantId),
@@ -43,7 +52,14 @@ export default function OptionsPage() {
     selectionType: 'single' as 'single' | 'multi',
     allowHalfPlacement: false,
   });
-  const [itemForm, setItemForm] = useState<{ id?: string; name: string; priceDelta: number; enabled: boolean; defaultSelected: boolean }>({ name: '', priceDelta: 0, enabled: true, defaultSelected: false });
+  const [itemForm, setItemForm] = useState<{
+    id?: string;
+    name: string;
+    priceDelta: number;
+    enabled: boolean;
+    defaultSelected: boolean;
+    modifierIconKey?: string;
+  }>({ name: '', priceDelta: 0, enabled: true, defaultSelected: false });
   const editingItemId = itemForm.id;
 
   const refresh = () => {
@@ -113,6 +129,7 @@ export default function OptionsPage() {
       sortOrder: selected.items?.length ?? 0,
       enabled: itemForm.enabled,
       defaultSelected: itemForm.defaultSelected,
+      ...(itemForm.modifierIconKey ? { modifierIconKey: itemForm.modifierIconKey } : {}),
     };
     if (USE_API && catalog) {
       const groups = (catalog.optionGroups ?? []) as OptionGroup[];
@@ -210,7 +227,7 @@ export default function OptionsPage() {
                     </span>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => { setItemForm({ id: i.id, name: i.name, priceDelta: i.priceDelta ?? i.priceModifier ?? 0, enabled: i.enabled ?? true, defaultSelected: i.defaultSelected ?? false }); setItemModalOpen(true); }}>تعديل</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setItemForm({ id: i.id, name: i.name, priceDelta: i.priceDelta ?? i.priceModifier ?? 0, enabled: i.enabled ?? true, defaultSelected: i.defaultSelected ?? false, modifierIconKey: i.modifierIconKey }); setItemModalOpen(true); }}>تعديل</Button>
                     <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteItem(i.id)}>حذف</Button>
                   </div>
                 </div>
@@ -252,6 +269,11 @@ export default function OptionsPage() {
           <Input label="التعديل على السعر (₪)" type="number" value={itemForm.priceDelta} onChange={(e) => setItemForm((f) => ({ ...f, priceDelta: +e.target.value }))} />
           <label className="flex items-center gap-2"><input type="checkbox" checked={itemForm.enabled} onChange={(e) => setItemForm((f) => ({ ...f, enabled: e.target.checked }))} />مفعّل</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={itemForm.defaultSelected} onChange={(e) => setItemForm((f) => ({ ...f, defaultSelected: e.target.checked }))} />محدد افتراضياً</label>
+          <ModifierIconKeySelect
+            marketSlug={marketSlug}
+            value={itemForm.modifierIconKey}
+            onChange={(modifierIconKey) => setItemForm((f) => ({ ...f, modifierIconKey }))}
+          />
         </div>
         <div className="mt-6 flex gap-2">
           <Button onClick={handleSaveItem}>حفظ</Button>

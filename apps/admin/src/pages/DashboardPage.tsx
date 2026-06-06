@@ -6,6 +6,7 @@ import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrderAlarm } from '../contexts/OrderAlarmContext';
 import { isPlatformAdmin } from '../lib/is-platform-admin';
+import { canViewModule } from '../lib/permissions';
 import { createAdminData } from '../store/admin-data';
 import { getDeliverySettings, getTenantById, listOrdersByTenant, listCampaigns } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
@@ -68,6 +69,9 @@ export default function DashboardPage() {
   const delivery = USE_API ? deliveryQuery.data : getDeliverySettings(tenantId);
 
   const stats = dashboardStatsQuery.data;
+
+  const showFinancialBreakdown =
+    canViewModule(user?.role, 'platformFee') || canViewModule(user?.role, 'commission');
   const ordersTodayCount = stats?.orderCountToday ?? orders.filter(
     (o: { createdAt?: string }) => new Date(o.createdAt!).toDateString() === new Date().toDateString()
   ).length;
@@ -160,6 +164,7 @@ export default function DashboardPage() {
           </div>
         </Card>
       </div>
+      {showFinancialBreakdown ? (
       <Card className="mb-6 shadow-sm border border-slate-100">
         <div className="p-4">
           <h2 className="font-semibold text-gray-900 mb-3">الملخص المالي (من الطلبات المكتملة)</h2>
@@ -173,6 +178,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </Card>
+      ) : null}
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <Card className="shadow-sm border border-slate-100">
           <div className="p-4">

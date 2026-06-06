@@ -110,6 +110,12 @@ interface Tenant {
         cash: boolean;
         card: boolean;
     };
+    /** Granular payment toggles resolved per store. */
+    paymentMethods?: {
+        cash: boolean;
+        card: boolean;
+        installments: boolean;
+    };
     /** Manual override: open | closed | busy. If set, overrides businessHours. */
     operationalStatus?: OperationalStatus;
     /** accept_always = accept orders even when closed; accept_only_when_open = block when closed */
@@ -177,6 +183,8 @@ interface Category {
     parentId?: string | null;
     /** default true; hide from storefront when false */
     isVisible?: boolean;
+    /** When true, platform markup is not applied to products in this category (e.g. drinks). */
+    markupExempt?: boolean;
 }
 
 type ProductType = 'SIMPLE' | 'CONFIGURABLE' | 'PIZZA' | 'APPAREL';
@@ -207,11 +215,17 @@ interface OptionItem {
     /** @deprecated use priceDelta */
     priceModifier?: number;
     priceDelta?: number;
+    /** Customer marketplace option surcharge (when repricing enabled). */
+    displayPriceDelta?: number;
     sortOrder: number;
     enabled?: boolean;
     defaultSelected?: boolean;
-    /** When "HALF", storefront shows placement control (يمين/يسار/كامل). Placement does not affect price. */
+    /** When "HALF", storefront shows placement control (يمين/يسار/كامل). */
     placement?: OptionPlacement;
+    /** Explicit per-topping split switch from store admin. */
+    allowSplitting?: boolean;
+    /** Key into shared Super Admin modifier icon library (e.g. olive, cheese). */
+    modifierIconKey?: string;
 }
 interface OptionGroup {
     id: string;
@@ -228,6 +242,8 @@ interface OptionGroup {
     items: OptionItem[];
     /** When true, each selected option shows placement control (يمين/يسار/كامل). Pizza add-ons. */
     allowHalfPlacement?: boolean;
+    /** Alias for allowHalfPlacement used by newer admin UX. */
+    allowSplitting?: boolean;
 }
 type PizzaSliceSelection = 'WHOLE' | 'LEFT' | 'RIGHT';
 interface PizzaOptionSelection {
@@ -244,6 +260,10 @@ interface Product {
     description?: string;
     type: ProductType;
     basePrice: number;
+    /** Customer marketplace price (includes platform markup when enabled server-side). */
+    displayPrice?: number;
+    /** Customer compare-at price for offers (repriced when applicable). */
+    displayComparePrice?: number;
     currency: string;
     /** Legacy: single image URL; auto-set from images[0] when images exist */
     imageUrl?: string;
@@ -296,6 +316,8 @@ interface CartItem {
     categoryId?: string;
     quantity: number;
     basePrice: number;
+    /** Repriced customer unit (base + options markup) before campaigns; merchant base stays in basePrice. */
+    customerUnitPrice?: number;
     selectedOptions: SelectedOption[] | PizzaSelectedOption[];
     optionGroups: OptionGroup[];
     totalPrice: number;
@@ -575,6 +597,50 @@ declare function applyCampaign(price: number, campaigns: Campaign[], productId?:
     campaign?: Campaign;
 };
 
+/** Super-admin managed modifier icon library entry (market-scoped in market-config). */
+interface ModifierIcon {
+    id: string;
+    /** Stable slug used on OptionItem.modifierIconKey (e.g. olive, mushroom). */
+    key: string;
+    labelAr: string;
+    labelHe?: string;
+    labelEn?: string;
+    /** Uploaded CDN URL; empty → client uses bundled asset for [key]. */
+    iconUrl: string;
+    keywords: string[];
+    category?: string;
+    active: boolean;
+    sortOrder: number;
+}
+
+/** Platform admin roles — shared by nmd-admin, merchant admin, and mock-api. */
+type AdminRole = 'ROOT_ADMIN' | 'SUPER_ADMIN' | 'MARKET_ADMIN' | 'TENANT_ADMIN' | 'COURIER' | 'CUSTOMER';
+type AdminModule = 'dashboard' | 'orders' | 'orderBoard' | 'products' | 'categories' | 'options' | 'campaigns' | 'storeSettings' | 'workingHours' | 'coupons' | 'settlementSummary' | 'settlementLedger' | 'settlementPayments' | 'platformFee' | 'commission' | 'markupExempt' | 'homeBuilder' | 'pushBroadcast' | 'globalRewards' | 'drivers' | 'marketsList' | 'allTenants' | 'marketOverview' | 'marketStores' | 'marketOrders' | 'marketReports' | 'marketBanners' | 'marketDispatch' | 'marketCouriers' | 'marketFinance' | 'marketPlatformFee' | 'platformSettings' | 'platformFees' | 'platformEconomics' | 'superAdminReports' | 'customers' | 'deliveryLeads' | 'audit' | 'contests' | 'staff' | 'branding' | 'homepage' | 'deliveryZones' | 'platformCatalog' | 'modifierIcons' | 'luckyWheel' | 'externalOrders' | 'monitoring';
+type EditableField = 'markupExempt' | 'platformFee' | 'commissionType' | 'commissionValue' | 'financialConfig' | 'marketId' | 'enabled' | 'deliveryFeeModel' | 'loyaltyBonus';
+declare function isPlatformSuperAdmin(role: string | undefined): boolean;
+declare function isMarketAdminRole(role: string | undefined): boolean;
+declare function isTenantAdminRole(role: string | undefined): boolean;
+declare function isStaffAdminRole(role: string | undefined): boolean;
+/** Nav item path → module (nmd-admin super nav + shared routes). */
+declare const ROUTE_MODULE_MAP: Record<string, AdminModule>;
+/** Merchant admin (/merchant) path → module. */
+declare const MERCHANT_ROUTE_MODULE_MAP: Record<string, AdminModule>;
+declare function canViewModule(role: string | undefined, module: AdminModule): boolean;
+declare function canEditField(role: string | undefined, field: EditableField): boolean;
+declare function canAccessRoute(role: string | undefined, route: string): boolean;
+type AdminAppContext = 'nmd-admin' | 'merchant';
+/** Cross-app URL for store owners (outside /market-admin router basename). */
+declare function getTenantMerchantPortalUrl(tenantSlug?: string | null): string;
+declare function isExternalAdminRedirect(path: string): boolean;
+declare function getSafeDashboardRoute(role: string | undefined, context?: AdminAppContext, tenantSlug?: string | null): string;
+/** TENANT_ADMIN allowed keys on PATCH/PUT /tenants/:id (store owner self-service). */
+declare const TENANT_ADMIN_TENANT_PATCH_FIELDS: readonly ["name", "about", "phone", "whatsappPhone", "officeHours", "openTime", "closeTime", "forceClosed", "operationalStatus", "overrideStatus", "orderPolicy", "businessHours", "busyBannerEnabled", "busyBannerText", "bookingEnabled", "storeType", "addressLine", "location", "supportsWeightSelling", "paymentMethods", "paymentCapabilities", "banners", "hero", "logoUrl", "primaryColor", "secondaryColor", "fontFamily", "radiusScale", "layoutStyle", "collections"];
+type TenantPatchField = (typeof TENANT_ADMIN_TENANT_PATCH_FIELDS)[number];
+declare function filterTenantPatchForRole(role: string | undefined, updates: Record<string, unknown>): Record<string, unknown>;
+declare function stripProtectedCategoryFields<T extends {
+    markupExempt?: boolean;
+}>(role: string | undefined, categories: T[], existing: T[]): T[];
+
 /**
  * Parse subdomain to extract tenant ID for production.
  * e.g. "acme.nmd-store.com" -> "acme"
@@ -609,7 +675,7 @@ declare function resolveTenantFromUrl(): string | null;
  * Persist last selected tenant for dev
  */
 declare function setLastTenant(slugOrId: string): void;
-/** Platform (mall/city) brand identity – used when no tenant is active. Do not allow tenant colors to persist on platform routes. */
+/** Platform (mall/city) brand identity – Now Market. Official logo colors, high-end native app design. */
 declare const PLATFORM_BRANDING: TenantBranding;
 /**
  * Convert tenant branding to CSS variables for runtime theming.
@@ -637,6 +703,13 @@ declare function formatTimeGregorian(date: Date | string): string;
  * Format as ISO date YYYY-MM-DD (Gregorian).
  */
 declare function formatDateISO(date: Date | string): string;
+
+/** Customer-visible unit price (marketplace repriced when server sets displayPrice). */
+declare function customerUnitPrice(product: Pick<Product, 'basePrice' | 'displayPrice'> & {
+    priceOverride?: number;
+}, variantPriceOverride?: number): number;
+/** Strikethrough / compare price for offers when repriced. */
+declare function customerComparePrice(product: Pick<Product, 'basePrice' | 'displayPrice' | 'displayComparePrice'>): number | undefined;
 
 /**
  * Format price for display (ILS ₪, 2 decimals, Western numerals).
@@ -703,20 +776,23 @@ declare function buildOrderActionLinksSection(orderId: string, baseUrl?: string)
 
 /** Re-export for addon placement (WHOLE/LEFT/RIGHT). */
 type Placement = PizzaPlacement;
-/** Arabic labels for addon placement. Single source of truth. Half & Half: "First Half" / "Second Half". */
+/** Arabic labels for addon placement (pizza half-and-half). */
 declare const PLACEMENT_LABELS_AR: {
-    readonly WHOLE: "كامل";
-    readonly LEFT: "نصف ثاني";
-    readonly RIGHT: "نصف أول";
+    readonly WHOLE: "كاملة";
+    readonly LEFT: "نصف يسار";
+    readonly RIGHT: "نصف يمين";
 };
 /** Options for placement selector (value + Arabic label). */
 declare const PLACEMENT_OPTIONS_AR: {
     value: Placement;
     label: string;
 }[];
-/** Format placement to Arabic label, or undefined if no placement. */
+/** Format placement to Arabic label, or undefined if no placement / whole. */
 declare function formatPlacementAr(p?: Placement | null): string | undefined;
-/** Format addon name with optional placement. Returns "name" or "name (label)". */
+/**
+ * Format addon name with optional placement.
+ * Whole pizza: name only; left/right: `name (نصف …)`.
+ */
 declare function formatAddonNameWithPlacement(name: string, p?: Placement | null): string;
 /** Format a single option group selection for display. When two options with LEFT and RIGHT (half & half), returns "نصف X / نصف Y". */
 declare function formatHalfAndHalfOptionDisplay(ids: string[], placements: Record<string, Placement>, getOptionName: (id: string) => string | undefined): string;
@@ -758,4 +834,4 @@ declare const mockTenants: Record<string, Tenant>;
 declare const mockCategories: Record<string, Category[]>;
 declare const mockProducts: Record<string, Product[]>;
 
-export { type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliveryLocation, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, type MarketCategory, type MarketSection, type MarketSectionType, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, type OverrideStatus, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, PLATFORM_BRANDING, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, type Template, type Tenant, type TenantBranding, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildOrderActionLinksSection, buildWhatsAppDeepLink, buildWhatsAppMessage, buildWhatsAppUrl, filterOptionGroupsForTenant, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatHalfAndHalfOptionDisplay, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, haversineDistanceKm, isStoreOpen, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, roundMoney, setLastTenant, tenantBrandingToCssVars };
+export { type AdminAppContext, type AdminModule, type AdminRole, type ApiClient, type BusinessHours, type Campaign, type CampaignAppliesTo, CampaignAppliesToSchema, CampaignSchema, type CampaignStatus, CampaignStatusSchema, type CampaignType, CampaignTypeSchema, type CartItem, type Category, type DayHours, type DayKey, type DeliveryLocation, type DeliverySettings, DeliverySettingsSchema, type DeliveryZone, DeliveryZoneSchema, type EditableField, type FormatMoneyOptions, type HomeCollection, LAST_TENANT_KEY, type LayoutStyle, MERCHANT_ROUTE_MODULE_MAP, type MarketCategory, type MarketSection, type MarketSectionType, type ModifierIcon, type OperationalStatus, type OptionGroup, type OptionGroupType, type OptionItem, type OptionPlacement, type OptionScope, type OptionSelectionType, type Order, type OrderDeliverySnapshot, type OrderFulfillmentType, type OrderPayload, type OrderPolicy, type OverrideStatus, PLACEMENT_LABELS_AR, PLACEMENT_OPTIONS_AR, PLATFORM_BRANDING, type PaymentMethod, type PizzaOptionSelection, type PizzaPlacement, type PizzaSelectedOption, type PizzaSliceSelection, type Placement, type PricedLine, type Product, type ProductImage, type ProductType, type ProductVariant, ROLE_PERMISSIONS, ROUTE_MODULE_MAP, type Role, type SelectedOption, type StaffUser, type StoreMode, type StorefrontBanner, type StorefrontHero, TENANT_ADMIN_TENANT_PATCH_FIELDS, type Template, type Tenant, type TenantBranding, type TenantPatchField, type TenantStoreType, type VariantOptionValue, applyCampaign, applyOptionDeltas, buildOrderActionLinksSection, buildWhatsAppDeepLink, buildWhatsAppMessage, buildWhatsAppUrl, canAccessRoute, canEditField, canViewModule, customerComparePrice, customerUnitPrice, filterOptionGroupsForTenant, filterTenantPatchForRole, formatAddonNameWithPlacement, formatDateGregorian, formatDateISO, formatDateTimeGregorian, formatHalfAndHalfOptionDisplay, formatMoney, formatPlacementAr, formatPrice, formatTimeGregorian, generateId, getOperationalStatus, getSafeDashboardRoute, getTenantMerchantPortalUrl, haversineDistanceKm, isExternalAdminRedirect, isMarketAdminRole, isPlatformSuperAdmin, isStaffAdminRole, isStoreOpen, isTenantAdminRole, isValidWhatsAppPhone, mockCategories, mockProducts, mockTenants, parseSubdomainTenant, resolveTenantFromUrl, resolveTenantId, roundMoney, setLastTenant, stripProtectedCategoryFields, tenantBrandingToCssVars };

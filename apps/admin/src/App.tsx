@@ -7,6 +7,7 @@ import type { Tenant } from '@nmd/core';
 import { AdminProvider } from './context/AdminContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { OrderAlarmProvider } from './contexts/OrderAlarmContext';
+import { MerchantPermissionRoute } from './lib/permissions';
 import { getInitialTenant } from './store/admin-tenant';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
@@ -175,22 +176,22 @@ function AdminApp() {
               <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
                 <Routes>
                   <Route path="/" element={<AdminLayout />}>
-                    <Route index element={<DashboardPage />} />
-                    <Route path="leads" element={<LeadsPage />} />
-                    <Route path="orders" element={<OrdersPage />} />
-                    <Route path="orders/board" element={<OrdersBoardPage />} />
-                    <Route path="catalog/categories" element={<CategoriesPage />} />
-                    <Route path="catalog/products" element={<ProductsPage />} />
-                    <Route path="catalog/options" element={<OptionsPage />} />
-                    <Route path="campaigns" element={<CampaignsPage />} />
-                    <Route path="campaigns/new" element={<CampaignEditPage />} />
-                    <Route path="campaigns/:id/edit" element={<CampaignEditPage />} />
-                    <Route path="settings/delivery" element={<DeliverySettingsPage />} />
-                    <Route path="settings/store" element={<StoreSettingsPage />} />
-                    <Route path="settings/settlement" element={<SettlementPage />} />
-                    <Route path="settings/staff" element={<StaffPage />} />
-                    <Route path="branding" element={<BrandingPage />} />
-                    <Route path="homepage" element={<HomepageManagerPage key={location.pathname + location.search} />} />
+                    <Route index element={<MerchantPermissionRoute><DashboardPage /></MerchantPermissionRoute>} />
+                    <Route path="leads" element={<MerchantPermissionRoute><LeadsPage /></MerchantPermissionRoute>} />
+                    <Route path="orders" element={<MerchantPermissionRoute><OrdersPage /></MerchantPermissionRoute>} />
+                    <Route path="orders/board" element={<MerchantPermissionRoute><OrdersBoardPage /></MerchantPermissionRoute>} />
+                    <Route path="catalog/categories" element={<MerchantPermissionRoute><CategoriesPage /></MerchantPermissionRoute>} />
+                    <Route path="catalog/products" element={<MerchantPermissionRoute><ProductsPage /></MerchantPermissionRoute>} />
+                    <Route path="catalog/options" element={<MerchantPermissionRoute><OptionsPage /></MerchantPermissionRoute>} />
+                    <Route path="campaigns" element={<MerchantPermissionRoute><CampaignsPage /></MerchantPermissionRoute>} />
+                    <Route path="campaigns/new" element={<MerchantPermissionRoute><CampaignEditPage /></MerchantPermissionRoute>} />
+                    <Route path="campaigns/:id/edit" element={<MerchantPermissionRoute><CampaignEditPage /></MerchantPermissionRoute>} />
+                    <Route path="settings/delivery" element={<MerchantPermissionRoute><DeliverySettingsPage /></MerchantPermissionRoute>} />
+                    <Route path="settings/store" element={<MerchantPermissionRoute><StoreSettingsPage /></MerchantPermissionRoute>} />
+                    <Route path="settings/settlement" element={<MerchantPermissionRoute><SettlementPage /></MerchantPermissionRoute>} />
+                    <Route path="settings/staff" element={<MerchantPermissionRoute><StaffPage /></MerchantPermissionRoute>} />
+                    <Route path="branding" element={<MerchantPermissionRoute><BrandingPage /></MerchantPermissionRoute>} />
+                    <Route path="homepage" element={<MerchantPermissionRoute><HomepageManagerPage key={location.pathname + location.search} /></MerchantPermissionRoute>} />
                   </Route>
                 </Routes>
               </Suspense>

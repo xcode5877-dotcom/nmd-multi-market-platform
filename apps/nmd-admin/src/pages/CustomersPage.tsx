@@ -1,15 +1,31 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { formatDateGregorian } from '@nmd/core';
 import { useAuth } from '../contexts/AuthContext';
+import { apiFetch } from '../api';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
 export default function CustomersPage() {
   const { user: me } = useAuth();
+  const [grantPhone, setGrantPhone] = useState('');
+  const [grantAmount, setGrantAmount] = useState(20);
+  const isPlatformAdmin = me?.role === 'ROOT_ADMIN' || me?.role === 'SUPER_ADMIN';
+
+  const grantCoinsMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ balance: number; granted: number }>('/admin/customers/grant-coins', {
+        method: 'POST',
+        body: JSON.stringify({
+          phone: grantPhone.trim(),
+          amount: grantAmount,
+        }),
+      }),
+  });
   const [searchParams] = useSearchParams();
   const urlTenant = searchParams.get('tenant')?.trim() || undefined;
   const effectiveTenantSlug = urlTenant ?? (me?.role === 'TENANT_ADMIN' ? (me as { tenantSlug?: string })?.tenantSlug : undefined);
@@ -43,6 +59,51 @@ export default function CustomersPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">المشتركون</h1>
+      {MOCK_API_URL && isPlatformAdmin && (
+        <Card className="p-4 mb-6 bg-teal-50 border border-teal-100">
+          <h2 className="text-sm font-semibold text-gray-900 mb-2">منح عملات مكافآت (يدوي)</h2>
+          <p className="text-xs text-gray-600 mb-3">يضيف عملات NMD إلى محفظة العميل حسب رقم الجوال (سوبر أدمن فقط).</p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <label className="text-sm">
+              <span className="block text-gray-600 mb-1">الجوال</span>
+              <input
+                className="border rounded px-2 py-1.5 text-sm dir-ltr min-w-[180px]"
+                value={grantPhone}
+                onChange={(e) => setGrantPhone(e.target.value)}
+                placeholder="9725..."
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-gray-600 mb-1">الكمية</span>
+              <input
+                type="number"
+                min={1}
+                className="border rounded px-2 py-1.5 text-sm w-24"
+                value={grantAmount}
+                onChange={(e) => setGrantAmount(Number(e.target.value) || 0)}
+              />
+            </label>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-50"
+              disabled={grantCoinsMutation.isPending || !grantPhone.trim()}
+              onClick={() => grantCoinsMutation.mutate()}
+            >
+              {grantCoinsMutation.isPending ? 'جاري المنح...' : 'منح العملات'}
+            </button>
+          </div>
+          {grantCoinsMutation.isSuccess && (
+            <p className="text-sm text-green-700 mt-2">
+              تم المنح. الرصيد الجديد: {grantCoinsMutation.data.balance} (تمت إضافة {grantCoinsMutation.data.granted})
+            </p>
+          )}
+          {grantCoinsMutation.isError && (
+            <p className="text-sm text-red-600 mt-2">
+              {grantCoinsMutation.error instanceof Error ? grantCoinsMutation.error.message : 'فشل المنح'}
+            </p>
+          )}
+        </Card>
+      )}
       {effectiveTenantSlug && (
         <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
           عرض بيانات متجر واحد فقط: <strong>{effectiveTenantSlug}</strong>

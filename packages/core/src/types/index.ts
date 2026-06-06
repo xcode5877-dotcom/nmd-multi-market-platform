@@ -9,3 +9,4 @@ export * from './order';
 export * from './campaign';
 export * from './delivery';
 export * from './pricing';
+export * from './modifier-icon';

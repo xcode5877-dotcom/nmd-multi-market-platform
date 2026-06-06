@@ -16,6 +16,8 @@ import type {
 import { generateId, formatMoney } from '@nmd/core';
 import { uploadFiles, MockApiClient } from '@nmd/mock';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchMarketModifierIcons, resolveMarketSlugFromId } from '../lib/modifierIcons';
 
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
 const api = new MockApiClient();
@@ -188,6 +190,7 @@ function ProductCard({
 
 export default function ProductsPage() {
   const { tenantId, tenantType = 'GENERAL' } = useAdminContext();
+  const { user } = useAuth();
   const addToast = useToast().addToast;
   const queryClient = useQueryClient();
   const adminData = useAdminData(tenantId);
@@ -195,6 +198,18 @@ export default function ProductsPage() {
     queryKey: ['tenant-by-id', tenantId],
     queryFn: () => api.getTenant(tenantId!),
     enabled: !!tenantId && USE_API,
+  });
+  const marketId = (tenant as { marketId?: string } | null)?.marketId ?? user?.marketId;
+  const { data: marketSlug = 'dabburiyya' } = useQuery({
+    queryKey: ['market-slug-products', marketId],
+    queryFn: () => resolveMarketSlugFromId(marketId),
+    enabled: !!marketId,
+  });
+  const { data: modifierIcons = [] } = useQuery({
+    queryKey: ['modifier-icons', marketSlug],
+    queryFn: () => fetchMarketModifierIcons(marketSlug),
+    enabled: !!marketSlug.trim(),
+    staleTime: 60_000,
   });
   const [products, setProducts] = useState<Product[]>(() => adminData.getProducts());
   const categories = adminData.getCategories();
@@ -1216,6 +1231,27 @@ export default function ProductsPage() {
                           />
                           <span className="text-xs text-gray-600">نصف</span>
                         </label>
+                      )}
+                      {modifierIcons.length > 0 && (
+                        <select
+                          title="أيقونة الإضافة"
+                          value={item.modifierIconKey ?? ''}
+                          onChange={(e) =>
+                            updateOptionItem(g.id, item.id, {
+                              modifierIconKey: e.target.value || undefined,
+                            })
+                          }
+                          className="max-w-[5.5rem] border border-gray-200 rounded px-1 py-0.5 text-[10px]"
+                        >
+                          <option value="">تلقائي</option>
+                          {modifierIcons
+                            .filter((ic) => ic.active)
+                            .map((ic) => (
+                              <option key={ic.key} value={ic.key}>
+                                {ic.labelAr}
+                              </option>
+                            ))}
+                        </select>
                       )}
                       <button type="button" onClick={() => removeOptionFromGroup(g.id, item.id)} className="text-red-500 hover:text-red-700">
                         ×

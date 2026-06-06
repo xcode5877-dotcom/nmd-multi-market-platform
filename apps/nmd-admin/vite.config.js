@@ -44,5 +44,6 @@ export default defineConfig({
         alias: {
             '@': "".concat(__dirname, "/src"),
         },
+        dedupe: ['react', 'react-dom'],
     },
 });

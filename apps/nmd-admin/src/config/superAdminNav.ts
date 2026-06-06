@@ -19,6 +19,7 @@ import {
   CircleDot,
   Send,
   Megaphone,
+  ImagePlus,
   Users,
   Settings,
   CreditCard,
@@ -124,6 +125,7 @@ export const SUPER_ADMIN_NAV_SECTIONS: SuperAdminNavSection[] = [
       { to: '/lucky-wheel', label: 'عجلة الحظ', icon: CircleDot, end: true },
       { to: '/push-notifications', label: 'إشعارات العملاء', icon: Send, end: true },
       { to: '/home-builder', label: 'بناء الصفحة الرئيسية', icon: Megaphone, end: true },
+      { to: '/modifier-icons', label: 'مكتبة أيقونات الإضافات', icon: ImagePlus, end: true },
     ],
   },
   {

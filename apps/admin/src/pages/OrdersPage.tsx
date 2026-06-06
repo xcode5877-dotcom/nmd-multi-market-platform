@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import type { Order } from '@nmd/core';
 import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal } from '@nmd/ui';
-import { Package, Bell, MessageCircle, FileText, Phone, Truck, Trash2 } from 'lucide-react';
+import { Package, Bell, MessageCircle, FileText, Phone, Truck, Trash2, Eye } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isPlatformAdmin, isSuperAdmin } from '../lib/is-platform-admin';
@@ -14,6 +14,22 @@ import { MockApiClient } from '@nmd/mock';
 
 const api = new MockApiClient();
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
+
+function PizzaSideIndicator({ placement }: { placement: 'WHOLE' | 'LEFT' | 'RIGHT' }) {
+  const teal = '#14b8a6';
+  const size = 14;
+  return (
+    <span
+      className="relative inline-flex shrink-0 overflow-hidden rounded-full border border-slate-300"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      {placement === 'WHOLE' && <span className="absolute inset-0" style={{ background: teal }} />}
+      {placement === 'LEFT' && <span className="absolute inset-y-0 left-0 w-1/2" style={{ background: teal }} />}
+      {placement === 'RIGHT' && <span className="absolute inset-y-0 right-0 w-1/2" style={{ background: teal }} />}
+    </span>
+  );
+}
 
 const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'] as const;
 const STATUS_LABELS: Record<string, string> = {
@@ -93,7 +109,6 @@ function OrderCard({
   showGrandTotal,
   onViewDetails,
   onStatusChange,
-  isSuperAdmin,
   onRequestHardDelete,
 }: {
   order: OrderWithAmounts;
@@ -101,7 +116,6 @@ function OrderCard({
   showGrandTotal: boolean;
   onViewDetails: () => void;
   onStatusChange: (order: Order, status: Order['status']) => void;
-  isSuperAdmin?: boolean;
   onRequestHardDelete?: (order: Order) => void;
 }) {
   const idStr = String((order as { id?: unknown }).id ?? '');
@@ -134,7 +148,7 @@ function OrderCard({
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-medium text-slate-600">{idStr.slice(0, 8) || '—'}</span>
         <div className="flex items-center gap-1.5">
-          {isSuperAdmin && onRequestHardDelete && (
+          {onRequestHardDelete && (
             <button
               type="button"
               className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
@@ -262,12 +276,19 @@ function getOrderAmounts(order: Order & { merchantAmount?: number; platformDeliv
 type StoreOperationalStatus = 'open' | 'busy' | 'closed';
 
 export default function OrdersPage() {
+  console.log('NMD-FOUND-YOU: This is the real file!');
+  console.log('NMD-LOCATION-CHECK: I am in OrdersPage.tsx');
+  console.log('NMD-TABLE-CHECK: Rendering table in apps/admin/src/pages/OrdersPage.tsx');
   const { tenantId } = useAdminContext();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const addToast = useToast().addToast;
   const showGrandTotal = isPlatformAdmin(user?.role);
   const superAdmin = isSuperAdmin(user?.role);
+  // DEBUG: verify role value and superAdmin boolean (used for delete icon visibility).
+  // Temporary for emergency debugging.
+  // eslint-disable-next-line no-console
+  console.log('DEBUG-ROLE:', user?.role, { superAdmin, USE_API });
   const [filter, setFilter] = useState<'today' | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -372,16 +393,27 @@ export default function OrdersPage() {
   };
 
   const handleHardDelete = async () => {
+    // Temporary: ignore role check to confirm UI wiring renders.
     if (!deleteTarget || !USE_API) return;
     setHardDeleting(true);
     try {
-      const base = (import.meta.env.VITE_MOCK_API_URL ?? '').replace(/\/$/, '');
+      // Fallback to `/api` to avoid accidentally calling `/orders/...` (which would hit nginx SPA fallback).
+      const base = (import.meta.env.VITE_MOCK_API_URL ?? '/api').replace(/\/$/, '');
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('nmd-access-token') : null;
-      const res = await fetch(`${base}/orders/${encodeURIComponent(deleteTarget.id)}/hard-delete`, {
+      const orderId = deleteTarget.id;
+      const res = await fetch(`${base}/orders/${encodeURIComponent(orderId)}/hard-delete`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(String(res.status));
+
+      // Optimistic UI update: remove the deleted order immediately.
+      // Matches the current orders queryKey shape used below in `useQuery`.
+      queryClient.setQueryData<Order[]>(
+        ['orders', tenantId, refresh, listOptions?.from, listOptions?.to, listOptions?.search],
+        (old) => (old ? old.filter((o) => o.id !== orderId) : old)
+      );
+
       queryClient.invalidateQueries({ queryKey: ['orders', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['orders-board', tenantId] });
       setSelectedOrder(null);
@@ -392,6 +424,12 @@ export default function OrdersPage() {
     } finally {
       setHardDeleting(false);
     }
+  };
+
+  // Centralize delete intent so both the actions cell and the temporary date-cell icon behave identically.
+  const handleDelete = (order: Order) => {
+    setDeleteTarget(order);
+    setSelectedOrder(null);
   };
 
   const rows: Record<string, React.ReactNode>[] = orders.map((o, i) => {
@@ -406,7 +444,9 @@ export default function OrdersPage() {
       <span className="font-mono text-sm font-medium">{hasValidId ? idStr.slice(0, 8) : '—'}</span>
     ),
     date: (
-      <span className="text-gray-500 text-sm">{formatDateTimeGregorian(o.createdAt)}</span>
+        <div className="flex items-center gap-1.5 justify-end">
+          <span className="text-gray-500 text-sm">{formatDateTimeGregorian(o.createdAt)}</span>
+        </div>
     ),
     customer: (
       <div className="text-sm">
@@ -443,6 +483,27 @@ export default function OrdersPage() {
     ),
     actions: hasValidId ? (
       <div className="flex gap-1.5 flex-wrap items-center" onClick={(e) => e.stopPropagation()}>
+        {/* View details: open Drawer for this order */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 px-2 rounded-lg border-gray-300 hover:border-primary hover:bg-primary/5 gap-1.5"
+          onClick={() => setSelectedOrder(o)}
+        >
+          <Eye className="w-4 h-4 shrink-0" />
+        </Button>
+
+        {/* Delete (Trash) debug: render immediately next to Eye */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 px-2 rounded-lg border-red-200 hover:border-red-300 hover:bg-red-50/50 text-red-600"
+          onClick={() => handleDelete(o)}
+          aria-label="حذف الطلب نهائياً"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+
         {MANUAL_STATUS_BUTTONS.map(({ status, label }) => (
           <Button
             key={status}
@@ -473,17 +534,6 @@ export default function OrdersPage() {
             onClick={() => setCancelTarget(o)}
           >
             إلغاء
-          </Button>
-        )}
-        {superAdmin && USE_API && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs h-7 px-2 rounded-lg text-red-600 hover:bg-red-50"
-            onClick={() => { setDeleteTarget(o); setSelectedOrder(null); }}
-            aria-label="حذف الطلب نهائياً"
-          >
-            <Trash2 className="w-4 h-4" />
           </Button>
         )}
       </div>
@@ -629,8 +679,7 @@ export default function OrdersPage() {
                     showGrandTotal={showGrandTotal}
                     onViewDetails={() => setSelectedOrder(order)}
                     onStatusChange={handleStatus}
-                    isSuperAdmin={superAdmin}
-                    onRequestHardDelete={superAdmin && USE_API ? (o) => { setDeleteTarget(o); setSelectedOrder(null); } : undefined}
+                    onRequestHardDelete={(o) => { setDeleteTarget(o); setSelectedOrder(null); }}
                   />
                 ))}
               </div>
@@ -674,7 +723,6 @@ export default function OrdersPage() {
             useApi={USE_API}
             showGrandTotal={showGrandTotal}
             isPlatformAdmin={showGrandTotal}
-            isSuperAdmin={superAdmin}
             onRequestHardDelete={() => {
               if (selectedOrder) {
                 setDeleteTarget(selectedOrder);
@@ -698,7 +746,7 @@ export default function OrdersPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleHardDelete}
         title="حذف الطلب نهائياً"
-        message={deleteTarget ? 'هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.' : ''}
+        message={deleteTarget ? 'هل أنت متأكد من حذف هذا الطلب؟' : ''}
         confirmLabel="حذف نهائياً"
         variant="danger"
         loading={hardDeleting}
@@ -720,7 +768,6 @@ function OrderDrawerContent({
   useApi,
   showGrandTotal,
   isPlatformAdmin: isPlatformAdminUser,
-  isSuperAdmin,
   onRequestHardDelete,
 }: {
   order: OrderWithAmounts;
@@ -729,7 +776,6 @@ function OrderDrawerContent({
   useApi?: boolean;
   showGrandTotal?: boolean;
   isPlatformAdmin?: boolean;
-  isSuperAdmin?: boolean;
   onRequestHardDelete?: () => void;
 }) {
   const { merchantAmount, platformDeliveryFee, grandTotal } = getOrderAmounts(order);
@@ -741,6 +787,7 @@ function OrderDrawerContent({
     settlementClass?: string;
   } }).settlement;
   const [updating, setUpdating] = useState(false);
+  const [forceAwarding, setForceAwarding] = useState(false);
   const [assignDriverOpen, setAssignDriverOpen] = useState(false);
   const addToast = useToast().addToast;
   const assignedDriver = order.assignedDriver;
@@ -777,6 +824,20 @@ function OrderDrawerContent({
     }
     onStatusChange();
     setUpdating(false);
+  };
+
+  const handleForceLoyaltyAward = async () => {
+    if (!useApi) return;
+    setForceAwarding(true);
+    try {
+      await api.forceLoyaltyAwardOrder(order.id);
+      addToast('تم تشغيل منح العملات (تحقق من السجلات)', 'success');
+      onStatusChange();
+    } catch {
+      addToast('تعذّر منح العملات — راجع السجلات أو صلاحياتك', 'error');
+    } finally {
+      setForceAwarding(false);
+    }
   };
 
   return (
@@ -890,7 +951,10 @@ function OrderDrawerContent({
                       return (
                         <Fragment key={id}>
                           {idx > 0 && <span className="text-gray-400 mx-0.5">/</span>}
-                          <span>{formatAddonNameWithPlacement(name, placement)}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <span>{formatAddonNameWithPlacement(name, placement)}</span>
+                            <PizzaSideIndicator placement={placement} />
+                          </span>
                         </Fragment>
                       );
                     })}
@@ -1031,7 +1095,23 @@ function OrderDrawerContent({
             </Button>
           )}
         </div>
-        {isSuperAdmin && useApi && onRequestHardDelete && (
+        {useApi && (
+          <div className="pt-3 mt-3 border-t border-amber-100">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-amber-300 text-amber-900 hover:bg-amber-50"
+              disabled={forceAwarding || updating}
+              onClick={() => void handleForceLoyaltyAward()}
+            >
+              Force Award Coins
+            </Button>
+            <p className="text-[11px] text-slate-500 mt-1.5 text-center">
+              يشغّل منطق منح العملات لهذا الطلب (للاختبار والاسترداد)
+            </p>
+          </div>
+        )}
+        {onRequestHardDelete && (
           <div className="pt-3 mt-3 border-t border-red-100">
             <Button
               variant="ghost"

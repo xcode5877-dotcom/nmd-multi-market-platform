@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Button, Input, Modal, ConfirmDialog, Select } from '@nmd/ui';
 import { useAdminContext } from '../context/AdminContext';
+import { useAuth } from '../contexts/AuthContext';
+import { canEditField } from '../lib/permissions';
 import { useAdminData } from '../hooks/useAdminData';
 import { MockApiClient } from '@nmd/mock';
 import type { Category } from '@nmd/core';
@@ -12,6 +14,8 @@ const api = new MockApiClient();
 
 export default function CategoriesPage() {
   const { tenantId } = useAdminContext();
+  const { user } = useAuth();
+  const canEditMarkupExempt = canEditField(user?.role, 'markupExempt');
   const queryClient = useQueryClient();
   const adminData = useAdminData(tenantId);
   const [categories, setCategories] = useState<Category[]>(() => adminData.getCategories());
@@ -266,6 +270,7 @@ export default function CategoriesPage() {
           ]}
           className="mt-4"
         />
+        {canEditMarkupExempt ? (
         <label className="mt-4 flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -275,6 +280,7 @@ export default function CategoriesPage() {
           />
           <span className="text-sm text-gray-800">معفى من عمولة المنصة (مشروبات / ماء / كولا)</span>
         </label>
+        ) : null}
         <div className="mt-6 flex gap-2">
           <Button onClick={save}>حفظ</Button>
           <Button variant="ghost" onClick={() => setModalOpen(false)}>

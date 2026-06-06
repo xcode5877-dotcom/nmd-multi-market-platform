@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button, Modal, useToast, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Skeleton } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { buildWhatsAppUrl, buildWhatsAppMessage, formatTimeGregorian } from '@nmd/core';
-import { ArrowLeft, Copy, Phone, Search, Package, UserCheck, CheckCircle, MessageCircle, Users } from 'lucide-react';
+import { ArrowLeft, Copy, Phone, Search, Package, UserCheck, CheckCircle, MessageCircle, Users, KeyRound, Trash2, ChartColumn } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
 import type { MarketCourier, MarketCourierWithStats } from '@nmd/mock';
@@ -141,9 +141,17 @@ export default function MarketDispatchPage() {
   const [addCourierModalOpen, setAddCourierModalOpen] = useState(false);
   const [editCourierModalOpen, setEditCourierModalOpen] = useState<MarketCourier | null>(null);
   const [newCourierName, setNewCourierName] = useState('');
+  const [newCourierEmail, setNewCourierEmail] = useState('');
   const [newCourierPhone, setNewCourierPhone] = useState('');
   const [editCourierName, setEditCourierName] = useState('');
+  const [editCourierEmail, setEditCourierEmail] = useState('');
   const [editCourierPhone, setEditCourierPhone] = useState('');
+  const [editAllowedStoreIds, setEditAllowedStoreIds] = useState<string[]>([]);
+  const [changePasswordModal, setChangePasswordModal] = useState<{ id: string; name: string } | null>(null);
+  const [newCourierPassword, setNewCourierPassword] = useState('');
+  const [deleteCourierModal, setDeleteCourierModal] = useState<{ id: string; name: string } | null>(null);
+  const [deleteCascade, setDeleteCascade] = useState(false);
+  const [statsCourierModal, setStatsCourierModal] = useState<{ id: string; name: string } | null>(null);
   const [activeTab, setActiveTab] = useState('queue');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTenant, setFilterTenant] = useState<string>('');
@@ -216,6 +224,12 @@ export default function MarketDispatchPage() {
     queryFn: () => api.getMarketLeaderboard(marketId!, 'week'),
     enabled: !!marketId && !!MOCK_API_URL,
     refetchInterval: 8000,
+  });
+
+  const { data: selectedCourierFinanceStats } = useQuery({
+    queryKey: ['market-courier-finance-stats', marketId, statsCourierModal?.id],
+    queryFn: () => api.getMarketCourierFinancialStats(marketId!, statsCourierModal!.id),
+    enabled: !!marketId && !!statsCourierModal?.id && !!MOCK_API_URL,
   });
 
   const { data: jobs = [] } = useQuery({
@@ -430,12 +444,13 @@ export default function MarketDispatchPage() {
   });
 
   const createCourierMutation = useMutation({
-    mutationFn: () => api.createMarketCourier(marketId!, { name: newCourierName.trim(), phone: newCourierPhone.trim() || undefined }),
+    mutationFn: () => api.createMarketCourier(marketId!, { name: newCourierName.trim(), email: newCourierEmail.trim(), phone: newCourierPhone.trim() || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['market-couriers', marketId] });
       addToast('تم إضافة السائق', 'success');
       setAddCourierModalOpen(false);
       setNewCourierName('');
+      setNewCourierEmail('');
       setNewCourierPhone('');
     },
     onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
@@ -445,12 +460,38 @@ export default function MarketDispatchPage() {
     mutationFn: () =>
       api.patchMarketCourier(marketId!, editCourierModalOpen!.id, {
         name: editCourierName.trim(),
+        email: editCourierEmail.trim() || undefined,
         phone: editCourierPhone.trim() || undefined,
+        allowedStoreIds: editAllowedStoreIds,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['market-couriers', marketId] });
       addToast('تم تحديث السائق', 'success');
       setEditCourierModalOpen(null);
+    },
+    onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
+  });
+
+  const changeCourierPasswordMutation = useMutation({
+    mutationFn: ({ courierId, newPassword }: { courierId: string; newPassword: string }) =>
+      api.changeMarketCourierPassword(marketId!, courierId, newPassword),
+    onSuccess: () => {
+      addToast('تم تحديث كلمة المرور', 'success');
+      setChangePasswordModal(null);
+      setNewCourierPassword('');
+    },
+    onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
+  });
+
+  const deleteCourierMutation = useMutation({
+    mutationFn: ({ courierId, cascade }: { courierId: string; cascade: boolean }) =>
+      api.deleteMarketCourier(marketId!, courierId, cascade),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['market-couriers', marketId] });
+      queryClient.invalidateQueries({ queryKey: ['market-orders', marketId] });
+      addToast('تم حذف السائق', 'success');
+      setDeleteCourierModal(null);
+      setDeleteCascade(false);
     },
     onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
   });
@@ -885,7 +926,9 @@ export default function MarketDispatchPage() {
                             onClick={() => {
                               setEditCourierModalOpen(c);
                               setEditCourierName(c.name);
+                              setEditCourierEmail(c.email ?? '');
                               setEditCourierPhone(c.phone ?? '');
+                              setEditAllowedStoreIds(Array.isArray(c.allowedStoreIds) ? c.allowedStoreIds : []);
                             }}
                             disabled={!canWrite}
                           >
@@ -906,6 +949,35 @@ export default function MarketDispatchPage() {
                             className="text-sm text-primary hover:underline"
                           >
                             {c.isAvailable === false ? 'متاح' : 'مشغول'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangePasswordModal({ id: c.id, name: c.name });
+                              setNewCourierPassword('');
+                            }}
+                            disabled={!canWrite}
+                            className="text-sm text-violet-700 hover:underline inline-flex items-center gap-1"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            كلمة مرور
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStatsCourierModal({ id: c.id, name: c.name })}
+                            className="text-sm text-blue-700 hover:underline inline-flex items-center gap-1"
+                          >
+                            <ChartColumn className="w-3.5 h-3.5" />
+                            إحصائيات
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteCourierModal({ id: c.id, name: c.name })}
+                            disabled={!canWrite}
+                            className="text-sm text-red-700 hover:underline inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            حذف
                           </button>
                         </td>
                       </tr>
@@ -976,6 +1048,7 @@ export default function MarketDispatchPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-start font-medium text-gray-700">الاسم</th>
+                      <th className="px-4 py-2 text-start font-medium text-gray-700">Email / الحساب</th>
                       <th className="px-4 py-2 text-start font-medium text-gray-700">الجوال</th>
                       <th className="px-4 py-2 text-start font-medium text-gray-700">الحالة</th>
                       <th className="px-4 py-2 text-start font-medium text-gray-700">اليوم</th>
@@ -991,6 +1064,7 @@ export default function MarketDispatchPage() {
                     {sortedStats.map((c) => (
                       <tr key={c.id} className="border-t border-gray-100">
                         <td className="px-4 py-2 font-medium">{c.name}</td>
+                        <td className="px-4 py-2">{c.email ?? '-'}</td>
                         <td className="px-4 py-2">{c.phone ?? '-'}</td>
                         <td className="px-4 py-2">
                           <div className="flex flex-wrap gap-1">
@@ -1185,9 +1259,15 @@ export default function MarketDispatchPage() {
             value={newCourierPhone}
             onChange={(e) => setNewCourierPhone(e.target.value)}
           />
+          <Input
+            type="email"
+            placeholder="Email تسجيل الدخول"
+            value={newCourierEmail}
+            onChange={(e) => setNewCourierEmail(e.target.value)}
+          />
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setAddCourierModalOpen(false)}>إلغاء</Button>
-            <Button onClick={() => createCourierMutation.mutate()} disabled={!newCourierName.trim() || createCourierMutation.isPending || !canWrite}>
+            <Button onClick={() => createCourierMutation.mutate()} disabled={!newCourierName.trim() || !newCourierEmail.trim() || createCourierMutation.isPending || !canWrite}>
               {createCourierMutation.isPending ? 'جاري...' : 'إضافة'}
             </Button>
           </div>
@@ -1212,6 +1292,37 @@ export default function MarketDispatchPage() {
               value={editCourierPhone}
               onChange={(e) => setEditCourierPhone(e.target.value)}
             />
+            <Input
+              type="email"
+              placeholder="Email تسجيل الدخول"
+              value={editCourierEmail}
+              onChange={(e) => setEditCourierEmail(e.target.value)}
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">المتاجر المسموح بها للطلبات الخارجية</p>
+              <div className="max-h-52 overflow-y-auto rounded border border-gray-200 divide-y">
+                {(tenants as { id: string; name: string; marketId?: string }[])
+                  .filter((t) => t.marketId === marketId)
+                  .map((t) => {
+                    const checked = editAllowedStoreIds.includes(t.id);
+                    return (
+                      <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setEditAllowedStoreIds((prev) =>
+                              e.target.checked ? [...prev, t.id] : prev.filter((id) => id !== t.id)
+                            );
+                          }}
+                        />
+                        <span>{t.name}</span>
+                      </label>
+                    );
+                  })}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">إذا لم يتم اختيار أي متجر، سيستطيع السائق رؤية جميع متاجر السوق.</p>
+            </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setEditCourierModalOpen(null)}>إلغاء</Button>
               <Button
@@ -1223,6 +1334,83 @@ export default function MarketDispatchPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={!!changePasswordModal}
+        onClose={() => {
+          setChangePasswordModal(null);
+          setNewCourierPassword('');
+        }}
+        title={`تغيير كلمة المرور — ${changePasswordModal?.name ?? ''}`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <Input
+            type="password"
+            placeholder="كلمة المرور الجديدة (6 أحرف فأكثر)"
+            value={newCourierPassword}
+            onChange={(e) => setNewCourierPassword(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setChangePasswordModal(null)}>إلغاء</Button>
+            <Button
+              onClick={() => {
+                if (!changePasswordModal) return;
+                changeCourierPasswordMutation.mutate({ courierId: changePasswordModal.id, newPassword: newCourierPassword });
+              }}
+              disabled={newCourierPassword.trim().length < 6 || changeCourierPasswordMutation.isPending || !canWrite}
+            >
+              {changeCourierPasswordMutation.isPending ? 'جاري...' : 'حفظ'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteCourierModal}
+        onClose={() => {
+          setDeleteCourierModal(null);
+          setDeleteCascade(false);
+        }}
+        title={`حذف السائق — ${deleteCourierModal?.name ?? ''}`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">يمكنك حذف السائق فقط، أو حذف جميع طلباته الخارجية ومصاريفه أيضًا.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={deleteCascade} onChange={(e) => setDeleteCascade(e.target.checked)} />
+            <span>حذف شامل (Cascade): امسح كل الطلبات والمصاريف المرتبطة بهذا السائق</span>
+          </label>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setDeleteCourierModal(null)}>إلغاء</Button>
+            <Button
+              variant="outline"
+              className="text-red-700 border-red-300 hover:bg-red-50"
+              onClick={() => {
+                if (!deleteCourierModal) return;
+                deleteCourierMutation.mutate({ courierId: deleteCourierModal.id, cascade: deleteCascade });
+              }}
+              disabled={deleteCourierMutation.isPending || !canWrite}
+            >
+              {deleteCourierMutation.isPending ? 'جاري...' : 'تأكيد الحذف'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!statsCourierModal}
+        onClose={() => setStatsCourierModal(null)}
+        title={`إحصائيات السائق — ${statsCourierModal?.name ?? ''}`}
+        size="sm"
+      >
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between"><span>App Revenue</span><span className="font-semibold">{Number(selectedCourierFinanceStats?.appRevenue ?? 0).toFixed(2)} ₪</span></div>
+          <div className="flex justify-between"><span>External Revenue</span><span className="font-semibold">{Number(selectedCourierFinanceStats?.externalRevenue ?? 0).toFixed(2)} ₪</span></div>
+          <div className="flex justify-between"><span>Expenses</span><span className="font-semibold">{Number(selectedCourierFinanceStats?.expenses ?? 0).toFixed(2)} ₪</span></div>
+          <div className="border-t pt-2 flex justify-between"><span className="font-semibold">Net</span><span className="font-bold text-emerald-700">{Number(selectedCourierFinanceStats?.net ?? 0).toFixed(2)} ₪</span></div>
+        </div>
       </Modal>
 
       <Modal open={!!assignJobId} onClose={() => setAssignJobId(null)} title="تعيين سائق للمهمة" size="sm">

@@ -70,12 +70,21 @@ export default function SystemSettingsPage() {
         headers: apiHeaders(),
         body: JSON.stringify({ title: title || 'إشعار', body: body || '' }),
       });
-      const data = (await res.json().catch(() => ({}))) as { sent?: number; message?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        sent?: number;
+        message?: string;
+        error?: string;
+      };
       if (!res.ok) {
-        addToast((data as { error?: string }).error ?? `خطأ: ${res.status}`, 'error');
+        addToast(data.message ?? data.error ?? `خطأ: ${res.status}`, 'error');
         return;
       }
-      addToast(`تم الإرسال إلى ${data.sent ?? 0} عميل`, 'success');
+      const sent = data.sent ?? 0;
+      if (sent <= 0) {
+        addToast(data.message ?? data.error ?? 'لم يُرسل أي إشعار', 'error');
+        return;
+      }
+      addToast(`تم الإرسال إلى ${sent} عميل`, 'success');
       setBroadcastTitle('');
       setBroadcastBody('');
     } catch (e) {
@@ -94,7 +103,12 @@ export default function SystemSettingsPage() {
             <Send className="w-5 h-5 text-gray-600" />
             <h2 className="font-semibold text-gray-900">إشعار للجميع (FCM)</h2>
           </div>
-          <p className="text-sm text-gray-500 mb-4">إرسال إشعار push لجميع العملاء الذين لديهم تطبيق العميل (رمز FCM مسجّل).</p>
+          <p className="text-sm text-amber-700 mb-2 font-medium">
+            الإشعارات تعمل فقط عند ربط FCM على الخادم وتسجيل أجهزة العملاء. إن لم يُهيّأ FCM، لن يصل أي إشعار.
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
+            إرسال إشعار push لجميع العملاء الذين لديهم رمز FCM مسجّلاً في التطبيق.
+          </p>
           <div className="flex flex-col gap-3 max-w-md">
             <Input label="العنوان" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} placeholder="عنوان الإشعار" />
             <Input label="النص" value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} placeholder="نص الإشعار" />

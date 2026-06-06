@@ -13,6 +13,7 @@ export default defineConfig({
         alias: {
             '@': "".concat(__dirname, "/src"),
         },
+        dedupe: ['react', 'react-dom'],
     },
     // Ensure production build always has full API URL (avoids relative paths under /merchant/)
     define: {
