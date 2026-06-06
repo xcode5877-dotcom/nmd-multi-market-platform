@@ -5,7 +5,7 @@ import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast
 import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
-import { formatPrice, formatDateGregorian } from '@nmd/core';
+import { formatPrice, formatDateGregorian, type Category } from '@nmd/core';
 import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign, Settings2, Wallet } from 'lucide-react';
 import { apiFetch, apiHeaders } from '../api';
 import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
@@ -51,6 +51,7 @@ export default function TenantDetailPage() {
   const id = params.tenantId ?? params.id;
   const platformAdmin = isPlatformAdminRole(user?.role);
   const canEditCommission = canEditField(user?.role, 'commissionType');
+  const canEditMarkupExempt = canEditField(user?.role, 'markupExempt');
   const superAdmin = isSuperAdmin(user?.role);
   const canPlatformOrderOps = canUsePlatformOrderOps(user?.role);
   const showDeleteStore = canDeleteStore(user?.role);
@@ -141,6 +142,50 @@ export default function TenantDetailPage() {
     },
     onError: (err) => addToast(err instanceof Error ? err.message : 'فشل تطبيق القالب', 'error'),
   });
+
+  const [markupExemptLocal, setMarkupExemptLocal] = useState<Record<string, boolean>>({});
+  const [savingMarkupCategoryId, setSavingMarkupCategoryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!catalogFromApi?.categories) return;
+    const next: Record<string, boolean> = {};
+    for (const c of catalogFromApi.categories) {
+      next[c.id] = c.markupExempt ?? false;
+    }
+    setMarkupExemptLocal(next);
+  }, [catalogFromApi]);
+
+  const saveCategoryMarkupMutation = useMutation({
+    mutationFn: async ({ categoryId, markupExempt }: { categoryId: string; markupExempt: boolean }) => {
+      if (!id || !catalogFromApi) throw new Error('تعذر تحديث التصنيف');
+      const categories = (catalogFromApi.categories ?? []).map((c) =>
+        c.id === categoryId ? { ...c, markupExempt } : c
+      );
+      await api.setCatalogApi(id, {
+        categories,
+        products: catalogFromApi.products ?? [],
+        optionGroups: catalogFromApi.optionGroups ?? [],
+        optionItems: catalogFromApi.optionItems ?? [],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['catalog', id] });
+      addToast('تم حفظ إعداد التصنيف', 'success');
+      setSavingMarkupCategoryId(null);
+    },
+    onError: (err) => {
+      addToast(err instanceof Error ? err.message : 'فشل الحفظ', 'error');
+      setSavingMarkupCategoryId(null);
+    },
+  });
+
+  const handleSaveCategoryMarkup = (categoryId: string) => {
+    setSavingMarkupCategoryId(categoryId);
+    saveCategoryMarkupMutation.mutate({
+      categoryId,
+      markupExempt: markupExemptLocal[categoryId] ?? false,
+    });
+  };
 
   const resetPasswordMutation = useMutation({
     mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
@@ -416,6 +461,9 @@ export default function TenantDetailPage() {
   }
 
   const catalog = USE_API ? (catalogFromApi ?? { categories: [], products: [], optionGroups: [] }) : getCatalog(tenant.id);
+  const sortedCategories = [...(catalog.categories ?? [])].sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+  );
   const tenantType = (tenant as { tenantType?: string }).tenantType ?? (tenant.type === 'FOOD' ? 'RESTAURANT' : 'SHOP');
   const isRestaurant = tenantType === 'RESTAURANT';
   const orders = (USE_API ? ordersFromApi : listOrdersByTenant(tenant.id)).sort(
@@ -806,6 +854,63 @@ export default function TenantDetailPage() {
                 </div>
               </div>
             </Card>
+            {canEditMarkupExempt && USE_API && (
+              <Card className="p-6 bg-white">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">تصنيفات المتجر</h2>
+                <p className="text-sm text-gray-500 mb-4">
+                  تحديد التصنيفات المعفاة من عمولة المنصة (مشروبات / ماء / كولا). لا يغيّر سعر المنتج للزبون — للتسوية فقط.
+                </p>
+                {sortedCategories.length === 0 ? (
+                  <p className="text-sm text-gray-500">لا توجد تصنيفات في هذا المتجر.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {sortedCategories.map((cat: Category) => {
+                      const original = cat.markupExempt ?? false;
+                      const current = markupExemptLocal[cat.id] ?? false;
+                      const unchanged = original === current;
+                      const isSaving =
+                        savingMarkupCategoryId === cat.id && saveCategoryMarkupMutation.isPending;
+                      return (
+                        <li
+                          key={cat.id}
+                          className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900">{cat.name}</p>
+                            {cat.slug ? (
+                              <p className="text-xs text-gray-400 font-mono truncate">{cat.slug}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-800">
+                              <input
+                                type="checkbox"
+                                checked={current}
+                                onChange={(e) =>
+                                  setMarkupExemptLocal((prev) => ({
+                                    ...prev,
+                                    [cat.id]: e.target.checked,
+                                  }))
+                                }
+                                className="rounded border-gray-300"
+                              />
+                              <span>معفى من عمولة المنصة</span>
+                            </label>
+                            <Button
+                              size="sm"
+                              disabled={unchanged || isSaving}
+                              onClick={() => handleSaveCategoryMarkup(cat.id)}
+                            >
+                              {isSaving ? 'جاري...' : 'حفظ'}
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            )}
           </div>
         </TabsContent>
 
