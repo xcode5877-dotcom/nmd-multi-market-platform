@@ -136,6 +136,12 @@ import {
   dateRangePreset,
   isSettlementEligibleStatus,
 } from './settlement.js';
+import {
+  rejectCustomerOnAdminRoutes,
+  assertCatalogTenantAccess,
+  sanitizeCatalogPayloadForRole,
+  applyTenantPatchRoleFilter,
+} from './admin-auth.js';
 import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
 
@@ -1259,6 +1265,9 @@ app.use((req, res, next) => {
   }
   return res.status(401).json({ error: 'Unauthorized' });
 });
+
+/** Customer sessions must not call admin APIs (catalog write, orders admin, settlement, etc.). */
+app.use(rejectCustomerOnAdminRoutes);
 
 // --- Auth (admin: email/password or OTP backdoor for Root) ---
 /** Traditional admin login. Required for ROOT_ADMIN / Global Categories. Also accepts OTP backdoor: phone=999, code=1234 → root@nmd.com. */
@@ -7195,6 +7204,17 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     delete (updates as Record<string, unknown>).adminEmail;
   }
 
+  if (user.role === 'TENANT_ADMIN') {
+    if ((user as { tenantId?: string }).tenantId !== id) {
+      res.status(403).json({ error: 'Forbidden: can only update your own store' });
+      return;
+    }
+    updates = applyTenantPatchRoleFilter(user.role, rawUpdates) as Partial<RegistryTenant>;
+  } else if (!isPlatformAdmin(user.role) && user.role !== 'MARKET_ADMIN') {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
   // adminEmail is stored on User (TENANT_ADMIN), not Tenant. Apply for both ROOT_ADMIN and MARKET_ADMIN so it persists in Postgres when STORAGE_DRIVER=db.
   const newAdminEmail = typeof rawUpdates.adminEmail === 'string' ? rawUpdates.adminEmail.trim().toLowerCase() : undefined;
   if (newAdminEmail !== undefined && (user.role === 'MARKET_ADMIN' || isPlatformAdmin(user.role))) {
@@ -7226,11 +7246,17 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
   const before = { ...tenants[idx] };
   if (updates.banners !== undefined && !Array.isArray(updates.banners)) delete (updates as Record<string, unknown>).banners;
   if (updates.hero !== undefined && (typeof updates.hero !== 'object' || updates.hero === null)) delete (updates as Record<string, unknown>).hero;
-  if (updates.financialConfig !== undefined && typeof updates.financialConfig === 'object') {
+  if (
+    updates.financialConfig !== undefined &&
+    typeof updates.financialConfig === 'object' &&
+    isPlatformAdmin(user.role)
+  ) {
     updates.financialConfig = {
       ...(tenants[idx].financialConfig ?? {}),
       ...updates.financialConfig,
     };
+  } else {
+    delete (updates as Record<string, unknown>).financialConfig;
   }
   tenants[idx] = { ...tenants[idx], ...updates };
   // Persists to PostgreSQL when STORAGE_DRIVER=db (marketId transfer, pillarId, etc. are permanent)
@@ -7329,10 +7355,14 @@ app.put('/tenants/:id/branding', async (req, res) => {
   const tenants = (await repos.tenants.findAll());
   const t = tenants.find((x) => x.id === id);
   if (!t) return res.status(404).json({ error: 'Tenant not found' });
+  if (user?.role === 'TENANT_ADMIN' && (user as { tenantId?: string }).tenantId !== id) {
+    return res.status(403).json({ error: 'Forbidden: can only update your own store branding' });
+  }
   if (user?.role === 'MARKET_ADMIN' && t.marketId !== user.marketId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body as {
     logoUrl?: string;
     hero?: StorefrontHero;
@@ -7827,8 +7857,17 @@ app.post('/bulk-sort', wrapAsync(async (req, res) => {
     return res.status(400).json({ error: 'entity, tenantId, and items (array of { id, sortOrder }) required' });
   }
   const tenantId = await resolveCatalogTenantId(rawTenantId);
-  if (user.role === 'TENANT_ADMIN' && user.tenantId !== tenantId) {
-    return res.status(403).json({ error: 'Forbidden: tenant scope' });
+  const tenants = await repos.tenants.findAll();
+  const catalogTenant = tenants.find((t) => t.id === tenantId);
+  if (
+    !assertCatalogTenantAccess(
+      user as { role?: string; tenantId?: string; marketId?: string },
+      tenantId,
+      catalogTenant?.marketId,
+      res
+    )
+  ) {
+    return;
   }
   const catalog = await repos.catalog.getCatalog(tenantId);
   const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
@@ -7856,8 +7895,14 @@ app.post('/bulk-sort', wrapAsync(async (req, res) => {
 }));
 
 app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string; tenantId?: string; marketId?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const tenantId = await resolveCatalogTenantId(req.params.tenantId);
-  const catalog = req.body as TenantCatalog;
+  const tenants = await repos.tenants.findAll();
+  const catalogTenant = tenants.find((t) => t.id === tenantId);
+  if (!assertCatalogTenantAccess(user, tenantId, catalogTenant?.marketId, res)) return;
+  const existingCatalog = await repos.catalog.getCatalog(tenantId);
+  const catalog = sanitizeCatalogPayloadForRole(user.role, req.body as TenantCatalog, existingCatalog);
   const products = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[] }[]).map((p) =>
     normalizeProductForCompat(p)
   );
@@ -9724,6 +9769,9 @@ app.get('/tenants/:tenantId/settlement/payments', wrapAsync(async (req, res) => 
   if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
   if (!canAccessTenantSettlement(req, tenantId, tenant.marketId)) {
     return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (req.user?.role === 'TENANT_ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: manual settlement payments are platform-only' });
   }
   const { from, to } = settlementDateRange(req);
   const payments = await prisma.storeSettlementPayment.findMany({

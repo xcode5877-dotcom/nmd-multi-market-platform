@@ -17,7 +17,8 @@
     "reset-root-password": "tsx scripts/reset-root-password.ts",
     "verify:storage": "tsx scripts/verify-storage-drivers.ts",
     "verify:platform-fee": "tsx scripts/verify-platform-fee.ts",
-    "verify:settlement": "tsx scripts/verify-settlement.ts"
+    "verify:settlement": "tsx scripts/verify-settlement.ts",
+    "verify:admin-permissions": "tsx scripts/verify-admin-permissions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
