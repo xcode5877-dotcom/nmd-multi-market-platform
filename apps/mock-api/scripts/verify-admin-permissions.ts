@@ -20,6 +20,7 @@ import {
   filterTenantPatchForRole,
   isPlatformSuperAdmin,
 } from '@nmd/core';
+import { isCustomerAllowedSharedRoute } from '../src/admin-auth.js';
 
 const MOCK_API_URL = (process.env.MOCK_API_URL ?? 'http://localhost:5190').replace(/\/$/, '');
 const RUN_LIVE = process.env.SKIP_LIVE !== '1';
@@ -119,6 +120,66 @@ console.log('\nCatalog / tenant patch sanitization');
   assert(patch.financialConfig === undefined, 'tenant patch drops financialConfig');
 }
 
+console.log('\nCustomer JWT shared-route allowlist');
+{
+  assert(
+    isCustomerAllowedSharedRoute('POST', '/orders'),
+    'CUSTOMER allowlist: POST /orders'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/coupons/validate'),
+    'CUSTOMER allowlist: GET /coupons/validate'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/rewards'),
+    'CUSTOMER allowlist: GET /rewards'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/rewards/reward-abc'),
+    'CUSTOMER allowlist: GET /rewards/:id'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/catalog/tenant-1'),
+    'CUSTOMER allowlist: GET /catalog/:tenantId'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/tenants/by-id/tenant-1'),
+    'CUSTOMER allowlist: GET /tenants/by-id/:id'
+  );
+  assert(
+    isCustomerAllowedSharedRoute('GET', '/config/payment-methods'),
+    'CUSTOMER allowlist: GET /config/payment-methods'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('GET', '/orders'),
+    'CUSTOMER allowlist blocks GET /orders'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('PUT', '/catalog/tenant-1'),
+    'CUSTOMER allowlist blocks PUT /catalog/:tenantId'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('PATCH', '/tenants/tenant-1'),
+    'CUSTOMER allowlist blocks PATCH /tenants/:id'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('GET', '/admin/rewards'),
+    'CUSTOMER allowlist blocks GET /admin/*'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('GET', '/users'),
+    'CUSTOMER allowlist blocks GET /users'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('GET', '/tenants/tenant-1/settlement/summary'),
+    'CUSTOMER allowlist blocks GET /settlement/*'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('POST', '/rewards/reward-1/redeem'),
+    'CUSTOMER allowlist blocks POST /rewards/:id/redeem (use /customer/rewards/:id/redeem)'
+  );
+}
+
 async function runLiveTests(): Promise<void> {
   console.log('\n=== Admin Permissions — Live API (optional) ===\n');
   try {
@@ -210,7 +271,7 @@ async function runLiveTests(): Promise<void> {
     assert(audit.status === 200 || audit.status === 404, 'ROOT can access sensitive admin API');
   }
 
-  const customerLogin = await fetch(`${MOCK_API_URL}/customer/auth/verify-otp`, {
+  const customerLogin = await fetch(`${MOCK_API_URL}/auth/verify-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: '0501234567', code: '1234' }),
@@ -219,7 +280,46 @@ async function runLiveTests(): Promise<void> {
     const cust = (await customerLogin.json()) as { token?: string };
     if (cust.token) {
       const adminTry = await apiFetch('/users', cust.token);
-      assert(adminTry.status === 403, 'CUSTOMER cannot access admin APIs');
+      assert(adminTry.status === 403, 'CUSTOMER cannot access GET /users');
+
+      const adminRewards = await apiFetch('/admin/rewards', cust.token);
+      assert(adminRewards.status === 403, 'CUSTOMER cannot access GET /admin/rewards');
+
+      const catalogPut = await apiFetch(`/catalog/${tenantId}`, cust.token, {
+        method: 'PUT',
+        body: JSON.stringify({ categories: [], products: [], optionGroups: [] }),
+      });
+      assert(catalogPut.status === 403, 'CUSTOMER cannot PUT /catalog/:tenantId');
+
+      const tenantPatch = await apiFetch(`/tenants/${tenantId}`, cust.token, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Hacked Store Name' }),
+      });
+      assert(tenantPatch.status === 403, 'CUSTOMER cannot PATCH /tenants/:id');
+
+      const postOrder = await apiFetch('/orders', cust.token, {
+        method: 'POST',
+        body: JSON.stringify({
+          tenantId,
+          fulfillmentType: 'PICKUP',
+          items: [],
+          subtotal: 0,
+          total: 0,
+        }),
+      });
+      assert(postOrder.status !== 403, 'CUSTOMER can POST /orders (not blocked by admin guard)');
+
+      const validateCoupon = await apiFetch(
+        `/coupons/validate?code=TEST&subtotal=100&tenantId=${encodeURIComponent(tenantId)}`,
+        cust.token
+      );
+      assert(
+        validateCoupon.status !== 403,
+        'CUSTOMER can GET /coupons/validate (not blocked by admin guard)'
+      );
+
+      const rewards = await apiFetch('/rewards', cust.token);
+      assert(rewards.status !== 403, 'CUSTOMER can GET /rewards (not blocked by admin guard)');
     }
   } else {
     console.log('  (skip) customer OTP login unavailable for live test');
