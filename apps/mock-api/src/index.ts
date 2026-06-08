@@ -86,7 +86,7 @@ import {
   type HomeFeedSettings,
   type HomePageBlock,
 } from './market-config.js';
-import type { ModifierIcon } from '@nmd/core';
+import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
@@ -5193,6 +5193,13 @@ function resolvePaymentMethodsForTenant(t: RegistryTenant): PaymentMethodsToggle
   };
 }
 
+/** Effective status for customer-facing list/detail (override, forceClosed, hours, manual status). */
+function customerOperationalStatus(n: RegistryTenant): 'open' | 'closed' | 'busy' {
+  const status = getOperationalStatus(n as Parameters<typeof getOperationalStatus>[0]);
+  console.log(`[STORE_STATUS_GET] tenantId=${n.id} status=${status}`);
+  return status;
+}
+
 /** Returns full tenant including name, about, officeHours - used by GET /tenants/by-slug and PUT responses. Banners/arrays fallback to []. openTime/closeTime fallback to 08:00/17:00. */
 function normalizeTenantResponse(t: RegistryTenant): RegistryTenant {
   const type = (t.type === 'CLOTHING' || t.type === 'FOOD') ? t.type : 'GENERAL';
@@ -6925,7 +6932,7 @@ app.get('/markets/:marketId/tenants', async (req, res) => {
         },
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
-        operationalStatus: (n as RegistryTenant).operationalStatus === 'open' || (n as RegistryTenant).operationalStatus === 'closed' || (n as RegistryTenant).operationalStatus === 'busy' ? (n as RegistryTenant).operationalStatus : 'open',
+        operationalStatus: customerOperationalStatus(n),
         orderPolicy: (n as RegistryTenant).orderPolicy,
         businessHours: (n as RegistryTenant).businessHours,
         openTime: n.openTime,
@@ -7079,7 +7086,7 @@ app.get('/storefront/tenants', async (_req, res) => {
         isActive: n.enabled,
         marketCategory: n.marketCategory ?? 'GENERAL',
         marketId: (t as { marketId?: string | null }).marketId ?? null,
-        operationalStatus: (n as RegistryTenant).operationalStatus,
+        operationalStatus: customerOperationalStatus(n),
         orderPolicy: (n as RegistryTenant).orderPolicy,
         businessHours: (n as RegistryTenant).businessHours,
         openTime: n.openTime,
@@ -7257,6 +7264,10 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     };
   } else {
     delete (updates as Record<string, unknown>).financialConfig;
+  }
+  if (updates.overrideStatus !== undefined) {
+    const persisted = updates.overrideStatus;
+    console.log(`[STORE_STATUS_SAVE] tenantId=${id} payload=overrideStatus:${updates.overrideStatus ?? 'AUTO'} persisted=${persisted ?? 'AUTO'}`);
   }
   tenants[idx] = { ...tenants[idx], ...updates };
   // Persists to PostgreSQL when STORAGE_DRIVER=db (marketId transfer, pillarId, etc. are permanent)
@@ -7495,10 +7506,15 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     const existingHero = tenants[idx].hero ?? DEFAULT_HERO;
     tenants[idx].hero = normalizeHero({ ...existingHero, title: trimmed });
   }
-  if (body.operationalStatus !== undefined) (tenants[idx] as RegistryTenant).operationalStatus = body.operationalStatus;
+  if (body.operationalStatus !== undefined) {
+    (tenants[idx] as RegistryTenant).operationalStatus = body.operationalStatus;
+    console.log(`[STORE_STATUS_SAVE] tenantId=${id} payload=${body.operationalStatus} persisted=${body.operationalStatus}`);
+  }
   if (body.overrideStatus !== undefined) {
     const val = body.overrideStatus;
-    (tenants[idx] as RegistryTenant).overrideStatus = (val === 'FORCE_OPEN' || val === 'FORCE_CLOSED') ? val : undefined;
+    const persisted = (val === 'FORCE_OPEN' || val === 'FORCE_CLOSED') ? val : undefined;
+    (tenants[idx] as RegistryTenant).overrideStatus = persisted;
+    console.log(`[STORE_STATUS_SAVE] tenantId=${id} payload=overrideStatus:${val} persisted=${persisted ?? 'AUTO'}`);
   }
   if (body.orderPolicy !== undefined) (tenants[idx] as RegistryTenant).orderPolicy = body.orderPolicy;
   if (body.businessHours !== undefined) (tenants[idx] as RegistryTenant).businessHours = body.businessHours;
@@ -7509,7 +7525,10 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
   if (body.officeHours !== undefined) (tenants[idx] as RegistryTenant).officeHours = body.officeHours;
   if (body.openTime !== undefined) (tenants[idx] as RegistryTenant).openTime = body.openTime;
   if (body.closeTime !== undefined) (tenants[idx] as RegistryTenant).closeTime = body.closeTime;
-  if (body.forceClosed !== undefined) (tenants[idx] as RegistryTenant).forceClosed = body.forceClosed;
+  if (body.forceClosed !== undefined) {
+    (tenants[idx] as RegistryTenant).forceClosed = body.forceClosed;
+    console.log(`[STORE_STATUS_SAVE] tenantId=${id} payload=forceClosed:${body.forceClosed} persisted=${body.forceClosed}`);
+  }
   if (body.phone !== undefined) {
     const cleaned = String(body.phone).replace(/\D/g, '');
     (tenants[idx] as RegistryTenant).phone = cleaned || undefined;

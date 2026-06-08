@@ -35,6 +35,7 @@ function tenantToDomain(t: {
   operationalStatus: string | null; orderPolicy: string | null; businessHours: string | null;
   busyBannerEnabled: boolean | null; busyBannerText: string | null; bookingEnabled: boolean | null;
   about: string | null; officeHours: string | null; openTime: string | null; closeTime: string | null; forceClosed: boolean | null;
+  overrideStatus: string | null;
   phone: string | null; storeType: string | null; appointmentDuration: number | null;
   collections: string | null;
   addressLine?: string | null; location?: string | null; deliveryRadiusKm?: number | null;
@@ -80,6 +81,7 @@ function tenantToDomain(t: {
     openTime: t.openTime ?? undefined,
     closeTime: t.closeTime ?? undefined,
     forceClosed: t.forceClosed ?? undefined,
+    overrideStatus: (t.overrideStatus as RegistryTenant['overrideStatus']) ?? undefined,
     phone: t.phone ?? undefined,
     storeType: (t.storeType as RegistryTenant['storeType']) ?? undefined,
     appointmentDuration: t.appointmentDuration ?? undefined,
@@ -245,6 +247,7 @@ export function createDbTenantsRepo(): TenantsRepo {
             openTime: (t as RegistryTenant).openTime ?? null,
             closeTime: (t as RegistryTenant).closeTime ?? null,
             forceClosed: (t as RegistryTenant).forceClosed ?? null,
+            overrideStatus: (t as RegistryTenant).overrideStatus ?? null,
             phone: t.phone ?? null,
             storeType: t.storeType ?? null,
             appointmentDuration: t.appointmentDuration ?? null,

@@ -60,7 +60,19 @@ export interface Market {
   branding?: MarketBranding;
   isActive: boolean;
   sortOrder?: number;
-  paymentCapabilities?: { cash: boolean; card: boolean };
+  paymentCapabilities?: {
+    cash: boolean;
+    card: boolean;
+    /** Merchant toggle: show/installments in card gateway page when supported by acquirer setup. */
+    allowInstallments?: boolean;
+    /** Allowed installment counts shown to customer (e.g. [3,6,12]). */
+    installmentOptions?: number[];
+  };
+  paymentMethods?: {
+    cash: boolean;
+    card: boolean;
+    installments: boolean;
+  };
   /** Market-level categories (for storefront/market page). */
   categories?: Array<{ id: string; name: string; slug: string; icon?: string; sortOrder?: number }>;
   /** Stores/tenants in this market (for rich API response). */
@@ -111,10 +123,15 @@ export interface RegistryTenant {
     commissionType: 'PERCENTAGE' | 'FIXED';
     commissionValue: number;
     deliveryFeeModel: 'MARKET' | 'TENANT';
+    /** Bonus NMD coins for orders *placed* on the same calendar day (server TZ) when the order completes. */
+    loyaltyBonusCoinsPerOrderToday?: number;
+    /** Super Admin: extra NMD coins per completed order for this store (always, in addition to spend + delivery rules). */
+    loyaltyBonusCoinsPerOrder?: number;
     /** Store-level platform fee override (Phase 1). Persisted in financialConfig JSON. */
     platformFee?: import('./platform-fee.js').TenantPlatformFeeOverride;
   };
   paymentCapabilities?: { cash: boolean; card: boolean };
+  paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
   /** Admin-controlled homepage sections */
   collections?: import('@nmd/core').HomeCollection[];
   /** Manual override: open | closed | busy */
@@ -140,6 +157,8 @@ export interface RegistryTenant {
   closeTime?: string;
   /** Manual override: when true, store shows as CLOSED regardless of openTime/closeTime. */
   forceClosed?: boolean;
+  /** Super-admin remote override: FORCE_OPEN | FORCE_CLOSED (null/undefined = AUTO). */
+  overrideStatus?: 'FORCE_OPEN' | 'FORCE_CLOSED';
   /** Appointment duration in minutes. For PROFESSIONAL booking */
   appointmentDuration?: number;
   /** Enable online booking (Coming Soon). For PROFESSIONAL stores */
@@ -169,6 +188,8 @@ export interface Pillar {
   nameAr?: string;
   slug: string;
   icon?: string;
+  /** Optional image URL for mall pillar chips (Flutter/web). */
+  iconUrl?: string;
   sortOrder: number;
 }
 
@@ -242,6 +263,7 @@ export interface Courier {
   marketId?: string;
   name: string;
   phone?: string;
+  password?: string;
   isActive: boolean;
   isOnline: boolean;
   capacity: number;
@@ -251,6 +273,8 @@ export interface Courier {
   deliveryCount?: number;
   /** Driver "Coba" / float: initial cash given at shift start (default 300) */
   initialFloat?: number;
+  /** Explicit store allowlist for manual external orders; empty/undefined means all market stores allowed. */
+  allowedStoreIds?: string[];
 }
 
 /** Shift settlement log entry: driver hands over collected cash to admin */
@@ -263,13 +287,49 @@ export interface SettlementLogEntry {
   marketId?: string;
 }
 
+/** Persisted inside Customer.accountExtras (Prisma JSON or embedded in JSON store). */
+export interface CustomerAccountExtras {
+  addresses: CustomerAddressRecord[];
+  paymentMethods: CustomerSavedCardRecord[];
+  notifications: CustomerNotificationPrefs;
+}
+
+export interface CustomerAddressRecord {
+  id: string;
+  label?: string;
+  line1: string;
+  city: string;
+  notes?: string;
+  isDefault?: boolean;
+}
+
+export interface CustomerSavedCardRecord {
+  id: string;
+  brand: string;
+  last4: string;
+  holderName: string;
+  expiryMonth: number;
+  expiryYear: number;
+}
+
+export interface CustomerNotificationPrefs {
+  orderUpdates: boolean;
+  promotions: boolean;
+  news: boolean;
+}
+
 export interface Customer {
   id: string;
   phone: string;
   name?: string;
+  email?: string;
+  city?: string;
+  avatarUrl?: string;
   createdAt?: string;
   /** FCM token for order status push (native customer app). */
   fcmToken?: string | null;
+  /** Addresses, saved cards (masked), notification toggles — same shape as Prisma `accountExtras` JSON. */
+  accountExtras?: CustomerAccountExtras;
 }
 
 /** Delivery job item (order reference) */
@@ -312,10 +372,14 @@ export interface GlobalCategory {
   /** Arabic display name (Big Admin style); fallback to title when absent */
   nameAr?: string;
   icon: string;
+  /** Optional image URL for native/web mall category chips (fallback: [icon] emoji) */
+  iconUrl?: string;
   isProfessional: boolean;
   sortOrder: number;
   /** Legacy code for backward compat with tenant.marketCategory (e.g. FOOD, CLOTHING) */
   legacyCode?: string;
+  /** Query segment for app routing, e.g. `?pillar=pillar-food` */
+  targetPath?: string;
 }
 
 export interface Lead {
@@ -353,12 +417,18 @@ export interface MockData {
   settlementLogs: SettlementLogEntry[];
   /** Reusable option groups per tenant (Options generator / Add from Templates). Key = tenantId. */
   optionTemplates: Record<string, unknown[]>;
+  globalConfig?: {
+    paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
+  };
 }
 
 /** Initial categories: synced with Big Admin; no old FOOD/CLOTHING enum. GET /categories returns this. */
 const DEFAULT_GLOBAL_CATEGORIES: GlobalCategory[] = [
-  { id: 'cat-test', nameAr: 'اختبار الربط الجديد', title: 'اختبار', icon: '🔗', isProfessional: false, sortOrder: 0 },
-  { id: 'cat-test-2', nameAr: 'تصنيف ثانٍ للاختبار', title: 'اختبار ٢', icon: '📋', isProfessional: false, sortOrder: 1 },
+  { id: 'gc-food', nameAr: 'مطاعم', title: 'Restaurants', icon: '🍽️', isProfessional: false, sortOrder: 0, targetPath: '?pillar=pillar-food' },
+  { id: 'gc-retail', nameAr: 'متاجر', title: 'Retail', icon: '🛒', isProfessional: false, sortOrder: 1, targetPath: '?pillar=pillar-retail' },
+  { id: 'gc-svc', nameAr: 'خدمات', title: 'Services', icon: '💼', isProfessional: false, sortOrder: 2, targetPath: '?pillar=pillar-services' },
+  { id: 'gc-craft', nameAr: 'حرفيون', title: 'Crafts', icon: '🔧', isProfessional: true, sortOrder: 3, targetPath: '?pillar=pillar-crafts' },
+  { id: 'gc-sweet', nameAr: 'حلويات', title: 'Sweets', icon: '🍰', isProfessional: false, sortOrder: 4, targetPath: '?pillar=pillar-sweets' },
 ];
 
 /** Default SLA category policies: Food/Sweets = urgent 3/5min; General = relaxed. */
@@ -373,6 +443,7 @@ const DEFAULT_PILLARS: Pillar[] = [
   { id: 'pillar-retail', name: 'Retail', nameAr: 'تجزئة', slug: 'retail', icon: '🛒', sortOrder: 1 },
   { id: 'pillar-services', name: 'Services', nameAr: 'خدمات', slug: 'services', icon: '💼', sortOrder: 2 },
   { id: 'pillar-crafts', name: 'Crafts', nameAr: 'حرفيون', slug: 'crafts', icon: '🔧', sortOrder: 3 },
+  { id: 'pillar-sweets', name: 'Sweets', nameAr: 'حلويات', slug: 'sweets', icon: '🍰', sortOrder: 4 },
 ];
 
 const DEFAULT: MockData = {
@@ -397,6 +468,9 @@ const DEFAULT: MockData = {
   subCategories: [],
   settlementLogs: [],
   optionTemplates: {},
+  globalConfig: {
+    paymentMethods: { cash: true, card: true, installments: true },
+  },
 };
 
 const DEFAULT_HERO: StorefrontHero = {
@@ -448,6 +522,14 @@ export function migrateTenant(t: Record<string, unknown>): RegistryTenant {
   if (!tenant.paymentCapabilities) {
     (tenant as RegistryTenant).paymentCapabilities = { cash: true, card: false };
   }
+  if (!tenant.paymentMethods) {
+    const caps = (tenant as RegistryTenant).paymentCapabilities ?? { cash: true, card: false };
+    (tenant as RegistryTenant).paymentMethods = {
+      cash: caps.cash !== false,
+      card: caps.card === true,
+      installments: Boolean((caps as { allowInstallments?: boolean }).allowInstallments),
+    };
+  }
   if (!tenant.collections) {
     (tenant as RegistryTenant).collections = [];
   }
@@ -474,6 +556,14 @@ export function migrateMarket(m: Record<string, unknown>): Market {
   const market = m as unknown as Market;
   if (!market.paymentCapabilities) {
     (market as Market).paymentCapabilities = { cash: true, card: false };
+  }
+  if (!market.paymentMethods) {
+    const caps = (market as Market).paymentCapabilities ?? { cash: true, card: false };
+    (market as Market).paymentMethods = {
+      cash: caps.cash !== false,
+      card: caps.card === true,
+      installments: Boolean((caps as { allowInstallments?: boolean }).allowInstallments),
+    };
   }
   return market;
 }
@@ -571,6 +661,13 @@ export function parseToMockData(parsed: Partial<MockData>): MockData {
     subCategories,
     settlementLogs,
     optionTemplates,
+    globalConfig: {
+      paymentMethods: {
+        cash: parsed.globalConfig?.paymentMethods?.cash !== false,
+        card: parsed.globalConfig?.paymentMethods?.card !== false,
+        installments: parsed.globalConfig?.paymentMethods?.installments !== false,
+      },
+    },
   };
 }
 
@@ -930,6 +1027,28 @@ export function getGlobalCategories(): GlobalCategory[] {
 
 export function setGlobalCategories(categories: GlobalCategory[]): void {
   getData().globalCategories = categories;
+  persist();
+}
+
+export function getGlobalConfig(): MockData['globalConfig'] {
+  const cfg = getData().globalConfig;
+  return {
+    paymentMethods: {
+      cash: cfg?.paymentMethods?.cash !== false,
+      card: cfg?.paymentMethods?.card !== false,
+      installments: cfg?.paymentMethods?.installments !== false,
+    },
+  };
+}
+
+export function setGlobalConfig(config: MockData['globalConfig']): void {
+  getData().globalConfig = {
+    paymentMethods: {
+      cash: config?.paymentMethods?.cash !== false,
+      card: config?.paymentMethods?.card !== false,
+      installments: config?.paymentMethods?.installments !== false,
+    },
+  };
   persist();
 }
 

@@ -84,8 +84,15 @@ _StoreItem _storeItemFromTenantMap(Map<String, dynamic> t) {
   final Map<String, dynamic> branding = brandingRaw is Map
       ? Map<String, dynamic>.from(brandingRaw)
       : const <String, dynamic>{};
+  final status = (t['operationalStatus']?.toString() ?? 'closed').trim();
+  final acceptingOrders = status == 'open' || status == 'busy';
+  final tenantId = t['id']?.toString() ?? '';
+  // ignore: avoid_print
+  print(
+    '[STORE_STATUS] tenantId=$tenantId status=$status acceptingOrders=$acceptingOrders',
+  );
   return _StoreItem(
-    id: t['id']?.toString() ?? '',
+    id: tenantId,
     slug: t['slug']?.toString() ?? '',
     name: t['name']?.toString() ?? '',
     category: (t['categoryName']?.toString() ??
@@ -93,7 +100,7 @@ _StoreItem _storeItemFromTenantMap(Map<String, dynamic> t) {
             'تصنيف عام')
         .trim(),
     logoUrl: resolveImageUrl(branding['logoUrl']?.toString()),
-    openStatus: (t['operationalStatus']?.toString() ?? 'closed').trim(),
+    openStatus: status,
     pillarId: (t['pillarId']?.toString() ?? '').trim(),
   );
 }
