@@ -5,6 +5,7 @@ import type { OrderRecord } from './types.js';
 import type { MarketsRepo, TenantsRepo, UsersRepo, CouriersRepo, CustomersRepo, OrdersRepo, CatalogRepo, DeliveryRepo, DeliveryZonesRepo, PaymentsRepo } from './types.js';
 import type { DeliveryZoneRecord } from '../store.js';
 import { parseMarketBrandingColumn, serializeMarketBrandingColumn } from '../market-branding-storage.js';
+import { syncCustomersFromRepo } from '../customer-identity.js';
 
 const prisma = new PrismaClient();
 
@@ -363,21 +364,7 @@ export function createDbCustomersRepo(): CustomersRepo {
       }));
     },
     async setAll(customers: Customer[]) {
-      await prisma.customer.deleteMany();
-      if (customers.length > 0) {
-        await prisma.customer.createMany({
-          data: customers.map((c) => ({
-            id: c.id,
-            phone: c.phone,
-            name: c.name ?? null,
-            email: c.email ?? null,
-            city: c.city ?? null,
-            avatarUrl: c.avatarUrl ?? null,
-            accountExtras: c.accountExtras != null ? (c.accountExtras as object) : undefined,
-            createdAt: c.createdAt ?? new Date().toISOString(),
-          })),
-        });
-      }
+      await syncCustomersFromRepo(prisma, customers);
     },
   };
 }

@@ -105,6 +105,11 @@ import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast, isFCMConfigure
 import { awardLoyaltyCoinsIfNeeded, INITIAL_COINS } from './loyalty-coins.js';
 import { findCustomerCoinRow } from './customer-coin-wallet.js';
 import {
+  canonicalCustomerPhone,
+  ensureCustomerInPrisma as resolvePrismaCustomerId,
+  pickCustomerByCanonicalPhone,
+} from './customer-identity.js';
+import {
   loadHypConfig,
   loadHypConfigDiagnostics,
   buildDoDealPaymentPageXml,
@@ -757,13 +762,13 @@ async function seedDeliveryZonesIfNeeded(): Promise<void> {
 async function seedDemoProfilesIfNeeded(): Promise<void> {
   const customers = await repos.customers.findAll();
   const normalized = normalizePhoneForCoupon(FALLBACK_CUSTOMER_PHONE) ?? FALLBACK_CUSTOMER_PHONE;
-  const existingCustomer = customers.find((c) => normalizePhoneForCoupon(c.phone) === normalized);
+  const existingCustomer = pickCustomerByCanonicalPhone(customers, FALLBACK_CUSTOMER_PHONE);
   if (!existingCustomer) {
     await repos.customers.setAll([
       ...customers,
       {
         id: `customer-demo-${normalized}`,
-        phone: FALLBACK_CUSTOMER_PHONE,
+        phone: normalized,
         name: FALLBACK_CUSTOMER_NAME,
         email: 'rand@nmd.customer',
         city: 'Iksal',
@@ -1879,17 +1884,17 @@ app.post('/customer/auth/verify', async (req, res) => {
   }
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
-  const existing = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const existing = pickCustomerByCanonicalPhone(customers, phone);
   const isNewUser = !existing;
   let customer = existing;
   const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
-    customer = { id, phone: String(phone).trim(), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
+    customer = { id, phone: key || canonicalCustomerPhone(phone), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
     const next = [...customers, customer];
     await repos.customers.setAll(next);
   } else if (nameTrimmed && !customer.name) {
-    customer = { ...customer, name: nameTrimmed };
+    customer = { ...customer, phone: key || canonicalCustomerPhone(customer.phone), name: nameTrimmed };
     const next = customers.map((c) => (c.id === customer!.id ? customer! : c));
     await repos.customers.setAll(next);
   }
@@ -1916,17 +1921,17 @@ app.post('/auth/verify-otp', async (req, res) => {
   }
   const key = normalizePhoneForMatch(phone);
   const customers = await repos.customers.findAll();
-  const existing = customers.find((c) => normalizePhoneForMatch(c.phone) === key);
+  const existing = pickCustomerByCanonicalPhone(customers, phone);
   const isNewUser = !existing;
   let customer = existing;
   const nameTrimmed = typeof name === 'string' ? name.trim() : undefined;
   if (!customer) {
     const id = `customer-${crypto.randomUUID?.() ?? Date.now()}`;
-    customer = { id, phone: String(phone).trim(), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
+    customer = { id, phone: key || canonicalCustomerPhone(phone), name: nameTrimmed || undefined, createdAt: new Date().toISOString() };
     const next = [...customers, customer];
     await repos.customers.setAll(next);
   } else if (nameTrimmed && !customer.name) {
-    customer = { ...customer, name: nameTrimmed };
+    customer = { ...customer, phone: key || canonicalCustomerPhone(customer.phone), name: nameTrimmed };
     const next = customers.map((c) => (c.id === customer!.id ? customer! : c));
     await repos.customers.setAll(next);
   }
@@ -2543,44 +2548,8 @@ async function ensureCustomerInPrisma(customer: {
   name?: string | null;
   createdAt?: string;
 }): Promise<string> {
-  const phone = normalizePhoneForCoupon(customer.phone) || String(customer.phone).trim();
   const full = (await repos.customers.findAll()).find((c) => c.id === customer.id);
-  const existingByPhone = phone
-    ? await prisma.customer.findUnique({ where: { phone } })
-    : null;
-  if (existingByPhone) {
-    if (existingByPhone.id !== customer.id) {
-      console.warn('[ensureCustomerInPrisma] using existing row by phone', {
-        jwtCustomerId: customer.id,
-        prismaCustomerId: existingByPhone.id,
-        phone,
-      });
-    }
-    if (full?.name && !existingByPhone.name) {
-      await prisma.customer.update({
-        where: { id: existingByPhone.id },
-        data: { name: full.name },
-      });
-    }
-    return existingByPhone.id;
-  }
-  await prisma.customer.upsert({
-    where: { id: customer.id },
-    create: {
-      id: customer.id,
-      phone,
-      name: full?.name ?? customer.name ?? null,
-      email: full?.email ?? null,
-      city: full?.city ?? null,
-      avatarUrl: full?.avatarUrl ?? null,
-      createdAt: full?.createdAt ?? customer.createdAt ?? new Date().toISOString(),
-    },
-    update: {
-      phone,
-      ...(full?.name != null ? { name: full.name } : {}),
-    },
-  });
-  return customer.id;
+  return resolvePrismaCustomerId(prisma, customer, full ?? null);
 }
 
 function parseCouponValueFromRewardDescription(description: string | null): {
@@ -2871,10 +2840,11 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
 }));
 
 app.get('/contest/me', wrapAsync(async (req, res) => {
-  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  const customer = (req as express.Request & { customer?: { id: string; phone: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const prismaCustomerId = await ensureCustomerInPrisma(customer);
   const list = await prisma.contestParticipation.findMany({
-    where: { customerId: customer.id },
+    where: { customerId: prismaCustomerId },
     include: { contest: true },
     orderBy: { createdAt: 'desc' },
   });
@@ -3646,10 +3616,14 @@ app.get('/contests/:id/participations', wrapAsync(async (req, res) => {
   const contest = await prisma.contest.findUnique({ where: { id } });
   if (!contest) return res.status(404).json({ error: 'Contest not found' });
   const list = await prisma.contestParticipation.findMany({ where: { contestId: id }, orderBy: { createdAt: 'desc' } });
-  const customers = await repos.customers.findAll();
+  const customerIds = [...new Set(list.map((p) => p.customerId))];
+  const customerRows = customerIds.length > 0
+    ? await prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, phone: true, name: true } })
+    : [];
+  const customerById = Object.fromEntries(customerRows.map((c) => [c.id, c]));
   const rows = list.map((p) => {
-    const c = customers.find((x) => x.id === p.customerId);
-    return { id: p.id, customerId: p.customerId, customerPhone: c?.phone, customerName: c?.name, userAnswer: p.userAnswer, scoreA: p.scoreA ?? undefined, scoreB: p.scoreB ?? undefined, isWinner: p.isWinner, createdAt: p.createdAt };
+    const c = customerById[p.customerId];
+    return { id: p.id, customerId: p.customerId, customerPhone: c?.phone, customerName: c?.name ?? undefined, userAnswer: p.userAnswer, scoreA: p.scoreA ?? undefined, scoreB: p.scoreB ?? undefined, isWinner: p.isWinner, createdAt: p.createdAt };
   });
   res.json({
     contest: { id: contest.id, title: contest.title, type: contest.type, correctAnswer: contest.correctAnswer, isPrediction: contest.isPrediction ?? false, finalScoreA: contest.finalScoreA ?? undefined, finalScoreB: contest.finalScoreB ?? undefined },
