@@ -1,9 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation, NavLink, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer } from '@nmd/ui';
+import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
-import { formatAddonNameWithPlacement, formatDateGregorian } from '@nmd/core';
+import {
+  formatAddonNameWithPlacement,
+  formatDateGregorian,
+  filterOrdersForList,
+  DEFAULT_ORDER_SOURCE_FILTER,
+  DEFAULT_ORDER_STATUS_FILTER,
+  type OrderSourceFilter,
+  type OrderStatusFilterKey,
+} from '@nmd/core';
 import { ArrowLeft, KeyRound, Upload, Trash2, Eye, Settings2 } from 'lucide-react';
 import { apiHeaders, apiFetch, apiUpload, listCategories } from '../api';
 import PlatformOrderOpsPanel from '../components/orders/PlatformOrderOpsPanel';
@@ -69,6 +77,7 @@ interface OrderRow {
   total?: number;
   status?: string;
   createdAt?: string;
+  isExternal?: boolean;
 }
 
 const api = new MockApiClient();
@@ -106,6 +115,8 @@ export default function MarketDetailPage() {
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
   const [orderOpsId, setOrderOpsId] = useState<string | null>(null);
   const [orderHardDeleting, setOrderHardDeleting] = useState(false);
+  const [orderSourceFilter, setOrderSourceFilter] = useState<OrderSourceFilter>(DEFAULT_ORDER_SOURCE_FILTER);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilterKey>(DEFAULT_ORDER_STATUS_FILTER);
   const [createForm, setCreateForm] = useState({
     name: '',
     slug: '',
@@ -158,6 +169,11 @@ export default function MarketDetailPage() {
     queryFn: () => api.getMarketOrders(id!) as Promise<OrderRow[]>,
     enabled: !!MOCK_API_URL && !!id,
   });
+
+  const filteredMarketOrders = useMemo(
+    () => filterOrdersForList(marketOrders as OrderRow[], orderSourceFilter, orderStatusFilter),
+    [marketOrders, orderSourceFilter, orderStatusFilter]
+  );
 
   const { data: allMarkets = [] } = useQuery({
     queryKey: ['markets'],
@@ -560,16 +576,24 @@ export default function MarketDetailPage() {
                 عرض طلبات واتساب / اتصال
               </Link>
             </div>
+            <OrderListFilters
+              sourceFilter={orderSourceFilter}
+              statusFilter={orderStatusFilter}
+              onSourceChange={setOrderSourceFilter}
+              onStatusChange={setOrderStatusFilter}
+              className="px-4 pt-4"
+            />
             {ordersLoading ? (
               <div className="p-12 text-center text-gray-500">جاري التحميل...</div>
-            ) : marketOrders.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">لا توجد طلبات</div>
+            ) : filteredMarketOrders.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">لا توجد طلبات تطابق التصفية</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">المعرّف</th>
+                      <th className="px-4 py-3 text-start font-medium text-gray-700">المصدر</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">المحل</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">المبلغ</th>
                       <th className="px-4 py-3 text-start font-medium text-gray-700">الحالة</th>
@@ -578,11 +602,14 @@ export default function MarketDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {marketOrders.map((o) => {
+                    {filteredMarketOrders.map((o) => {
                       const storeName = marketTenants.find((t) => t.id === o.tenantId)?.name ?? o.tenantId;
                       return (
                         <tr key={o.id ?? o.tenantId} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</td>
+                          <td className="px-4 py-3">
+                            <OrderSourceBadge isExternal={o.isExternal} />
+                          </td>
                           <td className="px-4 py-3">
                             {storeName}
                           </td>

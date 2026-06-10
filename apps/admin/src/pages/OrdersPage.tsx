@@ -1,13 +1,26 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import type { Order } from '@nmd/core';
-import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal } from '@nmd/ui';
+import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
 import { Package, Bell, MessageCircle, FileText, Phone, Truck, Trash2, Eye } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isPlatformAdmin, isSuperAdmin } from '../lib/is-platform-admin';
 import { broadcastTenantUpdate } from '../lib/tenant-broadcast';
 import { listOrdersByTenant, updateOrderStatus } from '@nmd/mock';
-import { buildWhatsAppMessage, buildWhatsAppUrl, buildOrderActionLinksSection, formatPrice, formatDateTimeGregorian, formatAddonNameWithPlacement, isValidWhatsAppPhone } from '@nmd/core';
+import {
+  buildWhatsAppMessage,
+  buildWhatsAppUrl,
+  buildOrderActionLinksSection,
+  formatPrice,
+  formatDateTimeGregorian,
+  formatAddonNameWithPlacement,
+  isValidWhatsAppPhone,
+  filterOrdersForList,
+  DEFAULT_ORDER_SOURCE_FILTER,
+  DEFAULT_ORDER_STATUS_FILTER,
+  type OrderSourceFilter,
+  type OrderStatusFilterKey,
+} from '@nmd/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MockApiClient } from '@nmd/mock';
@@ -31,7 +44,6 @@ function PizzaSideIndicator({ placement }: { placement: 'WHOLE' | 'LEFT' | 'RIGH
   );
 }
 
-const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'] as const;
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'جديد',
   CONFIRMED: 'تم التواصل',
@@ -147,7 +159,8 @@ function OrderCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-medium text-slate-600">{idStr.slice(0, 8) || '—'}</span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          <OrderSourceBadge isExternal={(order as { isExternal?: boolean }).isExternal} />
           {onRequestHardDelete && (
             <button
               type="button"
@@ -290,7 +303,8 @@ export default function OrdersPage() {
   // eslint-disable-next-line no-console
   console.log('DEBUG-ROLE:', user?.role, { superAdmin, USE_API });
   const [filter, setFilter] = useState<'today' | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [sourceFilter, setSourceFilter] = useState<OrderSourceFilter>(DEFAULT_ORDER_SOURCE_FILTER);
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilterKey>(DEFAULT_ORDER_STATUS_FILTER);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -366,8 +380,10 @@ export default function OrdersPage() {
       );
     }
   }
-  orders = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  if (statusFilter) orders = orders.filter((o) => o.status === statusFilter);
+  const sortedOrders = [...orders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  orders = filterOrdersForList(sortedOrders, sourceFilter, statusFilter);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -469,7 +485,8 @@ export default function OrdersPage() {
       return <span className="font-bold text-primary">{formatPrice(showGrandTotal ? grandTotal : merchantAmount)}</span>;
     })(),
     status: (
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <OrderSourceBadge isExternal={(o as { isExternal?: boolean }).isExternal} />
         <InlineBadge status={o.status} />
         {(o as { lastStatusNotification?: { status: string } }).lastStatusNotification && (
           <span
@@ -651,16 +668,12 @@ export default function OrdersPage() {
           </div>
         }
         selects={
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded px-3 py-2 text-sm min-w-[140px]"
-          >
-            <option value="">كل الحالات</option>
-            {ORDER_STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-            ))}
-          </select>
+          <OrderListFilters
+            sourceFilter={sourceFilter}
+            statusFilter={statusFilter}
+            onSourceChange={setSourceFilter}
+            onStatusChange={setStatusFilter}
+          />
         }
       />
       <Card>

@@ -102,14 +102,17 @@ const ACTION_LABELS: Record<string, string> = {
 const ACTIVE_DELIVERY_STATUSES = ['ASSIGNED', 'IN_PROGRESS', 'PICKED_UP'];
 const COMPLETED_DELIVERY_STATUSES = ['DELIVERED', 'FINISH'];
 
-function isActiveOrder(o: CourierOrder): boolean {
-  const ds = o.deliveryStatus ?? 'UNASSIGNED';
-  return ACTIVE_DELIVERY_STATUSES.includes(ds);
-}
-
 function isCompletedOrder(o: CourierOrder): boolean {
   const ds = o.deliveryStatus ?? 'UNASSIGNED';
-  return COMPLETED_DELIVERY_STATUSES.includes(ds);
+  if (COMPLETED_DELIVERY_STATUSES.includes(ds)) return true;
+  const st = String(o.status ?? '').toUpperCase();
+  return st === 'COMPLETED' || st === 'DELIVERED' || st === 'FINISH';
+}
+
+function isActiveOrder(o: CourierOrder): boolean {
+  if (isCompletedOrder(o)) return false;
+  const ds = o.deliveryStatus ?? 'UNASSIGNED';
+  return ACTIVE_DELIVERY_STATUSES.includes(ds);
 }
 
 /** Returns the single allowed action for this order, or null if UNASSIGNED. Uses deliveryStatus only. */

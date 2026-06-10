@@ -1,11 +1,20 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input, ConfirmDialog } from '@nmd/ui';
+import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input, ConfirmDialog, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
 import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
-import { formatPrice, formatDateGregorian, type Category } from '@nmd/core';
+import {
+  formatPrice,
+  formatDateGregorian,
+  type Category,
+  filterOrdersForList,
+  DEFAULT_ORDER_SOURCE_FILTER,
+  DEFAULT_ORDER_STATUS_FILTER,
+  type OrderSourceFilter,
+  type OrderStatusFilterKey,
+} from '@nmd/core';
 import { Sparkles, ArrowLeft, Settings, KeyRound, ShoppingBag, UserRound, Trash2, MapPin, Truck, DollarSign, Settings2, Wallet } from 'lucide-react';
 import { apiFetch, apiHeaders } from '../api';
 import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
@@ -58,6 +67,8 @@ export default function TenantDetailPage() {
   const [orderDeleteTarget, setOrderDeleteTarget] = useState<{ id?: string } | null>(null);
   const [orderOpsId, setOrderOpsId] = useState<string | null>(null);
   const [orderHardDeleting, setOrderHardDeleting] = useState(false);
+  const [orderSourceFilter, setOrderSourceFilter] = useState<OrderSourceFilter>(DEFAULT_ORDER_SOURCE_FILTER);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilterKey>(DEFAULT_ORDER_STATUS_FILTER);
   const openResetFromState = (location.state as { openResetPassword?: boolean })?.openResetPassword ?? false;
   const queryClient = useQueryClient();
   const { data: tenantFromApi, isLoading } = useQuery({
@@ -466,9 +477,10 @@ export default function TenantDetailPage() {
   );
   const tenantType = (tenant as { tenantType?: string }).tenantType ?? (tenant.type === 'FOOD' ? 'RESTAURANT' : 'SHOP');
   const isRestaurant = tenantType === 'RESTAURANT';
-  const orders = (USE_API ? ordersFromApi : listOrdersByTenant(tenant.id)).sort(
+  const sortedOrders = (USE_API ? ordersFromApi : listOrdersByTenant(tenant.id)).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  ).slice(0, 20);
+  );
+  const orders = filterOrdersForList(sortedOrders, orderSourceFilter, orderStatusFilter).slice(0, 20);
 
   const adminUrl = `http://localhost:${ADMIN_PORT}/?tenant=${tenant.slug}`;
   const storefrontUrl = `http://localhost:${STOREFRONT_PORT}/?tenant=${tenant.slug}`;
@@ -919,7 +931,14 @@ export default function TenantDetailPage() {
           <div className="space-y-6">
             <Card className="p-6 bg-white">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">الطلبات</h2>
-              <p className="text-sm text-gray-500 mb-4">آخر 20 طلب</p>
+              <p className="text-sm text-gray-500 mb-2">آخر 20 طلب (بعد التصفية)</p>
+              <OrderListFilters
+                sourceFilter={orderSourceFilter}
+                statusFilter={orderStatusFilter}
+                onSourceChange={setOrderSourceFilter}
+                onStatusChange={setOrderStatusFilter}
+                className="mb-4"
+              />
               {orders.length === 0 ? (
                 <p className="text-gray-500">لا توجد طلبات</p>
               ) : (
@@ -949,7 +968,10 @@ export default function TenantDetailPage() {
                         const canMarkReady = USE_API && isRestaurant && hasValidId && oExt.status !== 'READY' && oExt.status !== 'OUT_FOR_DELIVERY' && oExt.status !== 'DELIVERED' && oExt.status !== 'CANCELED';
                         return (
                           <tr key={hasValidId ? idStr : `order-${i}`} className="border-b">
-                            <td className="py-2 font-mono">{hasValidId ? idStr.slice(0, 8) : '—'}</td>
+                            <td className="py-2">
+                              <div className="font-mono">{hasValidId ? idStr.slice(0, 8) : '—'}</div>
+                              <OrderSourceBadge isExternal={(o as { isExternal?: boolean }).isExternal} />
+                            </td>
                             <td className="py-2">{formatDateGregorian(o.createdAt)}</td>
                             <td className="py-2">{formatPrice(o.total)}</td>
                             <td className="py-2">

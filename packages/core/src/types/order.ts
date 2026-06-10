@@ -30,6 +30,8 @@ export interface OrderPayload {
 export interface Order {
   id: string;
   tenantId: string;
+  /** Courier manual / off-app entry when true. */
+  isExternal?: boolean;
   status: 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
   fulfillmentType: OrderFulfillmentType;
   /** Multi-sector: PRODUCT | FOOD | SERVICE (default PRODUCT) */

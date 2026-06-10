@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, useToast, ConfirmDialog } from '@nmd/ui';
+import { Card, Button, useToast, ConfirmDialog, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { formatPrice, formatDateTimeGregorian } from '@nmd/core';
+import {
+  formatPrice,
+  formatDateTimeGregorian,
+  filterOrdersForList,
+  DEFAULT_ORDER_SOURCE_FILTER,
+  DEFAULT_ORDER_STATUS_FILTER,
+  type OrderSourceFilter,
+  type OrderStatusFilterKey,
+} from '@nmd/core';
 import { useTenant } from '../contexts/TenantContext';
 import StoreStatusToggle from '../../components/StoreStatusToggle';
 import { Banknote, CreditCard, Eye, Trash2, TrendingUp } from 'lucide-react';
@@ -22,6 +30,7 @@ interface OrderExt {
   fallbackTriggeredAt?: string;
   payment?: { method?: string };
   paymentMethod?: string;
+  isExternal?: boolean;
 }
 
 type TimeRangeKey = 'day' | 'week' | 'month';
@@ -52,6 +61,8 @@ export default function TenantOrdersPage() {
   const [hardDeleting, setHardDeleting] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('day');
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<OrderSourceFilter>(DEFAULT_ORDER_SOURCE_FILTER);
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilterKey>(DEFAULT_ORDER_STATUS_FILTER);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['merchant-stats', tenantId, timeRange],
@@ -68,8 +79,12 @@ export default function TenantOrdersPage() {
     enabled: !!tenantId,
   });
 
-  const orderRows = [...(orders as OrderExt[])].sort(
-    (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+  const orderRows = filterOrdersForList(
+    [...(orders as OrderExt[])].sort(
+      (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+    ),
+    sourceFilter,
+    statusFilter
   );
 
   const markReadyMutation = useMutation({
@@ -216,6 +231,14 @@ export default function TenantOrdersPage() {
         </Card>
       </div>
 
+      <OrderListFilters
+        sourceFilter={sourceFilter}
+        statusFilter={statusFilter}
+        onSourceChange={setSourceFilter}
+        onStatusChange={setStatusFilter}
+        className="mb-4"
+      />
+
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <span className="text-sm text-gray-600">تصفية الطلبات حسب الدفع:</span>
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
@@ -264,8 +287,9 @@ export default function TenantOrdersPage() {
                   return (
                     <tr key={o.id} className="border-t border-gray-100">
                       <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-1">
                           <span className="font-mono text-xs">{o.id.slice(0, 8)}</span>
+                          <OrderSourceBadge isExternal={o.isExternal} />
                         </div>
                       </td>
                       <td className="px-4 py-2 text-gray-600">{o.createdAt ? formatDateTimeGregorian(o.createdAt) : '-'}</td>

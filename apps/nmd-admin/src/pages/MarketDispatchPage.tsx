@@ -1,8 +1,15 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, Modal, useToast, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Skeleton } from '@nmd/ui';
+import { Card, Button, Modal, useToast, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Skeleton, OrderSourceBadge } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { buildWhatsAppUrl, buildWhatsAppMessage, formatTimeGregorian } from '@nmd/core';
+import {
+  buildWhatsAppUrl,
+  buildWhatsAppMessage,
+  formatTimeGregorian,
+  matchesOrderSourceFilter,
+  DEFAULT_ORDER_SOURCE_FILTER,
+  type OrderSourceFilter,
+} from '@nmd/core';
 import { ArrowLeft, Copy, Phone, Search, Package, UserCheck, CheckCircle, MessageCircle, Users, KeyRound, Trash2, ChartColumn } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useEmergencyMode } from '../contexts/EmergencyModeContext';
@@ -38,6 +45,7 @@ type OrderRow = {
     closedAt?: string;
     durations?: { totalMinutes?: number; assignedToAcknowledged?: number; acknowledgedToPickedUp?: number; pickedUpToDelivered?: number };
   };
+  isExternal?: boolean;
 };
 
 /** SLA thresholds (minutes): < 30 green, 30–45 amber, > 45 red */
@@ -157,6 +165,7 @@ export default function MarketDispatchPage() {
   const [filterTenant, setFilterTenant] = useState<string>('');
   const [filterCourier, setFilterCourier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [orderSourceFilter, setOrderSourceFilter] = useState<OrderSourceFilter>(DEFAULT_ORDER_SOURCE_FILTER);
   const [courierFilterActive, setCourierFilterActive] = useState<string>('');
   const [courierFilterAvailable, setCourierFilterAvailable] = useState<string>('');
   const [statsFilterActive, setStatsFilterActive] = useState<string>('');
@@ -275,6 +284,7 @@ export default function MarketDispatchPage() {
   const baseFilter = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return (o: OrderRow) => {
+      if (!matchesOrderSourceFilter(o, orderSourceFilter)) return false;
       if (q) {
         const id = (o.id ?? '').toLowerCase();
         const cust = (o.customerName ?? '').toLowerCase();
@@ -291,7 +301,7 @@ export default function MarketDispatchPage() {
       }
       return true;
     };
-  }, [searchQuery, filterTenant, filterCourier, filterStatus, tenantMap]);
+  }, [searchQuery, filterTenant, filterCourier, filterStatus, orderSourceFilter, tenantMap]);
 
   const queueFiltered = useMemo(() => queueOrders.filter(baseFilter), [queueOrders, baseFilter]);
   const assignedFiltered = useMemo(() => assignedOrders.filter(baseFilter), [assignedOrders, baseFilter]);
@@ -571,7 +581,10 @@ export default function MarketDispatchPage() {
             ].filter(Boolean).join(' ');
             return (
               <tr key={o.id} className={rowClass}>
-                <td className="px-4 py-2 font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</td>
+                <td className="px-4 py-2">
+                  <div className="font-mono text-xs">{o.id?.slice(0, 8) ?? '-'}</div>
+                  <OrderSourceBadge isExternal={o.isExternal} />
+                </td>
                 <td className="px-4 py-2">
                   <div className="flex flex-col gap-0.5">
                     <span>{o.customerName ?? '-'}</span>
@@ -778,6 +791,16 @@ export default function MarketDispatchPage() {
               { value: 'DELIVERED', label: 'تم التسليم' },
             ]}
             className="min-w-[140px]"
+          />
+          <Select
+            value={orderSourceFilter}
+            onChange={(e) => setOrderSourceFilter(e.target.value as OrderSourceFilter)}
+            options={[
+              { value: 'all', label: 'الكل' },
+              { value: 'app', label: '📱 من التطبيق' },
+              { value: 'external', label: '📞 طلب خارجي' },
+            ]}
+            className="min-w-[160px]"
           />
         </div>
       </Card>
