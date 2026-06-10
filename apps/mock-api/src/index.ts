@@ -5356,13 +5356,48 @@ app.get('/leads', wrapAsync(async (req, res) => {
   res.json(leads);
 }));
 
+function sortCustomersByCreatedAtDesc<T extends { createdAt?: string }>(customers: T[]): T[] {
+  return [...customers].sort((a, b) => {
+    const ta = new Date(a.createdAt ?? '').getTime();
+    const tb = new Date(b.createdAt ?? '').getTime();
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+  });
+}
+
+function buildCustomerLastActivityMap(
+  orders: { customerId?: string; createdAt?: string }[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const o of orders) {
+    const cid = o.customerId;
+    const at = o.createdAt;
+    if (!cid || !at) continue;
+    const prev = map.get(cid);
+    if (!prev || at > prev) map.set(cid, at);
+  }
+  return map;
+}
+
+function enrichAndSortCustomersForAdminList(
+  customers: import('./store.js').Customer[],
+  orders: { customerId?: string; createdAt?: string }[],
+) {
+  const lastActivity = buildCustomerLastActivityMap(orders);
+  return sortCustomersByCreatedAtDesc(
+    customers.map((c) => ({
+      ...c,
+      lastActivityAt: lastActivity.get(c.id),
+    })),
+  );
+}
+
 // --- Customers (role-based visibility) ---
 // ROOT_ADMIN: all customers. TENANT_ADMIN: only customers who interacted with their tenant (orders or leads). MARKET_ADMIN: customers in their market.
 app.get('/customers', wrapAsync(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const caller = req.user as { role?: string; marketId?: string; tenantId?: string };
   const allCustomers = await repos.customers.findAll();
-  const allOrders = (await repos.orders.findAll()) as { customerId?: string; tenantId?: string }[];
+  const allOrders = (await repos.orders.findAll()) as { customerId?: string; tenantId?: string; createdAt?: string }[];
   const allLeads = getLeads();
 
   if (isPlatformAdmin(caller.role)) {
@@ -5381,9 +5416,9 @@ app.get('/customers', wrapAsync(async (req, res) => {
         }
       });
       const filtered = allCustomers.filter((c) => customerIds.has(c.id));
-      return res.json(filtered);
+      return res.json(enrichAndSortCustomersForAdminList(filtered, allOrders));
     }
-    return res.json(allCustomers);
+    return res.json(enrichAndSortCustomersForAdminList(allCustomers, allOrders));
   }
 
   if (caller.role === 'TENANT_ADMIN' && caller.tenantId) {
@@ -5399,7 +5434,7 @@ app.get('/customers', wrapAsync(async (req, res) => {
       }
     });
     const filtered = allCustomers.filter((c) => customerIds.has(c.id));
-    return res.json(filtered);
+    return res.json(enrichAndSortCustomersForAdminList(filtered, allOrders));
   }
 
   if (caller.role === 'MARKET_ADMIN' && caller.marketId) {
@@ -5416,7 +5451,7 @@ app.get('/customers', wrapAsync(async (req, res) => {
       }
     });
     const filtered = allCustomers.filter((c) => customerIds.has(c.id));
-    return res.json(filtered);
+    return res.json(enrichAndSortCustomersForAdminList(filtered, allOrders));
   }
 
   return res.status(403).json({ error: 'Forbidden' });

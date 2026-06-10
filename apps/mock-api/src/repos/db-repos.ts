@@ -350,7 +350,7 @@ export function createDbCouriersRepo(): CouriersRepo {
 export function createDbCustomersRepo(): CustomersRepo {
   return {
     async findAll() {
-      const rows = await prisma.customer.findMany();
+      const rows = await prisma.customer.findMany({ orderBy: { createdAt: 'desc' } });
       return rows.map((c) => ({
         // accountExtras may be missing from stale Prisma client typings in some environments.
         accountExtras: ((c as unknown as { accountExtras?: unknown }).accountExtras as import('../store.js').Customer['accountExtras']) ?? undefined,

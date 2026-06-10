@@ -54,3 +54,28 @@ export function matchesParticipantSearch(query: string, fields: ParticipantSearc
 
   return false;
 }
+
+export type CustomerSearchFields = ParticipantSearchFields & {
+  email?: string | null;
+};
+
+export function matchesCustomerSearch(query: string, fields: CustomerSearchFields): boolean {
+  if (matchesParticipantSearch(query, fields)) return true;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const email = String(fields.email ?? '').trim().toLowerCase();
+  return email.length > 0 && email.includes(q);
+}
+
+/** Newest registered first (createdAt, then updatedAt fallback). */
+export function sortCustomersByRegisteredDesc<T extends { createdAt?: string; updatedAt?: string }>(
+  rows: T[],
+): T[] {
+  return [...rows].sort((a, b) => customerRegisteredTimestamp(b) - customerRegisteredTimestamp(a));
+}
+
+function customerRegisteredTimestamp(row: { createdAt?: string; updatedAt?: string }): number {
+  const iso = row.createdAt ?? row.updatedAt ?? '';
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? t : 0;
+}

@@ -1,19 +1,40 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Card } from '@nmd/ui';
+import { Card, Input } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import { formatDateGregorian } from '@nmd/core';
+import { Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../api';
+import { matchesCustomerSearch, sortCustomersByRegisteredDesc } from '../lib/participantListUtils';
 
 const api = new MockApiClient();
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
+
+type CustomerRow = {
+  id: string;
+  name?: string;
+  phone: string;
+  email?: string;
+  createdAt?: string;
+  lastActivityAt?: string;
+};
+
+function formatCustomerDate(iso?: string): string {
+  if (!iso) return '—';
+  try {
+    return formatDateGregorian(iso);
+  } catch {
+    return iso;
+  }
+}
 
 export default function CustomersPage() {
   const { user: me } = useAuth();
   const [grantPhone, setGrantPhone] = useState('');
   const [grantAmount, setGrantAmount] = useState(20);
+  const [customerSearch, setCustomerSearch] = useState('');
   const isPlatformAdmin = me?.role === 'ROOT_ADMIN' || me?.role === 'SUPER_ADMIN';
 
   const grantCoinsMutation = useMutation({
@@ -35,6 +56,17 @@ export default function CustomersPage() {
     queryFn: () => api.listCustomers(effectiveTenantSlug),
     enabled: !!MOCK_API_URL,
   });
+
+  const visibleCustomers = useMemo(() => {
+    const filtered = (customers as CustomerRow[]).filter((c) =>
+      matchesCustomerSearch(customerSearch, {
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+      }),
+    );
+    return sortCustomersByRegisteredDesc(filtered);
+  }, [customers, customerSearch]);
 
   const isTenantAdmin = (me as { role?: string })?.role === 'TENANT_ADMIN';
   const subtitle = effectiveTenantSlug
@@ -110,11 +142,22 @@ export default function CustomersPage() {
         </p>
       )}
       <p className="text-sm text-gray-600 mb-4">{subtitle}</p>
+      <div className="relative max-w-md mb-4">
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <Input
+          value={customerSearch}
+          onChange={(e) => setCustomerSearch(e.target.value)}
+          placeholder="ابحث حسب الاسم أو رقم الهاتف"
+          className="ps-10"
+        />
+      </div>
       <Card className="p-4">
         {isLoading ? (
           <p className="text-gray-500 py-8 text-center">جاري التحميل...</p>
         ) : customers.length === 0 ? (
           <p className="text-gray-500 py-8 text-center">لا يوجد مشتركون مسجلون</p>
+        ) : visibleCustomers.length === 0 ? (
+          <p className="text-gray-500 py-8 text-center">لا يوجد مشتركون مطابقون للبحث</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -122,11 +165,13 @@ export default function CustomersPage() {
                 <tr>
                   <th className="px-4 py-2 text-start font-medium text-gray-700">الاسم</th>
                   <th className="px-4 py-2 text-start font-medium text-gray-700">رقم الجوال</th>
+                  <th className="px-4 py-2 text-start font-medium text-gray-700">البريد</th>
                   <th className="px-4 py-2 text-start font-medium text-gray-700">التسجيل</th>
+                  <th className="px-4 py-2 text-start font-medium text-gray-700">آخر نشاط</th>
                 </tr>
               </thead>
               <tbody>
-                {(customers as { id: string; name?: string; phone: string; createdAt?: string }[]).map((c) => (
+                {visibleCustomers.map((c) => (
                   <tr key={c.id} className="border-t border-gray-100">
                     <td className="px-4 py-3 font-medium">{c.name ?? '—'}</td>
                     <td className="px-4 py-3" dir="ltr">
@@ -134,8 +179,14 @@ export default function CustomersPage() {
                         {c.phone}
                       </a>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {c.createdAt ? formatDateGregorian(c.createdAt) : '—'}
+                    <td className="px-4 py-3 text-gray-600" dir="ltr">
+                      {c.email?.trim() ? c.email : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {formatCustomerDate(c.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {formatCustomerDate(c.lastActivityAt)}
                     </td>
                   </tr>
                 ))}

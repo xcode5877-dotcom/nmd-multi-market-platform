@@ -863,10 +863,24 @@ export class MockApiClient implements ApiClient {
   }
 
   /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
-  async listCustomers(tenantSlug?: string): Promise<{ id: string; phone: string; name?: string; createdAt?: string }[]> {
+  async listCustomers(tenantSlug?: string): Promise<{
+    id: string;
+    phone: string;
+    name?: string;
+    email?: string;
+    createdAt?: string;
+    lastActivityAt?: string;
+  }[]> {
     if (!this.useApi) return [];
     const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : '';
-    return apiFetch<{ id: string; phone: string; name?: string; createdAt?: string }[]>(`/customers${q}`);
+    return apiFetch<{
+      id: string;
+      phone: string;
+      name?: string;
+      email?: string;
+      createdAt?: string;
+      lastActivityAt?: string;
+    }[]>(`/customers${q}`);
   }
 
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
