@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, useToast, ConfirmDialog, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
+import { Card, Button, useToast, ConfirmDialog, OrderListFilters, OrderListCountsBar, OrderSourceBadge } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
 import {
   formatPrice,
   formatDateTimeGregorian,
   filterOrdersForList,
+  sortOrdersByNewest,
+  getOrderListCounts,
   DEFAULT_ORDER_SOURCE_FILTER,
   DEFAULT_ORDER_STATUS_FILTER,
   type OrderSourceFilter,
@@ -79,10 +81,10 @@ export default function TenantOrdersPage() {
     enabled: !!tenantId,
   });
 
+  const orderCounts = useMemo(() => getOrderListCounts(orders as OrderExt[]), [orders]);
+
   const orderRows = filterOrdersForList(
-    [...(orders as OrderExt[])].sort(
-      (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-    ),
+    sortOrdersByNewest(orders as OrderExt[]),
     sourceFilter,
     statusFilter
   );
@@ -231,6 +233,7 @@ export default function TenantOrdersPage() {
         </Card>
       </div>
 
+      <OrderListCountsBar counts={orderCounts} className="mb-3" />
       <OrderListFilters
         sourceFilter={sourceFilter}
         statusFilter={statusFilter}

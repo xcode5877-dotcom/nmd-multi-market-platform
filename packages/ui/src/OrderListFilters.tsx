@@ -6,6 +6,38 @@ import {
   type OrderStatusFilterKey,
 } from '@nmd/core';
 
+export interface OrderListCounts {
+  app: number;
+  external: number;
+  active: number;
+  completed: number;
+  total?: number;
+}
+
+export function OrderListCountsBar({ counts, className = '' }: { counts: OrderListCounts; className?: string }) {
+  return (
+    <div className={`flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 ${className}`}>
+      <span>
+        طلبات التطبيق: <strong className="text-gray-900 tabular-nums">{counts.app}</strong>
+      </span>
+      <span>
+        طلبات خارجية: <strong className="text-gray-900 tabular-nums">{counts.external}</strong>
+      </span>
+      <span>
+        النشطة: <strong className="text-gray-900 tabular-nums">{counts.active}</strong>
+      </span>
+      <span>
+        المكتملة: <strong className="text-gray-900 tabular-nums">{counts.completed}</strong>
+      </span>
+      {counts.total != null && (
+        <span>
+          الإجمالي: <strong className="text-gray-900 tabular-nums">{counts.total}</strong>
+        </span>
+      )}
+    </div>
+  );
+}
+
 export interface OrderListFiltersProps {
   sourceFilter: OrderSourceFilter;
   statusFilter: OrderStatusFilterKey;

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import type { Order } from '@nmd/core';
-import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
+import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal, OrderListFilters, OrderListCountsBar, OrderSourceBadge } from '@nmd/ui';
 import { Package, Bell, MessageCircle, FileText, Phone, Truck, Trash2, Eye } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,8 @@ import {
   formatAddonNameWithPlacement,
   isValidWhatsAppPhone,
   filterOrdersForList,
+  sortOrdersByNewest,
+  getOrderListCounts,
   DEFAULT_ORDER_SOURCE_FILTER,
   DEFAULT_ORDER_STATUS_FILTER,
   type OrderSourceFilter,
@@ -380,9 +382,8 @@ export default function OrdersPage() {
       );
     }
   }
-  const sortedOrders = [...orders].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const orderCounts = useMemo(() => getOrderListCounts(orders), [orders]);
+  const sortedOrders = sortOrdersByNewest(orders);
   orders = filterOrdersForList(sortedOrders, sourceFilter, statusFilter);
 
   const location = useLocation();
@@ -676,6 +677,7 @@ export default function OrdersPage() {
           />
         }
       />
+      <OrderListCountsBar counts={orderCounts} className="mb-3 px-1" />
       <Card>
         <div className="p-4">
           {orders.length === 0 ? (

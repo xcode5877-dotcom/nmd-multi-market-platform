@@ -1,7 +1,8 @@
 export { ThemeProvider, useTheme } from './ThemeProvider';
 export { PageHeader } from './PageHeader';
 export { FiltersBar } from './FiltersBar';
-export { OrderListFilters, OrderSourceBadge } from './OrderListFilters';
+export { OrderListFilters, OrderListCountsBar, OrderSourceBadge } from './OrderListFilters';
+export type { OrderListCounts } from './OrderListFilters';
 export { DataTable } from './DataTable';
 export { InlineBadge } from './InlineBadge';
 export { EmptyState } from './EmptyState';

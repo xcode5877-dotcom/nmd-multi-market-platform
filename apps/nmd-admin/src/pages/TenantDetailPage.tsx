@@ -1,7 +1,7 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input, ConfirmDialog, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
+import { Card, Tabs, TabsList, TabsTrigger, TabsContent, Button, Badge, useToast, Modal, Input, ConfirmDialog, OrderListFilters, OrderListCountsBar, OrderSourceBadge } from '@nmd/ui';
 import { getTenantById, getCatalog, listOrdersByTenant } from '@nmd/mock';
 import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
@@ -10,6 +10,8 @@ import {
   formatDateGregorian,
   type Category,
   filterOrdersForList,
+  sortOrdersByNewest,
+  getOrderListCounts,
   DEFAULT_ORDER_SOURCE_FILTER,
   DEFAULT_ORDER_STATUS_FILTER,
   type OrderSourceFilter,
@@ -477,9 +479,9 @@ export default function TenantDetailPage() {
   );
   const tenantType = (tenant as { tenantType?: string }).tenantType ?? (tenant.type === 'FOOD' ? 'RESTAURANT' : 'SHOP');
   const isRestaurant = tenantType === 'RESTAURANT';
-  const sortedOrders = (USE_API ? ordersFromApi : listOrdersByTenant(tenant.id)).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const allTenantOrders = USE_API ? ordersFromApi : listOrdersByTenant(tenant.id);
+  const tenantOrderCounts = getOrderListCounts(allTenantOrders);
+  const sortedOrders = sortOrdersByNewest(allTenantOrders);
   const orders = filterOrdersForList(sortedOrders, orderSourceFilter, orderStatusFilter).slice(0, 20);
 
   const adminUrl = `http://localhost:${ADMIN_PORT}/?tenant=${tenant.slug}`;
@@ -931,7 +933,8 @@ export default function TenantDetailPage() {
           <div className="space-y-6">
             <Card className="p-6 bg-white">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">الطلبات</h2>
-              <p className="text-sm text-gray-500 mb-2">آخر 20 طلب (بعد التصفية)</p>
+              <p className="text-sm text-gray-500 mb-2">آخر 20 طلب (بعد التصفية، الأحدث أولاً)</p>
+              <OrderListCountsBar counts={tenantOrderCounts} className="mb-3" />
               <OrderListFilters
                 sourceFilter={orderSourceFilter}
                 statusFilter={orderStatusFilter}

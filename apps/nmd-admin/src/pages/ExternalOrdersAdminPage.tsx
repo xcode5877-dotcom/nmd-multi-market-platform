@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, OrderListFilters } from '@nmd/ui';
-import { filterOrdersForList, type OrderStatusFilterKey } from '@nmd/core';
+import { filterOrdersForList, sortOrdersByNewest, type OrderStatusFilterKey } from '@nmd/core';
 import { listAdminExternalOrders, type ExternalOrderAdminRow } from '../api';
 
 export default function ExternalOrdersAdminPage() {
@@ -14,7 +14,9 @@ export default function ExternalOrdersAdminPage() {
   const filteredRows = useMemo(
     () =>
       filterOrdersForList(
-        (data as ExternalOrderAdminRow[]).map((row) => ({ ...row, isExternal: true })),
+        sortOrdersByNewest(
+          (data as ExternalOrderAdminRow[]).map((row) => ({ ...row, isExternal: true }))
+        ),
         'external',
         statusFilter
       ),

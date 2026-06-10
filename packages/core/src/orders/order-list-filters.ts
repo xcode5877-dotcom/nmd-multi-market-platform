@@ -15,29 +15,35 @@ export const ORDER_ACTIVE_STATUSES = ['PENDING', 'PREPARING', 'CONFIRMED', 'READ
 export const ORDER_COMPLETED_STATUSES = ['COMPLETED', 'DELIVERED', 'FINISH'] as const;
 export const ORDER_CANCELED_STATUSES = ['CANCELED', 'CANCELLED'] as const;
 
-export const DEFAULT_ORDER_SOURCE_FILTER: OrderSourceFilter = 'all';
+/** Operational screens default to app + active so external history does not flood the list. */
+export const DEFAULT_ORDER_SOURCE_FILTER: OrderSourceFilter = 'app';
 export const DEFAULT_ORDER_STATUS_FILTER: OrderStatusFilterKey = 'active';
 
 export const ORDER_SOURCE_FILTER_OPTIONS: { value: OrderSourceFilter; label: string }[] = [
   { value: 'all', label: 'الكل' },
-  { value: 'app', label: '📱 من التطبيق' },
-  { value: 'external', label: '📞 طلب خارجي' },
+  { value: 'app', label: 'طلبات التطبيق' },
+  { value: 'external', label: 'طلبات خارجية' },
 ];
 
 export const ORDER_STATUS_FILTER_OPTIONS: { value: OrderStatusFilterKey; label: string }[] = [
-  { value: 'active', label: 'نشط' },
+  { value: 'active', label: 'نشطة' },
   { value: 'all', label: 'الكل' },
   { value: 'PREPARING', label: 'قيد التحضير' },
-  { value: 'CONFIRMED', label: 'مؤكد' },
-  { value: 'READY', label: 'جاهز' },
-  { value: 'completed', label: 'مكتمل' },
-  { value: 'canceled', label: 'ملغي' },
+  { value: 'CONFIRMED', label: 'مؤكدة' },
+  { value: 'READY', label: 'جاهزة' },
+  { value: 'completed', label: 'مكتملة' },
+  { value: 'canceled', label: 'ملغاة' },
 ];
 
 export type OrderListFilterFields = {
   isExternal?: boolean | null;
   status?: string | null;
   deliveryStatus?: string | null;
+};
+
+export type OrderListCountFields = OrderListFilterFields & {
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export function normalizeOrderStatus(status: string | null | undefined): string {
@@ -81,6 +87,40 @@ export function filterOrdersForList<T extends OrderListFilterFields>(
   return orders.filter(
     (o) => matchesOrderSourceFilter(o, sourceFilter) && matchesOrderStatusFilter(o, statusFilter)
   );
+}
+
+export function getOrderSortTimestamp(order: { createdAt?: string | null; updatedAt?: string | null }): number {
+  const created = order.createdAt ? new Date(order.createdAt).getTime() : NaN;
+  if (Number.isFinite(created)) return created;
+  const updated = order.updatedAt ? new Date(order.updatedAt).getTime() : NaN;
+  return Number.isFinite(updated) ? updated : 0;
+}
+
+/** Newest first; falls back to updatedAt when createdAt is missing. */
+export function sortOrdersByNewest<T extends { createdAt?: string | null; updatedAt?: string | null }>(
+  orders: T[]
+): T[] {
+  return [...orders].sort((a, b) => getOrderSortTimestamp(b) - getOrderSortTimestamp(a));
+}
+
+export function getOrderListCounts<T extends OrderListCountFields>(orders: T[]): {
+  total: number;
+  app: number;
+  external: number;
+  active: number;
+  completed: number;
+} {
+  let app = 0;
+  let external = 0;
+  let active = 0;
+  let completed = 0;
+  for (const order of orders) {
+    if (isOrderExternal(order)) external += 1;
+    else app += 1;
+    if (matchesOrderStatusFilter(order, 'active')) active += 1;
+    if (matchesOrderStatusFilter(order, 'completed')) completed += 1;
+  }
+  return { total: orders.length, app, external, active, completed };
 }
 
 export function getOrderSourceBadgeMeta(order: OrderListFilterFields): {

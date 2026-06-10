@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation, NavLink, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer, OrderListFilters, OrderSourceBadge } from '@nmd/ui';
+import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer, OrderListFilters, OrderListCountsBar, OrderSourceBadge } from '@nmd/ui';
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
 import {
   formatAddonNameWithPlacement,
   formatDateGregorian,
   filterOrdersForList,
+  sortOrdersByNewest,
+  getOrderListCounts,
   DEFAULT_ORDER_SOURCE_FILTER,
   DEFAULT_ORDER_STATUS_FILTER,
   type OrderSourceFilter,
@@ -170,8 +172,18 @@ export default function MarketDetailPage() {
     enabled: !!MOCK_API_URL && !!id,
   });
 
+  const marketOrderCounts = useMemo(
+    () => getOrderListCounts(marketOrders as OrderRow[]),
+    [marketOrders]
+  );
+
   const filteredMarketOrders = useMemo(
-    () => filterOrdersForList(marketOrders as OrderRow[], orderSourceFilter, orderStatusFilter),
+    () =>
+      filterOrdersForList(
+        sortOrdersByNewest(marketOrders as OrderRow[]),
+        orderSourceFilter,
+        orderStatusFilter
+      ),
     [marketOrders, orderSourceFilter, orderStatusFilter]
   );
 
@@ -427,7 +439,7 @@ export default function MarketDetailPage() {
             }`
           }
         >
-          الطلبات ({marketOrders.length})
+          الطلبات ({marketOrderCounts.app} تطبيق · {marketOrderCounts.external} خارجي)
         </NavLink>
         {me?.role !== 'TENANT_ADMIN' && (
           <>
@@ -576,6 +588,7 @@ export default function MarketDetailPage() {
                 عرض طلبات واتساب / اتصال
               </Link>
             </div>
+            <OrderListCountsBar counts={marketOrderCounts} className="px-4 pt-4" />
             <OrderListFilters
               sourceFilter={orderSourceFilter}
               statusFilter={orderStatusFilter}
