@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { installOrderPrismaProtection } from './order-protection.js';
 
-/** Prisma client for SQLite. Not yet connected to API routes - JSON storage remains active. */
+/** Shared Prisma client with order deleteMany protection installed at startup. */
 export const prisma = new PrismaClient();
+installOrderPrismaProtection(prisma);

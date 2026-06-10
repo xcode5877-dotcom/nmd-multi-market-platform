@@ -67,13 +67,13 @@ export async function evaluateFallback(marketId: string, repos: Repos): Promise<
   const tenantIds = new Set(tenants.map((t) => t.id));
   const orders = (await repos.orders.findAll()) as OrderRecord[];
   const now = Date.now();
-  let changed = false;
-  const updated = orders.map((o) => {
-    if (!o.tenantId || !tenantIds.has(o.tenantId)) return o;
-    if (o.deliveryAssignmentMode === 'MARKET' || o.fallbackTriggeredAt) return o;
-    if (o.fulfillmentType === 'PICKUP' || o.fulfillmentType === 'IN_STORE') return o;
+  const changedOrders: OrderRecord[] = [];
+  orders.forEach((o) => {
+    if (!o.tenantId || !tenantIds.has(o.tenantId)) return;
+    if (o.deliveryAssignmentMode === 'MARKET' || o.fallbackTriggeredAt) return;
+    if (o.fulfillmentType === 'PICKUP' || o.fulfillmentType === 'IN_STORE') return;
     const tenant = getTenant(tenants, o.tenantId);
-    if (!tenant?.allowMarketCourierFallback) return o;
+    if (!tenant?.allowMarketCourierFallback) return;
 
     const createdAt = o.createdAt ? new Date(o.createdAt).getTime() : now;
     const elapsedMin = (now - createdAt) / (60 * 1000);
@@ -86,24 +86,19 @@ export async function evaluateFallback(marketId: string, repos: Repos): Promise<
       const isNearReady = !isReady && readyAt && (readyAt - now) / (60 * 1000) <= NEAR_READY_WINDOW_MINUTES;
 
       if (isReady && elapsedMin >= FALLBACK_RESTAURANT_READY_MINUTES) {
-        changed = true;
-        return { ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() };
+        changedOrders.push({ ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() });
+        return;
       }
       if (isNearReady && elapsedMin >= FALLBACK_RESTAURANT_NEAR_READY_MINUTES) {
-        changed = true;
-        return { ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() };
+        changedOrders.push({ ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() });
+        return;
       }
-    } else {
-      // SHOP or SERVICE
-      if (elapsedMin >= FALLBACK_SHOP_SERVICE_MINUTES) {
-        changed = true;
-        return { ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() };
-      }
+    } else if (elapsedMin >= FALLBACK_SHOP_SERVICE_MINUTES) {
+      changedOrders.push({ ...o, deliveryAssignmentMode: 'MARKET' as const, fallbackTriggeredAt: new Date().toISOString() });
     }
-    return o;
   });
 
-  if (changed) await repos.orders.setAll(updated);
+  if (changedOrders.length > 0) await repos.orders.updateMany(changedOrders);
 }
 
 /** Get queue of orders eligible for MARKET dispatch (after fallback eval) */

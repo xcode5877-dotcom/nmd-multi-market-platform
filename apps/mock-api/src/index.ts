@@ -90,7 +90,7 @@ import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './db.js';
 import { createOtp, verifyOtp } from './customer-auth.js';
 import { isGooglePlayReviewPhone } from './google-play-review.js';
 import {
@@ -155,7 +155,7 @@ const PORT = Number(process.env.PORT ?? 5190);
 const MOCK_CUSTOMER_ORDERS_STATIC_BYPASS =
   String(process.env.MOCK_CUSTOMER_ORDERS_STATIC_BYPASS ?? '0') === '1';
 const repos = createRepos();
-const prisma = new PrismaClient();
+console.log('[ORDER_PROTECTION] Order append-only guards active (deleteMany + setAll blocked)');
 
 /** When WhatsApp + SMS all fail, log OTP for manual login (debug). Uses DATA volume in Docker. */
 function logOtpManualFallback(phoneDigits: string, code: string, reason: string) {
@@ -316,13 +316,14 @@ async function completeHypPaymentForGroup(
   const all = (await repos.orders.findAll()) as Record<string, unknown>[];
   const now = new Date().toISOString();
   const prevById = new Map<string, string>();
+  const paidGroupOrders: OrderRecord[] = [];
   for (let i = 0; i < all.length; i++) {
     const o = all[i];
     if (String((o as { orderGroupId?: string }).orderGroupId ?? '') !== orderGroupId) continue;
     const oid = String(o.id ?? '');
     prevById.set(oid, String(o.status ?? ''));
     const pay = ((o as { payment?: Record<string, unknown> }).payment ?? {}) as Record<string, unknown>;
-    all[i] = {
+    const updated = {
       ...o,
       status: 'PAID',
       paymentMethod: 'CARD',
@@ -339,12 +340,14 @@ async function completeHypPaymentForGroup(
         demoMode: Boolean(opts?.demoMode),
       },
     };
+    all[i] = updated;
+    paidGroupOrders.push(updated as OrderRecord);
   }
   if (prevById.size === 0) {
     console.warn('[Hyp] completeHypPaymentForGroup: no orders for group', orderGroupId);
     return;
   }
-  await repos.orders.setAll(all as OrderRecord[]);
+  await repos.orders.updateMany(paidGroupOrders);
   for (const orderId of prevById.keys()) {
     await prisma.payment.upsert({
       where: { orderId },
@@ -371,14 +374,16 @@ async function completeHypPaymentForGroup(
     });
   }
   const orders2 = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const loyaltyUpdated: OrderRecord[] = [];
   for (let i = 0; i < orders2.length; i++) {
     const o = orders2[i];
     const id = String(o.id ?? '');
     const prev = prevById.get(id);
     if (prev === undefined) continue;
     await runLoyaltyAwardForOrderAtIndex(orders2, i, prev);
+    loyaltyUpdated.push(orders2[i] as OrderRecord);
   }
-  await repos.orders.setAll(orders2 as OrderRecord[]);
+  if (loyaltyUpdated.length > 0) await repos.orders.updateMany(loyaltyUpdated);
 }
 
 /**
@@ -4606,7 +4611,7 @@ app.post('/courier/orders/:orderId/accept', wrapAsync(async (req, res) => {
     deliveryTimeline: { ...timeline, assignedAt: timeline.assignedAt ?? now },
   };
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated as OrderRecord);
 
   const courierIdx = couriers.findIndex((c) => c.id === scope.courierId);
   if (courierIdx >= 0) {
@@ -4979,10 +4984,10 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
     }
   }
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated as OrderRecord);
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevOrderStatusForLoyalty);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json(orders[idx]);
 });
 
@@ -5008,7 +5013,7 @@ app.patch('/courier/orders/:orderId/location', wrapAsync(async (req, res) => {
   }
   const updated = { ...order, courierLocation: { lat, lng } };
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated as OrderRecord);
   res.json(updated);
 }));
 
@@ -7629,8 +7634,7 @@ app.delete('/tenants/:id', async (req, res) => {
     .map((o) => o.id!)
     .filter(Boolean);
   await repos.payments.deleteForOrderIds(orderIds);
-  const orders = ((await repos.orders.findAll()) as { tenantId?: string }[]).filter((o) => o.tenantId !== id);
-  await repos.orders.setAll(orders);
+  await repos.orders.deleteByTenantId(id);
   await repos.catalog.setCatalog(id, { categories: [], products: [], optionGroups: [] });
   await repos.delivery.deleteSettings(id);
   await repos.deliveryZones.setAll(id, []);
@@ -8367,13 +8371,13 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
     }
   }
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated as OrderRecord);
   if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
     const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
     triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
     (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
     orders[idx] = updated;
-    await repos.orders.setAll(orders);
+    await repos.orders.upsert(updated as OrderRecord);
   }
   try {
     const orderWithCustomer = updated as { customerPhone?: string; customerId?: string };
@@ -8389,7 +8393,7 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   }
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyInternal);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json(orders[idx]);
 }));
 
@@ -8426,14 +8430,14 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
     }
   }
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated as OrderRecord);
 
   if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
     const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
     triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
     (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
     orders[idx] = updated;
-    await repos.orders.setAll(orders);
+    await repos.orders.upsert(updated as OrderRecord);
   }
 
   try {
@@ -8460,7 +8464,7 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
 
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyPatch);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json(orders[idx]);
 }));
 
@@ -8496,10 +8500,10 @@ app.post('/orders/:orderId/loyalty-force-award', wrapAsync(async (req, res) => {
   const st = String(row.status ?? '').toUpperCase();
   if (st !== 'COMPLETED' && st !== 'DELIVERED') {
     orders[idx] = { ...orders[idx], status: 'COMPLETED' };
-    await repos.orders.setAll(orders);
+    await repos.orders.restore(orders[idx] as OrderRecord);
   }
   await runLoyaltyAwardForOrderAtIndex(orders, idx, prevStatus);
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json({ ok: true, order: orders[idx] });
 }));
 
@@ -8808,12 +8812,12 @@ app.post('/tenants/:tenantId/orders/:orderId/ready', async (req, res) => {
   const now = new Date().toISOString();
   const updated = { ...orders[idx], status: 'READY', readyAt: now } as OrderRecord & Record<string, unknown>;
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated);
 
   triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, 'READY', (tenant as { name?: string })?.name);
   (updated as Record<string, unknown>).lastStatusNotification = { status: 'READY', at: now };
   orders[idx] = updated;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(updated);
 
   try {
     const orderWithCustomer = updated as { customerPhone?: string; customerId?: string; id?: string };
@@ -8860,7 +8864,7 @@ app.post('/tenants/:tenantId/orders/:orderId/handed-to-driver', wrapAsync(async 
   const now = new Date().toISOString();
   const tl = { ...(order.deliveryTimeline || {}), handedToDriverAt: (order.deliveryTimeline as { handedToDriverAt?: string })?.handedToDriverAt ?? now };
   orders[idx] = { ...order, deliveryTimeline: tl };
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json(orders[idx]);
 }));
 
@@ -9280,19 +9284,10 @@ app.delete('/markets/:marketId/couriers/:courierId', async (req, res) => {
   }
   const before = { ...couriers[idx] };
   if (shouldCascade) {
-    await prisma.payment.deleteMany({ where: { order: { courierId } } });
-    await prisma.order.deleteMany({ where: { courierId } });
+    await repos.orders.deleteByCourierId(courierId);
     await prisma.courierExpense.deleteMany({ where: { courierId } });
   } else {
-    const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string }[];
-    let ordersChanged = false;
-    for (let i = 0; i < orders.length; i++) {
-      if (orders[i].courierId === courierId) {
-        orders[i] = { ...orders[i], courierId: undefined };
-        ordersChanged = true;
-      }
-    }
-    if (ordersChanged) await repos.orders.setAll(orders);
+    await repos.orders.unassignCourier(courierId);
   }
   const remaining = couriers.filter((_, i) => i !== idx);
   await repos.couriers.setAll(remaining);
@@ -10189,7 +10184,7 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
     deliveryAssignmentMode: 'MARKET',
     deliveryTimeline: { ...timeline, assignedAt },
   } as OrderRecord;
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
 
   const courierIdx = couriers.findIndex((c) => c.id === courierId);
   if (courierIdx >= 0) {
@@ -10255,7 +10250,7 @@ app.post('/markets/:marketId/orders/:orderId/contact', async (req, res) => {
       entries,
     },
   };
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
   res.json(orders[idx]);
 });
 
@@ -10283,7 +10278,7 @@ app.delete('/markets/:marketId/orders/:orderId/assign-courier', async (req, res)
   const courierId = order.courierId;
   const before = { ...order };
   orders[idx] = { ...order, courierId: undefined, deliveryStatus: 'UNASSIGNED' };
-  await repos.orders.setAll(orders);
+  await repos.orders.upsert(orders[idx] as OrderRecord);
 
   if (courierId) {
     emitCourierUnassigned(courierId, orderId);

@@ -48,11 +48,26 @@ export interface CustomersRepo {
 
 export interface OrdersRepo {
   findAll(): Promise<OrderRecord[]>;
-  setAll(orders: OrderRecord[]): Promise<void>;
+  /** Create a new order record. */
+  create(order: OrderRecord): Promise<void>;
+  /** Update an existing order by id. */
+  update(order: OrderRecord): Promise<void>;
+  /** Create or update a single order by id. */
+  upsert(order: OrderRecord): Promise<void>;
+  /** Upsert multiple orders individually (no bulk wipe). */
+  updateMany(orders: OrderRecord[]): Promise<void>;
+  /** Restore a previously removed order (upsert + restored audit). */
+  restore(order: OrderRecord): Promise<void>;
   /** Append one order with payment (atomic in db mode). */
   addOrderWithPayment(order: OrderRecord, payment: { method: string; status: string; amount: number; currency?: string }): Promise<void>;
   /** Hard delete order by id (and cascade: payment, etc.). SUPER_ADMIN only. */
   deleteById(id: string): Promise<void>;
+  /** Delete all orders for a tenant (one-by-one, not deleteMany). */
+  deleteByTenantId(tenantId: string): Promise<void>;
+  /** Delete all orders assigned to a courier (one-by-one, not deleteMany). */
+  deleteByCourierId(courierId: string): Promise<void>;
+  /** Clear courierId on all orders for a courier (one-by-one updates). */
+  unassignCourier(courierId: string): Promise<void>;
 }
 
 export interface PaymentsRepo {

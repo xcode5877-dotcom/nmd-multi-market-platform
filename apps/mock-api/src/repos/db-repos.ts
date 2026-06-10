@@ -1,13 +1,12 @@
-import { PrismaClient } from '@prisma/client';
 import type { Market, RegistryTenant, User, Courier, Customer } from '../store.js';
+import { prisma } from '../db.js';
+import { logOrderAudit } from '../order-protection.js';
 import type { TenantCatalog } from '../store.js';
 import type { OrderRecord } from './types.js';
 import type { MarketsRepo, TenantsRepo, UsersRepo, CouriersRepo, CustomersRepo, OrdersRepo, CatalogRepo, DeliveryRepo, DeliveryZonesRepo, PaymentsRepo } from './types.js';
 import type { DeliveryZoneRecord } from '../store.js';
 import { parseMarketBrandingColumn, serializeMarketBrandingColumn } from '../market-branding-storage.js';
 import { syncCustomersFromRepo } from '../customer-identity.js';
-
-const prisma = new PrismaClient();
 
 function marketToDomain(m: { id: string; name: string; slug: string; imageUrl: string | null; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null; paymentMethods?: string | null }): Market {
   const { branding, platformFeeConfig } = parseMarketBrandingColumn(m.branding);
@@ -370,19 +369,54 @@ export function createDbCustomersRepo(): CustomersRepo {
 }
 
 export function createDbOrdersRepo(): OrdersRepo {
+  async function upsertOne(order: OrderRecord, auditAction?: 'created' | 'updated'): Promise<void> {
+    const rec = orderToDb(order);
+    if (!rec.id) throw new Error('Order id required');
+    const existing = auditAction
+      ? null
+      : await prisma.order.findUnique({ where: { id: rec.id }, select: { id: true } });
+    await prisma.order.upsert({
+      where: { id: rec.id },
+      create: rec,
+      update: rec,
+    });
+    logOrderAudit(auditAction ?? (existing ? 'updated' : 'created'), order);
+  }
+
   return {
     async findAll() {
       const rows = await prisma.order.findMany();
       return rows.map(orderToDomain);
     },
-    async setAll(orders: OrderRecord[]) {
-      await prisma.order.deleteMany();
-      if (orders.length > 0) {
-        for (const o of orders) {
-          const rec = orderToDb(o);
-          if (rec.id) await prisma.order.create({ data: rec });
-        }
+    async create(order: OrderRecord) {
+      const rec = orderToDb(order);
+      if (!rec.id) throw new Error('Order id required');
+      await prisma.order.create({ data: rec });
+      logOrderAudit('created', order);
+    },
+    async update(order: OrderRecord) {
+      const rec = orderToDb(order);
+      if (!rec.id) throw new Error('Order id required');
+      await prisma.order.update({ where: { id: rec.id }, data: rec });
+      logOrderAudit('updated', order);
+    },
+    async upsert(order: OrderRecord) {
+      await upsertOne(order);
+    },
+    async updateMany(orders: OrderRecord[]) {
+      for (const o of orders) {
+        await upsertOne(o);
       }
+    },
+    async restore(order: OrderRecord) {
+      const rec = orderToDb(order);
+      if (!rec.id) throw new Error('Order id required');
+      await prisma.order.upsert({
+        where: { id: rec.id },
+        create: rec,
+        update: rec,
+      });
+      logOrderAudit('restored', order);
     },
     async addOrderWithPayment(order: OrderRecord, payment: { method: string; status: string; amount: number; currency?: string }) {
       const rec = orderToDb(order);
@@ -413,9 +447,32 @@ export function createDbOrdersRepo(): OrdersRepo {
           },
         }),
       ]);
+      logOrderAudit('created', order);
     },
     async deleteById(id: string) {
       await prisma.order.delete({ where: { id } });
+    },
+    async deleteByTenantId(tenantId: string) {
+      const rows = await prisma.order.findMany({ where: { tenantId }, select: { id: true } });
+      for (const row of rows) {
+        await prisma.order.delete({ where: { id: row.id } });
+      }
+    },
+    async deleteByCourierId(courierId: string) {
+      const rows = await prisma.order.findMany({ where: { courierId }, select: { id: true } });
+      for (const row of rows) {
+        await prisma.order.delete({ where: { id: row.id } });
+      }
+    },
+    async unassignCourier(courierId: string) {
+      const rows = await prisma.order.findMany({ where: { courierId } });
+      for (const row of rows) {
+        const domain = orderToDomain(row);
+        const updated: OrderRecord = { ...domain, courierId: undefined };
+        const rec = orderToDb(updated);
+        await prisma.order.update({ where: { id: rec.id }, data: rec });
+        logOrderAudit('updated', updated);
+      }
     },
   };
 }
