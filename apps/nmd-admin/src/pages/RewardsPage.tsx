@@ -14,7 +14,8 @@ import {
   type GlobalRewardType,
   type RewardRedemptionRow,
 } from '../api';
-import { Plus, Trash2, Pencil, ImagePlus, Coins, Package, Sparkles, Users, Download, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Trash2, Pencil, ImagePlus, Coins, Package, Sparkles, Users, Download, CheckCircle, XCircle, Search } from 'lucide-react';
+import { matchesParticipantSearch, sortParticipantsByDateDesc } from '../lib/participantListUtils';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -49,6 +50,7 @@ export default function RewardsPage() {
   const [filterStatus, setFilterStatus] = useState<'' | RewardRedemptionRow['status']>('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [participantSearch, setParticipantSearch] = useState('');
 
   const typeLabels = useMemo(() => Object.fromEntries(REWARD_TYPES.map((t) => [t.value, `${t.labelAr} / ${t.labelEn}`])), []);
 
@@ -108,11 +110,12 @@ export default function RewardsPage() {
     setFilterStatus('');
     setFilterDateFrom('');
     setFilterDateTo('');
+    setParticipantSearch('');
     setTab('participants');
   };
 
   const filteredRedemptions = useMemo(() => {
-    return redemptions.filter((row) => {
+    const filtered = redemptions.filter((row) => {
       if (filterStatus && row.status !== filterStatus) return false;
       if (filterDateFrom) {
         const from = new Date(`${filterDateFrom}T00:00:00`);
@@ -122,9 +125,18 @@ export default function RewardsPage() {
         const to = new Date(`${filterDateTo}T23:59:59.999`);
         if (new Date(row.redeemedAt) > to) return false;
       }
+      if (
+        !matchesParticipantSearch(participantSearch, {
+          name: row.customerName,
+          phone: row.customerPhone,
+        })
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [redemptions, filterStatus, filterDateFrom, filterDateTo]);
+    return sortParticipantsByDateDesc(filtered);
+  }, [redemptions, filterStatus, filterDateFrom, filterDateTo, participantSearch]);
 
   const closeModal = () => {
     setModalOpen(false);
@@ -332,6 +344,15 @@ export default function RewardsPage() {
           <p className="text-xs text-gray-500">
             يُخصم رصيد العملات تلقائياً عند انضمام العميل عبر <code className="bg-gray-100 px-1 rounded">POST /customer/rewards/:rewardId/redeem</code> (يتطلب تسجيل دخول العميل).
           </p>
+          <div className="relative max-w-md">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <Input
+              value={participantSearch}
+              onChange={(e) => setParticipantSearch(e.target.value)}
+              placeholder="ابحث حسب الاسم أو رقم الهاتف"
+              className="ps-10"
+            />
+          </div>
         </div>
       )}
 
@@ -342,7 +363,9 @@ export default function RewardsPage() {
           ) : filteredRedemptions.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               <Users className="w-12 h-12 mx-auto text-teal-200 mb-3" />
-              لا توجد مشاركات مطابقة للتصفية.
+              {participantSearch.trim()
+                ? 'لا يوجد مشتركون مطابقون للبحث'
+                : 'لا توجد مشاركات مطابقة للتصفية.'}
             </div>
           ) : (
             <div className="overflow-x-auto">

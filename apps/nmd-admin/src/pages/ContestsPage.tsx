@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { Card, Button, Modal, useToast } from '@nmd/ui';
+import { Card, Button, Modal, Input, useToast } from '@nmd/ui';
 import {
   listContests,
   createContest,
@@ -16,8 +16,9 @@ import {
   type ContestOption,
   type ContestParticipationRow,
 } from '../api';
-import { Plus, Trash2, ToggleLeft, ToggleRight, Award, Users, ImagePlus } from 'lucide-react';
+import { Plus, Trash2, ToggleLeft, ToggleRight, Award, Users, ImagePlus, Search } from 'lucide-react';
 import { RootOnlyRoute } from '../components/RoleBasedRoute';
+import { matchesParticipantSearch, sortParticipantsByDateDesc } from '../lib/participantListUtils';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -310,6 +311,7 @@ function ParticipationsModal({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<'all' | 'winners'>('all');
+  const [participantSearch, setParticipantSearch] = useState('');
   const contest = participationsData?.contest;
   const participations = participationsData?.participations ?? [];
   const winners = participations.filter((p) => p.isWinner);
@@ -317,11 +319,31 @@ function ParticipationsModal({
     ? `النتيجة النهائية: ${contest.finalScoreA} - ${contest.finalScoreB}`
     : `النتيجة الصحيحة: ${contest?.correctAnswer ?? 'لم تُدخل بعد'}`;
 
+  const sourceRows = tab === 'winners' ? winners : participations;
+  const visibleRows = useMemo(() => {
+    const filtered = sourceRows.filter((p) =>
+      matchesParticipantSearch(participantSearch, {
+        name: p.customerName,
+        phone: p.customerPhone,
+      }),
+    );
+    return sortParticipantsByDateDesc(filtered);
+  }, [sourceRows, participantSearch]);
+
   return (
     <Modal open title={`المشاركات: ${contestTitle}`} onClose={onClose}>
       {participationsData ? (
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           <p className="text-sm text-gray-600">{resultLabel}</p>
+          <div className="relative max-w-md mb-2">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <Input
+              value={participantSearch}
+              onChange={(e) => setParticipantSearch(e.target.value)}
+              placeholder="ابحث حسب الاسم أو رقم الهاتف"
+              className="ps-10"
+            />
+          </div>
           <div className="flex gap-2 border-b border-gray-200 mb-2">
             <button
               type="button"
@@ -348,7 +370,7 @@ function ParticipationsModal({
               </tr>
             </thead>
             <tbody>
-              {(tab === 'winners' ? winners : participations).map((p) => (
+              {visibleRows.map((p) => (
                 <tr key={p.id} className="border-b border-gray-100">
                   <td className="py-2" dir="ltr">{p.customerPhone ?? '—'}</td>
                   <td className="py-2">{p.customerName ?? '—'}</td>
@@ -360,8 +382,14 @@ function ParticipationsModal({
               ))}
             </tbody>
           </table>
-          {(tab === 'winners' ? winners : participations).length === 0 && (
-            <p className="text-gray-500 py-4 text-center">{tab === 'winners' ? 'لا فائزين بعد' : 'لا مشاركات بعد'}</p>
+          {visibleRows.length === 0 && (
+            <p className="text-gray-500 py-4 text-center">
+              {participantSearch.trim()
+                ? 'لا يوجد مشتركون مطابقون للبحث'
+                : tab === 'winners'
+                  ? 'لا فائزين بعد'
+                  : 'لا مشاركات بعد'}
+            </p>
           )}
         </div>
       ) : (
