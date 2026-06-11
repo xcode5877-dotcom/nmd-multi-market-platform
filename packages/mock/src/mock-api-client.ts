@@ -1237,6 +1237,27 @@ export class MockApiClient implements ApiClient {
     });
   }
 
+  /** Market Admin creates an off-app external delivery order. */
+  async createMarketExternalOrder(
+    marketId: string,
+    body: {
+      tenantId?: string;
+      manualStoreName?: string;
+      customerName: string;
+      customerPhone: string;
+      deliveryAddress: string;
+      notes?: string;
+      deliveryFee?: number;
+      total?: number;
+      courierId?: string;
+    }
+  ): Promise<Order> {
+    return apiFetch<Order>(`/markets/${marketId}/external-orders`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   /** Log contact for an order (e.g. WhatsApp message). Appends to contactLog.entries. */
   async logOrderContact(marketId: string, orderId: string, message?: string): Promise<Order> {
     return apiFetch<Order>(`/markets/${marketId}/orders/${encodeURIComponent(orderId)}/contact`, {

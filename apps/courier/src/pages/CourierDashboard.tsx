@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
-import { Package, List, MapPin, LogOut, Trophy, Award } from 'lucide-react';
+import { Package, List, MapPin, LogOut, Trophy, Award, Receipt, TrendingUp } from 'lucide-react';
 
 type CourierStats = {
   pointsToday?: number;
@@ -22,6 +22,22 @@ export default function CourierDashboard() {
     queryFn: () => apiFetch<CourierStats>('/courier/stats'),
     enabled: !!user,
     refetchInterval: 8000,
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: daily } = useQuery({
+    queryKey: ['courier-daily-summary', today],
+    queryFn: () =>
+      apiFetch<{
+        date: string;
+        appOrdersTotal: number;
+        externalOrdersTotal: number;
+        expensesTotal: number;
+        gross: number;
+        net: number;
+      }>(`/courier/daily-summary?date=${encodeURIComponent(today)}`),
+    enabled: !!user,
+    refetchInterval: 15_000,
   });
 
   const { data: leaderboardData } = useQuery({
@@ -56,6 +72,49 @@ export default function CourierDashboard() {
       )}
 
       <main className="p-4 max-w-md mx-auto space-y-4">
+        {daily && (
+          <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg text-white">
+            <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              ملخص اليوم (الإجمالي − المصاريف)
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <p className="text-slate-400">طلبات التطبيق</p>
+                <p className="text-lg font-bold">₪{daily.appOrdersTotal.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">طلبات خارجية</p>
+                <p className="text-lg font-bold">₪{daily.externalOrdersTotal.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">إجمالي الوارد</p>
+                <p className="text-lg font-bold text-emerald-300">₪{daily.gross.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">مصاريف</p>
+                <p className="text-lg font-bold text-amber-300">— ₪{daily.expensesTotal.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-600 flex justify-between items-center">
+              <span className="text-slate-300">صافي اليوم</span>
+              <span className="text-2xl font-black text-white">₪{daily.net.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link
+            to="/expenses"
+            className="flex items-center gap-4 min-h-[56px] text-lg font-bold rounded-2xl bg-amber-600 text-white px-4 py-4 shadow-md shadow-amber-600/20 active:scale-[0.99] transition-transform"
+          >
+            <div className="p-2 rounded-xl bg-white/20">
+              <Receipt className="w-6 h-6" />
+            </div>
+            <span>بنزين + تصليح</span>
+          </Link>
+        </div>
+
         <Link
           to="/orders"
           className="block p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-teal-300 transition-colors"

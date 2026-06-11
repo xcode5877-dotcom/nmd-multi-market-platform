@@ -138,6 +138,8 @@ function isReadyWarning(order: OrderRow): boolean {
   return min != null && min >= READY_WARNING_MIN && min < READY_PANIC_MIN;
 }
 
+const DELIVERY_JOBS_TAB_ENABLED = false;
+
 export default function MarketDispatchPage() {
   const { id: marketId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
@@ -180,6 +182,15 @@ export default function MarketDispatchPage() {
     name: string;
     initialMessage: string;
   } | null>(null);
+  const [externalOrderModalOpen, setExternalOrderModalOpen] = useState(false);
+  const [extTenantId, setExtTenantId] = useState('');
+  const [extManualStoreName, setExtManualStoreName] = useState('');
+  const [extCustomerName, setExtCustomerName] = useState('');
+  const [extCustomerPhone, setExtCustomerPhone] = useState('');
+  const [extDeliveryAddress, setExtDeliveryAddress] = useState('');
+  const [extNotes, setExtNotes] = useState('');
+  const [extDeliveryFee, setExtDeliveryFee] = useState('');
+  const [extCourierId, setExtCourierId] = useState('');
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -443,6 +454,50 @@ export default function MarketDispatchPage() {
     onError: (e) => addToast(e instanceof Error ? e.message : 'فشل', 'error'),
   });
 
+  const createExternalOrderMutation = useMutation({
+    mutationFn: () =>
+      api.createMarketExternalOrder(marketId!, {
+        tenantId: extTenantId || undefined,
+        manualStoreName: extTenantId === 'other' ? extManualStoreName.trim() : undefined,
+        customerName: extCustomerName.trim(),
+        customerPhone: extCustomerPhone.trim(),
+        deliveryAddress: extDeliveryAddress.trim(),
+        notes: extNotes.trim() || undefined,
+        deliveryFee: Number(extDeliveryFee.replace(/,/g, '.')),
+        courierId: extCourierId || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['market-orders', marketId] });
+      queryClient.invalidateQueries({ queryKey: ['dispatch-queue', marketId] });
+      queryClient.invalidateQueries({ queryKey: ['market-couriers', marketId] });
+      addToast('تم إنشاء الطلب الخارجي', 'success');
+      setExternalOrderModalOpen(false);
+      setExtTenantId('');
+      setExtManualStoreName('');
+      setExtCustomerName('');
+      setExtCustomerPhone('');
+      setExtDeliveryAddress('');
+      setExtNotes('');
+      setExtDeliveryFee('');
+      setExtCourierId('');
+    },
+    onError: (e) => addToast(e instanceof Error ? e.message : 'فشل إنشاء الطلب الخارجي', 'error'),
+  });
+
+  const marketTenants = useMemo(
+    () => (tenants as { id: string; name: string; marketId?: string }[]).filter((t) => t.marketId === marketId),
+    [tenants, marketId]
+  );
+
+  const canSubmitExternalOrder =
+    extCustomerName.trim() &&
+    extCustomerPhone.trim() &&
+    extDeliveryAddress.trim() &&
+    extTenantId &&
+    (extTenantId !== 'other' || extManualStoreName.trim()) &&
+    extDeliveryFee.trim() &&
+    Number(extDeliveryFee.replace(/,/g, '.')) >= 0;
+
   const patchCourierMutation = useMutation({
     mutationFn: ({ courierId, updates }: { courierId: string; updates: { isOnline?: boolean; isActive?: boolean; isAvailable?: boolean } }) =>
       api.patchMarketCourier(marketId!, courierId, updates),
@@ -703,12 +758,15 @@ export default function MarketDispatchPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
         <Link to={`/markets/${marketId}`} className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
           <ArrowLeft className="w-4 h-4" />
           رجوع
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">إدارة التوصيل - {market?.name ?? marketId}</h1>
+        <Button size="sm" onClick={() => setExternalOrderModalOpen(true)} disabled={!canWrite} className="ms-auto">
+          إنشاء طلب خارجي
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -813,16 +871,18 @@ export default function MarketDispatchPage() {
           <TabsTrigger value="couriers">السائقون ({filteredCouriers.length})</TabsTrigger>
           <TabsTrigger value="stats">إحصائيات السائقين ({filteredStats.length})</TabsTrigger>
           <TabsTrigger value="leaderboard">لوحة المتصدرين</TabsTrigger>
-          <TabsTrigger value="jobs">المهام ({jobs.length})</TabsTrigger>
+          {DELIVERY_JOBS_TAB_ENABLED ? (
+            <TabsTrigger value="jobs">المهام ({jobs.length})</TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="queue" className="mt-4 transition-opacity duration-200">
           <Card className="p-4">
             <div className="flex justify-between items-center mb-4">
               <span className="text-sm text-gray-600">طلبات جاهزة للتوصيل (لم تُعيَّن بعد)</span>
-              <Button size="sm" onClick={() => setCreateJobModalOpen(true)} disabled={queue.length === 0 || !canWrite}>
-                إنشاء مهمة
-              </Button>
+              {!DELIVERY_JOBS_TAB_ENABLED && (
+                <span className="text-xs text-gray-400">سيتم تفعيل إدارة الجولات لاحقًا</span>
+              )}
             </div>
             {ordersLoading ? (
               <div className="space-y-2">
@@ -1201,6 +1261,7 @@ export default function MarketDispatchPage() {
           </Card>
         </TabsContent>
 
+        {DELIVERY_JOBS_TAB_ENABLED ? (
         <TabsContent value="jobs">
           <Card className="p-4 mt-4">
             <div className="space-y-3">
@@ -1233,7 +1294,77 @@ export default function MarketDispatchPage() {
             </div>
           </Card>
         </TabsContent>
+        ) : null}
       </Tabs>
+
+      <Modal open={externalOrderModalOpen} onClose={() => setExternalOrderModalOpen(false)} title="إنشاء طلب خارجي" size="md">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">طلب توصيل يدوي من خارج التطبيق — يظهر في لوحة التوصيل ويمكن تعيين سائق له.</p>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">المحل / المطعم</span>
+            <Select
+              value={extTenantId}
+              onChange={(e) => {
+                setExtTenantId(e.target.value);
+                if (e.target.value !== 'other') setExtManualStoreName('');
+              }}
+              options={[
+                { value: '', label: '— اختر المحل —' },
+                ...marketTenants.map((t) => ({ value: t.id, label: t.name })),
+                { value: 'other', label: 'محل آخر (يدوي)' },
+              ]}
+              className="mt-1 w-full"
+            />
+          </label>
+          {extTenantId === 'other' && (
+            <label className="block text-sm">
+              <span className="font-medium text-gray-700">اسم المحل (يدوي)</span>
+              <Input value={extManualStoreName} onChange={(e) => setExtManualStoreName(e.target.value)} className="mt-1" />
+            </label>
+          )}
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">اسم العميل</span>
+            <Input value={extCustomerName} onChange={(e) => setExtCustomerName(e.target.value)} className="mt-1" />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">هاتف العميل</span>
+            <Input value={extCustomerPhone} onChange={(e) => setExtCustomerPhone(e.target.value)} className="mt-1" dir="ltr" />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">العنوان / الوجهة</span>
+            <Input value={extDeliveryAddress} onChange={(e) => setExtDeliveryAddress(e.target.value)} className="mt-1" />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">ملاحظات (اختياري)</span>
+            <Input value={extNotes} onChange={(e) => setExtNotes(e.target.value)} className="mt-1" />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">أجرة التوصيل (₪)</span>
+            <Input type="number" min={0} step="0.01" value={extDeliveryFee} onChange={(e) => setExtDeliveryFee(e.target.value)} className="mt-1" dir="ltr" />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">تعيين سائق (اختياري)</span>
+            <Select
+              value={extCourierId}
+              onChange={(e) => setExtCourierId(e.target.value)}
+              options={[
+                { value: '', label: '— بدون تعيين —' },
+                ...couriersList.filter((c) => c.isActive !== false).map((c) => ({ value: c.id, label: `${c.name}${c.isAvailable === false ? ' (مشغول)' : ''}` })),
+              ]}
+              className="mt-1 w-full"
+            />
+          </label>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setExternalOrderModalOpen(false)}>إلغاء</Button>
+            <Button
+              onClick={() => createExternalOrderMutation.mutate()}
+              disabled={!canSubmitExternalOrder || createExternalOrderMutation.isPending || !canWrite}
+            >
+              {createExternalOrderMutation.isPending ? 'جاري...' : 'إنشاء'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={createJobModalOpen} onClose={() => setCreateJobModalOpen(false)} title="إنشاء مهمة توصيل" size="md">
         <div className="space-y-4">

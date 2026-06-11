@@ -10,6 +10,7 @@ import type { RequestHandler } from 'express';
 import {
   getAuditEvents,
   appendAuditEvent,
+  appendDispatchAudit,
   getCampaigns,
   setCampaigns,
   getDeliveryJobs,
@@ -4488,6 +4489,41 @@ function requireCourier(req: express.Request, res: express.Response): { courierI
   return { courierId: user.courierId, marketId: user.marketId };
 }
 
+/** Dispatch-only mode: couriers cannot self-assign or browse the open pool. */
+function respondDispatchOnly(res: express.Response): void {
+  res.status(403).json({
+    error: 'DISPATCH_ONLY',
+    message: 'Orders are assigned by market dispatch.',
+    messageAr: 'يتم تعيين الطلبات من إدارة توصيل السوق.',
+  });
+}
+
+/** Assign/unassign: MARKET_ADMIN (own market) or platform admin with emergency write reason. */
+function requireMarketDispatchAssignAuth(req: express.Request, res: express.Response, marketId: string): boolean {
+  const user = req.user as { role?: string; marketId?: string } | undefined;
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  const role = user.role;
+  if (role === 'COURIER' || role === 'TENANT_ADMIN' || role === 'CUSTOMER') {
+    res.status(403).json({ error: 'Forbidden', code: 'SCOPE_VIOLATION' });
+    return false;
+  }
+  if (role === 'MARKET_ADMIN') {
+    if (user.marketId !== marketId) {
+      res.status(403).json({ error: 'Cannot assign couriers in another market', code: 'CROSS_MARKET_ACCESS' });
+      return false;
+    }
+    return true;
+  }
+  if (isPlatformAdmin(role)) {
+    return requireWriteWithReason(req, res);
+  }
+  res.status(403).json({ error: 'Forbidden', code: 'SCOPE_VIOLATION' });
+  return false;
+}
+
 /** Courier API hard gate: require x-api-key on all /courier routes. */
 function requireCourierApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!API_KEY) {
@@ -4547,83 +4583,23 @@ app.get('/courier/orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
-    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED' && !o.isExternal);
+    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED' && o.status !== 'COMPLETED');
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
   res.json(enrichCourierOrders(orders, tenants));
 }));
 
-/** Open-market: only DELIVERY orders (PICKUP hidden from couriers). PREPARING or READY, no courierId, in market. */
+/** Open-market pool disabled — dispatch-only assignment by MARKET_ADMIN. */
 app.get('/courier/orders/available', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const tenants = (await repos.tenants.findAll()) as { id?: string; marketId?: string }[];
-  const allOrders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; marketId?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown> }[];
-  const available = allOrders.filter((o) => {
-    if (o.fulfillmentType !== 'DELIVERY' || o.courierId || o.status === 'CANCELED') return false;
-    if (o.status !== 'PREPARING' && o.status !== 'READY') return false;
-    const orderMarketId = o.marketId ?? tenants.find((t) => t.id === o.tenantId)?.marketId;
-    return orderMarketId === scope.marketId;
-  });
-  const tenantList = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
-  res.json(enrichCourierOrders(available, tenantList));
+  respondDispatchOnly(res);
 }));
 
-/** Courier claims an order (open-market accept). Race-safe: 409 ORDER_TAKEN if another courier took it. */
+/** Courier self-assign disabled — dispatch-only assignment by MARKET_ADMIN. */
 app.post('/courier/orders/:orderId/accept', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const { orderId } = req.params;
-  const tenants = (await repos.tenants.findAll()) as { id?: string; marketId?: string }[];
-  const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; marketId?: string; deliveryAssignmentMode?: string; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown> }[];
-  const idx = orders.findIndex((o) => o.id === orderId);
-  if (idx === -1) return res.status(404).json({ error: 'Order not found' });
-  const order = orders[idx];
-  if (order.fulfillmentType !== 'DELIVERY') return res.status(400).json({ error: 'Order is not a delivery order', code: 'BAD_REQUEST' });
-  if (order.status !== 'PREPARING' && order.status !== 'READY') return res.status(400).json({ error: 'Order is not available to accept', code: 'BAD_REQUEST' });
-  const orderMarketId = order.marketId ?? tenants.find((t) => t.id === order.tenantId)?.marketId;
-  if (orderMarketId !== scope.marketId) return res.status(403).json({ error: 'Order not in your market', code: 'CROSS_MARKET_ACCESS' });
-  if (order.courierId) {
-    return res.status(409).json({
-      error: 'This order was taken by another courier',
-      code: 'ORDER_TAKEN',
-      details: { orderId, currentCourierId: order.courierId },
-    });
-  }
-  const couriers = (await repos.couriers.findAll()) as { id?: string; isActive?: boolean; isOnline?: boolean; isAvailable?: boolean }[];
-  const courier = couriers.find((c) => c.id === scope.courierId);
-  if (!courier || !courier.isActive || !courier.isOnline) return res.status(400).json({ error: 'Courier must be active and online', code: 'BAD_REQUEST' });
-  if (courier.isAvailable === false) {
-    const activeOrdersForCourier = orders.filter(
-      (o) => o.courierId === scope.courierId && o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
-    ) as { id?: string; status?: string }[];
-    if (activeOrdersForCourier.length > 0) {
-      return res.status(400).json({ error: 'You are busy with another delivery', code: 'COURIER_BUSY' });
-    }
-    // Auto-recover: courier marked busy but has no active order (e.g. previous order completed without clearing flag)
-  }
-
-  const now = new Date().toISOString();
-  const timeline = order.deliveryTimeline ?? {};
-  const updated = {
-    ...order,
-    courierId: scope.courierId,
-    deliveryStatus: 'ASSIGNED',
-    deliveryTimeline: { ...timeline, assignedAt: timeline.assignedAt ?? now },
-  };
-  orders[idx] = updated;
-  await repos.orders.upsert(updated as OrderRecord);
-
-  const courierIdx = couriers.findIndex((c) => c.id === scope.courierId);
-  if (courierIdx >= 0) {
-    couriers[courierIdx] = { ...couriers[courierIdx], isAvailable: false };
-    await repos.couriers.setAll(couriers);
-  }
-
-  emitCourierAssigned(scope.courierId, updated);
-
-  const tenantList = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
-  const enriched = enrichCourierOrders([updated], tenantList);
-  res.status(200).json(enriched[0]);
+  respondDispatchOnly(res);
 }));
 
 /** Courier's own performance stats (points, badges, metrics). */
@@ -4671,85 +4647,11 @@ app.get('/courier/forms/options', wrapAsync(async (req, res) => {
   res.json({ restaurants, destinations });
 }));
 
-/** Manual off-app delivery entry — persisted as Order with isExternal=true. */
+/** Manual off-app delivery entry — disabled for couriers (Phase 1 dispatch-only). */
 app.post('/courier/external-orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
-  const body = (req.body ?? {}) as { tenantId?: string; manualStoreName?: string; externalDestination?: string; deliveryFee?: number };
-  const tenantId = String(body.tenantId ?? '').trim();
-  const manualStoreName = String(body.manualStoreName ?? '').trim();
-  const dest = String(body.externalDestination ?? '').trim();
-  const fee = Number(body.deliveryFee);
-  if (!dest || !Number.isFinite(fee) || fee < 0) {
-    return res.status(400).json({ error: 'externalDestination and deliveryFee (≥0) are required' });
-  }
-  const normalizedTenantId = tenantId && tenantId !== 'other' ? tenantId : '';
-  if (!normalizedTenantId && !manualStoreName) {
-    return res.status(400).json({ error: 'tenantId or manualStoreName is required' });
-  }
-  if (normalizedTenantId) {
-    const t = await prisma.tenant.findUnique({
-      where: { id: normalizedTenantId },
-      select: { id: true, marketId: true },
-    });
-    if (!t || t.marketId !== scope.marketId) return res.status(400).json({ error: 'Invalid restaurant for this market' });
-    const courier = await prisma.courier.findUnique({
-      where: { id: scope.courierId },
-      select: { allowedStoreIds: true },
-    });
-    if (courier?.allowedStoreIds) {
-      try {
-        const allow = JSON.parse(courier.allowedStoreIds) as unknown;
-        if (Array.isArray(allow) && allow.length > 0 && !allow.map((x) => String(x)).includes(normalizedTenantId)) {
-          return res.status(403).json({ error: 'Store is not allowed for this courier', code: 'FORBIDDEN' });
-        }
-      } catch {
-        // ignore malformed allowlist and continue with market validation only
-      }
-    }
-  }
-  const id = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const now = new Date().toISOString();
-  const paymentId = `pay-${id}`;
-  await prisma.$transaction([
-    prisma.order.create({
-      data: {
-        id,
-        tenantId: normalizedTenantId || null,
-        courierId: scope.courierId,
-        marketId: scope.marketId,
-        status: 'COMPLETED',
-        fulfillmentType: 'DELIVERY',
-        orderType: 'EXTERNAL',
-        total: fee,
-        createdAt: now,
-        isExternal: true,
-        externalDestination: dest,
-        manualStoreName: normalizedTenantId ? null : manualStoreName,
-        deliveryTimeline: JSON.stringify({ deliveredAt: now, externalManual: true }),
-      },
-    }),
-    prisma.payment.create({
-      data: {
-        id: paymentId,
-        orderId: id,
-        method: 'CASH',
-        status: 'COLLECTED',
-        amount: fee,
-        currency: 'ILS',
-        createdAt: now,
-        updatedAt: now,
-      },
-    }),
-  ]);
-  res.status(201).json({
-    id,
-    total: fee,
-    isExternal: true,
-    externalDestination: dest,
-    tenantId: normalizedTenantId || null,
-    manualStoreName: normalizedTenantId ? null : manualStoreName,
-  });
+  respondDispatchOnly(res);
 }));
 
 /** Driver expense (fuel / repairs). */
@@ -5051,36 +4953,14 @@ export function emitCourierUnassigned(courierId: string, orderId: string) {
   if (send) send(JSON.stringify({ type: 'order_unassigned', orderId }));
 }
 
-/** Broadcast to all couriers in a market: new delivery order is in the global dispatch pool (available to accept). */
-export function emitOrderAvailableForMarket(marketId: string, orderId: string, couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
-  const marketCourierIds = couriers.filter((c) => (c.scopeType === 'MARKET' && (c.marketId ?? c.scopeId) === marketId)).map((c) => c.id).filter(Boolean);
-  const payload = JSON.stringify({ type: 'order_available', orderId });
-  for (const cid of marketCourierIds) {
-    const send = courierEventListeners.get(cid);
-    if (send) {
-      try {
-        send(payload);
-      } catch {
-        courierEventListeners.delete(cid);
-      }
-    }
-  }
+/** Disabled (dispatch-only): open-market order_available broadcasts are no longer sent to couriers. */
+export function emitOrderAvailableForMarket(_marketId: string, _orderId: string, _couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
+  // no-op — assignment is MARKET_ADMIN dispatch only
 }
 
-/** Broadcast to all couriers in a market: order is READY for pickup (open-market call to action). */
-export function emitOrderReadyForMarket(marketId: string, orderId: string, couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
-  const marketCourierIds = couriers.filter((c) => (c.scopeType === 'MARKET' && (c.marketId ?? c.scopeId) === marketId)).map((c) => c.id).filter(Boolean);
-  const payload = JSON.stringify({ type: 'order_ready', orderId });
-  for (const cid of marketCourierIds) {
-    const send = courierEventListeners.get(cid);
-    if (send) {
-      try {
-        send(payload);
-      } catch {
-        courierEventListeners.delete(cid);
-      }
-    }
-  }
+/** Disabled (dispatch-only): order_ready open-market broadcasts are no longer sent to couriers. */
+export function emitOrderReadyForMarket(_marketId: string, _orderId: string, _couriers: { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[]) {
+  // no-op — assignment is MARKET_ADMIN dispatch only
 }
 
 /** Change password (self-service). Requires auth. TENANT_ADMIN can change only their own. */
@@ -10125,10 +10005,7 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
   const user = req.user;
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
-    return res.status(403).json({ error: 'Cannot assign couriers in another market', code: 'CROSS_MARKET_ACCESS' });
-  }
-  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
+  if (!requireMarketDispatchAssignAuth(req, res, marketId)) return;
 
   const body = req.body as { courierId?: string; reassign?: boolean };
   const courierId = body.courierId;
@@ -10204,6 +10081,18 @@ app.post('/markets/:marketId/orders/:orderId/assign-courier', async (req, res) =
     after: { courierId, deliveryStatus: 'ASSIGNED' },
   });
 
+  const oldCourierId = (before as { courierId?: string }).courierId;
+  appendDispatchAudit({
+    orderId,
+    marketId,
+    tenantId: order.tenantId,
+    oldCourierId,
+    newCourierId: courierId,
+    actorUserId: user!.id,
+    actorRole: user!.role,
+    action: oldCourierId && oldCourierId !== courierId ? 'REASSIGNED' : 'ASSIGNED',
+  });
+
   emitCourierAssigned(courierId, orders[idx]);
 
   res.json(orders[idx]);
@@ -10260,10 +10149,7 @@ app.delete('/markets/:marketId/orders/:orderId/assign-courier', async (req, res)
   const user = req.user;
   const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
   if (!market) return res.status(404).json({ error: 'Market not found' });
-  if (user?.role === 'MARKET_ADMIN' && user.marketId !== marketId) {
-    return res.status(403).json({ error: 'Cannot unassign in another market', code: 'CROSS_MARKET_ACCESS' });
-  }
-  if (isPlatformAdmin(user?.role) && !requireWriteWithReason(req, res)) return;
+  if (!requireMarketDispatchAssignAuth(req, res, marketId)) return;
 
   const orders = (await repos.orders.findAll()) as { id?: string; tenantId?: string; marketId?: string; deliveryAssignmentMode?: string; courierId?: string; deliveryStatus?: string }[];
   const idx = orders.findIndex((o) => o.id === orderId);
@@ -10307,8 +10193,152 @@ app.delete('/markets/:marketId/orders/:orderId/assign-courier', async (req, res)
     after: { courierId: undefined, deliveryStatus: undefined },
   });
 
+  appendDispatchAudit({
+    orderId,
+    marketId,
+    tenantId: order.tenantId,
+    oldCourierId: courierId,
+    actorUserId: user!.id,
+    actorRole: user!.role,
+    action: 'UNASSIGNED',
+  });
+
   res.json(orders[idx]);
 });
+
+/** Market Admin creates an off-app external delivery order (dispatch-only). */
+app.post('/markets/:marketId/external-orders', wrapAsync(async (req, res) => {
+  const { marketId } = req.params;
+  const user = req.user as { id: string; role: string } | undefined;
+  if (!requireMarketDispatchAssignAuth(req, res, marketId)) return;
+
+  const market = (await repos.markets.findAll()).find((m) => m.id === marketId);
+  if (!market) return res.status(404).json({ error: 'Market not found' });
+
+  const body = (req.body ?? {}) as {
+    tenantId?: string;
+    manualStoreName?: string;
+    customerName?: string;
+    customerPhone?: string;
+    deliveryAddress?: string;
+    notes?: string;
+    total?: number;
+    deliveryFee?: number;
+    courierId?: string;
+  };
+
+  const customerName = String(body.customerName ?? '').trim();
+  const customerPhone = String(body.customerPhone ?? '').trim();
+  const deliveryAddress = String(body.deliveryAddress ?? '').trim();
+  const notes = String(body.notes ?? '').trim();
+  const feeRaw = body.deliveryFee ?? body.total;
+  const fee = Number(feeRaw);
+  const tenantIdRaw = String(body.tenantId ?? '').trim();
+  const manualStoreName = String(body.manualStoreName ?? '').trim();
+  const normalizedTenantId = tenantIdRaw && tenantIdRaw !== 'other' ? tenantIdRaw : '';
+
+  if (!customerName || !customerPhone || !deliveryAddress) {
+    return res.status(400).json({ error: 'customerName, customerPhone, and deliveryAddress are required' });
+  }
+  if (!Number.isFinite(fee) || fee < 0) {
+    return res.status(400).json({ error: 'deliveryFee (≥0) is required' });
+  }
+  if (!normalizedTenantId && !manualStoreName) {
+    return res.status(400).json({ error: 'tenantId or manualStoreName is required' });
+  }
+
+  const marketTenants = (await repos.tenants.findAll()).filter((t) => t.marketId === marketId);
+  if (normalizedTenantId) {
+    const tenant = marketTenants.find((t) => t.id === normalizedTenantId);
+    if (!tenant) return res.status(400).json({ error: 'Store not in this market' });
+  }
+
+  const courierId = body.courierId?.trim() || undefined;
+  if (courierId) {
+    const couriers = await repos.couriers.findAll();
+    const courier = couriers.find((c) => c.id === courierId);
+    if (!courier) return res.status(404).json({ error: 'Courier not found' });
+    if (courierMarketId(courier) !== marketId) {
+      return res.status(403).json({ error: 'Courier belongs to another market', code: 'CROSS_MARKET_ACCESS' });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const orderId = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const timeline: Record<string, string> = {};
+  let deliveryStatus: string = 'UNASSIGNED';
+  if (courierId) {
+    deliveryStatus = 'ASSIGNED';
+    timeline.assignedAt = now;
+  }
+
+  const order = {
+    id: orderId,
+    marketId,
+    tenantId: normalizedTenantId || undefined,
+    manualStoreName: normalizedTenantId ? undefined : manualStoreName,
+    customerName,
+    customerPhone,
+    deliveryAddress,
+    externalDestination: deliveryAddress,
+    notes: notes || undefined,
+    fulfillmentType: 'DELIVERY',
+    deliveryAssignmentMode: 'MARKET',
+    orderType: 'EXTERNAL',
+    source: 'external',
+    isExternal: true,
+    status: 'READY',
+    readyAt: now,
+    deliveryStatus,
+    courierId,
+    deliveryTimeline: timeline,
+    total: fee,
+    subtotal: 0,
+    items: [],
+    createdAt: now,
+    paymentMethod: 'CASH',
+  } as OrderRecord;
+
+  await repos.orders.addOrderWithPayment(order, {
+    method: 'CASH',
+    status: 'PENDING',
+    amount: fee,
+    currency: 'ILS',
+  });
+
+  if (courierId) {
+    const couriers = await repos.couriers.findAll();
+    const courierIdx = couriers.findIndex((c) => c.id === courierId);
+    if (courierIdx >= 0) {
+      couriers[courierIdx] = { ...couriers[courierIdx], isAvailable: false };
+      await repos.couriers.setAll(couriers);
+    }
+    emitCourierAssigned(courierId, order);
+  }
+
+  appendDispatchAudit({
+    orderId,
+    marketId,
+    tenantId: normalizedTenantId || undefined,
+    newCourierId: courierId,
+    actorUserId: user!.id,
+    actorRole: user!.role,
+    action: 'EXTERNAL_CREATED',
+  });
+
+  appendAuditEvent({
+    userId: user!.id,
+    role: user!.role,
+    marketId,
+    action: 'create',
+    entity: 'order',
+    entityId: orderId,
+    reason: 'external-order',
+    after: { isExternal: true, courierId, total: fee },
+  });
+
+  res.status(201).json(order);
+}));
 
 // --- Market dispatch queue ---
 app.get('/markets/:marketId/dispatch/queue', async (req, res) => {

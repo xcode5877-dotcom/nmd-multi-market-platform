@@ -126,68 +126,6 @@ function getAllowedCourierAction(order: CourierOrder): string | null {
   return null;
 }
 
-/** Area/zone first (bold, larger), then address secondary. */
-function DeliveryLocationDisplay({ order }: { order: CourierOrder }) {
-  const zoneName = order.deliveryZoneName ?? order.customer?.deliveryZoneName ?? '';
-  const address = order.customer?.deliveryAddress ?? (order as { deliveryAddress?: string }).deliveryAddress ?? '';
-  const primary = zoneName || address;
-  const secondary = zoneName && address ? address : null;
-  return (
-    <div>
-      {primary && <p className="font-bold text-base text-gray-900">{primary}</p>}
-      {secondary && <p className="text-xs text-gray-500 mt-0.5">{secondary}</p>}
-      {!primary && <p className="text-sm text-gray-500">—</p>}
-    </div>
-  );
-}
-
-/** Compact card for open-market available order: show key info + Accept button. */
-function AvailableOrderCard({
-  order,
-  onAccept,
-  isPending,
-  thumbFriendly,
-}: {
-  order: CourierOrder;
-  onAccept: () => void;
-  isPending: boolean;
-  thumbFriendly?: boolean;
-}) {
-  const tenant = order.tenant ?? { name: '', phone: undefined, address: undefined };
-  const customer = order.customer ?? { name: order.customerName ?? '', deliveryAddress: (order as { deliveryAddress?: string }).deliveryAddress ?? '' };
-  const curr = order.currency ?? 'ILS';
-  const sym = CURRENCY_SYMBOL[curr] ?? curr;
-  const total = order.orderTotal ?? (order as { total?: number }).total ?? 0;
-  const statusLabel = order.status === 'READY' ? 'جاهز' : order.status === 'PREPARING' ? 'قيد التحضير' : order.status ?? '—';
-
-  return (
-    <div className="p-4 bg-white rounded-xl shadow-sm border border-amber-200 bg-amber-50/30">
-      <div className="flex justify-between items-start gap-2">
-        <p className="font-mono text-xl font-bold text-gray-900">#{order.id?.slice(0, 8)}</p>
-        <span className="text-xs px-2 py-0.5 rounded font-medium bg-amber-100 text-amber-800">{statusLabel}</span>
-      </div>
-      <div className="mt-2 space-y-2 text-sm">
-        <p><span className="text-gray-500">من:</span> <strong>{tenant.name || '—'}</strong></p>
-        <div>
-          <p><span className="text-gray-500">إلى:</span> <strong>{customer.name || '—'}</strong></p>
-          <div className="mt-1">
-            <DeliveryLocationDisplay order={order} />
-          </div>
-        </div>
-        <p className="font-medium text-teal-700">{sym}{total}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onAccept}
-        disabled={isPending}
-        className={`mt-3 w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors ${thumbFriendly ? 'min-h-[48px] py-4 text-base' : 'py-2.5 px-3 text-sm'}`}
-      >
-        {isPending ? 'جاري الاستلام...' : 'استلم الطلب'}
-      </button>
-    </div>
-  );
-}
-
 const DEFAULT_SLA = { greenMs: 0, orangeMs: 3 * 60 * 1000, redMs: 5 * 60 * 1000 };
 
 function getSlaState(elapsedMs: number, policy: { greenMs: number; orangeMs: number; redMs: number }): 'green' | 'orange' | 'red' {
@@ -418,18 +356,7 @@ export default function CourierOrdersPage() {
   useCourierEvents((event) => {
     if (event.type === 'order_assigned' || event.type === 'order_unassigned') {
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
       if (event.type === 'order_assigned') playDing();
-    }
-    if (event.type === 'order_available' && event.orderId) {
-      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
-      setToastMessage(`طلب جديد في السوق #${event.orderId.slice(0, 8)} — يمكنك قبوله الآن`);
-      playDing();
-    }
-    if (event.type === 'order_ready' && event.orderId) {
-      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
-      setToastMessage(`Order #${event.orderId.slice(0, 8)} is READY for pickup! Grab it now! 🚀`);
-      playDing();
     }
   });
 
@@ -450,13 +377,6 @@ export default function CourierOrdersPage() {
     queryKey: ['category-policies'],
     queryFn: () => apiFetch<CategoryPolicy[]>('/category-policies'),
     enabled: !!user,
-  });
-
-  const { data: availableOrders = [], isLoading: availableLoading } = useQuery({
-    queryKey: ['courier-orders-available'],
-    queryFn: () => apiFetch<CourierOrder[]>('/courier/orders/available'),
-    enabled: !!user,
-    refetchInterval: 4000,
   });
 
   const pickedUpOrderIds = orders
@@ -494,7 +414,6 @@ export default function CourierOrdersPage() {
                   : 'Conflict. Refreshing…';
           setToastMessage(msg);
           void queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
-          void queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
           return { __handled409: true } as unknown;
         }
         throw err;
@@ -503,26 +422,8 @@ export default function CourierOrdersPage() {
     onSuccess: (data) => {
       if ((data as { __handled409?: boolean })?.__handled409) return;
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
       setFinishOrder(null);
       setFinishNotes('');
-    },
-  });
-
-  const acceptMutation = useMutation({
-    mutationFn: (orderId: string) => apiFetch<CourierOrder>(`/courier/orders/${orderId}/accept`, { method: 'POST' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
-    },
-    onError: (err: Error & { status?: number; code?: string }) => {
-      if (err?.status === 409 && err?.code === 'ORDER_TAKEN') {
-        setToastMessage('متأخر! هذا الطلب أخذه بطل آخر.');
-        queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
-        queryClient.invalidateQueries({ queryKey: ['courier-orders-available'] });
-      } else {
-        setToastMessage(err?.message ?? 'فشل في استلام الطلب');
-      }
     },
   });
 
@@ -550,11 +451,6 @@ export default function CourierOrdersPage() {
   const completedOrders = allOrders.filter(isCompletedOrder);
   const displayOrders = activeTab === 'active' ? activeOrders : completedOrders;
 
-  const handleAccept = (order: CourierOrder) => {
-    if (!order.id) return;
-    acceptMutation.mutate(order.id);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       {!isNativeApp && (
@@ -562,36 +458,16 @@ export default function CourierOrdersPage() {
           <Link to="/" className="text-sm text-teal-100 hover:text-white">
             ← رجوع
           </Link>
-          <h1 className="text-lg font-bold mt-1">طلباتي والتوصيل</h1>
+          <h1 className="text-lg font-bold mt-1">طلباتي المعيّنة</h1>
         </header>
       )}
 
       <main className="p-4 max-w-md mx-auto">
-        <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">طلبات متاحة للاستلام</h2>
-          {availableLoading && availableOrders.length === 0 ? (
-            <p className="text-gray-500 text-sm py-2">جاري التحميل...</p>
-          ) : availableOrders.length === 0 ? (
-            <p className="text-gray-500 text-sm py-2">لا توجد طلبات متاحة حالياً. ستظهر هنا الطلبات الجاهزة أو قيد التحضير.</p>
-          ) : (
-            <>
-              <p className="text-xs text-gray-500 mb-3">أول من يضغط «استلم» يحصل على الطلب ({availableOrders.length})</p>
-              <div className="space-y-3">
-                {availableOrders.map((o) => (
-                  <AvailableOrderCard
-                    key={o.id}
-                    order={o}
-                    onAccept={() => handleAccept(o)}
-                    isPending={acceptMutation.isPending}
-                    thumbFriendly={isNativeApp}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </section>
+        <p className="text-xs text-gray-500 mb-4 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+          يتم تعيين الطلبات من إدارة توصيل السوق. ستظهر هنا عند تعيين طلب لك.
+        </p>
 
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">طلباتي المعيّنة</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">طلباتي الحالية</h2>
         <div className="flex gap-1 mb-4 p-1 bg-gray-200 rounded-lg">
           <button
             onClick={() => setActiveTab('active')}
@@ -620,7 +496,7 @@ export default function CourierOrdersPage() {
               {activeTab === 'active' ? 'لا توجد طلبات نشطة حالياً' : 'لا توجد طلبات منتهية'}
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              {activeTab === 'active' ? 'ستظهر هنا عند تعيين طلب لك' : 'الطلبات المكتملة تظهر هنا'}
+              {activeTab === 'active' ? 'انتظر تعيين طلب من إدارة السوق' : 'الطلبات المكتملة تظهر هنا'}
             </p>
           </div>
         ) : (

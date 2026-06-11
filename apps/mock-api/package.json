@@ -19,6 +19,7 @@
     "verify:platform-fee": "tsx scripts/verify-platform-fee.ts",
     "verify:settlement": "tsx scripts/verify-settlement.ts",
     "verify:admin-permissions": "tsx scripts/verify-admin-permissions.ts",
+    "verify:dispatch-permissions": "tsx scripts/verify-dispatch-permissions.ts",
     "verify:participant-preservation": "tsx scripts/verify-participant-preservation.ts"
   },
   "prisma": {

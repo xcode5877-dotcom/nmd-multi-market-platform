@@ -365,6 +365,20 @@ export interface AuditEvent {
   after?: unknown;
 }
 
+export type DispatchAuditAction = 'ASSIGNED' | 'REASSIGNED' | 'UNASSIGNED' | 'EXTERNAL_CREATED';
+
+export interface DispatchAuditEntry {
+  orderId: string;
+  marketId: string;
+  tenantId?: string;
+  oldCourierId?: string;
+  newCourierId?: string;
+  actorUserId: string;
+  actorRole: string;
+  action: DispatchAuditAction;
+  createdAt: string;
+}
+
 /** Global category (platform-level). Used on mall homepage and GET /categories. Big Admin may use nameAr. */
 export interface GlobalCategory {
   id: string;
@@ -399,6 +413,8 @@ export interface MockData {
   tenants: RegistryTenant[];
   users: User[];
   auditEvents: AuditEvent[];
+  /** Append-only dispatch assignment audit (no DB migration). */
+  dispatchAuditLog?: DispatchAuditEntry[];
   catalog: Record<string, TenantCatalog>;
   orders: unknown[];
   campaigns: unknown[];
@@ -840,6 +856,14 @@ export function appendAuditEvent(event: Omit<AuditEvent, 'id' | 'at'>): void {
     at: new Date().toISOString(),
   };
   data.auditEvents = [...(data.auditEvents ?? []), ev];
+  persist();
+}
+
+export function appendDispatchAudit(entry: Omit<DispatchAuditEntry, 'createdAt'>): void {
+  const full: DispatchAuditEntry = { ...entry, createdAt: new Date().toISOString() };
+  console.log('[DISPATCH_AUDIT]', JSON.stringify(full));
+  const data = getData();
+  data.dispatchAuditLog = [...(data.dispatchAuditLog ?? []), full];
   persist();
 }
 
