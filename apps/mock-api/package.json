@@ -20,7 +20,8 @@
     "verify:settlement": "tsx scripts/verify-settlement.ts",
     "verify:admin-permissions": "tsx scripts/verify-admin-permissions.ts",
     "verify:dispatch-permissions": "tsx scripts/verify-dispatch-permissions.ts",
-    "verify:participant-preservation": "tsx scripts/verify-participant-preservation.ts"
+    "verify:participant-preservation": "tsx scripts/verify-participant-preservation.ts",
+    "verify:delivery-status-sync": "tsx scripts/verify-delivery-status-sync.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -89,6 +89,7 @@ import {
 } from './market-config.js';
 import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
+import { isCourierListTerminalStatus, syncAdminDeliveredOrder } from './delivery-status-sync.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { prisma } from './db.js';
@@ -4583,7 +4584,7 @@ app.get('/courier/orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
-    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && o.status !== 'CANCELED' && o.status !== 'COMPLETED');
+    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && !isCourierListTerminalStatus(o.status));
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
   res.json(enrichCourierOrders(orders, tenants));
 }));
@@ -8225,6 +8226,19 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
   res.json(safe);
 }));
 
+async function bumpCourierOnAdminDelivery(courierId: string): Promise<void> {
+  const couriers = await repos.couriers.findAll();
+  const cIdx = couriers.findIndex((c) => c.id === courierId);
+  if (cIdx >= 0) {
+    couriers[cIdx] = {
+      ...couriers[cIdx],
+      isAvailable: true,
+      deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1,
+    };
+    await repos.couriers.setAll(couriers);
+  }
+}
+
 /** Internal: used by whatsapp-service bot to update order status (reply 1/2/3). Requires X-Internal-Secret if INTERNAL_API_SECRET is set. */
 app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   if (INTERNAL_API_SECRET && req.headers['x-internal-secret'] !== INTERNAL_API_SECRET) {
@@ -8240,22 +8254,20 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Order not found' });
   const order = orders[idx];
   const prevStatusForLoyaltyInternal = order.status as string | undefined;
-  const updated = { ...orders[idx], status } as Record<string, unknown>;
-  if (status === 'DELIVERED' && order.courierId) {
-    updated.deliveredAt = new Date().toISOString();
-    const couriers = (await repos.couriers.findAll());
-    const cIdx = couriers.findIndex((c) => c.id === order.courierId);
-    if (cIdx >= 0) {
-      couriers[cIdx] = { ...couriers[cIdx], isAvailable: true, deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1 };
-      await repos.couriers.setAll(couriers);
-    }
+  let updated: Record<string, unknown>;
+  if (status === 'DELIVERED') {
+    updated = syncAdminDeliveredOrder(orders[idx] as Record<string, unknown>) as Record<string, unknown>;
+    if (order.courierId) await bumpCourierOnAdminDelivery(order.courierId);
+  } else {
+    updated = { ...orders[idx], status };
   }
   orders[idx] = updated;
   await repos.orders.upsert(updated as OrderRecord);
-  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
+  const notifyStatus = String(updated.status ?? status);
+  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(notifyStatus)) {
     const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
-    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
-    (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
+    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, notifyStatus, tenantForNotify?.name);
+    (updated as Record<string, unknown>).lastStatusNotification = { status: notifyStatus, at: new Date().toISOString() };
     orders[idx] = updated;
     await repos.orders.upsert(updated as OrderRecord);
   }
@@ -8267,7 +8279,7 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
       const customer = customers.find((c) => c.id === orderWithCustomer.customerId);
       customerPhone = customer?.phone;
     }
-    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, status);
+    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, notifyStatus);
   } catch {
     // do not break order update if push lookup/send fails
   }
@@ -8295,27 +8307,21 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: order does not belong to your store' });
     }
   }
-  const updated = { ...orders[idx], status } as Record<string, unknown>;
-  if (status === 'DELIVERED' && order.courierId) {
-    updated.deliveredAt = new Date().toISOString();
-    const couriers = (await repos.couriers.findAll());
-    const cIdx = couriers.findIndex((c) => c.id === order.courierId);
-    if (cIdx >= 0) {
-      couriers[cIdx] = {
-        ...couriers[cIdx],
-        isAvailable: true,
-        deliveryCount: (couriers[cIdx].deliveryCount ?? 0) + 1,
-      };
-      await repos.couriers.setAll(couriers);
-    }
+  let updated: Record<string, unknown>;
+  if (status === 'DELIVERED') {
+    updated = syncAdminDeliveredOrder(orders[idx] as Record<string, unknown>) as Record<string, unknown>;
+    if (order.courierId) await bumpCourierOnAdminDelivery(order.courierId);
+  } else {
+    updated = { ...orders[idx], status };
   }
   orders[idx] = updated;
   await repos.orders.upsert(updated as OrderRecord);
 
-  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(status)) {
+  const notifyStatus = String(updated.status ?? status);
+  if (['CONFIRMED', 'READY', 'COMPLETED'].includes(notifyStatus)) {
     const tenantForNotify = (await repos.tenants.findAll()).find((t) => t.id === order.tenantId) as { name?: string } | undefined;
-    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, status, tenantForNotify?.name);
-    (updated as Record<string, unknown>).lastStatusNotification = { status, at: new Date().toISOString() };
+    triggerStatusNotification(updated as { id?: string; customerName?: string; customerPhone?: string; [key: string]: unknown }, notifyStatus, tenantForNotify?.name);
+    (updated as Record<string, unknown>).lastStatusNotification = { status: notifyStatus, at: new Date().toISOString() };
     orders[idx] = updated;
     await repos.orders.upsert(updated as OrderRecord);
   }
@@ -8327,15 +8333,15 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
     const customers = await repos.customers.findAll();
     const customer = customerId ? customers.find((c) => c.id === customerId) : undefined;
     if (!customerPhone && customer) customerPhone = customer.phone;
-    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, status);
-    if (customerId && orderWithCustomer.id && ['CONFIRMED', 'READY', 'COMPLETED', 'DELIVERED'].includes(status)) {
+    if (customerPhone) notifyCustomerOrderStatusPush(customerPhone, notifyStatus);
+    if (customerId && orderWithCustomer.id && ['CONFIRMED', 'READY', 'COMPLETED', 'DELIVERED'].includes(notifyStatus)) {
       const fcmToken = await getCustomerFcmToken(customerId);
-      if (fcmToken) sendFCMToCustomerToken(fcmToken, status, orderWithCustomer.id);
+      if (fcmToken) sendFCMToCustomerToken(fcmToken, notifyStatus, orderWithCustomer.id);
     }
     // Customer-facing FCM notification on key status changes
-    if (customerId && ['COMPLETED', 'CANCELLED'].includes(status)) {
+    if (customerId && ['COMPLETED', 'CANCELLED'].includes(notifyStatus)) {
       const title = 'تحديث حالة طلبك';
-      const body = status === 'COMPLETED' ? 'طلبك جاهز! استمتع بوجبتك.' : 'نعتذر، تم إلغاء طلبك.';
+      const body = notifyStatus === 'COMPLETED' ? 'طلبك جاهز! استمتع بوجبتك.' : 'نعتذر، تم إلغاء طلبك.';
       await sendFCMNotification(customerId, title, body);
     }
   } catch {
