@@ -157,19 +157,116 @@ model Order {
   paymentRecord       Payment?
 }
 
-/// Driver fuel & repair expenses (daily P&L with external orders).
+/// Per-courier payroll configuration (Phase 1 — tracking only).
+model CourierPayrollConfig {
+  courierId               String  @id
+  hourlyRate              Float   @default(35)
+  deliveryFeeShare        Float   @default(100) // percent of delivery fee credited to driver
+  orderCommissionPercent  Float   @default(5)
+  isPayrollEnabled        Boolean @default(true)
+  updatedAt               String
+}
+
+/// Driver shift tracking (start/end duty).
+model CourierShift {
+  id              String  @id
+  courierId       String
+  marketId        String
+  startTime       String
+  endTime         String?
+  durationMinutes Int?
+  autoClosed      Boolean @default(false)
+  createdAt       String
+
+  @@index([courierId])
+  @@index([courierId, startTime])
+}
+
+/// Store-wide driver commission override (all couriers for tenant).
+model TenantDriverCommissionOverride {
+  tenantId               String @id
+  orderCommissionPercent Float
+  updatedAt              String
+}
+
+/// Per-courier commission override for a specific store.
+model CourierTenantCommissionOverride {
+  tenantId               String
+  courierId              String
+  orderCommissionPercent Float
+  updatedAt              String
+
+  @@id([tenantId, courierId])
+  @@index([courierId])
+}
+
+/// Append-only driver earnings ledger (Phase 1 — no payouts).
+model CourierEarningsLedger {
+  id          String  @id
+  courierId   String
+  marketId    String?
+  type        String // DELIVERY_FEE | ORDER_COMMISSION | HOURLY_PAY | BONUS | EXPENSE | ADJUSTMENT
+  amount      Float
+  referenceId String?
+  description String?
+  createdAt   String
+
+  @@index([courierId, createdAt])
+  @@index([courierId, type])
+  @@index([referenceId, type])
+}
+
+/// Driver expense submissions (courier → admin approval).
 model CourierExpense {
   id        String  @id
   courierId String
   marketId  String
-  category  String // FUEL | REPAIR
+  category  String // FUEL | REPAIR | CAR_WASH | PARKING | OTHER
   amount    Float
   currency  String  @default("ILS")
   note      String?
+  status    String  @default("PENDING") // PENDING | APPROVED | REJECTED
   createdAt String
+  reviewedAt String?
+  reviewedBy String?
 
   @@index([courierId])
   @@index([marketId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+/// Frozen payroll settlement for a driver period (Phase 2).
+model CourierPayrollSettlement {
+  id             String  @id
+  courierId      String
+  marketId       String?
+  periodStart    String
+  periodEnd      String
+  grossAmount    Float
+  expensesAmount Float
+  netAmount      Float
+  notes          String?
+  snapshot       String? // JSON breakdown: hoursWorked, hourlyPay, deliveryEarnings, etc.
+  createdBy      String?
+  createdAt      String
+
+  @@index([courierId])
+  @@index([courierId, periodStart, periodEnd])
+  @@index([createdAt])
+  @@index([marketId])
+}
+
+/// Append-only driver payroll audit trail.
+model DriverPayrollAudit {
+  id        String  @id
+  courierId String?
+  userId    String?
+  action    String // SHIFT_STARTED | SHIFT_ENDED | BONUS_ADDED | EXPENSE_APPROVED | EXPENSE_REJECTED
+  metadata  String? // JSON
+  createdAt String
+
+  @@index([courierId])
   @@index([createdAt])
 }
 

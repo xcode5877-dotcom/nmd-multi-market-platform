@@ -90,6 +90,34 @@ import {
 import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { isCourierListTerminalStatus, syncAdminDeliveredOrder } from './delivery-status-sync.js';
+import {
+  addBonus,
+  approveExpense,
+  computeEarningsSummary,
+  endShift,
+  EXPENSE_CATEGORIES,
+  getActiveShift,
+  getOrCreatePayrollConfig,
+  getRecentAutoClosedShiftWarning,
+  getTenantDriverCommissionOverrides,
+  parseDateRange,
+  postCourierEarningsIfEligible,
+  rejectExpense,
+  setTenantDriverCommissionOverride,
+  startShift,
+  updatePayrollConfig,
+} from './courier-payroll.js';
+import {
+  computeOutstandingBalance,
+  computePayrollHistoryTotals,
+  computePlatformPayrollSummary,
+  createPayrollSettlement,
+  getDriverPayrollStatement,
+  getPayrollSettlementById,
+  listPayrollSettlements,
+  previewPayrollSettlement,
+} from './courier-payroll-settlement.js';
+import { buildSettlementPayslipHtml } from './courier-payroll-payslip.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { prisma } from './db.js';
@@ -4655,14 +4683,14 @@ app.post('/courier/external-orders', wrapAsync(async (req, res) => {
   respondDispatchOnly(res);
 }));
 
-/** Driver expense (fuel / repairs). */
+/** Driver expense submission (pending admin approval). */
 app.post('/courier/expenses', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const body = (req.body ?? {}) as { category?: string; amount?: number; note?: string };
   const cat = String(body.category ?? '').toUpperCase();
-  if (cat !== 'FUEL' && cat !== 'REPAIR') {
-    return res.status(400).json({ error: 'category must be FUEL or REPAIR' });
+  if (!EXPENSE_CATEGORIES.includes(cat as (typeof EXPENSE_CATEGORIES)[number])) {
+    return res.status(400).json({ error: 'Invalid category', valid: EXPENSE_CATEGORIES });
   }
   const amount = Number(body.amount);
   if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
@@ -4677,10 +4705,11 @@ app.post('/courier/expenses', wrapAsync(async (req, res) => {
       amount,
       currency: 'ILS',
       note: body.note?.trim() || null,
+      status: 'PENDING',
       createdAt: now,
     },
   });
-  res.status(201).json({ id, category: cat, amount, createdAt: now });
+  res.status(201).json({ id, category: cat, amount, status: 'PENDING', createdAt: now });
 }));
 
 app.get('/courier/expenses', wrapAsync(async (req, res) => {
@@ -4692,6 +4721,68 @@ app.get('/courier/expenses', wrapAsync(async (req, res) => {
     take: 300,
   });
   res.json(rows);
+}));
+
+/** Start duty shift. */
+app.post('/courier/shifts/start', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  try {
+    const shift = await startShift(scope.courierId, scope.marketId);
+    res.status(201).json(shift);
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === 'ACTIVE_SHIFT_EXISTS') {
+      return res.status(409).json({ error: e.message, code: e.code });
+    }
+    throw err;
+  }
+}));
+
+/** End duty shift. */
+app.post('/courier/shifts/end', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  try {
+    const shift = await endShift(scope.courierId);
+    res.json(shift);
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === 'NO_ACTIVE_SHIFT') {
+      return res.status(400).json({ error: e.message, code: e.code });
+    }
+    throw err;
+  }
+}));
+
+/** Active shift (if any). Auto-closes stale shifts >16h before responding. */
+app.get('/courier/shifts/active', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const shift = await getActiveShift(scope.courierId);
+  const shiftWarning = await getRecentAutoClosedShiftWarning(scope.courierId);
+  res.json({ shift: shift ?? null, shiftWarning });
+}));
+
+/** Driver earnings summary — period=today|week|month or from/to (YYYY-MM-DD). */
+app.get('/courier/earnings', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const period = String(req.query.period ?? 'today');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const { from, to } = parseDateRange(period, fromQ, toQ);
+  const summary = await computeEarningsSummary(scope.courierId, from, to);
+  const config = await getOrCreatePayrollConfig(scope.courierId);
+  const shiftWarning = await getRecentAutoClosedShiftWarning(scope.courierId);
+  const outstandingBalance = await computeOutstandingBalance(scope.courierId);
+  res.json({
+    ...summary,
+    hourlyRate: config.hourlyRate,
+    isPayrollEnabled: config.isPayrollEnabled,
+    outstandingBalance,
+    shiftWarning,
+  });
 }));
 
 /** Daily P&L: (app + external delivery fees) − expenses. `date` = YYYY-MM-DD (local day via ISO prefix match). */
@@ -4891,6 +4982,7 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevOrderStatusForLoyalty);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.upsert(orders[idx] as OrderRecord);
+  await applyCourierPayrollIfEligible(orders[idx] as Record<string, unknown>);
   res.json(orders[idx]);
 });
 
@@ -7637,6 +7729,15 @@ async function applySettlementToOrderIfEligible(
   return postOrderSettlement(order, pricingCtx, categoryExemptById, productCategoryById);
 }
 
+/** Phase 1 driver payroll: append-only ledger entries on COMPLETED delivery orders. */
+async function applyCourierPayrollIfEligible(order: Record<string, unknown>): Promise<void> {
+  try {
+    await postCourierEarningsIfEligible(order);
+  } catch (err) {
+    console.warn('[courier-payroll] accrual failed', { orderId: order.id, err });
+  }
+}
+
 /** Products often embed stale optionGroups; merge canonical modifierIconKey from catalog.optionGroups. */
 function hydrateProductOptionGroupsFromCanonical<
   T extends {
@@ -8286,6 +8387,7 @@ app.post('/internal/orders/:orderId/status', wrapAsync(async (req, res) => {
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyInternal);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.upsert(orders[idx] as OrderRecord);
+  await applyCourierPayrollIfEligible(orders[idx] as Record<string, unknown>);
   res.json(orders[idx]);
 }));
 
@@ -8351,6 +8453,7 @@ app.patch('/orders/:orderId/status', wrapAsync(async (req, res) => {
   await runLoyaltyAwardForOrderAtIndex(orders as Record<string, unknown>[], idx, prevStatusForLoyaltyPatch);
   orders[idx] = await applySettlementToOrderIfEligible(orders[idx] as Record<string, unknown>);
   await repos.orders.upsert(orders[idx] as OrderRecord);
+  await applyCourierPayrollIfEligible(orders[idx] as Record<string, unknown>);
   res.json(orders[idx]);
 }));
 
@@ -10003,6 +10106,265 @@ app.post('/admin/couriers/:id/settle', wrapAsync(async (req, res) => {
   appendSettlementLog(entry);
 
   res.status(201).json(entry);
+}));
+
+/** Super Admin: driver payroll finance rollup. */
+app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const period = String(req.query.period ?? 'week');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+  const { from, to } = parseDateRange(period, fromQ, toQ);
+
+  const couriers = (await repos.couriers.findAll()).filter((c) => !marketId || courierMarketId(c) === marketId);
+  const courierIds = couriers.map((c) => c.id);
+  const [rows, platformSummary] = await Promise.all([
+    Promise.all(
+      couriers.map(async (c) => {
+        const [summary, config, outstandingBalance] = await Promise.all([
+          computeEarningsSummary(c.id, from, to),
+          getOrCreatePayrollConfig(c.id),
+          computeOutstandingBalance(c.id),
+        ]);
+        return {
+          courierId: c.id,
+          name: c.name,
+          marketId: courierMarketId(c),
+          hourlyRate: config.hourlyRate,
+          hoursWorked: summary.hoursWorked,
+          deliveryEarnings: summary.deliveryEarnings,
+          commissionEarnings: summary.commissionEarnings,
+          bonuses: summary.bonuses,
+          expenses: summary.expenses,
+          hourlyPay: summary.hourlyPay,
+          netTotal: summary.netEarnings,
+          ordersCount: summary.ordersCount,
+          outstandingBalance,
+        };
+      })
+    ),
+    computePlatformPayrollSummary(courierIds),
+  ]);
+  res.json({ from, to, platformSummary, drivers: rows });
+}));
+
+/** Super Admin: tenant driver commission overrides. */
+app.get('/admin/tenants/:tenantId/driver-commission-override', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const overrides = await getTenantDriverCommissionOverrides(req.params.tenantId);
+  res.json(overrides);
+}));
+
+app.put('/admin/tenants/:tenantId/driver-commission-override', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const body = req.body as { orderCommissionPercent?: number; courierId?: string };
+  const pct = Number(body.orderCommissionPercent);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+    return res.status(400).json({ error: 'orderCommissionPercent must be 0–100' });
+  }
+  const row = await setTenantDriverCommissionOverride(
+    req.params.tenantId,
+    pct,
+    body.courierId?.trim() || undefined
+  );
+  res.json(row);
+}));
+
+/** Super Admin: preview payroll settlement for a period. */
+app.get('/admin/drivers/:courierId/payroll-settlement/preview', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const periodStart = String(req.query.periodStart ?? '');
+  const periodEnd = String(req.query.periodEnd ?? '');
+  if (!periodStart || !periodEnd) {
+    return res.status(400).json({ error: 'periodStart and periodEnd required (YYYY-MM-DD)' });
+  }
+  const preview = await previewPayrollSettlement(req.params.courierId, periodStart, periodEnd);
+  res.json(preview);
+}));
+
+/** Super Admin: confirm payroll settlement (تسوية راتب). */
+app.post('/admin/drivers/:courierId/payroll-settlement', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const body = req.body as { periodStart?: string; periodEnd?: string; notes?: string };
+  const periodStart = String(body.periodStart ?? '').trim();
+  const periodEnd = String(body.periodEnd ?? '').trim();
+  if (!periodStart || !periodEnd) {
+    return res.status(400).json({ error: 'periodStart and periodEnd required' });
+  }
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === req.params.courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+  try {
+    const result = await createPayrollSettlement({
+      courierId: req.params.courierId,
+      marketId: courierMarketId(courier),
+      periodStart,
+      periodEnd,
+      notes: body.notes,
+      createdBy: req.user.id,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === 'SETTLEMENT_OVERLAP') return res.status(409).json({ error: e.message, code: e.code });
+    if (e.code === 'NOTHING_TO_SETTLE') return res.status(400).json({ error: e.message, code: e.code });
+    throw err;
+  }
+}));
+
+/** Super Admin: driver payroll statement (all tabs). */
+app.get('/admin/drivers/:courierId/payroll-statement', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === req.params.courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+  const statement = await getDriverPayrollStatement(req.params.courierId);
+  res.json({
+    courier: {
+      id: courier.id,
+      name: courier.name,
+      phone: courier.phone,
+      marketId: courierMarketId(courier),
+    },
+    ...statement,
+  });
+}));
+
+/** Super Admin: payroll settlement history. */
+app.get('/admin/payroll-settlements', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
+  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+  const from = req.query.from ? String(req.query.from) : undefined;
+  const to = req.query.to ? String(req.query.to) : undefined;
+  const [settlements, totals, couriers] = await Promise.all([
+    listPayrollSettlements({ courierId, marketId, from, to }),
+    computePayrollHistoryTotals({ courierId, marketId, from, to }),
+    repos.couriers.findAll(),
+  ]);
+  const nameById = new Map(couriers.map((c) => [c.id, c.name]));
+  res.json({
+    settlements: settlements.map((s) => ({
+      ...s,
+      courierName: nameById.get(s.courierId) ?? s.courierId,
+    })),
+    totals,
+  });
+}));
+
+/** Super Admin: printable RTL payslip (save as PDF via browser print). */
+app.get('/admin/payroll-settlements/:id/payslip', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const settlement = await getPayrollSettlementById(req.params.id);
+  if (!settlement) return res.status(404).json({ error: 'Settlement not found' });
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === settlement.courierId);
+  const html = buildSettlementPayslipHtml(settlement, {
+    name: courier?.name ?? settlement.courierId,
+    phone: courier?.phone,
+  });
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}));
+
+/** Super Admin: get/update courier payroll config. */
+app.get('/admin/couriers/:id/payroll-config', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const config = await getOrCreatePayrollConfig(req.params.id);
+  res.json(config);
+}));
+
+app.patch('/admin/couriers/:id/payroll-config', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const body = req.body as {
+    hourlyRate?: number;
+    deliveryFeeShare?: number;
+    orderCommissionPercent?: number;
+    isPayrollEnabled?: boolean;
+  };
+  const config = await updatePayrollConfig(req.params.id, body);
+  res.json(config);
+}));
+
+/** Super Admin: add driver bonus. */
+app.post('/admin/couriers/:id/bonus', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const body = req.body as { amount?: number; reason?: string };
+  const amount = Number(body.amount);
+  const reason = String(body.reason ?? '').trim();
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+  if (!reason) return res.status(400).json({ error: 'reason is required' });
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === req.params.id);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+  const result = await addBonus({
+    courierId: req.params.id,
+    marketId: courierMarketId(courier),
+    amount,
+    reason,
+    userId: req.user.id,
+  });
+  res.status(201).json(result);
+}));
+
+/** Super Admin: list pending driver expenses. */
+app.get('/admin/courier-expenses', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const status = String(req.query.status ?? 'PENDING');
+  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+  const rows = await prisma.courierExpense.findMany({
+    where: { status, ...(marketId ? { marketId } : {}) },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+  const couriers = await repos.couriers.findAll();
+  const withNames = rows.map((r) => ({
+    ...r,
+    courierName: couriers.find((c) => c.id === r.courierId)?.name ?? r.courierId,
+  }));
+  res.json(withNames);
+}));
+
+app.post('/admin/courier-expenses/:id/approve', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const updated = await approveExpense(req.params.id, req.user.id);
+  res.json(updated);
+}));
+
+app.post('/admin/courier-expenses/:id/reject', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const updated = await rejectExpense(req.params.id, req.user.id);
+  res.json(updated);
 }));
 
 /** Assign courier to a MARKET delivery order. Validates courier.marketId == order.marketId == token.marketId. */

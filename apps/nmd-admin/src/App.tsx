@@ -55,6 +55,9 @@ const DriversReportsHubPage = lazy(() => import('./pages/drivers/DriversReportsH
 const DriversFinanceHubPage = lazy(() => import('./pages/drivers/DriversFinanceHubPage'));
 const DriversMarketsHubPage = lazy(() => import('./pages/drivers/DriversMarketsHubPage'));
 const DriversCouriersPage = lazy(() => import('./pages/drivers/DriversCouriersPage'));
+const DriverPayrollFinancePage = lazy(() => import('./pages/drivers/DriverPayrollFinancePage'));
+const DriverStatementPage = lazy(() => import('./pages/drivers/DriverStatementPage'));
+const PayrollSettlementHistoryPage = lazy(() => import('./pages/drivers/PayrollSettlementHistoryPage'));
 const PermissionRoute = lazy(() => import('./components/PermissionRoute').then((m) => ({ default: m.PermissionRoute })));
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
@@ -124,7 +127,10 @@ function Content() {
           <Route path="couriers" element={<DriversCouriersPage />} />
           <Route path="reports" element={<DriversReportsHubPage />} />
           <Route path="finance" element={<DriversFinanceHubPage />} />
+          <Route path="payroll-finance" element={<DriverPayrollFinancePage />} />
+          <Route path="payroll-history" element={<PayrollSettlementHistoryPage />} />
           <Route path="markets" element={<DriversMarketsHubPage />} />
+          <Route path=":driverId" element={<DriverStatementPage />} />
         </Route>
         <Route path="external-orders" element={<RootOnlyRoute><DriversSectionLayout /></RootOnlyRoute>}>
           <Route index element={<ExternalOrdersAdminPage />} />

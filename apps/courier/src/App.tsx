@@ -7,6 +7,9 @@ import CourierDashboard from './pages/CourierDashboard';
 import CourierOrdersPage from './pages/CourierOrdersPage';
 import CourierRoutePage from './pages/CourierRoutePage';
 import CourierProfilePage from './pages/CourierProfilePage';
+import DriverExternalOrderPage from './pages/DriverExternalOrderPage';
+import DriverExpensesPage from './pages/DriverExpensesPage';
+import CourierEarningsPage from './pages/CourierEarningsPage';
 import CourierNativeLayout from './components/CourierNativeLayout';
 
 function CourierGuard({ children }: { children: React.ReactNode }) {
@@ -26,9 +29,12 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<CourierGuard><CourierNativeLayout /></CourierGuard>}>
             <Route index element={<CourierDashboard />} />
+            <Route path="earnings" element={<CourierEarningsPage />} />
             <Route path="orders" element={<CourierOrdersPage />} />
             <Route path="route" element={<CourierRoutePage />} />
             <Route path="profile" element={<CourierProfilePage />} />
+            <Route path="external-order" element={<DriverExternalOrderPage />} />
+            <Route path="expenses" element={<DriverExpensesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

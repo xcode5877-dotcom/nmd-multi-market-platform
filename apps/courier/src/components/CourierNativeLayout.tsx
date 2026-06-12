@@ -5,7 +5,7 @@ import { List, MapPin, DollarSign, User } from 'lucide-react';
 const navItems = [
   { to: '/orders', end: false, label: 'الطلبات', icon: List },
   { to: '/route', end: false, label: 'المسار', icon: MapPin },
-  { to: '/', end: true, label: 'الأرباح', icon: DollarSign },
+  { to: '/earnings', end: true, label: 'الدخل', icon: DollarSign },
   { to: '/profile', end: true, label: 'حسابي', icon: User },
 ];
 
