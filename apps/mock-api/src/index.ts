@@ -4607,12 +4607,27 @@ function enrichCourierOrders(
   });
 }
 
-/** Courier's assigned orders. PICKUP orders are excluded — only DELIVERY appears in courier lists. */
+/** Courier's assigned active orders. PICKUP orders are excluded — only DELIVERY appears in courier lists. */
 app.get('/courier/orders', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
     .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && !isCourierListTerminalStatus(o.status));
+  const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
+  res.json(enrichCourierOrders(orders, tenants));
+}));
+
+/** Courier delivery history — completed/delivered orders for the logged-in courier. */
+app.get('/courier/orders/history', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; createdAt?: string; deliveryTimeline?: { deliveredAt?: string }; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
+    .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && isCourierListTerminalStatus(o.status))
+    .sort((a, b) => {
+      const aAt = (a.deliveryTimeline as { deliveredAt?: string } | undefined)?.deliveredAt ?? a.createdAt ?? '';
+      const bAt = (b.deliveryTimeline as { deliveredAt?: string } | undefined)?.deliveredAt ?? b.createdAt ?? '';
+      return bAt.localeCompare(aAt);
+    });
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
   res.json(enrichCourierOrders(orders, tenants));
 }));
@@ -4829,11 +4844,11 @@ app.get('/courier/daily-summary', wrapAsync(async (req, res) => {
   });
 }));
 
-/** Valid action transitions by deliveryStatus (not order.status). */
+/** Valid action transitions by deliveryStatus (not order.status). Simplified: ASSIGNED → IN_PROGRESS → DELIVERED. */
 const VALID_ACTION_FROM_DELIVERY: Record<string, string[]> = {
   ASSIGNED: ['ACKNOWLEDGE'],
-  IN_PROGRESS: ['PICKED_UP'],
-  PICKED_UP: ['DELIVERED'],
+  IN_PROGRESS: ['DELIVERED'],
+  PICKED_UP: ['DELIVERED'], // legacy orders only
   DELIVERED: ['FINISH'],
 };
 
@@ -4926,26 +4941,15 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   const tl = { ...(order.deliveryTimeline as Record<string, unknown> || {}) };
   const hasAck = !!tl.acknowledgedAt;
   const hasPicked = !!tl.pickedUpAt;
-  const hasDelivered = !!tl.deliveredAt;
   const hasClosed = !!tl.closedAt;
   if (action === 'ACKNOWLEDGE' && hasAck) return res.json(order);
-  if (action === 'PICKED_UP') {
-    if (hasPicked) return res.json(order);
-    if (!tl.handedToDriverAt) {
-      return res.status(400).json({
-        error: 'Merchant must mark order as handed to driver first',
-        code: 'HANDOVER_REQUIRED',
-        details: { message: 'انتظر تسليم الطلب من المحل' },
-      });
-    }
-  }
-  if (action === 'DELIVERED' && hasDelivered) return res.json(order);
+  if (action === 'PICKED_UP' && hasPicked) return res.json(order);
   if (action === 'FINISH' && hasClosed) return res.json(order);
   const now = new Date().toISOString();
   if (action === 'ACKNOWLEDGE') tl.acknowledgedAt = tl.acknowledgedAt ?? now;
   if (action === 'PICKED_UP') tl.pickedUpAt = tl.pickedUpAt ?? now;
   if (action === 'DELIVERED') {
-    tl.deliveredAt = tl.deliveredAt ?? now;
+    tl.deliveredAt = now;
     tl.durations = computeDurations(tl as { assignedAt?: string; acknowledgedAt?: string; pickedUpAt?: string; deliveredAt?: string });
     const couriers = (await repos.couriers.findAll());
     const cIdx = couriers.findIndex((c) => c.id === scope.courierId);
@@ -4964,8 +4968,9 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   const newDeliveryStatus = deliveryStatusMap[action] ?? currentDeliveryStatus;
   const updated = { ...order, deliveryStatus: newDeliveryStatus, deliveryTimeline: tl };
   if (action === 'DELIVERED') {
+    (updated as { deliveryStatus?: string }).deliveryStatus = 'DELIVERED';
     (updated as { deliveredAt?: string }).deliveredAt = tl.deliveredAt as string;
-    (updated as { status?: string }).status = 'COMPLETED'; // Scrubs from Active; order appears only in History
+    (updated as { status?: string }).status = 'COMPLETED';
   }
   if (action === 'FINISH') {
     const pay = (updated as { payment?: { status?: string; method?: string; cashLedger?: unknown } }).payment;
@@ -4986,7 +4991,7 @@ app.post('/courier/orders/:orderId/status', async (req, res) => {
   res.json(orders[idx]);
 });
 
-/** Courier heartbeat: update order's courierLocation when ON_THE_WAY (PICKED_UP). Used for live tracking. */
+/** Courier heartbeat: update order's courierLocation when en route (IN_PROGRESS or legacy PICKED_UP). */
 app.patch('/courier/orders/:orderId/location', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
@@ -5003,8 +5008,8 @@ app.patch('/courier/orders/:orderId/location', wrapAsync(async (req, res) => {
   const order = orders[idx];
   if (order.courierId !== scope.courierId) return res.status(403).json({ error: 'Order not assigned to you', code: 'FORBIDDEN' });
   const deliveryStatus = order.deliveryStatus ?? 'UNASSIGNED';
-  if (deliveryStatus !== 'PICKED_UP') {
-    return res.status(400).json({ error: 'Location updates only when order is on the way (PICKED_UP)', code: 'INVALID_STATE' });
+  if (deliveryStatus !== 'IN_PROGRESS' && deliveryStatus !== 'PICKED_UP') {
+    return res.status(400).json({ error: 'Location updates only when order is en route (IN_PROGRESS)', code: 'INVALID_STATE' });
   }
   const updated = { ...order, courierLocation: { lat, lng } };
   orders[idx] = updated;

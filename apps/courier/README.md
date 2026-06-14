@@ -10,9 +10,9 @@ PWA for couriers to view assigned orders and update delivery status.
 
 ## API
 
-All requests go to the base URL: `/auth/login`, `/auth/me`, `/courier/me`, `/courier/orders`, `/courier/events` (SSE).
+All requests go to the base URL: `/auth/login`, `/auth/me`, `/courier/me`, `/courier/orders`, `/courier/orders/history`, `/courier/events` (SSE).
 
 ## Verification (UI)
 
-- **Active/Completed tabs**: Log in as courier, assign an order from market admin. Active tab shows ASSIGNED/IN_PROGRESS/PICKED_UP orders. Click "تم التسليم" (Delivered) → order moves to Completed tab after refresh.
+- **Active/History tabs**: Log in as courier, assign an order from market admin. Active tab shows ASSIGNED/IN_PROGRESS orders. Click "بدء التوصيل" then "تم التسليم" → order moves to History tab (`GET /courier/orders/history`).
 - **Payment section**: Each order card shows الدفع (Total ₪X, Method CASH, Collect ₪X highlighted). Verify amounts match order total.

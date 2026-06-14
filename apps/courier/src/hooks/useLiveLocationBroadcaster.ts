@@ -25,7 +25,7 @@ function distanceMeters(
 }
 
 export interface UseLiveLocationBroadcasterOptions {
-  /** Order IDs that are currently ON_THE_WAY (deliveryStatus === 'PICKED_UP'). */
+  /** Order IDs en route (deliveryStatus IN_PROGRESS or legacy PICKED_UP). */
   orderIds: string[];
   /** When false, no broadcasting. */
   enabled: boolean;

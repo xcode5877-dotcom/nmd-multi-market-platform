@@ -89,39 +89,22 @@ const STEP_BADGE_CLASS: Record<UxStep, string> = {
   DELIVERED: 'bg-green-100 text-green-800',
 };
 
-const VALID_ACTIONS = ['ACKNOWLEDGE', 'PICKED_UP', 'DELIVERED', 'FINISH'] as const;
-const ACTION_ALIASES: Record<string, string> = { START: 'ACKNOWLEDGE', ACCEPT: 'ACKNOWLEDGE' };
+const VALID_ACTIONS = ['ACKNOWLEDGE', 'DELIVERED', 'FINISH'] as const;
+const ACTION_ALIASES: Record<string, string> = { START: 'ACKNOWLEDGE', ACCEPT: 'ACKNOWLEDGE', PICKED_UP: 'DELIVERED' };
 
 const ACTION_LABELS: Record<string, string> = {
   ACKNOWLEDGE: 'بدء التوصيل',
-  PICKED_UP: 'تم الاستلام',
   DELIVERED: 'تم التسليم',
   FINISH: 'إنهاء',
 };
 
-const ACTIVE_DELIVERY_STATUSES = ['ASSIGNED', 'IN_PROGRESS', 'PICKED_UP'];
-const COMPLETED_DELIVERY_STATUSES = ['DELIVERED', 'FINISH'];
-
-function isCompletedOrder(o: CourierOrder): boolean {
-  const ds = o.deliveryStatus ?? 'UNASSIGNED';
-  if (COMPLETED_DELIVERY_STATUSES.includes(ds)) return true;
-  const st = String(o.status ?? '').toUpperCase();
-  return st === 'COMPLETED' || st === 'DELIVERED' || st === 'FINISH';
-}
-
-function isActiveOrder(o: CourierOrder): boolean {
-  if (isCompletedOrder(o)) return false;
-  const ds = o.deliveryStatus ?? 'UNASSIGNED';
-  return ACTIVE_DELIVERY_STATUSES.includes(ds);
-}
 
 /** Returns the single allowed action for this order, or null if UNASSIGNED. Uses deliveryStatus only. */
 function getAllowedCourierAction(order: CourierOrder): string | null {
   const ds = order.deliveryStatus ?? 'UNASSIGNED';
   if (ds === 'UNASSIGNED') return null;
   if (ds === 'ASSIGNED') return 'ACKNOWLEDGE';
-  if (ds === 'IN_PROGRESS') return 'PICKED_UP';
-  if (ds === 'PICKED_UP') return 'DELIVERED';
+  if (ds === 'IN_PROGRESS' || ds === 'PICKED_UP') return 'DELIVERED';
   if (ds === 'DELIVERED') return 'FINISH';
   return null;
 }
@@ -167,9 +150,7 @@ function OrderCard({
   const method = order.paymentMethod ?? 'CASH';
   const toCollect = order.amountToCollect ?? (method === 'CASH' ? total : 0);
 
-  const handedToDriverAt = order.deliveryTimeline?.handedToDriverAt;
   const preparationLabel = order.status === 'PREPARING' ? 'قيد التحضير' : 'جاهز وفي الانتظار';
-  const canStartDelivery = allowedAction === 'PICKED_UP' && !!handedToDriverAt;
 
   return (
     <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
@@ -301,26 +282,19 @@ function OrderCard({
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => onAction(order, allowedAction)}
-            disabled={isPending || (allowedAction === 'PICKED_UP' && !handedToDriverAt)}
+            disabled={isPending}
             className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 ${
-              allowedAction === 'PICKED_UP'
-                ? canStartDelivery
-                  ? 'bg-teal-600 hover:bg-teal-700 text-white'
-                  : 'bg-white border-2 border-teal-400 text-teal-700 hover:bg-teal-50'
-                : allowedAction === 'DELIVERED'
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : allowedAction === 'FINISH'
-                    ? 'bg-gray-600 hover:bg-gray-700 text-white'
-                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+              allowedAction === 'DELIVERED'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : allowedAction === 'FINISH'
+                  ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                  : 'bg-teal-600 hover:bg-teal-700 text-white'
             }`}
           >
             <span className="flex items-center gap-1.5">
               {allowedAction === 'FINISH' && <CheckCircle2 className="w-4 h-4" />}
               {ACTION_LABELS[allowedAction] ?? allowedAction}
             </span>
-            {allowedAction === 'PICKED_UP' && !canStartDelivery && (
-              <span className="text-xs opacity-90">انتظر تسليم الطلب من المحل</span>
-            )}
           </button>
         </div>
       )}
@@ -332,7 +306,7 @@ export default function CourierOrdersPage() {
   const { user } = useAuth();
   const { isNativeApp } = useNativeBridge();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [finishOrder, setFinishOrder] = useState<CourierOrder | null>(null);
   const [finishNotes, setFinishNotes] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -356,6 +330,7 @@ export default function CourierOrdersPage() {
   useCourierEvents((event) => {
     if (event.type === 'order_assigned' || event.type === 'order_unassigned') {
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-history'] });
       if (event.type === 'order_assigned') playDing();
     }
   });
@@ -366,11 +341,18 @@ export default function CourierOrdersPage() {
     return () => clearTimeout(t);
   }, [toastMessage]);
 
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: orders = [], isLoading: isLoadingActive } = useQuery({
     queryKey: ['courier-orders'],
     queryFn: () => apiFetch<CourierOrder[]>('/courier/orders'),
     enabled: !!user,
     refetchInterval: 6000,
+  });
+
+  const { data: historyOrders = [], isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['courier-orders-history'],
+    queryFn: () => apiFetch<CourierOrder[]>('/courier/orders/history'),
+    enabled: !!user,
+    refetchInterval: 15000,
   });
 
   const { data: categoryPolicies = [] } = useQuery({
@@ -379,12 +361,15 @@ export default function CourierOrdersPage() {
     enabled: !!user,
   });
 
-  const pickedUpOrderIds = orders
-    .filter((o) => (o.deliveryStatus ?? '') === 'PICKED_UP' && o.id)
+  const enRouteOrderIds = orders
+    .filter((o) => {
+      const ds = o.deliveryStatus ?? '';
+      return (ds === 'IN_PROGRESS' || ds === 'PICKED_UP') && o.id;
+    })
     .map((o) => o.id!);
   useLiveLocationBroadcaster({
-    orderIds: pickedUpOrderIds,
-    enabled: !!user && pickedUpOrderIds.length > 0,
+    orderIds: enRouteOrderIds,
+    enabled: !!user && enRouteOrderIds.length > 0,
   });
 
   const statusMutation = useMutation({
@@ -414,6 +399,7 @@ export default function CourierOrdersPage() {
                   : 'Conflict. Refreshing…';
           setToastMessage(msg);
           void queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+          void queryClient.invalidateQueries({ queryKey: ['courier-orders-history'] });
           return { __handled409: true } as unknown;
         }
         throw err;
@@ -422,6 +408,7 @@ export default function CourierOrdersPage() {
     onSuccess: (data) => {
       if ((data as { __handled409?: boolean })?.__handled409) return;
       queryClient.invalidateQueries({ queryKey: ['courier-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['courier-orders-history'] });
       setFinishOrder(null);
       setFinishNotes('');
     },
@@ -446,10 +433,9 @@ export default function CourierOrdersPage() {
 
   if (!user) return null;
 
-  const allOrders = orders.filter((o) => o.status !== 'CANCELED');
-  const activeOrders = allOrders.filter(isActiveOrder);
-  const completedOrders = allOrders.filter(isCompletedOrder);
-  const displayOrders = activeTab === 'active' ? activeOrders : completedOrders;
+  const activeOrders = orders.filter((o) => o.status !== 'CANCELED');
+  const displayOrders = activeTab === 'active' ? activeOrders : historyOrders;
+  const isLoading = activeTab === 'active' ? isLoadingActive : isLoadingHistory;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -478,12 +464,12 @@ export default function CourierOrdersPage() {
             نشط ({activeOrders.length})
           </button>
           <button
-            onClick={() => setActiveTab('completed')}
+            onClick={() => setActiveTab('history')}
             className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
-              activeTab === 'completed' ? 'bg-white text-teal-700 shadow' : 'text-gray-600 hover:text-gray-900'
+              activeTab === 'history' ? 'bg-white text-teal-700 shadow' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            منتهي ({completedOrders.length})
+            السجل ({historyOrders.length})
           </button>
         </div>
 
@@ -493,7 +479,7 @@ export default function CourierOrdersPage() {
           <div className="text-center py-12">
             <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">
-              {activeTab === 'active' ? 'لا توجد طلبات نشطة حالياً' : 'لا توجد طلبات منتهية'}
+              {activeTab === 'active' ? 'لا توجد طلبات نشطة حالياً' : 'لا توجد طلبات في السجل'}
             </p>
             <p className="text-sm text-gray-400 mt-1">
               {activeTab === 'active' ? 'انتظر تعيين طلب من إدارة السوق' : 'الطلبات المكتملة تظهر هنا'}
@@ -505,7 +491,7 @@ export default function CourierOrdersPage() {
               <OrderCard
                 key={o.id}
                 order={o}
-                allowedAction={getAllowedCourierAction(o)}
+                allowedAction={activeTab === 'active' ? getAllowedCourierAction(o) : null}
                 onAction={handleOrderAction}
                 isPending={statusMutation.isPending}
                 categoryPolicies={categoryPolicies}
