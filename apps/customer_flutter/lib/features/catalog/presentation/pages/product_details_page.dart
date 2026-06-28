@@ -23,6 +23,8 @@ import '../customization/customization_tokens.dart';
 import '../customization/product_customization_controller.dart';
 import '../widgets/floating_smart_cta.dart';
 import '../widgets/product_customization_surface.dart';
+import '../widgets/product_images/product_image_gallery.dart';
+import '../widgets/product_images/product_image_urls.dart';
 import '../../../../widgets/app_error_view.dart';
 
 class ProductDetailsPage extends StatefulWidget {
@@ -75,6 +77,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         parent: _dockBounceController, curve: Curves.easeOutCubic));
   }
 
+  List<String> _resolveGalleryUrls(Product product, Map<String, dynamic>? raw) {
+    final fromRaw =
+        raw != null ? extractProductImageUrls(raw) : const <String>[];
+    if (fromRaw.isNotEmpty) return fromRaw;
+    if (product.imageUrl.trim().isNotEmpty) return [product.imageUrl];
+    return const [];
+  }
+
   @override
   void dispose() {
     _customization?.removeListener(_onCustomizationChanged);
@@ -102,8 +112,26 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     final products = await api.getCatalogProducts(widget.storeId);
     final product = products.where((p) => p.id == widget.productId).toList();
     if (product.isEmpty) throw Exception('Product not found');
+    Map<String, dynamic>? rawProduct;
+    try {
+      final catalog = await api.getCatalog(widget.storeId);
+      final rows =
+          (catalog['products'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map>();
+      for (final row in rows) {
+        if ((row['id']?.toString() ?? '') == widget.productId) {
+          rawProduct = Map<String, dynamic>.from(row);
+          break;
+        }
+      }
+    } catch (_) {
+      rawProduct = null;
+    }
+    final galleryUrls = _resolveGalleryUrls(product.first, rawProduct);
     return _ProductPagePayload(
       product: product.first,
+      imageUrls: galleryUrls,
+      heroImageIndex: productHeroImageIndex(galleryUrls, product.first.imageUrl),
       storeStatus:
           (tenant['operationalStatus']?.toString() ?? 'closed').toLowerCase(),
       isServicesStore: isServicesStore,
@@ -353,7 +381,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
             planCustomizationSteps(product),
           );
 
-          final heroTag = 'product-${widget.storeId}-${product.id}';
+          final heroTag = productDetailsHeroTag(widget.storeId, product.id);
+          final galleryUrls = payload.imageUrls;
+          final heroIndex = payload.heroImageIndex;
 
           final desc = product.description.trim();
           final shouldReadMore = desc.length > 220;
@@ -381,6 +411,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                     body: _buildProductScrollView(
                       product: product,
                       heroTag: heroTag,
+                      imageUrls: galleryUrls,
+                      heroImageIndex: heroIndex,
                       isServices: isServices,
                       storeClosed: storeClosed,
                       customization: customization,
@@ -403,6 +435,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                         child: _buildProductScrollView(
                           product: product,
                           heroTag: heroTag,
+                          imageUrls: galleryUrls,
+                          heroImageIndex: heroIndex,
                           isServices: isServices,
                           storeClosed: storeClosed,
                           customization: customization,
@@ -473,6 +507,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   Widget _buildProductScrollView({
     required Product product,
     required String heroTag,
+    required List<String> imageUrls,
+    required int heroImageIndex,
     required bool isServices,
     required bool storeClosed,
     required ProductCustomizationController customization,
@@ -486,91 +522,32 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       primary: false,
       slivers: [
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: isServices
-                ? MediaQuery.sizeOf(context).height * 0.42
-                : CustomizationTokens.heroHeight,
-            child: isServices
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Positioned.fill(
-                        child: Hero(
-                          tag: heroTag,
-                          child: SizedBox(
-                            key: _imageKey,
-                            child: product.imageUrl.isEmpty
-                                ? const ColoredBox(
-                                    color: Color(0xFF141A22),
-                                  )
-                                : CachedNetworkImage(
-                                    imageUrl: product.imageUrl,
-                                    fit: BoxFit.cover,
-                                    fadeInDuration:
-                                        PremiumMarketplaceDesignSystem.micro,
-                                  ),
-                          ),
-                        ),
-                      ),
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: PremiumMarketplaceDesignSystem
-                              .cinematicDarkOverlay,
-                        ),
-                      ),
-                    ],
-                  )
-                : ClipPath(
-                    clipper: _HeroCurvedBottomClipper(),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned.fill(
-                          child: Hero(
-                            tag: heroTag,
-                            child: SizedBox(
-                              key: _imageKey,
-                              child: product.imageUrl.isEmpty
-                                  ? ColoredBox(
-                                      color: NmdColors.tintAliveSoft,
-                                    )
-                                  : CachedNetworkImage(
-                                      imageUrl: product.imageUrl,
-                                      fit: BoxFit.cover,
-                                      fadeInDuration: NmdMotion.fast,
-                                      placeholder: (_, __) => ColoredBox(
-                                        color: NmdColors.tintAliveMuted,
-                                      ),
-                                      errorWidget: (_, __, ___) => ColoredBox(
-                                        color: NmdColors.tintAliveMuted,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                        const Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          height: 120,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Color(0xA6000000),
-                                  Color(0x55000000),
-                                  Color(0x00000000),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+          child: isServices
+              ? ProductImageGallery(
+                  imageUrls: imageUrls,
+                  heroTag: heroTag,
+                  initialIndex: heroImageIndex,
+                  height: productImageGalleryHeight(
+                    context,
+                    isServices: isServices,
                   ),
-          ),
+                  imageKey: _imageKey,
+                  isServices: isServices,
+                )
+              : ClipPath(
+                  clipper: ProductImageCurvedClipper(),
+                  child: ProductImageGallery(
+                    imageUrls: imageUrls,
+                    heroTag: heroTag,
+                    initialIndex: heroImageIndex,
+                    height: productImageGalleryHeight(
+                      context,
+                      isServices: isServices,
+                    ),
+                    imageKey: _imageKey,
+                    isServices: isServices,
+                  ),
+                ),
         ),
         SliverToBoxAdapter(
           child: Padding(
@@ -742,6 +719,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 class _ProductPagePayload {
   const _ProductPagePayload({
     required this.product,
+    required this.imageUrls,
+    required this.heroImageIndex,
     required this.storeStatus,
     required this.isServicesStore,
     required this.tenantIdForLeads,
@@ -750,6 +729,8 @@ class _ProductPagePayload {
   });
 
   final Product product;
+  final List<String> imageUrls;
+  final int heroImageIndex;
   final String storeStatus;
   final bool isServicesStore;
   final String tenantIdForLeads;
@@ -811,20 +792,4 @@ class _FadeInUpSectionState extends State<_FadeInUpSection>
       ),
     );
   }
-}
-
-class _HeroCurvedBottomClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path()..lineTo(0, size.height - 20);
-    final control = Offset(size.width * 0.5, size.height + 12);
-    final end = Offset(size.width, size.height - 20);
-    path.quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
