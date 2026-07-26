@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { attachMeasurementToProduct, normalizeCatalogProductsForWrite } from '@nmd/core';
 
 /** Path to data.json; process must have write permission so admin email and other updates persist. */
 const DATA_FILE = process.env.DATA_FILE || join(process.cwd(), 'data.json');
@@ -129,6 +130,12 @@ export interface RegistryTenant {
     loyaltyBonusCoinsPerOrder?: number;
     /** Store-level platform fee override (Phase 1). Persisted in financialConfig JSON. */
     platformFee?: import('./platform-fee.js').TenantPlatformFeeOverride;
+    /**
+     * Customer order editing window: seconds before merchant submission.
+     * Allowed: 0 | 30 | 60 | 90 | 120 | 180. Default 90 when unset.
+     * 0 = current production behaviour (submit immediately).
+     */
+    orderSubmissionDelaySeconds?: number;
   };
   paymentCapabilities?: { cash: boolean; card: boolean };
   paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
@@ -287,11 +294,32 @@ export interface SettlementLogEntry {
   marketId?: string;
 }
 
+/** Append-only driver collection settlements (Now Market cash reconciliation). */
+export interface DriverCollectionSettlementRecord {
+  id: string;
+  courierId: string;
+  marketId?: string;
+  amount: number;
+  deliveryFeesTotal: number;
+  platformCommissionTotal: number;
+  ordersCount: number;
+  orderIds: string[];
+  shiftLabel?: string;
+  status: 'SETTLED';
+  settledAt: string;
+  settledBy: string;
+  settlementReference?: string;
+  settlementNotes?: string;
+  createdAt: string;
+}
+
 /** Persisted inside Customer.accountExtras (Prisma JSON or embedded in JSON store). */
 export interface CustomerAccountExtras {
   addresses: CustomerAddressRecord[];
   paymentMethods: CustomerSavedCardRecord[];
   notifications: CustomerNotificationPrefs;
+  /** Default town/village for checkout delivery zone prefill. */
+  defaultDeliveryTown?: string;
 }
 
 export interface CustomerAddressRecord {
@@ -431,10 +459,143 @@ export interface MockData {
   pillars: Pillar[];
   subCategories: SubCategory[];
   settlementLogs: SettlementLogEntry[];
+  /** Append-only driver collection (platform cash) settlements — never deleted. */
+  driverCollectionSettlements: DriverCollectionSettlementRecord[];
   /** Reusable option groups per tenant (Options generator / Add from Templates). Key = tenantId. */
   optionTemplates: Record<string, unknown[]>;
   globalConfig?: {
     paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
+    support?: SupportConfig;
+  };
+}
+
+/** Platform customer support center — editable in Super Admin, live via API. */
+export interface SupportConfig {
+  supportPhone: string;
+  supportWhatsapp: string;
+  supportEnabled: boolean;
+  phoneEnabled: boolean;
+  whatsappEnabled: boolean;
+  workingHours: string;
+  supportTitle: string;
+  supportDescription: string;
+  defaultWhatsappMessage: string;
+  /** Future channels (email, telegram, messenger, live_chat) without UI redesign. */
+  channels?: SupportChannel[];
+  /** Global floating Smart Support Hub capsule. */
+  floatingSupportEnabled?: boolean;
+  floatingSupportAnimationEnabled?: boolean;
+  /** `logicalStart` | `logicalEnd` — directional placement (RTL-safe). */
+  floatingSupportPosition?: 'logicalStart' | 'logicalEnd';
+}
+
+export type SupportChannelType =
+  | 'whatsapp'
+  | 'phone'
+  | 'email'
+  | 'telegram'
+  | 'messenger'
+  | 'live_chat';
+
+export interface SupportChannel {
+  id: string;
+  type: SupportChannelType;
+  enabled: boolean;
+  label?: string;
+  value?: string;
+}
+
+export const DEFAULT_SUPPORT_CONFIG: SupportConfig = {
+  supportPhone: '0548289765',
+  supportWhatsapp: '0548289765',
+  supportEnabled: true,
+  phoneEnabled: true,
+  whatsappEnabled: true,
+  workingHours: 'الأحد – الخميس: 09:00 – 21:00',
+  supportTitle: 'كيف يمكننا مساعدتك؟',
+  supportDescription:
+    'فريق Now Market جاهز لمساعدتك والإجابة عن استفساراتك',
+  defaultWhatsappMessage:
+    'مرحبًا،\n\nأحتاج إلى المساعدة في تطبيق Now Market.',
+  floatingSupportEnabled: true,
+  floatingSupportAnimationEnabled: true,
+  floatingSupportPosition: 'logicalEnd',
+  channels: [
+    {
+      id: 'whatsapp',
+      type: 'whatsapp',
+      enabled: true,
+      label: 'تواصل معنا عبر واتساب',
+      value: '0548289765',
+    },
+    {
+      id: 'phone',
+      type: 'phone',
+      enabled: true,
+      label: 'اتصال هاتفي',
+      value: '0548289765',
+    },
+  ],
+};
+
+export function normalizeSupportConfig(
+  raw?: Partial<SupportConfig> | null,
+): SupportConfig {
+  const base = DEFAULT_SUPPORT_CONFIG;
+  const supportPhone =
+    typeof raw?.supportPhone === 'string' && raw.supportPhone.trim()
+      ? raw.supportPhone.trim()
+      : base.supportPhone;
+  const supportWhatsapp =
+    typeof raw?.supportWhatsapp === 'string' && raw.supportWhatsapp.trim()
+      ? raw.supportWhatsapp.trim()
+      : base.supportWhatsapp;
+  const channels = Array.isArray(raw?.channels)
+    ? raw!.channels!.filter(
+        (c): c is SupportChannel =>
+          !!c &&
+          typeof c.id === 'string' &&
+          typeof c.type === 'string',
+      )
+    : base.channels;
+  return {
+    supportPhone,
+    supportWhatsapp,
+    supportEnabled: raw?.supportEnabled !== false,
+    phoneEnabled: raw?.phoneEnabled !== false,
+    whatsappEnabled: raw?.whatsappEnabled !== false,
+    workingHours:
+      typeof raw?.workingHours === 'string' && raw.workingHours.trim()
+        ? raw.workingHours.trim()
+        : base.workingHours,
+    supportTitle:
+      typeof raw?.supportTitle === 'string' && raw.supportTitle.trim()
+        ? raw.supportTitle.trim()
+        : base.supportTitle,
+    supportDescription:
+      typeof raw?.supportDescription === 'string' &&
+      raw.supportDescription.trim()
+        ? raw.supportDescription.trim()
+        : base.supportDescription,
+    defaultWhatsappMessage:
+      typeof raw?.defaultWhatsappMessage === 'string' &&
+      raw.defaultWhatsappMessage.trim()
+        ? raw.defaultWhatsappMessage
+        : base.defaultWhatsappMessage,
+    floatingSupportEnabled: raw?.floatingSupportEnabled !== false,
+    floatingSupportAnimationEnabled:
+      raw?.floatingSupportAnimationEnabled !== false,
+    floatingSupportPosition:
+      raw?.floatingSupportPosition === 'logicalStart'
+        ? 'logicalStart'
+        : 'logicalEnd',
+    channels: (channels ?? []).map((c) => ({
+      id: String(c.id),
+      type: c.type,
+      enabled: c.enabled !== false,
+      label: typeof c.label === 'string' ? c.label : undefined,
+      value: typeof c.value === 'string' ? c.value : undefined,
+    })),
   };
 }
 
@@ -483,9 +644,11 @@ const DEFAULT: MockData = {
   pillars: DEFAULT_PILLARS,
   subCategories: [],
   settlementLogs: [],
+  driverCollectionSettlements: [],
   optionTemplates: {},
   globalConfig: {
     paymentMethods: { cash: true, card: true, installments: true },
+    support: { ...DEFAULT_SUPPORT_CONFIG },
   },
 };
 
@@ -640,6 +803,9 @@ export function parseToMockData(parsed: Partial<MockData>): MockData {
     : [...DEFAULT_PILLARS];
   const subCategories = Array.isArray(parsed.subCategories) ? (parsed.subCategories as SubCategory[]) : [];
   const settlementLogs = Array.isArray(parsed.settlementLogs) ? (parsed.settlementLogs as SettlementLogEntry[]) : [];
+  const driverCollectionSettlements = Array.isArray(parsed.driverCollectionSettlements)
+    ? (parsed.driverCollectionSettlements as DriverCollectionSettlementRecord[])
+    : [];
   const optionTemplates = parsed.optionTemplates && typeof parsed.optionTemplates === 'object' ? (parsed.optionTemplates as Record<string, unknown[]>) : {};
   // Restore marketId for tenants that are in a market's stores or tenantIds but have no marketId (e.g. data drift)
   for (const t of tenants) {
@@ -676,6 +842,7 @@ export function parseToMockData(parsed: Partial<MockData>): MockData {
     pillars,
     subCategories,
     settlementLogs,
+    driverCollectionSettlements,
     optionTemplates,
     globalConfig: {
       paymentMethods: {
@@ -683,6 +850,7 @@ export function parseToMockData(parsed: Partial<MockData>): MockData {
         card: parsed.globalConfig?.paymentMethods?.card !== false,
         installments: parsed.globalConfig?.paymentMethods?.installments !== false,
       },
+      support: normalizeSupportConfig(parsed.globalConfig?.support),
     },
   };
 }
@@ -898,9 +1066,8 @@ export function getCatalog(tenantId: string): TenantCatalog {
         .filter(Boolean) as unknown[];
       out = { ...prod, optionGroups: resolved.length > 0 ? resolved : prod.optionGroups };
     }
-    if (out.quantityStep === undefined) out.quantityStep = 1;
-    if (out.unitName === undefined) out.unitName = 'حبة';
-    return out;
+    // Measurement V2: resolve authoritative + dual-emit legacy (JSON/memory driver)
+    return attachMeasurementToProduct(out);
   });
   return {
     categories,
@@ -911,9 +1078,13 @@ export function getCatalog(tenantId: string): TenantCatalog {
 }
 
 export function setCatalog(tenantId: string, catalog: TenantCatalog): void {
+  // Fail-closed BEFORE mutating in-memory/JSON catalog (throws InvalidMeasurementConfigError).
+  const products = normalizeCatalogProductsForWrite(
+    (catalog.products ?? []) as Record<string, unknown>[]
+  );
   getData().catalog[tenantId] = {
     categories: catalog.categories ?? [],
-    products: catalog.products ?? [],
+    products,
     optionGroups: catalog.optionGroups ?? [],
     optionItems: catalog.optionItems ?? [],
   };
@@ -1017,6 +1188,20 @@ export function appendSettlementLog(entry: SettlementLogEntry): void {
   persist();
 }
 
+export function getDriverCollectionSettlements(): DriverCollectionSettlementRecord[] {
+  return getData().driverCollectionSettlements ?? [];
+}
+
+/** Append-only — never deletes or mutates prior settlements. */
+export function appendDriverCollectionSettlement(
+  entry: DriverCollectionSettlementRecord
+): void {
+  const data = getData();
+  if (!data.driverCollectionSettlements) data.driverCollectionSettlements = [];
+  data.driverCollectionSettlements.push(entry);
+  persist();
+}
+
 export function getCustomers(): Customer[] {
   return getData().customers;
 }
@@ -1062,18 +1247,51 @@ export function getGlobalConfig(): MockData['globalConfig'] {
       card: cfg?.paymentMethods?.card !== false,
       installments: cfg?.paymentMethods?.installments !== false,
     },
+    support: normalizeSupportConfig(cfg?.support),
   };
 }
 
 export function setGlobalConfig(config: MockData['globalConfig']): void {
+  const current = getData().globalConfig;
   getData().globalConfig = {
     paymentMethods: {
-      cash: config?.paymentMethods?.cash !== false,
-      card: config?.paymentMethods?.card !== false,
-      installments: config?.paymentMethods?.installments !== false,
+      cash:
+        config?.paymentMethods?.cash ??
+        current?.paymentMethods?.cash !== false,
+      card:
+        config?.paymentMethods?.card ??
+        current?.paymentMethods?.card !== false,
+      installments:
+        config?.paymentMethods?.installments ??
+        current?.paymentMethods?.installments !== false,
     },
+    support: normalizeSupportConfig(
+      config?.support !== undefined ? config.support : current?.support,
+    ),
   };
   persist();
+}
+
+export function getSupportConfig(): SupportConfig {
+  return normalizeSupportConfig(getData().globalConfig?.support);
+}
+
+export function setSupportConfig(config: Partial<SupportConfig>): SupportConfig {
+  const next = normalizeSupportConfig({
+    ...getSupportConfig(),
+    ...config,
+  });
+  const current = getData().globalConfig;
+  getData().globalConfig = {
+    paymentMethods: {
+      cash: current?.paymentMethods?.cash !== false,
+      card: current?.paymentMethods?.card !== false,
+      installments: current?.paymentMethods?.installments !== false,
+    },
+    support: next,
+  };
+  persist();
+  return next;
 }
 
 export function getStaff(): unknown[] {

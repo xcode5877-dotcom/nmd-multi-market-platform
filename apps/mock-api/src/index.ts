@@ -22,6 +22,8 @@ import {
   setGlobalCategories,
   getGlobalConfig,
   setGlobalConfig,
+  getSupportConfig,
+  setSupportConfig,
   getLeads,
   appendLead,
   type RegistryTenant,
@@ -87,14 +89,24 @@ import {
   type HomeFeedSettings,
   type HomePageBlock,
 } from './market-config.js';
-import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
+import {
+  getOperationalStatus,
+  canManageOrderItems,
+  getOrderManagementBlockReason,
+  isOrderManagementEditable,
+  normalizeAndValidateMeasurementForWrite,
+  isInvalidMeasurementConfigError,
+  type ModifierIcon,
+} from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { isCourierListTerminalStatus, syncAdminDeliveredOrder } from './delivery-status-sync.js';
 import {
   addBonus,
   approveExpense,
+  computeDriverEarningsPreview,
   computeEarningsSummary,
   endShift,
+  extractOrderEarningsBase,
   EXPENSE_CATEGORIES,
   getActiveShift,
   getOrCreatePayrollConfig,
@@ -118,6 +130,17 @@ import {
   previewPayrollSettlement,
 } from './courier-payroll-settlement.js';
 import { buildSettlementPayslipHtml } from './courier-payroll-payslip.js';
+import {
+  aggregateDriverCollections,
+  computeCollectionsDashboard,
+  computeDriverCollectionAmount,
+  createDriverCollectionSettlement,
+  enrichOrderWithDriverCollection,
+  listActiveShiftStarts,
+  listCollectionSettlements,
+  orderMatchesCollectionFilters,
+  isDriverCollectionCountable,
+} from './driver-collections.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { prisma } from './db.js';
@@ -129,6 +152,22 @@ import {
   normalizeInternationalPhoneDigits,
 } from './utils/phone.js';
 import { triggerStatusNotification, notifyMerchantNewOrder, notifyCustomerOrderStatusPush, sendFCMToCustomerToken, sendFCMToToken } from './services/NotificationService.js';
+import {
+  applySubmissionGateMetadata,
+  assertGroupEditable,
+  getTenantOrderSubmissionDelaySeconds,
+  isAwaitingMerchantSubmission,
+  isCancelledBeforeMerchantSubmission,
+  isOrderVisibleToMerchant,
+  normalizeOrderSubmissionDelaySeconds,
+  orderSubmissionPoller,
+  orderSubmissionScheduler,
+  readGateFields,
+  submitOrderGroupToMerchant,
+  submitOrderToMerchant,
+  summarizeEditingWindow,
+  type MerchantSubmitDeps,
+} from './order-submission-gate.js';
 import { sendWhatsAppNotification } from './services/CouponService.js';
 import { getVapidPublicKey, saveSubscription, saveAdminSubscription, getSubscriptionsByTenant, sendPushNotification } from './push-subscriptions.js';
 import { sendFCMToToken as sendAdminFCMToToken, sendFCMMulticast, isFCMConfigured } from './firebase-admin.js';
@@ -172,6 +211,11 @@ import {
   isSettlementEligibleStatus,
 } from './settlement.js';
 import {
+  computeStoreProfitBreakdown,
+  computeStoreProfitReport,
+  parseStoreProfitDateRange,
+} from './store-profit-report.js';
+import {
   rejectCustomerOnAdminRoutes,
   assertCatalogTenantAccess,
   sanitizeCatalogPayloadForRole,
@@ -179,6 +223,15 @@ import {
 } from './admin-auth.js';
 import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
+import { SUPPORTED_DELIVERY_TOWNS, isSupportedDeliveryTown } from './delivery-towns.js';
+import { registerContestDrawRoutes } from './contest-draws.js';
+import { refreshOrderTotalsAfterItemEdit } from './order-totals.js';
+import { executeManageOrderTransaction, listOrderModifications } from './order-manage-tx.js';
+import {
+  enrichOrdersWithCustomerTrust,
+  registerCustomerTrustRoutes,
+} from './customer-trust/routes.js';
+import { getTrustListMeta } from './customer-trust/service.js';
 
 const PORT = Number(process.env.PORT ?? 5190);
 /** Dev-only: `GET /customer/orders` skips auth and returns fixed samples. Default off so live DB + JWT path is used. Set `MOCK_CUSTOMER_ORDERS_STATIC_BYPASS=1` to enable. */
@@ -186,6 +239,30 @@ const MOCK_CUSTOMER_ORDERS_STATIC_BYPASS =
   String(process.env.MOCK_CUSTOMER_ORDERS_STATIC_BYPASS ?? '0') === '1';
 const repos = createRepos();
 console.log('[ORDER_PROTECTION] Order append-only guards active (deleteMany + setAll blocked)');
+
+const merchantSubmitDeps: MerchantSubmitDeps = {
+  notifyMerchantNewOrder: (order, tenant) =>
+    notifyMerchantNewOrder(
+      order as {
+        id?: string;
+        customerName?: string;
+        customerPhone?: string;
+        items?: unknown[];
+        total?: number;
+        notes?: string;
+        delivery?: unknown;
+        fulfillmentType?: string;
+        tenantId?: string;
+        [key: string]: unknown;
+      },
+      tenant
+    ),
+  sendFCMToTenantForNewOrder: (tenantId, order) =>
+    sendFCMToTenantForNewOrder(tenantId, order as { id?: string; total?: number; tenantId?: string; [key: string]: unknown }),
+  emitOrderAvailableForMarket: (marketId, orderId, couriers) =>
+    emitOrderAvailableForMarket(marketId, orderId, couriers),
+};
+orderSubmissionScheduler.configure(repos, merchantSubmitDeps);
 
 /** When WhatsApp + SMS all fail, log OTP for manual login (debug). Uses DATA volume in Docker. */
 function logOtpManualFallback(phoneDigits: string, code: string, reason: string) {
@@ -414,41 +491,50 @@ async function completeHypPaymentForGroup(
     loyaltyUpdated.push(orders2[i] as OrderRecord);
   }
   if (loyaltyUpdated.length > 0) await repos.orders.updateMany(loyaltyUpdated);
+
+  // After card capture: open submission gate (delay 0 submits now; delay>0 poller/send-now).
+  try {
+    await submitOrderGroupToMerchant(orderGroupId, repos, merchantSubmitDeps);
+  } catch (e) {
+    console.error('[Hyp] post-payment merchant submit failed:', e);
+  }
 }
 
 /**
  * Send FCM "new order" notification to every device token linked to users who own/manage the given tenant.
  * Called immediately after saving a new order so the merchant tablet/phone gets the system notification and alarm.
  */
+async function collectTenantOwnerFcmTokens(tenantId: string): Promise<string[]> {
+  const tenantRow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketId: true } });
+  const marketId = tenantRow?.marketId ?? null;
+  const ownerUsers = await prisma.user.findMany({
+    where: {
+      OR: [{ tenantId }, ...(marketId ? [{ role: 'MARKET_ADMIN', marketId }] : [])],
+    },
+    select: { id: true, fcmToken: true },
+  });
+  const ownerIds = [...new Set(ownerUsers.map((u) => u.id))];
+  const tokensFromTable = await prisma.userFCMToken.findMany({
+    where: { userId: { in: ownerIds } },
+    select: { token: true },
+  });
+  const legacyTokens = ownerUsers.map((u) => u.fcmToken).filter(Boolean) as string[];
+  return [...new Set([...tokensFromTable.map((r) => r.token), ...legacyTokens])];
+}
+
 async function sendFCMToTenantForNewOrder(
   tenantId: string,
   order: { id?: string; total?: number; tenantId?: string; [key: string]: unknown }
 ): Promise<void> {
   try {
-    const tenantRow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketId: true, name: true } });
-    const marketId = tenantRow?.marketId ?? null;
-    const storeName = (tenantRow as { name?: string })?.name ?? tenantId;
     const amountStr =
       order.total != null && !Number.isNaN(Number(order.total)) ? `₪${Number(order.total).toFixed(2)}` : '—';
     const fcmTitle = 'طلب جديد وصل! 🔔';
     const fcmBody = `طلب جديد بقيمة ${amountStr}! اضغط لمراجعة التفاصيل وتحضير الطلب.`;
     const orderId = order.id ?? '';
-    console.log('[FCM] sendFCMToTenantForNewOrder: tenant', tenantId, storeName, 'orderId', orderId);
-    const ownerUsers = await prisma.user.findMany({
-      where: {
-        OR: [{ tenantId }, ...(marketId ? [{ role: 'MARKET_ADMIN', marketId }] : [])],
-      },
-      select: { id: true, fcmToken: true },
-    });
-    const ownerIds = [...new Set(ownerUsers.map((u) => u.id))];
-    console.log('[FCM] Owner user(s) for store:', ownerIds.length, ownerIds);
-    const tokensFromTable = await prisma.userFCMToken.findMany({
-      where: { userId: { in: ownerIds } },
-      select: { token: true },
-    });
-    const legacyTokens = ownerUsers.map((u) => u.fcmToken).filter(Boolean) as string[];
-    const allTokens = [...new Set([...tokensFromTable.map((r) => r.token), ...legacyTokens])];
-    console.log('[FCM] Total FCM tokens to send:', allTokens.length, '(UserFCMToken:', tokensFromTable.length, ', legacy:', legacyTokens.length, ')');
+    console.log('[FCM] sendFCMToTenantForNewOrder: tenant', tenantId, 'orderId', orderId);
+    const allTokens = await collectTenantOwnerFcmTokens(tenantId);
+    console.log('[FCM] Total FCM tokens to send:', allTokens.length);
     if (allTokens.length === 0) {
       console.warn('[FCM] No FCM tokens for store owners. Merchant must log in from the app and allow notifications.');
       return;
@@ -460,6 +546,42 @@ async function sendFCMToTenantForNewOrder(
     }
   } catch (e) {
     console.error('[FCM] sendFCMToTenantForNewOrder failed:', e);
+  }
+}
+
+/** Lightweight Super Admin edit notify — no full audit snapshot. */
+async function sendFCMToTenantForOrderUpdated(
+  tenantId: string,
+  payload: {
+    orderId: string;
+    revision?: number;
+    totalBefore?: number;
+    totalAfter?: number;
+    orderGroupId?: string;
+  }
+): Promise<void> {
+  try {
+    const allTokens = await collectTenantOwnerFcmTokens(tenantId);
+    if (allTokens.length === 0) return;
+    const fcmTitle = 'تم تعديل الطلب بواسطة الإدارة';
+    const fcmBody =
+      payload.totalAfter != null
+        ? `الإجمالي الجديد ₪${Number(payload.totalAfter).toFixed(2)} — حدّث تفاصيل الطلب.`
+        : 'حدّث تفاصيل الطلب لعرض التغييرات.';
+    const data: Record<string, string> = {
+      type: 'order_updated',
+      orderId: payload.orderId,
+      revision: String(payload.revision ?? ''),
+      totalBefore: payload.totalBefore != null ? String(payload.totalBefore) : '',
+      totalAfter: payload.totalAfter != null ? String(payload.totalAfter) : '',
+      modifiedAt: new Date().toISOString(),
+    };
+    if (payload.orderGroupId) data.orderGroupId = payload.orderGroupId;
+    for (const token of allTokens) {
+      await sendFCMToToken(token, { title: fcmTitle, body: fcmBody, data });
+    }
+  } catch (e) {
+    console.error('[FCM] sendFCMToTenantForOrderUpdated failed:', e);
   }
 }
 
@@ -1091,6 +1213,8 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'POST', path: /^\/auth\/verify-otp$/ },
   { method: 'GET', path: /^\/health$/ },
   { method: 'GET', path: /^\/app-config$/ },
+  { method: 'GET', path: /^\/config\/support$/ },
+  { method: 'POST', path: /^\/analytics\/support$/ },
   { method: 'GET', path: /^\/storefront\/tenants$/ },
   { method: 'GET', path: /^\/markets$/ },
   { method: 'GET', path: /^\/markets\/by-slug\/[^/]+$/ },
@@ -1115,6 +1239,7 @@ const PUBLIC_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/delivery\/[^/]+$/ },
   { method: 'GET', path: /^\/tenants\/[^/]+\/delivery-zones$/ },
   { method: 'GET', path: /^\/public\/orders\/[^/]+$/ },
+  { method: 'GET', path: /^\/public\/delivery-towns$/ },
   { method: 'GET', path: /^\/global-categories$/ },
   { method: 'GET', path: /^\/categories$/ },
   { method: 'GET', path: /^\/pillars$/ },
@@ -1990,18 +2115,26 @@ app.get('/customer/me', async (req, res) => {
     email: full?.email,
     city: full?.city,
     avatarUrl: full?.avatarUrl,
+    defaultDeliveryTown: full ? parseAccountExtras(full).defaultDeliveryTown : undefined,
   });
 });
 
 app.patch('/customer/profile', async (req, res) => {
   const customer = (req as express.Request & { customer?: { id: string; phone: string; name?: string } }).customer;
   if (!customer) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as { name?: string; email?: string | null; city?: string | null; avatarUrl?: string | null };
+  const body = req.body as {
+    name?: string;
+    email?: string | null;
+    city?: string | null;
+    avatarUrl?: string | null;
+    defaultDeliveryTown?: string | null;
+    source?: string;
+  };
   const customers = await repos.customers.findAll();
   const idx = customers.findIndex((c) => c.id === customer.id);
   if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
   const prev = customers[idx];
-  const updated = { ...prev };
+  let updated = { ...prev };
   if (typeof body.name === 'string') updated.name = body.name.trim();
   if ('email' in body) {
     const raw = body.email;
@@ -2027,8 +2160,42 @@ app.patch('/customer/profile', async (req, res) => {
       updated.avatarUrl = t.length === 0 ? undefined : t;
     }
   }
+  if ('defaultDeliveryTown' in body) {
+    const extras = parseAccountExtras(updated);
+    const raw = body.defaultDeliveryTown;
+    if (raw == null || raw === '') {
+      extras.defaultDeliveryTown = undefined;
+    } else {
+      const t = String(raw).trim();
+      if (t.length > 0 && !isSupportedDeliveryTown(t)) {
+        return res.status(422).json({
+          error: 'منطقة التوصيل غير مدعومة',
+          field: 'defaultDeliveryTown',
+          code: 'INVALID_DELIVERY_TOWN',
+        });
+      }
+      extras.defaultDeliveryTown = t.length === 0 ? undefined : t;
+      if (extras.defaultDeliveryTown) {
+        const sourceRaw = typeof body.source === 'string' ? body.source.trim() : '';
+        const source =
+          sourceRaw === 'registration' || sourceRaw === 'profile' || sourceRaw === 'checkout'
+            ? sourceRaw
+            : 'profile';
+        console.log(
+          '[CUSTOMER_DEFAULT_TOWN_SET]',
+          JSON.stringify({
+            customerId: customer.id,
+            town: extras.defaultDeliveryTown,
+            source,
+          }),
+        );
+      }
+    }
+    updated = mergeExtrasIntoCustomer(updated, extras);
+  }
   customers[idx] = updated;
   await repos.customers.setAll(customers);
+  const extrasOut = parseAccountExtras(updated);
   res.json({
     customer: {
       id: updated.id,
@@ -2037,6 +2204,7 @@ app.patch('/customer/profile', async (req, res) => {
       email: updated.email,
       city: updated.city,
       avatarUrl: updated.avatarUrl,
+      defaultDeliveryTown: extrasOut.defaultDeliveryTown,
     },
   });
 });
@@ -2562,6 +2730,155 @@ app.get('/customer/orders', wrapAsync(async (req, res) => {
   });
 
   res.json({ orders: enriched });
+}));
+
+// --- Customer order editing window (submission gate) — orderGroupId scoped ---
+
+async function loadCustomerOrderGroup(
+  customerId: string,
+  orderGroupId: string
+): Promise<OrderRecord[]> {
+  const rows = (await repos.orders.findAll()) as OrderRecord[];
+  return rows.filter(
+    (o) =>
+      String(o.orderGroupId ?? '') === orderGroupId &&
+      String(o.customerId ?? '') === customerId
+  );
+}
+
+function respondGroupGateError(
+  res: express.Response,
+  gate: ReturnType<typeof assertGroupEditable>
+): void {
+  if (gate.ok) return;
+  res.status(gate.status).json({
+    code: gate.code,
+    messageAr: gate.messageAr,
+    error: gate.error,
+  });
+}
+
+/** GET /customer/order-groups/:orderGroupId/editing-window */
+app.get('/customer/order-groups/:orderGroupId/editing-window', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const orderGroupId = String(req.params.orderGroupId ?? '').trim();
+  if (!orderGroupId) return res.status(400).json({ error: 'orderGroupId required' });
+  const group = await loadCustomerOrderGroup(customer.id, orderGroupId);
+  if (group.length === 0) return res.status(404).json({ error: 'Order group not found' });
+  res.json(summarizeEditingWindow(group));
+}));
+
+/** POST /customer/order-groups/:orderGroupId/send-now — immediate merchant submission */
+app.post('/customer/order-groups/:orderGroupId/send-now', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const orderGroupId = String(req.params.orderGroupId ?? '').trim();
+  const group = await loadCustomerOrderGroup(customer.id, orderGroupId);
+  const gate = assertGroupEditable(group);
+  if (!gate.ok) return respondGroupGateError(res, gate);
+  const { orders } = await submitOrderGroupToMerchant(orderGroupId, repos, merchantSubmitDeps);
+  res.json(summarizeEditingWindow(orders));
+}));
+
+/** POST /customer/order-groups/:orderGroupId/cancel — only before merchant submission */
+app.post('/customer/order-groups/:orderGroupId/cancel', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const orderGroupId = String(req.params.orderGroupId ?? '').trim();
+  const group = await loadCustomerOrderGroup(customer.id, orderGroupId);
+  const gate = assertGroupEditable(group);
+  if (!gate.ok) return respondGroupGateError(res, gate);
+  const now = new Date().toISOString();
+  const updated: OrderRecord[] = [];
+  for (const o of group) {
+    const next: OrderRecord = {
+      ...o,
+      status: 'CANCELED',
+      cancelledBeforeSubmission: true,
+      cancelledAt: now,
+      revision: readGateFields(o).revision + 1,
+    };
+    await repos.orders.update(next);
+    // DB column claim-path: also set cancelled flag via prisma when available
+    if (isStorageDb()) {
+      try {
+        await prisma.order.updateMany({
+          where: { id: String(o.id), submittedAt: null, cancelledBeforeSubmission: false },
+          data: { cancelledBeforeSubmission: true, revision: readGateFields(o).revision + 1 },
+        });
+      } catch (e) {
+        console.error('[order-submission-gate] cancel column update failed:', e);
+      }
+    }
+    updated.push(next);
+  }
+  res.json(summarizeEditingWindow(updated));
+}));
+
+/**
+ * PATCH /customer/order-groups/:orderGroupId
+ * V1: notes, delivery address, quantity / remove items only.
+ * Same order IDs / orderGroupId. No new store orders.
+ */
+app.patch('/customer/order-groups/:orderGroupId', wrapAsync(async (req, res) => {
+  const customer = (req as express.Request & { customer?: { id: string } }).customer;
+  if (!customer) return res.status(401).json({ error: 'Unauthorized' });
+  const orderGroupId = String(req.params.orderGroupId ?? '').trim();
+  const group = await loadCustomerOrderGroup(customer.id, orderGroupId);
+  const gate = assertGroupEditable(group);
+  if (!gate.ok) return respondGroupGateError(res, gate);
+
+  const body = req.body as {
+    notes?: string;
+    deliveryAddress?: string;
+    orders?: { id: string; items?: unknown[]; notes?: string }[];
+  };
+  const tenants = await repos.tenants.findAll();
+  const perOrder = new Map((body.orders ?? []).map((row) => [String(row.id), row]));
+  // Reject unknown order ids (do not create new orders)
+  for (const id of perOrder.keys()) {
+    if (!group.some((o) => String(o.id) === id)) {
+      return res.status(400).json({
+        code: 'INVALID_ORDER_ID',
+        error: 'Cannot add orders to group; V1 edit is limited to existing order lines',
+        messageAr: 'لا يمكن إضافة طلبات جديدة للمجموعة في هذه المرحلة.',
+      });
+    }
+  }
+  const updated: OrderRecord[] = [];
+
+  for (const o of group) {
+    let next: OrderRecord = { ...o };
+    if (body.notes !== undefined) next.notes = body.notes;
+    if (body.deliveryAddress !== undefined) {
+      next.deliveryAddress = body.deliveryAddress;
+      const del = { ...((next.delivery as Record<string, unknown>) ?? {}) };
+      del.addressText = body.deliveryAddress;
+      next.delivery = del;
+    }
+    const patch = perOrder.get(String(o.id ?? ''));
+    if (patch?.notes !== undefined) next.notes = patch.notes;
+    if (patch?.items !== undefined) {
+      const items = Array.isArray(patch.items) ? patch.items : [];
+      if (items.length === 0) {
+        return res.status(400).json({
+          code: 'EMPTY_ITEMS',
+          error: 'Order must retain at least one item',
+          messageAr: 'يجب الإبقاء على صنف واحد على الأقل.',
+        });
+      }
+      next.items = items;
+      const tenant = tenants.find((t) => t.id === next.tenantId);
+      next = await refreshOrderTotalsAfterItemEdit(next, tenant, repos);
+    } else {
+      next.revision = readGateFields(next).revision + 1;
+    }
+    await repos.orders.update(next);
+    updated.push(next);
+  }
+
+  res.json(summarizeEditingWindow(updated));
 }));
 
 // --- Contest & Prediction (logged-in customers only; DB/Prisma) ---
@@ -3666,6 +3983,9 @@ app.get('/contests/:id/participations', wrapAsync(async (req, res) => {
   });
 }));
 
+/** Premium promotional contest draws — Super Admin only. ContestParticipation source only. */
+registerContestDrawRoutes(app, { prisma });
+
 // --- Coupons (winner / promo codes; validate at checkout) ---
 function normalizePhoneForCoupon(phone: string | undefined): string {
   return normalizeCustomerPhoneKey(phone);
@@ -4430,6 +4750,73 @@ app.get('/coupons', wrapAsync(async (req, res) => {
   res.json(list);
 }));
 
+/** Super Admin: update coupon (not code if already used). */
+app.patch('/coupons/:id', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const { id } = req.params;
+  const existing = await prisma.coupon.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Coupon not found' });
+  const body = req.body as {
+    type?: 'FIXED' | 'PERCENT';
+    value?: number;
+    tenantId?: string | null;
+    storeId?: string | null;
+    oneTimeUse?: boolean;
+    winnerPhone?: string | null;
+    expiresAt?: string | null;
+    isActive?: boolean;
+  };
+  if (existing.usedAt && body.value != null) {
+    return res.status(409).json({ error: 'Cannot change value of a used coupon' });
+  }
+  const type = body.type === 'PERCENT' ? 'PERCENT' : body.type === 'FIXED' ? 'FIXED' : existing.type;
+  const value = body.value != null ? Number(body.value) : existing.value;
+  if (Number.isNaN(value) || value <= 0) return res.status(400).json({ error: 'value must be positive' });
+  if (type === 'PERCENT' && value > 100) return res.status(400).json({ error: 'percent value must be 1-100' });
+  let expiresAt = existing.expiresAt;
+  if ('expiresAt' in body) {
+    expiresAt = body.expiresAt?.trim() || null;
+  }
+  if (body.isActive === false) {
+    expiresAt = new Date().toISOString();
+  } else if (body.isActive === true && expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+    expiresAt = null;
+  }
+  const updated = await prisma.coupon.update({
+    where: { id },
+    data: {
+      type,
+      value,
+      tenantId: 'tenantId' in body ? (body.tenantId?.trim() || null) : existing.tenantId,
+      storeId: 'storeId' in body ? (body.storeId?.trim() || null) : existing.storeId,
+      oneTimeUse: typeof body.oneTimeUse === 'boolean' ? body.oneTimeUse : existing.oneTimeUse,
+      winnerPhone: 'winnerPhone' in body ? (body.winnerPhone?.trim() || null) : existing.winnerPhone,
+      expiresAt,
+    },
+  });
+  res.json(updated);
+}));
+
+/** Super Admin: soft-deactivate coupon (sets expiresAt to now; keeps record). */
+app.post('/coupons/:id/deactivate', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  const { id } = req.params;
+  const existing = await prisma.coupon.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Coupon not found' });
+  const updated = await prisma.coupon.update({
+    where: { id },
+    data: { expiresAt: new Date().toISOString() },
+  });
+  res.json(updated);
+}));
+
+/** Public: supported delivery towns for profile + checkout. */
+app.get('/public/delivery-towns', (_req, res) => {
+  res.json({ towns: SUPPORTED_DELIVERY_TOWNS });
+});
+
 /** Super Admin: manually grant NMD reward coins to a wallet (normalized phone). */
 app.post('/admin/customers/grant-coins', wrapAsync(async (req, res) => {
   const user = req.user as { role?: string } | undefined;
@@ -4458,6 +4845,9 @@ app.post('/admin/customers/grant-coins', wrapAsync(async (req, res) => {
   console.log('[coins-audit] ADD', { customerPhone: phoneNorm, amount, newBalance: balance, via: 'admin_grant', note: body.note });
   res.json({ balance, granted: amount });
 }));
+
+/** Customer Trust & Risk — dedicated endpoints (see customer-trust/routes.ts). */
+registerCustomerTrustRoutes(app, { prisma, repos });
 
 // --- Wheel Prizes (Lucky Wheel) ---
 /** GET /lucky-wheel/prizes: public, returns active prizes for storefront */
@@ -4588,23 +4978,96 @@ app.get('/courier/me', async (req, res) => {
   });
 });
 
-/** Enrich delivery orders for courier API (tenant, customer, payment, delivery zone/area). */
-function enrichCourierOrders(
-  orders: { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown>; delivery?: { zoneName?: string; addressText?: string } }[],
-  tenants: { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number }; categoryId?: string }[]
-): Record<string, unknown>[] {
-  return orders.map((o) => {
-    const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : undefined;
-    const tenant = t ? { name: t.name ?? '', phone: t.whatsappPhone, address: t.addressLine, location: t.location, categoryId: t.categoryId } : { name: '', phone: undefined, address: undefined, location: undefined, categoryId: undefined };
-    const deliveryZoneName = (o.delivery as { zoneName?: string } | undefined)?.zoneName ?? '';
-    const customer = { name: o.customerName ?? '', phone: o.customerPhone ?? '', deliveryAddress: o.deliveryAddress ?? '', deliveryLocation: o.deliveryLocation, deliveryZoneName };
-    const currency = o.currency ?? 'ILS';
-    const pay = (o as Record<string, unknown>).payment;
-    const orderTotal = (pay as { financials?: { gross?: number } } | undefined)?.financials?.gross ?? (Number(o.total) || 0);
-    const paymentMethod = ((pay as { method?: string } | undefined)?.method ?? ((o as Record<string, unknown>).paymentMethod === 'CARD' ? 'CARD' : 'CASH')) as 'CASH' | 'CARD';
-    const amountToCollect = paymentMethod === 'CASH' ? orderTotal : 0;
-    return { ...o, tenant, customer, currency, orderTotal, paymentMethod, amountToCollect, cashChangeFor: o.cashChangeFor, deliveryZoneName };
-  });
+async function lookupCustomerCoinsBalance(order: Record<string, unknown>): Promise<number | null> {
+  const phone = String(
+    order.customerPhone ?? (order.customer as { phone?: string } | undefined)?.phone ?? ''
+  ).trim();
+  if (phone) {
+    const { row } = await findCustomerCoinRow(prisma, phone);
+    if (row) return row.balance;
+  }
+  const customerId = String(order.customerId ?? '').trim();
+  if (customerId && isStorageDb()) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { phone: true },
+    });
+    if (customer?.phone) {
+      const { row } = await findCustomerCoinRow(prisma, customer.phone);
+      if (row) return row.balance;
+    }
+  }
+  return null;
+}
+
+/** Enrich delivery orders for courier API (tenant, customer, payment, earnings preview, coins). */
+async function enrichCourierOrders(
+  orders: { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; customerId?: string; createdAt?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryStatus?: string; deliveryTimeline?: Record<string, unknown>; delivery?: { zoneName?: string; addressText?: string; fee?: number } }[],
+  tenants: { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number }; categoryId?: string }[],
+  courierId: string
+): Promise<Record<string, unknown>[]> {
+  return Promise.all(
+    orders.map(async (o) => {
+      const rec = o as Record<string, unknown>;
+      const t = o.tenantId ? tenants.find((x) => x.id === o.tenantId) : undefined;
+      const tenant = t
+        ? {
+            name: t.name ?? '',
+            phone: t.whatsappPhone,
+            address: t.addressLine,
+            location: t.location,
+            categoryId: t.categoryId,
+          }
+        : { name: '', phone: undefined, address: undefined, location: undefined, categoryId: undefined };
+      const deliveryZoneName = (o.delivery as { zoneName?: string } | undefined)?.zoneName ?? '';
+      const customer = {
+        name: o.customerName ?? '',
+        phone: o.customerPhone ?? '',
+        deliveryAddress: o.deliveryAddress ?? '',
+        deliveryLocation: o.deliveryLocation,
+        deliveryZoneName,
+      };
+      const currency = o.currency ?? 'ILS';
+      const pay = rec.payment;
+      const orderTotal =
+        (pay as { financials?: { gross?: number; customerTotal?: number } } | undefined)?.financials
+          ?.customerTotal ??
+        (pay as { financials?: { gross?: number } } | undefined)?.financials?.gross ??
+        (Number(o.total) || 0);
+      const paymentMethod = ((pay as { method?: string } | undefined)?.method ??
+        (rec.paymentMethod === 'CARD' ? 'CARD' : 'CASH')) as 'CASH' | 'CARD';
+      const amountToCollect = paymentMethod === 'CASH' ? orderTotal : 0;
+      const collection = computeDriverCollectionAmount(rec as Record<string, unknown>);
+      const settlementMeta = enrichOrderWithDriverCollection(rec as Record<string, unknown>);
+      const { deliveryFee } = extractOrderEarningsBase(rec);
+      const driverEarningsPreview = await computeDriverEarningsPreview(rec, courierId);
+      const customerCoinsBalance = await lookupCustomerCoinsBalance(rec);
+      return {
+        ...o,
+        orderTime: o.createdAt ?? null,
+        tenant,
+        customer,
+        currency,
+        orderTotal,
+        customerOrderTotal: orderTotal,
+        deliveryFee: collection.deliveryFee || deliveryFee,
+        platformCommission: collection.platformCommission,
+        driverCollectionAmount: collection.driverCollectionAmount,
+        restaurantShare: collection.restaurantShare,
+        settlementStatus: settlementMeta.settlementStatus,
+        settledAt: settlementMeta.settledAt,
+        settledBy: settlementMeta.settledBy,
+        settlementReference: settlementMeta.settlementReference,
+        settlementNotes: settlementMeta.settlementNotes,
+        driverEarningsPreview,
+        customerCoinsBalance,
+        paymentMethod,
+        amountToCollect,
+        cashChangeFor: o.cashChangeFor,
+        deliveryZoneName,
+      };
+    })
+  );
 }
 
 /** Courier's assigned active orders. PICKUP orders are excluded — only DELIVERY appears in courier lists. */
@@ -4614,7 +5077,7 @@ app.get('/courier/orders', wrapAsync(async (req, res) => {
   const orders = ((await repos.orders.findAll()) as { id?: string; tenantId?: string; courierId?: string; status?: string; fulfillmentType?: string; total?: number; currency?: string; paymentMethod?: string; cashChangeFor?: number; customerName?: string; customerPhone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; isExternal?: boolean }[])
     .filter((o) => o.fulfillmentType === 'DELIVERY' && o.courierId === scope.courierId && !isCourierListTerminalStatus(o.status));
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
-  res.json(enrichCourierOrders(orders, tenants));
+  res.json(await enrichCourierOrders(orders, tenants, scope.courierId));
 }));
 
 /** Courier delivery history — completed/delivered orders for the logged-in courier. */
@@ -4629,7 +5092,7 @@ app.get('/courier/orders/history', wrapAsync(async (req, res) => {
       return bAt.localeCompare(aAt);
     });
   const tenants = (await repos.tenants.findAll()) as { id?: string; name?: string; whatsappPhone?: string; addressLine?: string; location?: { lat: number; lng: number } }[];
-  res.json(enrichCourierOrders(orders, tenants));
+  res.json(await enrichCourierOrders(orders, tenants, scope.courierId));
 }));
 
 /** Open-market pool disabled — dispatch-only assignment by MARKET_ADMIN. */
@@ -5364,14 +5827,74 @@ function buildCustomerLastActivityMap(
 function enrichAndSortCustomersForAdminList(
   customers: import('./store.js').Customer[],
   orders: { customerId?: string; createdAt?: string }[],
+  coinBalances?: Map<string, number>,
+  trustMeta?: Map<
+    string,
+    {
+      riskLevel: string;
+      requiresConfirmation: boolean;
+      cashOnDeliveryAllowed: boolean;
+      hasIncidents: boolean;
+      totalIncidents: number;
+    }
+  >,
 ) {
   const lastActivity = buildCustomerLastActivityMap(orders);
   return sortCustomersByCreatedAtDesc(
-    customers.map((c) => ({
-      ...c,
-      lastActivityAt: lastActivity.get(c.id),
-    })),
+    customers.map((c) => {
+      const trust = trustMeta?.get(c.id);
+      return {
+        ...c,
+        lastActivityAt: lastActivity.get(c.id),
+        coinsBalance: coinBalances?.get(c.phone) ?? coinBalances?.get(c.id) ?? null,
+        riskLevel: trust?.riskLevel ?? 'NORMAL',
+        requiresConfirmation: trust?.requiresConfirmation ?? false,
+        cashOnDeliveryAllowed: trust?.cashOnDeliveryAllowed ?? true,
+        hasIncidents: trust?.hasIncidents ?? false,
+        totalIncidents: trust?.totalIncidents ?? 0,
+      };
+    }),
   );
+}
+
+function applyCustomerTrustListFilters<T extends {
+  riskLevel?: string;
+  requiresConfirmation?: boolean;
+  cashOnDeliveryAllowed?: boolean;
+  hasIncidents?: boolean;
+}>(list: T[], query: express.Request['query']): T[] {
+  const trustFilter = String(query.trustFilter ?? query.trust ?? '').trim().toUpperCase();
+  if (!trustFilter || trustFilter === 'ALL') return list;
+  return list.filter((c) => {
+    switch (trustFilter) {
+      case 'HIGH_RISK':
+        return c.riskLevel === 'HIGH_RISK';
+      case 'NEEDS_CONFIRMATION':
+      case 'CONFIRMATION_REQUIRED':
+        return c.requiresConfirmation === true || c.riskLevel === 'CONFIRMATION_REQUIRED';
+      case 'BLOCKED_COD':
+        return c.riskLevel === 'BLOCKED_COD' || c.cashOnDeliveryAllowed === false;
+      case 'HAS_INCIDENTS':
+        return c.hasIncidents === true;
+      case 'NO_INCIDENTS':
+        return c.hasIncidents !== true;
+      default:
+        return true;
+    }
+  });
+}
+
+async function buildCustomerCoinBalanceMap(
+  customers: import('./store.js').Customer[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  for (const c of customers) {
+    const phoneKey = normalizePhoneForCoupon(c.phone);
+    if (!phoneKey) continue;
+    const { row } = await findCustomerCoinRow(prisma, phoneKey);
+    if (row) map.set(c.phone, row.balance);
+  }
+  return map;
 }
 
 // --- Customers (role-based visibility) ---
@@ -5384,6 +5907,7 @@ app.get('/customers', wrapAsync(async (req, res) => {
   const allLeads = getLeads();
 
   if (isPlatformAdmin(caller.role)) {
+    const coinBalances = await buildCustomerCoinBalanceMap(allCustomers);
     const querySlug = (req.query.tenantSlug as string)?.trim();
     if (querySlug) {
       const filterTenantId = await resolveTenantId(querySlug);
@@ -5399,9 +5923,21 @@ app.get('/customers', wrapAsync(async (req, res) => {
         }
       });
       const filtered = allCustomers.filter((c) => customerIds.has(c.id));
-      return res.json(enrichAndSortCustomersForAdminList(filtered, allOrders));
+      const trustMeta = await getTrustListMeta(prisma, filtered.map((c) => c.id));
+      return res.json(
+        applyCustomerTrustListFilters(
+          enrichAndSortCustomersForAdminList(filtered, allOrders, coinBalances, trustMeta),
+          req.query,
+        ),
+      );
     }
-    return res.json(enrichAndSortCustomersForAdminList(allCustomers, allOrders));
+    const trustMeta = await getTrustListMeta(prisma, allCustomers.map((c) => c.id));
+    return res.json(
+      applyCustomerTrustListFilters(
+        enrichAndSortCustomersForAdminList(allCustomers, allOrders, coinBalances, trustMeta),
+        req.query,
+      ),
+    );
   }
 
   if (caller.role === 'TENANT_ADMIN' && caller.tenantId) {
@@ -6003,6 +6539,58 @@ app.put('/config/payment-methods', (req, res) => {
   };
   setGlobalConfig({ paymentMethods: next });
   res.json({ paymentMethods: next });
+});
+
+/** Public: customer Support Center reads live config (no rebuild). */
+app.get('/config/support', (_req, res) => {
+  res.json({ support: getSupportConfig() });
+});
+
+/** Super Admin: update Support Center settings immediately. */
+app.put('/config/support', (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!requireWriteWithReason(req, res)) return;
+  const body = (req.body ?? {}) as { support?: Partial<ReturnType<typeof getSupportConfig>> };
+  const patch = body.support ?? (body as Partial<ReturnType<typeof getSupportConfig>>);
+  const next = setSupportConfig(patch);
+  res.json({ support: next });
+});
+
+/** Support analytics — event names only; never store message content. */
+const SUPPORT_ANALYTICS_EVENTS = new Set([
+  'support_page_opened',
+  'floating_support_impression',
+  'support_hub_opened',
+  'whatsapp_click',
+  'phone_click',
+  'order_support_click',
+  'copy_order_number',
+]);
+const supportAnalyticsCounters: Record<string, number> = {
+  support_page_opened: 0,
+  floating_support_impression: 0,
+  support_hub_opened: 0,
+  whatsapp_click: 0,
+  phone_click: 0,
+  order_support_click: 0,
+  copy_order_number: 0,
+};
+
+app.post('/analytics/support', (req, res) => {
+  const event = String((req.body as { event?: string })?.event ?? '')
+    .trim()
+    .toLowerCase();
+  if (!SUPPORT_ANALYTICS_EVENTS.has(event)) {
+    return res.status(400).json({ error: 'Invalid event' });
+  }
+  supportAnalyticsCounters[event] = (supportAnalyticsCounters[event] ?? 0) + 1;
+  // Intentionally ignore message / PII fields if sent
+  res.json({ ok: true, event });
+});
+
+app.get('/analytics/support', (req, res) => {
+  if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+  res.json({ events: { ...supportAnalyticsCounters } });
 });
 
 /** Alias for Big Admin / tenant select: same data as /global-categories */
@@ -7250,10 +7838,15 @@ async function handleTenantUpdate(req: express.Request, res: express.Response): 
     typeof updates.financialConfig === 'object' &&
     isPlatformAdmin(user.role)
   ) {
-    updates.financialConfig = {
+    const merged = {
       ...(tenants[idx].financialConfig ?? {}),
       ...updates.financialConfig,
-    };
+    } as RegistryTenant['financialConfig'];
+    if (merged && (merged as { orderSubmissionDelaySeconds?: unknown }).orderSubmissionDelaySeconds !== undefined) {
+      (merged as { orderSubmissionDelaySeconds?: number }).orderSubmissionDelaySeconds =
+        normalizeOrderSubmissionDelaySeconds((merged as { orderSubmissionDelaySeconds?: unknown }).orderSubmissionDelaySeconds);
+    }
+    updates.financialConfig = merged;
   } else {
     delete (updates as Record<string, unknown>).financialConfig;
   }
@@ -7486,6 +8079,7 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
     allowInstallments?: boolean;
     installmentOptions?: number[];
     paymentMethods?: Partial<PaymentMethodsToggle>;
+    orderSubmissionDelaySeconds?: number;
   };
   const idx = tenants.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Tenant not found' });
@@ -7573,6 +8167,16 @@ app.put('/tenants/:id/operational-settings', async (req, res) => {
       ...pm,
       installments: body.allowInstallments ?? pm.installments,
     };
+  }
+  if (body.orderSubmissionDelaySeconds !== undefined) {
+    const delay = normalizeOrderSubmissionDelaySeconds(body.orderSubmissionDelaySeconds);
+    const fc = { ...((tenants[idx] as RegistryTenant).financialConfig ?? {
+      commissionType: 'PERCENTAGE' as const,
+      commissionValue: 10,
+      deliveryFeeModel: 'TENANT' as const,
+    }) };
+    fc.orderSubmissionDelaySeconds = delay;
+    (tenants[idx] as RegistryTenant).financialConfig = fc;
   }
   const before = { ...tenants[idx] };
   await repos.tenants.setAll(tenants);
@@ -7922,14 +8526,35 @@ app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
   if (!assertCatalogTenantAccess(user, tenantId, catalogTenant?.marketId, res)) return;
   const existingCatalog = await repos.catalog.getCatalog(tenantId);
   const catalog = sanitizeCatalogPayloadForRole(user.role, req.body as TenantCatalog, existingCatalog);
-  const products = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[] }[]).map((p) =>
+  const rawProducts = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[]; id?: string; name?: string }[]).map((p) =>
     normalizeProductForCompat(p)
   );
+  // Measurement V2: validate each product; reject catalog write on INVALID_MEASUREMENT_CONFIG
+  const products: Record<string, unknown>[] = [];
+  for (const p of rawProducts) {
+    const m = normalizeAndValidateMeasurementForWrite(p as Record<string, unknown>);
+    if (!m.ok) {
+      return res.status(400).json({
+        ...m.error,
+        productId: (p as { id?: string }).id,
+        productName: (p as { name?: string }).name,
+      });
+    }
+    products.push({ ...(p as Record<string, unknown>), ...m.api });
+  }
   const optionGroups = ((catalog.optionGroups ?? []) as Array<Record<string, unknown> & { tenantId?: string }>).map(
     (g) => ({ ...g, tenantId: g.tenantId ?? tenantId })
   );
   const normalized = { ...catalog, products, optionGroups };
-  await repos.catalog.setCatalog(tenantId, normalized);
+  try {
+    await repos.catalog.setCatalog(tenantId, normalized);
+  } catch (err) {
+    // Defense in depth: repository also fail-closes before mutating
+    if (isInvalidMeasurementConfigError(err)) {
+      return res.status(400).json(err.toJSON());
+    }
+    throw err;
+  }
   const updated = await repos.catalog.getCatalog(tenantId);
   res.json(updated);
 }));
@@ -8005,6 +8630,10 @@ app.get('/orders', wrapAsync(async (req, res) => {
     const allowed = await getMarketTenantIds(req.user.marketId);
     orders = orders.filter((o) => o.tenantId && allowed.has(o.tenantId));
   }
+  if (req.user?.role === 'TENANT_ADMIN' || req.user?.role === 'MARKET_ADMIN') {
+    orders = orders.filter((o) => isOrderVisibleToMerchant(o as OrderRecord));
+  }
+  await enrichOrdersWithCustomerTrust(prisma, orders as Array<Record<string, unknown>>);
   res.json(orders);
 }));
 
@@ -8025,6 +8654,8 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
   let orders = onlyRealCustomerOrders(
     (await repos.orders.findAll()) as { id?: string; tenantId?: string; createdAt?: string; customerName?: string; customerPhone?: string }[]
   ).filter((o) => o.tenantId === tenantId);
+  // Submission gate: merchant must not see orders until submitted
+  orders = orders.filter((o) => isOrderVisibleToMerchant(o as OrderRecord));
   if (from || to) {
     const fromMs = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
     const toMs = to ? new Date(to).setHours(23, 59, 59, 999) : Number.MAX_SAFE_INTEGER;
@@ -8055,6 +8686,7 @@ app.get('/tenants/:tenantId/orders', wrapAsync(async (req, res) => {
       return true;
     });
   }
+  await enrichOrdersWithCustomerTrust(prisma, orders as Array<Record<string, unknown>>);
   res.json(orders);
 }));
 
@@ -8094,7 +8726,9 @@ app.get('/merchant/stats', wrapAsync(async (req, res) => {
   const tr = String(req.query.timeRange ?? 'day').toLowerCase() as MerchantTimeRange;
   const timeRange: MerchantTimeRange = tr === 'week' || tr === 'month' ? tr : 'day';
   const all = (await repos.orders.findAll()) as Record<string, unknown>[];
-  const mine = all.filter((o) => String(o.tenantId ?? '') === tenantId);
+  const mine = all
+    .filter((o) => String(o.tenantId ?? '') === tenantId)
+    .filter((o) => isOrderVisibleToMerchant(o as OrderRecord));
   const payload = aggregateMerchantStats(mine, timeRange);
   res.json(payload);
 }));
@@ -8251,6 +8885,11 @@ app.post('/orders', wrapAsync(async (req, res) => {
   (created as Record<string, unknown>).id = (created as { id?: string }).id ?? crypto.randomUUID?.() ?? `order-${Date.now()}`;
   (created as Record<string, unknown>).orderType = (created as { orderType?: string }).orderType ?? 'PRODUCT';
 
+  // Submission gate metadata (before persist). delay=0 → submit immediately after save.
+  const delaySeconds = getTenantOrderSubmissionDelaySeconds(tenant as RegistryTenant | undefined);
+  const gated = applySubmissionGateMetadata(created as OrderRecord, delaySeconds, now);
+  Object.assign(created, gated.order);
+
   await repos.orders.addOrderWithPayment(created, {
     method,
     status: payment.status,
@@ -8263,22 +8902,20 @@ app.post('/orders', wrapAsync(async (req, res) => {
     await prisma.coupon.updateMany({ where: { id: couponId }, data: { usedAt: now } }).catch(() => {});
   }
 
-  if (tenant) {
-    notifyMerchantNewOrder(created as { id?: string; customerName?: string; customerPhone?: string; items?: unknown[]; total?: number; notes?: string; delivery?: unknown; fulfillmentType?: string; tenantId?: string; [key: string]: unknown }, tenant as { name?: string; whatsappPhone?: string; phone?: string });
-    const orderTenantId = (created as { tenantId?: string }).tenantId;
-    if (orderTenantId) {
-      sendFCMToTenantForNewOrder(orderTenantId, created as { id?: string; total?: number; tenantId?: string; [key: string]: unknown }).catch((e) =>
-        console.error('[FCM] sendFCMToTenantForNewOrder error:', e)
-      );
-    }
-  }
-
-  // Notify all market couriers that a new delivery order is in the global dispatch pool (order_available)
-  const fulfillmentType = (created as { fulfillmentType?: string }).fulfillmentType;
-  const marketIdForNotify = (created as { marketId?: string }).marketId;
-  if (fulfillmentType === 'DELIVERY' && marketIdForNotify) {
-    const couriers = (await repos.couriers.findAll()) as { id?: string; scopeType?: string; scopeId?: string; marketId?: string }[];
-    emitOrderAvailableForMarket(marketIdForNotify, (created as { id?: string }).id ?? '', couriers);
+  if (gated.shouldSubmitNow) {
+    const result = await submitOrderToMerchant(
+      created as OrderRecord,
+      tenant as RegistryTenant | undefined,
+      repos,
+      merchantSubmitDeps
+    );
+    if (result.order) Object.assign(created, result.order);
+    // CARD unpaid → AWAITING_PAYMENT; poller/Hyp complete will submit later
+  } else if (gated.fireAtMs != null) {
+    const oid = String((created as { id?: string }).id ?? '');
+    console.log(
+      `[order-submission-gate] deferred merchant submit order=${oid} delay=${delaySeconds}s until=${gated.order.submissionScheduledAt}`
+    );
   }
 
   res.status(201).json(created);
@@ -8294,6 +8931,10 @@ app.get('/orders/:orderId', wrapAsync(async (req, res) => {
     }
   }
   enrichOrderWithMerchantAmount(order);
+  // Merchant/admin only: attach operational trust summary (never on public/customer endpoints).
+  if (req.user && req.user.role !== 'CUSTOMER' && req.user.role !== 'COURIER') {
+    await enrichOrdersWithCustomerTrust(prisma, [order as Record<string, unknown>]);
+  }
   res.json(order);
 }));
 
@@ -8315,6 +8956,8 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
     total: order.total,
     currency: order.currency,
     subtotal: order.subtotal,
+    discountAmount: order.discountAmount,
+    platformFee: order.platformFee,
     items: order.items,
     createdAt: order.createdAt,
     fulfillmentType: order.fulfillmentType,
@@ -8328,6 +8971,9 @@ app.get('/public/orders/:orderId', wrapAsync(async (req, res) => {
     tenantId: order.tenantId,
     tenantSlug: tenant?.slug,
     assignedDriver,
+    revision: order.revision,
+    adminModifiedAt: order.adminModifiedAt,
+    adminModifiedRevision: order.adminModifiedRevision,
   };
   res.json(safe);
 }));
@@ -8544,6 +9190,112 @@ app.delete('/orders/:orderId/hard-delete', wrapAsync(async (req, res) => {
 
   await repos.orders.deleteById(orderId);
   res.status(204).send();
+}));
+
+/**
+ * Super Admin order management — add/remove/edit line items, modifiers, notes.
+ * Auth: ROOT_ADMIN | SUPER_ADMIN only. Status-gated. Reason required.
+ * Transactional: revision CAS + append-only OrderModification + optional Idempotency-Key.
+ */
+app.patch('/admin/orders/:orderId/manage', wrapAsync(async (req, res) => {
+  const user = req.user as { id?: string; role?: string; email?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!canManageOrderItems(user.role)) {
+    return res.status(403).json({
+      code: 'FORBIDDEN',
+      error: 'Only SUPER_ADMIN may manage order items',
+      messageAr: 'إدارة أصناف الطلب متاحة لمدير المنصة فقط.',
+    });
+  }
+
+  const orderId = String(req.params.orderId ?? '').trim();
+  if (!orderId) return res.status(400).json({ error: 'orderId required' });
+
+  const row = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!row) return res.status(404).json({ error: 'Order not found' });
+
+  const tenants = await repos.tenants.findAll();
+  const tenant = tenants.find((t) => t.id === row.tenantId) as RegistryTenant | undefined;
+  const tenantId = String(row.tenantId ?? '');
+  if (!tenantId) return res.status(400).json({ error: 'Order has no tenant' });
+
+  const catalog = await repos.catalog.getCatalog(tenantId);
+  const body = req.body as {
+    reason?: unknown;
+    reasonDetail?: string;
+    operations?: unknown;
+    expectedRevision?: number;
+    idempotencyKey?: string;
+  };
+  const idempotencyKey =
+    (typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()) ||
+    (typeof req.headers['idempotency-key'] === 'string' ? String(req.headers['idempotency-key']).trim() : '') ||
+    undefined;
+
+  const result = await executeManageOrderTransaction({
+    orderId,
+    actor: { id: String(user.id ?? ''), role: String(user.role ?? ''), email: user.email },
+    reason: body.reason,
+    reasonDetail: body.reasonDetail,
+    rawOperations: body.operations,
+    expectedRevision:
+      body.expectedRevision != null && Number.isFinite(Number(body.expectedRevision))
+        ? Number(body.expectedRevision)
+        : undefined,
+    idempotencyKey,
+    tenant,
+    catalog,
+    repos,
+    onCommittedVisibleUpdate: async ({ order, modification, tenantId: tid }) => {
+      // One authoritative lightweight event per successful manage (no audit snapshot)
+      await sendFCMToTenantForOrderUpdated(tid, {
+        orderId: String(order.id ?? orderId),
+        orderGroupId: typeof order.orderGroupId === 'string' ? order.orderGroupId : undefined,
+        revision: typeof order.revision === 'number' ? order.revision : undefined,
+        totalBefore: modification.before.total,
+        totalAfter: modification.after.total,
+      });
+      // Customer push (best-effort) when we have a customer id
+      const customerId = typeof order.customerId === 'string' ? order.customerId : undefined;
+      if (customerId) {
+        try {
+          const fcmToken = await getCustomerFcmToken(customerId);
+          if (fcmToken) {
+            await sendFCMToCustomerToken(fcmToken, 'ORDER_UPDATED', String(order.id ?? orderId));
+          }
+        } catch {
+          /* non-fatal */
+        }
+      }
+    },
+  });
+
+  if (!result.ok) return res.status(result.status).json(result.body);
+  res.status(result.status).json(result.body);
+}));
+
+/** Read Super Admin modification history (append-only OrderModification table). */
+app.get('/admin/orders/:orderId/modifications', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!canManageOrderItems(user.role)) {
+    return res.status(403).json({
+      code: 'FORBIDDEN',
+      error: 'Only SUPER_ADMIN may view order modifications',
+    });
+  }
+  const orderId = String(req.params.orderId ?? '').trim();
+  const row = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, status: true } });
+  if (!row) return res.status(404).json({ error: 'Order not found' });
+  const modifications = await listOrderModifications(orderId);
+  res.json({
+    orderId,
+    status: row.status,
+    editable: isOrderManagementEditable(row.status ?? undefined),
+    blockReason: getOrderManagementBlockReason(row.status ?? undefined),
+    modifications,
+    persistence: 'order_modifications',
+  });
 }));
 
 // --- Campaigns ---
@@ -9442,12 +10194,17 @@ app.get('/markets/:marketId/orders', wrapAsync(async (req, res) => {
   const tenantIds = await getMarketTenantIds(marketId);
   const orders = onlyRealCustomerOrders(
     (await repos.orders.findAll()) as { id?: string; tenantId?: string }[]
-  ).filter((o) => o.tenantId && tenantIds.has(o.tenantId));
+  )
+    .filter((o) => o.tenantId && tenantIds.has(o.tenantId))
+    .filter((o) =>
+      req.user?.role === 'MARKET_ADMIN' ? isOrderVisibleToMerchant(o as OrderRecord) : true
+    );
   orders.forEach(enrichOrderWithMerchantAmount);
   const couriers = (await repos.couriers.findAll()) as { id?: string; name?: string; phone?: string }[];
   for (const o of orders) {
     await enrichOrderWithCourierInfo(o as Record<string, unknown>, couriers);
   }
+  await enrichOrdersWithCustomerTrust(prisma, orders as Array<Record<string, unknown>>);
   res.json(orders);
 }));
 
@@ -9906,14 +10663,36 @@ app.get('/markets/:marketId/finance/couriers', wrapAsync(async (req, res) => {
   const couriers = (await repos.couriers.findAll()).filter((c) => courierMarketId(c) === marketId);
 
   const ACTIVE_STATUSES = new Set(['ASSIGNED', 'IN_PROGRESS', 'PICKED_UP']);
-  const byCourier = new Map<string, { deliveredCount: number; cashCollectedGross: number; outstandingGross: number; activeUncollectedGross: number }>();
-
+  type CourierFinanceRow = {
+    deliveredCount: number;
+    cashCollectedGross: number;
+    outstandingGross: number;
+    activeUncollectedGross: number;
+    deliveryFeesTotal: number;
+    platformCommissionTotal: number;
+    driverCollectionTotal: number;
+    outstandingCollection: number;
+    externalOrders: number;
+    appOrders: number;
+  };
+  const byCourier = new Map<string, CourierFinanceRow>();
   for (const o of orders) {
     const cid = o.courierId ?? '';
     if (!cid) continue;
     let row = byCourier.get(cid);
     if (!row) {
-      row = { deliveredCount: 0, cashCollectedGross: 0, outstandingGross: 0, activeUncollectedGross: 0 };
+      row = {
+        deliveredCount: 0,
+        cashCollectedGross: 0,
+        outstandingGross: 0,
+        activeUncollectedGross: 0,
+        deliveryFeesTotal: 0,
+        platformCommissionTotal: 0,
+        driverCollectionTotal: 0,
+        outstandingCollection: 0,
+        externalOrders: 0,
+        appOrders: 0,
+      };
       byCourier.set(cid, row);
     }
     const f = computeOrderFinancials(o);
@@ -9925,14 +10704,41 @@ app.get('/markets/:marketId/finance/couriers', wrapAsync(async (req, res) => {
       else if (isDelivered) row.outstandingGross += f.gross;
       else if (ACTIVE_STATUSES.has(deliveryStatus)) row.activeUncollectedGross += f.gross;
     }
+    // V2: Now Market collection (delivery + platform commission) — not restaurant total.
+    if (isDriverCollectionCountable(o as Record<string, unknown>)) {
+      const col = enrichOrderWithDriverCollection(o as Record<string, unknown>);
+      row.deliveryFeesTotal += col.deliveryFee;
+      row.platformCommissionTotal += col.platformCommission;
+      row.driverCollectionTotal += col.driverCollectionAmount;
+      if (col.settlementStatus === 'PENDING') {
+        row.outstandingCollection += col.driverCollectionAmount;
+      }
+      if (col.isExternal) row.externalOrders += 1;
+      else row.appOrders += 1;
+    }
   }
 
   const result = couriers.map((c) => {
-    const row = byCourier.get(c.id) ?? { deliveredCount: 0, cashCollectedGross: 0, outstandingGross: 0, activeUncollectedGross: 0 };
+    const row = (byCourier.get(c.id) ?? {
+      deliveredCount: 0,
+      cashCollectedGross: 0,
+      outstandingGross: 0,
+      activeUncollectedGross: 0,
+      deliveryFeesTotal: 0,
+      platformCommissionTotal: 0,
+      driverCollectionTotal: 0,
+      outstandingCollection: 0,
+      externalOrders: 0,
+      appOrders: 0,
+    }) as CourierFinanceRow;
     return {
       courierId: c.id,
       courierName: c.name ?? c.id,
       ...row,
+      deliveryFeesTotal: Math.round(row.deliveryFeesTotal * 100) / 100,
+      platformCommissionTotal: Math.round(row.platformCommissionTotal * 100) / 100,
+      driverCollectionTotal: Math.round(row.driverCollectionTotal * 100) / 100,
+      outstandingCollection: Math.round(row.outstandingCollection * 100) / 100,
     };
   });
   res.json(result);
@@ -10113,6 +10919,244 @@ app.post('/admin/couriers/:id/settle', wrapAsync(async (req, res) => {
   res.status(201).json(entry);
 }));
 
+// --- Driver Collections V2 (platform cash: deliveryFee + platformCommission) ---
+
+function parseCollectionDatePreset(preset: string | undefined): { from?: string; to?: string } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (preset === 'today') return { from: today, to: today };
+  if (preset === 'yesterday') {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    const y = d.toISOString().slice(0, 10);
+    return { from: y, to: y };
+  }
+  return {};
+}
+
+/** Dashboard cards — never restaurant revenue. */
+app.get('/admin/driver-collections/dashboard', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json(computeCollectionsDashboard(orders, today));
+}));
+
+/** Settlement history (append-only). */
+app.get('/admin/driver-collections/settlements', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
+  const from = req.query.from ? String(req.query.from) : undefined;
+  const to = req.query.to ? String(req.query.to) : undefined;
+  const rows = await listCollectionSettlements({ courierId, from, to });
+  const couriers = await repos.couriers.findAll();
+  const byId = new Map(couriers.map((c) => [c.id, c]));
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      courierName: byId.get(r.courierId)?.name ?? r.courierId,
+    }))
+  );
+}));
+
+/** Per-driver summaries for Super Admin driver accounting. */
+app.get('/admin/driver-collections', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const preset = req.query.preset ? String(req.query.preset) : undefined;
+  const presetRange = parseCollectionDatePreset(preset);
+  const from = req.query.from ? String(req.query.from) : presetRange.from;
+  const to = req.query.to ? String(req.query.to) : presetRange.to;
+  const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
+  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+  const settlementStatus = (req.query.settlementStatus
+    ? String(req.query.settlementStatus).toUpperCase()
+    : 'ALL') as 'PENDING' | 'SETTLED' | 'ALL';
+  const currentShift = req.query.currentShift === '1' || req.query.currentShift === 'true';
+
+  const couriers = (await repos.couriers.findAll()).map((c) => ({
+    id: c.id,
+    name: c.name,
+    marketId: courierMarketId(c),
+  }));
+  const courierIds = couriers.map((c) => c.id);
+  const shiftStarts = await listActiveShiftStarts(courierIds);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const filters = {
+    from,
+    to,
+    courierId,
+    marketId,
+    settlementStatus,
+    shiftStart: undefined as string | undefined,
+  };
+
+  // When currentShift filter: restrict each courier to their active shift window.
+  let summaries = aggregateDriverCollections(orders, couriers, {
+    filters: { ...filters, settlementStatus: 'ALL' },
+    today,
+    shiftStartByCourier: shiftStarts,
+  });
+
+  if (currentShift) {
+    summaries = summaries.map((s) => ({
+      ...s,
+      // Surface shift collection as the primary total when filtering current shift
+      driverCollectionTotal: s.currentShiftCollection,
+      deliveryFeesTotal: s.deliveryFeesTotal, // already filtered by date; shift shown separately
+    }));
+  }
+
+  if (settlementStatus === 'PENDING') {
+    summaries = summaries.filter((s) => s.outstandingCollection > 0 || s.pendingOrders > 0);
+  } else if (settlementStatus === 'SETTLED') {
+    summaries = summaries.filter((s) => s.settledOrders > 0);
+  }
+
+  res.json({
+    today,
+    filters: { from, to, courierId, marketId, settlementStatus, currentShift },
+    drivers: summaries,
+    dashboard: computeCollectionsDashboard(orders, today),
+  });
+}));
+
+/** Driver detail + order list (Driver Collection column, not Order Total). */
+app.get('/admin/driver-collections/:courierId', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const courierId = req.params.courierId;
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+
+  const preset = req.query.preset ? String(req.query.preset) : undefined;
+  const presetRange = parseCollectionDatePreset(preset);
+  const from = req.query.from ? String(req.query.from) : presetRange.from;
+  const to = req.query.to ? String(req.query.to) : presetRange.to;
+  const settlementStatus = (req.query.settlementStatus
+    ? String(req.query.settlementStatus).toUpperCase()
+    : 'ALL') as 'PENDING' | 'SETTLED' | 'ALL';
+
+  const shiftStarts = await listActiveShiftStarts([courierId]);
+  const orders = ((await repos.orders.findAll()) as Record<string, unknown>[]).filter(
+    (o) => String(o.courierId) === courierId && isDriverCollectionCountable(o)
+  );
+  const filtered = orders.filter((o) =>
+    orderMatchesCollectionFilters(o, { from, to, courierId, settlementStatus })
+  );
+  const orderRows = filtered
+    .map((o) => enrichOrderWithDriverCollection(o))
+    .sort((a, b) => (b.deliveredAt || b.createdAt || '').localeCompare(a.deliveredAt || a.createdAt || ''));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [summary] = aggregateDriverCollections(
+    orders,
+    [{ id: courier.id, name: courier.name, marketId: courierMarketId(courier) }],
+    {
+      filters: { from, to, courierId, settlementStatus: 'ALL' },
+      today,
+      shiftStartByCourier: shiftStarts,
+    }
+  );
+
+  const settlements = await listCollectionSettlements({ courierId, from, to });
+  const activeShiftStart = shiftStarts.get(courierId);
+
+  res.json({
+    courier: {
+      id: courier.id,
+      name: courier.name,
+      marketId: courierMarketId(courier),
+    },
+    summary: summary ?? null,
+    activeShiftStart: activeShiftStart ?? null,
+    orders: orderRows,
+    settlements,
+  });
+}));
+
+/** Settle pending driver collections for a courier (append-only history). */
+app.post('/admin/driver-collections/:courierId/settle', wrapAsync(async (req, res) => {
+  const user = req.user;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const courierId = req.params.courierId;
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+
+  const body = (req.body ?? {}) as {
+    orderIds?: string[];
+    settlementReference?: string;
+    settlementNotes?: string;
+    shiftLabel?: string;
+    from?: string;
+    to?: string;
+  };
+
+  let orders = ((await repos.orders.findAll()) as Record<string, unknown>[]).filter(
+    (o) => String(o.courierId) === courierId && isDriverCollectionCountable(o)
+  );
+  if (body.from || body.to) {
+    orders = orders.filter((o) =>
+      orderMatchesCollectionFilters(o, {
+        courierId,
+        from: body.from,
+        to: body.to,
+        settlementStatus: 'PENDING',
+      })
+    );
+  } else {
+    orders = orders.filter(
+      (o) => enrichOrderWithDriverCollection(o).settlementStatus === 'PENDING'
+    );
+  }
+  if (Array.isArray(body.orderIds) && body.orderIds.length > 0) {
+    const allow = new Set(body.orderIds.map(String));
+    orders = orders.filter((o) => allow.has(String(o.id)));
+  }
+
+  try {
+    const { settlement, updatedOrders } = await createDriverCollectionSettlement({
+      courierId,
+      marketId: courierMarketId(courier),
+      orders,
+      settledBy: user.id,
+      settlementReference: body.settlementReference,
+      settlementNotes: body.settlementNotes,
+      shiftLabel: body.shiftLabel,
+    });
+    for (const o of updatedOrders) {
+      await repos.orders.update(o as Parameters<typeof repos.orders.update>[0]);
+    }
+    res.status(201).json({
+      settlement,
+      courierName: courier.name,
+      amount: settlement.amount,
+      ordersCount: settlement.ordersCount,
+    });
+  } catch (e) {
+    const err = e as Error & { code?: string };
+    if (err.code === 'NO_PENDING_ORDERS') {
+      return res.status(400).json({ error: err.message, code: err.code });
+    }
+    throw e;
+  }
+}));
+
 /** Super Admin: driver payroll finance rollup. */
 app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
   const user = req.user;
@@ -10155,6 +11199,58 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
     computePlatformPayrollSummary(courierIds),
   ]);
   res.json({ from, to, platformSummary, drivers: rows });
+}));
+
+/** Super Admin: per-store Now Market profit report (commission + delivery fees). */
+app.get('/admin/store-profit-report', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const period = String(req.query.period ?? 'week');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+  const tenantId = req.query.tenantId ? String(req.query.tenantId) : undefined;
+  const { from, to } = parseStoreProfitDateRange(period, fromQ, toQ);
+  const [orders, tenants] = await Promise.all([
+    repos.orders.findAll(),
+    repos.tenants.findAll(),
+  ]);
+  const report = computeStoreProfitReport({
+    orders: orders as Record<string, unknown>[],
+    tenants: tenants as { id?: string; name?: string; marketId?: string }[],
+    from,
+    to,
+    marketId,
+    tenantId,
+  });
+  res.json(report);
+}));
+
+/** Super Admin: store profit breakdown by day/week/month for one tenant. */
+app.get('/admin/store-profit-report/:tenantId/breakdown', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const { tenantId } = req.params;
+  const tenant = (await repos.tenants.findAll()).find((t) => t.id === tenantId);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  const period = String(req.query.period ?? 'month');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const granularityRaw = String(req.query.granularity ?? 'day').toLowerCase();
+  const granularity = granularityRaw === 'week' || granularityRaw === 'month' ? granularityRaw : 'day';
+  const { from, to } = parseStoreProfitDateRange(period, fromQ, toQ);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const breakdown = computeStoreProfitBreakdown({ orders, tenantId, from, to, granularity });
+  res.json({
+    tenantId,
+    storeName: tenant.name ?? tenantId,
+    from,
+    to,
+    granularity,
+    breakdown,
+  });
 }));
 
 /** Super Admin: tenant driver commission overrides. */
@@ -10851,6 +11947,7 @@ app.get('/app-config', (_req, res) => {
       forceUpdateMessageAr: 'يرجى تحديث التطبيق للاستمرار',
       optionalUpdateMessageAr: 'يتوفر تحديث جديد للتطبيق',
     },
+    support: getSupportConfig(),
   });
 });
 
@@ -10969,6 +12066,7 @@ const DATA_FILE_PATH = process.env.DATA_FILE || join(process.cwd(), 'data.json')
     if (storageDriver === 'json') {
       console.log(`DATA_FILE=${DATA_FILE_PATH} — ensure process has write permission so admin email and other updates persist.`);
     }
+    orderSubmissionPoller.start();
     console.log('[OTP-ENV] dotenv/process.env OTP-related keys:', {
       WHATSAPP_API_URL: (process.env.WHATSAPP_API_URL || '').slice(0, 56) || '(unset)',
       WHATSAPP_TOKEN_set: !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_TOKEN.length > 0),

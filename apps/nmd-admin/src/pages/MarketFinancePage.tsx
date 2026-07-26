@@ -51,6 +51,12 @@ type FinanceCourierRow = {
   cashCollectedGross: number;
   outstandingGross: number;
   activeUncollectedGross?: number;
+  deliveryFeesTotal?: number;
+  platformCommissionTotal?: number;
+  driverCollectionTotal?: number;
+  outstandingCollection?: number;
+  externalOrders?: number;
+  appOrders?: number;
 };
 
 function exportTenantsCsv(tenants: FinanceTenantRow[], from?: string, to?: string): void {
@@ -320,9 +326,10 @@ export default function MarketFinancePage() {
                   <tr>
                     <th className="px-4 py-3 text-start font-medium text-gray-700">السائق</th>
                     <th className="px-4 py-3 text-end font-medium text-gray-700">تم التسليم</th>
-                    <th className="px-4 py-3 text-end font-medium text-gray-700">نقداً محصل</th>
-                    <th className="px-4 py-3 text-end font-medium text-gray-700">نقداً معلق</th>
-                    <th className="px-4 py-3 text-end font-medium text-gray-700">قيد التوصيل</th>
+                    <th className="px-4 py-3 text-end font-medium text-gray-700">رسوم التوصيل</th>
+                    <th className="px-4 py-3 text-end font-medium text-gray-700">عمولة المنصة</th>
+                    <th className="px-4 py-3 text-end font-medium text-gray-700">تحصيل السائق</th>
+                    <th className="px-4 py-3 text-end font-medium text-gray-700">معلّق (تحصيل)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -330,9 +337,14 @@ export default function MarketFinancePage() {
                     <tr key={c.courierId} className="border-t border-gray-100">
                       <td className="px-4 py-3 font-medium">{c.courierName}</td>
                       <td className="px-4 py-3 text-end">{c.deliveredCount}</td>
-                      <td className="px-4 py-3 text-end text-emerald-600">{formatMoney(c.cashCollectedGross)}</td>
-                      <td className="px-4 py-3 text-end text-amber-600">{formatMoney(c.outstandingGross)}</td>
-                      <td className="px-4 py-3 text-end text-blue-600">{formatMoney(c.activeUncollectedGross ?? 0)}</td>
+                      <td className="px-4 py-3 text-end">{formatMoney(c.deliveryFeesTotal ?? 0)}</td>
+                      <td className="px-4 py-3 text-end">{formatMoney(c.platformCommissionTotal ?? 0)}</td>
+                      <td className="px-4 py-3 text-end font-semibold text-teal-800">
+                        {formatMoney(c.driverCollectionTotal ?? 0)}
+                      </td>
+                      <td className="px-4 py-3 text-end text-amber-600">
+                        {formatMoney(c.outstandingCollection ?? 0)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

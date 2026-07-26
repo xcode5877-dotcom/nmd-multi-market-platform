@@ -7,6 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- Measurement V2 (catalog) ---
+// API serializes base/display unit codes as lowercase (kg, g, l, …).
+// Prisma stores uppercase enum values. Repositories map at the boundary.
+enum MeasurementType {
+  PIECE
+  WEIGHT
+  VOLUME
+  PACKAGE
+}
+
+enum BaseUnitCode {
+  KG
+  L
+  PIECE
+  PACK
+  BOX
+  BUNDLE
+}
+
+enum DisplayUnitCode {
+  KG
+  G
+  L
+  ML
+  PIECE
+  PACK
+  BOX
+  BUNDLE
+}
+
+enum PriceBasis {
+  PER_BASE_UNIT
+}
+
 model Market {
   id                  String  @id
   name                String
@@ -71,6 +105,8 @@ model Tenant {
   meta                       String? // JSON: _meta from import (e.g. emergencyReason)
   pillarId                   String? // pillar (category) for market section filtering (e.g. Restaurants, Services)
   subCategoryId              String? // sub-category under pillar
+  // UI enablement / defaults for new weight products. Never hides existing non-PIECE products.
+  supportsWeightSelling      Boolean  @default(false)
 }
 
 model User {
@@ -125,6 +161,86 @@ model Customer {
   createdAt         String
   fcmTokens         CustomerFCMToken[]
   rewardRedemptions RewardRedemption[]
+  trustProfile      CustomerTrustProfile?
+  trustIncidents    CustomerTrustIncident[]
+  trustAuditLogs    CustomerTrustAuditLog[]
+  trustOrderAcks    CustomerTrustOrderAck[]
+}
+
+/// Current trust/risk profile for a customer. Independent from account auth status.
+model CustomerTrustProfile {
+  id                      String    @id @default(uuid())
+  customerId              String    @unique
+  customer                Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// NORMAL | NOTICE | CONFIRMATION_REQUIRED | HIGH_RISK | BLOCKED_COD
+  riskLevel               String    @default("NORMAL")
+  /// ACTIVE | EXPIRED | CLEARED
+  status                  String    @default("ACTIVE")
+  requiresConfirmation    Boolean   @default(false)
+  cashOnDeliveryAllowed   Boolean   @default(true)
+  active                  Boolean   @default(true)
+  expiresAt               String?
+  createdAt               String
+  updatedAt               String
+  lastIncidentAt          String?
+  createdBy               String?
+  updatedBy               String?
+
+  @@index([riskLevel])
+  @@index([status])
+  @@index([requiresConfirmation])
+  @@index([cashOnDeliveryAllowed])
+}
+
+/// Append-only trust incidents. Never edit historical rows.
+model CustomerTrustIncident {
+  id           String   @id @default(uuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId      String?
+  incidentType String
+  severity     String
+  note         String?
+  createdBy    String
+  createdAt    String
+  resolved     Boolean  @default(false)
+  resolvedBy   String?
+  resolvedAt   String?
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([incidentType])
+  @@index([createdAt])
+  @@index([resolved])
+}
+
+/// Immutable audit trail for trust actions (who/what/old/new/when).
+model CustomerTrustAuditLog {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  action     String
+  actorId    String
+  actorRole  String
+  oldValue   String? // JSON
+  newValue   String? // JSON
+  createdAt  String
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+/// Merchant/admin ack that a risky customer was confirmed for a specific order.
+model CustomerTrustOrderAck {
+  id          String   @id @default(uuid())
+  orderId     String   @unique
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  confirmedBy String
+  confirmedAt String
+
+  @@index([customerId])
 }
 
 // FCM tokens for customer push (Android app). One row per device; link by customerId.
@@ -154,7 +270,52 @@ model Order {
   isExternal          Boolean  @default(false) // manual driver-entered delivery (off-app)
   externalDestination String? // city / village label
   manualStoreName     String? // free-text store name when no tenant/store was selected
+  /// Customer editing window: merchant submit scheduled at (null = legacy / delay-0 path uses now).
+  submissionScheduledAt DateTime?
+  /// Set atomically when merchant notify runs once. Both timestamps null = legacy visible.
+  submittedAt           DateTime?
+  revision              Int       @default(0)
+  cancelledBeforeSubmission Boolean @default(false)
   paymentRecord       Payment?
+  modifications       OrderModification[]
+
+  @@index([submittedAt, submissionScheduledAt])
+}
+
+/// Append-only Super Admin order modification trail (immutable; no update/delete APIs).
+model OrderModification {
+  id             String @id
+  orderId        String
+  revisionNumber Int
+  actorId        String
+  actorRole      String
+  actorEmail     String?
+  action         String
+  reason         String
+  reasonDetail   String?
+  beforeSnapshot String // JSON financial + items snapshot
+  afterSnapshot  String // JSON financial + items snapshot
+  subtotalBefore Float
+  subtotalAfter  Float
+  totalBefore    Float
+  totalAfter     Float
+  priceDelta     Float
+  createdAt      String
+  order          Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, revisionNumber])
+  @@index([orderId, createdAt])
+}
+
+/// Idempotency keys for PATCH /admin/orders/:id/manage (prevents double-apply on retry).
+model OrderManageIdempotency {
+  key          String @id
+  orderId      String
+  requestHash  String
+  responseJson String
+  createdAt    String
+
+  @@index([orderId])
 }
 
 /// Per-courier payroll configuration (Phase 1 — tracking only).
@@ -270,6 +431,30 @@ model DriverPayrollAudit {
   @@index([createdAt])
 }
 
+/// Append-only Super Admin driver collection settlements (platform cash only).
+/// driverCollectionAmount is derived on orders; this stores settlement history.
+model DriverCollectionSettlement {
+  id                       String  @id
+  courierId                String
+  marketId                 String?
+  amount                   Float
+  deliveryFeesTotal        Float
+  platformCommissionTotal  Float
+  ordersCount              Int
+  orderIds                 String // JSON string[]
+  shiftLabel               String?
+  status                   String  @default("SETTLED")
+  settledAt                String
+  settledBy                String
+  settlementReference      String?
+  settlementNotes          String?
+  createdAt                String
+
+  @@index([courierId])
+  @@index([settledAt])
+  @@index([marketId])
+}
+
 // --- Payments (cash-first, card-ready; no gateway integration yet) ---
 model Payment {
   id          String  @id
@@ -362,6 +547,17 @@ model CatalogProduct {
   isArchived   Boolean? @default(false)
   sortOrder    Int?     @default(0)
 
+  // Measurement V2 — quantities in base units; displayUnitCode/displayPrecision formatting only
+  measurementType    MeasurementType @default(PIECE)
+  baseUnitCode       BaseUnitCode    @default(PIECE)
+  displayUnitCode    DisplayUnitCode @default(PIECE)
+  quantityStep       Decimal         @default(1) @db.Decimal(12, 3)
+  minimumQuantity    Decimal         @default(1) @db.Decimal(12, 3)
+  maximumQuantity    Decimal?        @db.Decimal(12, 3)
+  priceBasis         PriceBasis      @default(PER_BASE_UNIT)
+  measurementVersion Int             @default(1)
+  displayPrecision   Int?
+
   @@index([tenantId])
   @@index([tenantId, categoryId])
 }
@@ -426,6 +622,7 @@ model Contest {
   coinsCost      Int                    @default(0)
   createdAt      String
   participations ContestParticipation[]
+  draws          ContestDraw[]
 }
 
 model ContestParticipation {
@@ -442,6 +639,38 @@ model ContestParticipation {
   @@unique([customerId, contestId])
   @@index([contestId])
   @@index([customerId])
+}
+
+/// Permanent audit log for promotional contest draws (Super Admin only). Never delete rows.
+model ContestDraw {
+  id                        String   @id
+  contestId                 String
+  contest                   Contest  @relation(fields: [contestId], references: [id], onDelete: Restrict)
+  winnerCustomerId          String
+  winnerParticipationId     String
+  winnerNameSnapshot        String
+  winnerPhoneSnapshot       String
+  participantsCount         Int
+  eligibleParticipantsCount Int
+  performedByUserId         String
+  performedByRole           String
+  randomIndex               Int
+  randomMethod              String // e.g. crypto.randomInt
+  status                    String // PENDING_CONFIRMATION | CONFIRMED | CANCELLED
+  createdAt                 String
+  confirmedAt               String?
+  confirmationBy            String?
+  cancelReason              String?
+  cancelledAt               String?
+  cancelledBy               String?
+  metadata                  String? // JSON: participantsHash, requestId, algorithmVersion, serverTimestamp
+  notificationSent          Boolean  @default(false)
+  notificationError         String?
+
+  @@index([contestId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([winnerCustomerId])
 }
 
 // --- Wheel Prizes (Lucky Wheel; admin-managed segments) ---

@@ -21,9 +21,18 @@
     "verify:admin-permissions": "tsx scripts/verify-admin-permissions.ts",
     "verify:dispatch-permissions": "tsx scripts/verify-dispatch-permissions.ts",
     "verify:participant-preservation": "tsx scripts/verify-participant-preservation.ts",
+    "verify:contest-draws": "tsx scripts/verify-contest-draws.ts",
     "verify:delivery-status-sync": "tsx scripts/verify-delivery-status-sync.ts",
     "verify:courier-payroll": "tsx scripts/verify-courier-payroll.ts",
     "verify:courier-payroll-phase2": "tsx scripts/verify-courier-payroll-phase2.ts",
+    "verify:driver-collections": "tsx scripts/verify-driver-collections.ts",
+    "verify:store-profit-report": "tsx scripts/verify-store-profit-report.ts",
+    "verify:customer-default-town": "tsx scripts/verify-customer-default-town.ts",
+    "verify:order-submission-gate": "tsx scripts/verify-order-submission-gate.ts",
+    "verify:order-management": "tsx scripts/verify-order-management.ts",
+    "verify:order-visibility": "tsx scripts/verify-order-visibility.ts",
+    "verify:measurement-v2": "tsx scripts/verify-measurement-v2.ts",
+    "verify:customer-trust": "tsx scripts/verify-customer-trust.ts",
     "report:stuck-courier-orders": "tsx scripts/report-stuck-courier-orders.ts"
   },
   "prisma": {

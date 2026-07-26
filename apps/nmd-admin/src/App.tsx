@@ -36,6 +36,7 @@ const MarketPlatformFeePage = lazy(() => import('./pages/MarketPlatformFeePage')
 const PlatformFeesOverviewPage = lazy(() => import('./pages/PlatformFeesOverviewPage'));
 const StoreSettlementPage = lazy(() => import('./pages/StoreSettlementPage'));
 const MarketplaceEconomicsPage = lazy(() => import('./pages/MarketplaceEconomicsPage'));
+const StoreProfitReportPage = lazy(() => import('./pages/StoreProfitReportPage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
 const PillarCategoryManagerPage = lazy(() => import('./pages/PillarCategoryManagerPage'));
@@ -55,6 +56,7 @@ const DriversReportsHubPage = lazy(() => import('./pages/drivers/DriversReportsH
 const DriversFinanceHubPage = lazy(() => import('./pages/drivers/DriversFinanceHubPage'));
 const DriversMarketsHubPage = lazy(() => import('./pages/drivers/DriversMarketsHubPage'));
 const DriversCouriersPage = lazy(() => import('./pages/drivers/DriversCouriersPage'));
+const DriverCollectionsPage = lazy(() => import('./pages/drivers/DriverCollectionsPage'));
 const DriverPayrollFinancePage = lazy(() => import('./pages/drivers/DriverPayrollFinancePage'));
 const DriverStatementPage = lazy(() => import('./pages/drivers/DriverStatementPage'));
 const PayrollSettlementHistoryPage = lazy(() => import('./pages/drivers/PayrollSettlementHistoryPage'));
@@ -98,6 +100,7 @@ function Content() {
         <Route path="tenants" element={<RedirectMarketAdminToTenants><TenantsPage /></RedirectMarketAdminToTenants>} />
         <Route path="platform-fees" element={<RootOnlyRoute><PlatformFeesOverviewPage /></RootOnlyRoute>} />
         <Route path="economics" element={<RootOnlyRoute><MarketplaceEconomicsPage /></RootOnlyRoute>} />
+        <Route path="store-profit-report" element={<RootOnlyRoute><StoreProfitReportPage /></RootOnlyRoute>} />
         <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
         <Route path="pillars" element={<RootOnlyRoute><PillarCategoryManagerPage /></RootOnlyRoute>} />
         <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />
@@ -125,6 +128,8 @@ function Content() {
         <Route path="drivers" element={<RootOnlyRoute><DriversSectionLayout /></RootOnlyRoute>}>
           <Route index element={<DriversHubPage />} />
           <Route path="couriers" element={<DriversCouriersPage />} />
+          <Route path="collections" element={<DriverCollectionsPage />} />
+          <Route path="collections/:driverId" element={<DriverCollectionsPage />} />
           <Route path="reports" element={<DriversReportsHubPage />} />
           <Route path="finance" element={<DriversFinanceHubPage />} />
           <Route path="payroll-finance" element={<DriverPayrollFinancePage />} />

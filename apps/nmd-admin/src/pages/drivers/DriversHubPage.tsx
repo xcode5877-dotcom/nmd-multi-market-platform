@@ -101,11 +101,18 @@ export default function DriversHubPage() {
           <p className="text-xs text-gray-500 mt-1">تقرير عالمي للطلبات اليدوية من السائقين</p>
         </Link>
         <Link
+          to="/drivers/collections"
+          className="p-4 rounded-xl border border-teal-200 bg-teal-50/40 hover:border-teal-400 hover:shadow-sm transition-shadow"
+        >
+          <p className="font-medium text-gray-900">تحصيل السائقين</p>
+          <p className="text-xs text-gray-500 mt-2">رسوم التوصيل + عمولة المنصة — بدون إيراد المطعم</p>
+        </Link>
+        <Link
           to="/drivers/finance"
           className="p-4 rounded-xl border border-gray-200 bg-white hover:border-teal-300 hover:shadow-sm transition-shadow"
         >
           <p className="font-medium text-gray-900">التسويات المالية</p>
-          <p className="text-xs text-gray-500 mt-2">ملخص نقدي وكوبا لكل سوق</p>
+          <p className="text-xs text-gray-500 mt-2">ملخص تحصيل المنصة حسب السائق</p>
         </Link>
         <Link
           to="/drivers/reports"

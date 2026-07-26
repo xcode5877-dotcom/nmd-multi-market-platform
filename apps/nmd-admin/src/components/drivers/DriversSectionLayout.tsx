@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Wallet, Store, Package, UserCog, CircleDollarSign } from 'lucide-react';
+import { LayoutDashboard, FileText, Wallet, Store, Package, UserCog, CircleDollarSign, Banknote } from 'lucide-react';
 
 const SUB_LINKS = [
   { to: '/drivers', label: 'لوحة التوصيل', icon: LayoutDashboard, end: true },
   { to: '/drivers/couriers', label: 'إدارة السائقين', icon: UserCog, end: true },
+  { to: '/drivers/collections', label: 'تحصيل السائقين', icon: Banknote, end: false },
   { to: '/drivers/markets', label: 'الأسواق والتوصيل', icon: Store, end: true },
   { to: '/drivers/reports', label: 'التقارير', icon: FileText, end: true },
   { to: '/drivers/finance', label: 'التسويات المالية', icon: Wallet, end: true },
