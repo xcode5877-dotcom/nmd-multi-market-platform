@@ -1,8 +1,11 @@
 /**
  * Phase B.1 — server-authoritative order line resolution (quantity, price, snapshots).
  *
- * Modifier rule (existing domain): option priceDelta is per base unit, then × quantity.
- * Campaigns: applied to unit price when available (PERCENT/FIXED), matching core applyCampaign.
+ * Modifier rules (explicit):
+ * - PIECE/PACKAGE: legacy — (basePrice + optionDeltas) × quantity.
+ * - WEIGHT/VOLUME: product = basePrice × quantity; optionDeltas are fixed per line
+ *   (not multiplied by kg/litre). Example: 40×0.5 + 3 = 23.
+ * Campaigns: applied to the product unit before × quantity (not to fixed modifiers).
  * Stock: integer CatalogProduct.stock with WEIGHT/VOLUME → WEIGHTED_STOCK_NOT_SUPPORTED.
  *         null/undefined stock → untracked (allowed).
  */
@@ -293,15 +296,37 @@ export function resolveAuthoritativeOrderLines(input: {
     }
 
     const optionDelta = resolveOptionUnitDelta(product, client.selectedOptions, catalogGroups);
-    let unitPrice = Math.round((catalogBase + optionDelta) * 100) / 100;
+    const isWeightVol =
+      measurement.measurementType === 'WEIGHT' || measurement.measurementType === 'VOLUME';
 
-    const campaignResult = applyCampaign(unitPrice, campaigns, productId, product.categoryId);
-    if (campaignResult.discount > 0) {
-      unitPrice = Math.round((unitPrice - campaignResult.discount) * 100) / 100;
-      if (unitPrice < 0) unitPrice = 0;
+    let productUnit = Math.round(catalogBase * 100) / 100;
+    let modifierLine = 0;
+    let unitPrice: number;
+    let lineSubtotal: number;
+
+    if (isWeightVol) {
+      // Fixed per-line modifiers — do not multiply option deltas by kg/litre.
+      const campaignResult = applyCampaign(productUnit, campaigns, productId, product.categoryId);
+      if (campaignResult.discount > 0) {
+        productUnit = Math.round((productUnit - campaignResult.discount) * 100) / 100;
+        if (productUnit < 0) productUnit = 0;
+      }
+      modifierLine = Math.round(optionDelta * 100) / 100;
+      const productComponent = calculateLineSubtotal(productUnit, qty.normalized);
+      lineSubtotal = Math.round((productComponent + modifierLine) * 100) / 100;
+      unitPrice = productUnit;
+    } else {
+      // Legacy PIECE/PACKAGE: options are per-unit, then × quantity.
+      unitPrice = Math.round((catalogBase + optionDelta) * 100) / 100;
+      const campaignResult = applyCampaign(unitPrice, campaigns, productId, product.categoryId);
+      if (campaignResult.discount > 0) {
+        unitPrice = Math.round((unitPrice - campaignResult.discount) * 100) / 100;
+        if (unitPrice < 0) unitPrice = 0;
+      }
+      modifierLine = 0;
+      lineSubtotal = calculateLineSubtotal(unitPrice, qty.normalized);
     }
 
-    const lineSubtotal = calculateLineSubtotal(unitPrice, qty.normalized);
     const lineAgora = Math.round(lineSubtotal * 100);
     subtotalAgora += lineAgora;
     feeItemCount += feeBillableItemUnits(measurement.measurementType, qty.milli);
@@ -321,6 +346,7 @@ export function resolveAuthoritativeOrderLines(input: {
       quantityMilli: qty.milli,
       basePrice: Math.round(catalogBase * 100) / 100,
       unitPrice,
+      modifierLine,
       lineSubtotal,
     });
 
@@ -382,6 +408,13 @@ export function validateExistingLineQuantityChange(
   const unitPrice = Number(
     existingLine.unitPriceSnapshot ?? existingLine.basePriceSnapshot ?? existingLine.basePrice ?? 0
   );
-  const lineSubtotal = calculateLineSubtotal(unitPrice, qty.normalized);
+  const modifierLine = Number(existingLine.modifierLineSnapshot ?? 0) || 0;
+  const isWeightVol =
+    measurement.measurementType === 'WEIGHT' || measurement.measurementType === 'VOLUME';
+  // Existing line: preserve snapshots — WEIGHT adds fixed modifierLineSnapshot; PIECE has it baked in unit.
+  const productComponent = calculateLineSubtotal(unitPrice, qty.normalized);
+  const lineSubtotal = isWeightVol
+    ? Math.round((productComponent + modifierLine) * 100) / 100
+    : productComponent;
   return { ok: true, quantityMilli: qty.milli, normalized: qty.normalized, measurement, lineSubtotal };
 }

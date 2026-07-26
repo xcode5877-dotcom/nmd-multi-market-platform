@@ -53,5 +53,7 @@ export interface CartItem {
   displayPrecisionSnapshot?: number | null;
   basePriceSnapshot?: number;
   unitPriceSnapshot?: number;
+  /** Fixed per-line modifiers for WEIGHT/VOLUME; 0 when baked into unit (PIECE). */
+  modifierLineSnapshot?: number;
   lineSubtotalSnapshot?: number;
 }

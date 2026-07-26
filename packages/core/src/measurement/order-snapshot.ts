@@ -32,8 +32,17 @@ export interface OrderLineMeasurementSnapshot {
 export interface OrderLinePricingSnapshot {
   /** Authoritative catalog base price at create (per base unit), shekels. */
   basePriceSnapshot: number;
-  /** Authoritative unit price after options (per base unit), shekels. */
+  /**
+   * Product unit price used for × quantity (shekels / base unit).
+   * PIECE/PACKAGE: includes option deltas (legacy).
+   * WEIGHT/VOLUME: product unit only — options are modifierLineSnapshot (fixed per line).
+   */
   unitPriceSnapshot: number;
+  /**
+   * Fixed per-line modifier total (shekels). Non-zero for WEIGHT/VOLUME when options selected.
+   * PIECE/PACKAGE: 0 (options already baked into unitPriceSnapshot).
+   */
+  modifierLineSnapshot: number;
   /** Authoritative line subtotal, shekels. */
   lineSubtotalSnapshot: number;
 }
@@ -137,6 +146,7 @@ export function coerceOrderLineSnapshots(
     displayPrecisionSnapshot: piece.displayPrecision,
     basePriceSnapshot: safeBase,
     unitPriceSnapshot: unitFromTotal,
+    modifierLineSnapshot: Number(item.modifierLineSnapshot) || 0,
     lineSubtotalSnapshot: safeTotal,
     isWeightBased: false,
     unitName: item.unitName ?? 'حبة',
@@ -148,9 +158,10 @@ export function buildAuthoritativeLineFields(input: {
   quantityMilli: number;
   basePrice: number;
   unitPrice: number;
+  modifierLine: number;
   lineSubtotal: number;
 }): AuthoritativeOrderLineFields {
-  const { measurement, quantityMilli, basePrice, unitPrice, lineSubtotal } = input;
+  const { measurement, quantityMilli, basePrice, unitPrice, modifierLine, lineSubtotal } = input;
   const quantityDecimal = serializeOrderQuantity(quantityMilli);
   const isWeight =
     measurement.measurementType === 'WEIGHT' || measurement.measurementType === 'VOLUME';
@@ -163,6 +174,7 @@ export function buildAuthoritativeLineFields(input: {
     ...measurementToSnapshot(measurement),
     basePriceSnapshot: basePrice,
     unitPriceSnapshot: unitPrice,
+    modifierLineSnapshot: Math.round(modifierLine * 100) / 100,
     lineSubtotalSnapshot: lineSubtotal,
     quantityDecimal,
     quantity,

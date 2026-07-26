@@ -147,6 +147,7 @@ console.log('\n=== B.1 Snapshots ===\n');
     quantityMilli: 250,
     basePrice: 40,
     unitPrice: 40,
+    modifierLine: 0,
     lineSubtotal: 10,
   });
   check(fields.quantityDecimal === '0.25', 'snapshot qty decimal');
@@ -310,6 +311,110 @@ console.log('\n=== B.1 Authoritative resolve lines ===\n');
     endpoint: 'test',
   });
   check(pieceOnly.ok === true && pieceOnly.ok && pieceOnly.subtotal === 24, 'legacy PIECE 3×8=24');
+
+  // Modifier gate: WEIGHT fixed per line; PIECE multiplied
+  const withMods = {
+    ...catalog,
+    products: [
+      ...catalog.products,
+      {
+        id: 'pw-mod',
+        tenantId: 't1',
+        categoryId: 'c1',
+        name: 'Tomato Mod',
+        slug: 'tomato-mod',
+        type: 'SIMPLE',
+        basePrice: 40,
+        currency: 'ILS',
+        isAvailable: true,
+        measurementType: 'WEIGHT',
+        baseUnitCode: 'kg',
+        displayUnitCode: 'g',
+        quantityStep: '0.25',
+        minimumQuantity: '0.25',
+        maximumQuantity: '10',
+        priceBasis: 'PER_BASE_UNIT',
+        measurementVersion: 1,
+        optionGroups: [
+          {
+            id: 'og1',
+            items: [{ id: 'oi1', priceDelta: 3 }],
+          },
+        ],
+      },
+      {
+        id: 'pp-mod',
+        tenantId: 't1',
+        categoryId: 'c1',
+        name: 'Can Mod',
+        slug: 'can-mod',
+        type: 'SIMPLE',
+        basePrice: 8,
+        currency: 'ILS',
+        isAvailable: true,
+        optionGroups: [
+          {
+            id: 'og2',
+            items: [{ id: 'oi2', priceDelta: 3 }],
+          },
+        ],
+      },
+    ],
+  };
+  const wMod = resolveAuthoritativeOrderLines({
+    tenantId: 't1',
+    supportsWeightSelling: true,
+    catalog: withMods as never,
+    clientLines: [
+      {
+        productId: 'pw-mod',
+        quantity: '0.5',
+        selectedOptions: [{ optionGroupId: 'og1', optionItemIds: ['oi1'] }],
+      },
+    ],
+    endpoint: 'test',
+  });
+  check(
+    wMod.ok === true && wMod.ok && wMod.subtotal === 23 && wMod.lines[0]!.modifierLineSnapshot === 3,
+    'WEIGHT 40×0.5 + fixed modifier 3 = 23 (not 21.5)'
+  );
+  const pMod = resolveAuthoritativeOrderLines({
+    tenantId: 't1',
+    supportsWeightSelling: false,
+    catalog: withMods as never,
+    clientLines: [
+      {
+        productId: 'pp-mod',
+        quantity: 3,
+        selectedOptions: [{ optionGroupId: 'og2', optionItemIds: ['oi2'] }],
+      },
+    ],
+    endpoint: 'test',
+  });
+  check(
+    pMod.ok === true && pMod.ok && pMod.subtotal === 33 && pMod.lines[0]!.modifierLineSnapshot === 0,
+    'PIECE (8+3)×3 = 33 legacy unchanged'
+  );
+
+  // Snapshot immutability: catalog change must not affect existing-line validation price
+  const snapLine = {
+    productId: 'p1',
+    unitPriceSnapshot: 40,
+    modifierLineSnapshot: 3,
+    measurementTypeSnapshot: 'WEIGHT',
+    baseUnitCodeSnapshot: 'kg',
+    displayUnitCodeSnapshot: 'g',
+    quantityStepSnapshot: '0.25',
+    minimumQuantitySnapshot: '0.25',
+    maximumQuantitySnapshot: '10',
+    priceBasisSnapshot: 'PER_BASE_UNIT',
+    measurementVersionSnapshot: 1,
+  };
+  const editWithMod = validateExistingLineQuantityChange(snapLine, '0.5');
+  check(
+    editWithMod.ok === true && editWithMod.ok && editWithMod.lineSubtotal === 23,
+    'edit existing WEIGHT uses snapshot 40×0.5 + modifierLine 3 = 23'
+  );
 }
 
 console.log('\n=== B.1 serialize ===\n');
