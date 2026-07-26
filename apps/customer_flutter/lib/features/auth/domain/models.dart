@@ -10,12 +10,23 @@ class OtpStartResult {
     this.sentVia,
     this.devCode,
     this.error,
+    this.deliveryFailed = false,
   });
 
   final bool ok;
   final String? sentVia;
   final String? devCode;
   final String? error;
+  final bool deliveryFailed;
+
+  /// True when the server accepted the request and a delivery channel (or
+  /// approved bypass) actually succeeded.
+  bool get deliveredSuccessfully {
+    if (!ok || deliveryFailed) return false;
+    final via = sentVia?.trim().toLowerCase();
+    if (via == null || via.isEmpty || via == 'none') return false;
+    return true;
+  }
 }
 
 class OtpVerifyResult {

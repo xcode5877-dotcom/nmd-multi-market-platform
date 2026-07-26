@@ -42,18 +42,32 @@ class AuthRemoteDataSource {
   Future<OtpStartResult> startOtp(String phone) async {
     final payload = <String, dynamic>{'phone': phone};
     nmdDebugLog('[AuthRemoteDataSource] startOtp request body: $payload');
-    final response = await _dio.post<Map<String, dynamic>>(
-      '/customer/auth/start',
-      data: payload,
-      options: Options(
-          headers: const {'Accept': 'application/json, text/plain, */*'}),
-    );
-    final data = response.data ?? <String, dynamic>{};
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/customer/auth/start',
+        data: payload,
+        options: Options(
+            headers: const {'Accept': 'application/json, text/plain, */*'}),
+      );
+      return _otpStartFromJson(response.data);
+    } on DioException catch (e) {
+      // Delivery failure is returned as HTTP 503 with a structured body.
+      final data = e.response?.data;
+      if (data is Map) {
+        return _otpStartFromJson(Map<String, dynamic>.from(data));
+      }
+      rethrow;
+    }
+  }
+
+  OtpStartResult _otpStartFromJson(Map<String, dynamic>? data) {
+    final map = data ?? <String, dynamic>{};
     return OtpStartResult(
-      ok: data['ok'] == true,
-      sentVia: data['sentVia']?.toString(),
-      devCode: data['devCode']?.toString(),
-      error: data['error']?.toString(),
+      ok: map['ok'] == true,
+      sentVia: map['sentVia']?.toString(),
+      devCode: map['devCode']?.toString(),
+      error: map['error']?.toString() ?? map['deliveryError']?.toString(),
+      deliveryFailed: map['deliveryFailed'] == true,
     );
   }
 

@@ -172,6 +172,7 @@ import {
   verifyHypResponseMac,
 } from './hyp-service.js';
 import { sendOtpViaExternalWhatsAppApi } from './services/externalWhatsAppOtp.js';
+import { buildOtpStartClientResponse } from './otp-start-response.js';
 import { aggregateMerchantStats, dateRangeForMerchant, orderPaymentChannel, type MerchantTimeRange } from './merchant-stats.js';
 import {
   computePlatformFee,
@@ -1873,32 +1874,22 @@ app.post('/customer/auth/start', async (req, res) => {
     logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_and_sms_failed');
   }
 
-  if (result.devCode) console.log('[customer/auth/start] 200 → OTP sent (see [OTP] log above or client toast)');
-  const sentVia = playReview
-    ? 'play_review'
-    : whatsAppSent && smsSent
-      ? 'both'
-      : whatsAppSent
-        ? 'whatsapp'
-        : smsSent
-          ? 'sms'
-          : 'none';
-  const deliveryOk = whatsAppSent || smsSent;
-  const mockOrDevCode = Boolean(result.devCode);
-  const clientSeesSuccess = deliveryOk || mockOrDevCode || playReview;
-  res.json({
-    ok: true,
-    whatsAppSent: clientSeesSuccess, // true if WA/SMS worked OR dev/fixed MOCK_OTP exposes devCode
+  const { httpStatus, body } = buildOtpStartClientResponse({
+    playReview,
+    whatsAppSent,
     smsSent,
-    sentVia,
-    ...(!deliveryOk &&
-      !mockOrDevCode && {
-        deliveryFailed: true,
-        deliveryError: whatsAppError || 'OTP delivery failed',
-        hint: 'OTP logged to server console and otp-debug.log if configured',
-      }),
-    ...(result.devCode && { devCode: result.devCode }),
+    whatsAppError,
+    ...(result.devCode ? { devCode: result.devCode } : {}),
   });
+  if (body.ok) {
+    console.log(`[customer/auth/start] ${httpStatus} → OTP sent via ${body.sentVia}`);
+  } else {
+    console.error(
+      `[customer/auth/start] ${httpStatus} → delivery failed (sentVia=${body.sentVia}):`,
+      body.deliveryError,
+    );
+  }
+  res.status(httpStatus).json(body);
 });
 
 function normalizePhoneForMatch(phone: string): string {
