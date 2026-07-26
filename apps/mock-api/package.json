@@ -21,6 +21,7 @@
     "verify:admin-permissions": "tsx scripts/verify-admin-permissions.ts",
     "verify:dispatch-permissions": "tsx scripts/verify-dispatch-permissions.ts",
     "verify:participant-preservation": "tsx scripts/verify-participant-preservation.ts",
+    "verify:measurement-v2": "tsx scripts/verify-measurement-v2.ts",
     "verify:delivery-status-sync": "tsx scripts/verify-delivery-status-sync.ts",
     "verify:courier-payroll": "tsx scripts/verify-courier-payroll.ts",
     "verify:courier-payroll-phase2": "tsx scripts/verify-courier-payroll-phase2.ts",

@@ -87,7 +87,12 @@ import {
   type HomeFeedSettings,
   type HomePageBlock,
 } from './market-config.js';
-import { getOperationalStatus, type ModifierIcon } from '@nmd/core';
+import {
+  getOperationalStatus,
+  normalizeAndValidateMeasurementForWrite,
+  isInvalidMeasurementConfigError,
+  type ModifierIcon,
+} from '@nmd/core';
 import { getDispatchQueue } from './delivery-engine.js';
 import { isCourierListTerminalStatus, syncAdminDeliveredOrder } from './delivery-status-sync.js';
 import {
@@ -7922,14 +7927,35 @@ app.put('/catalog/:tenantId', wrapAsync(async (req, res) => {
   if (!assertCatalogTenantAccess(user, tenantId, catalogTenant?.marketId, res)) return;
   const existingCatalog = await repos.catalog.getCatalog(tenantId);
   const catalog = sanitizeCatalogPayloadForRole(user.role, req.body as TenantCatalog, existingCatalog);
-  const products = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[] }[]).map((p) =>
+  const rawProducts = ((catalog.products ?? []) as { imageUrl?: string; images?: { url: string }[]; id?: string; name?: string }[]).map((p) =>
     normalizeProductForCompat(p)
   );
+  // Measurement V2: validate each product; reject catalog write on INVALID_MEASUREMENT_CONFIG
+  const products: Record<string, unknown>[] = [];
+  for (const p of rawProducts) {
+    const m = normalizeAndValidateMeasurementForWrite(p as Record<string, unknown>);
+    if (!m.ok) {
+      return res.status(400).json({
+        ...m.error,
+        productId: (p as { id?: string }).id,
+        productName: (p as { name?: string }).name,
+      });
+    }
+    products.push({ ...(p as Record<string, unknown>), ...m.api });
+  }
   const optionGroups = ((catalog.optionGroups ?? []) as Array<Record<string, unknown> & { tenantId?: string }>).map(
     (g) => ({ ...g, tenantId: g.tenantId ?? tenantId })
   );
   const normalized = { ...catalog, products, optionGroups };
-  await repos.catalog.setCatalog(tenantId, normalized);
+  try {
+    await repos.catalog.setCatalog(tenantId, normalized);
+  } catch (err) {
+    // Defense in depth: repository also fail-closes before mutating
+    if (isInvalidMeasurementConfigError(err)) {
+      return res.status(400).json(err.toJSON());
+    }
+    throw err;
+  }
   const updated = await repos.catalog.getCatalog(tenantId);
   res.json(updated);
 }));

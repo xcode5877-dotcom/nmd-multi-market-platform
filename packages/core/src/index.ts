@@ -1,4 +1,5 @@
 export * from './types';
+export * from './measurement';
 export * from './orders/order-list-filters';
 export * from './permissions';
 export * from './tenant';

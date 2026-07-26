@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { attachMeasurementToProduct, normalizeCatalogProductsForWrite } from '@nmd/core';
 
 /** Path to data.json; process must have write permission so admin email and other updates persist. */
 const DATA_FILE = process.env.DATA_FILE || join(process.cwd(), 'data.json');
@@ -898,9 +899,8 @@ export function getCatalog(tenantId: string): TenantCatalog {
         .filter(Boolean) as unknown[];
       out = { ...prod, optionGroups: resolved.length > 0 ? resolved : prod.optionGroups };
     }
-    if (out.quantityStep === undefined) out.quantityStep = 1;
-    if (out.unitName === undefined) out.unitName = 'حبة';
-    return out;
+    // Measurement V2: resolve authoritative + dual-emit legacy (JSON/memory driver)
+    return attachMeasurementToProduct(out);
   });
   return {
     categories,
@@ -911,9 +911,13 @@ export function getCatalog(tenantId: string): TenantCatalog {
 }
 
 export function setCatalog(tenantId: string, catalog: TenantCatalog): void {
+  // Fail-closed BEFORE mutating in-memory/JSON catalog (throws InvalidMeasurementConfigError).
+  const products = normalizeCatalogProductsForWrite(
+    (catalog.products ?? []) as Record<string, unknown>[]
+  );
   getData().catalog[tenantId] = {
     categories: catalog.categories ?? [],
-    products: catalog.products ?? [],
+    products,
     optionGroups: catalog.optionGroups ?? [],
     optionItems: catalog.optionItems ?? [],
   };

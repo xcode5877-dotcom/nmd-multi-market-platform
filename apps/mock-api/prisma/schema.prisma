@@ -7,6 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- Measurement V2 (catalog) ---
+// API serializes base/display unit codes as lowercase (kg, g, l, …).
+// Prisma stores uppercase enum values. Repositories map at the boundary.
+enum MeasurementType {
+  PIECE
+  WEIGHT
+  VOLUME
+  PACKAGE
+}
+
+enum BaseUnitCode {
+  KG
+  L
+  PIECE
+  PACK
+  BOX
+  BUNDLE
+}
+
+enum DisplayUnitCode {
+  KG
+  G
+  L
+  ML
+  PIECE
+  PACK
+  BOX
+  BUNDLE
+}
+
+enum PriceBasis {
+  PER_BASE_UNIT
+}
+
 model Market {
   id                  String  @id
   name                String
@@ -71,6 +105,8 @@ model Tenant {
   meta                       String? // JSON: _meta from import (e.g. emergencyReason)
   pillarId                   String? // pillar (category) for market section filtering (e.g. Restaurants, Services)
   subCategoryId              String? // sub-category under pillar
+  // UI enablement / defaults for new weight products. Never hides existing non-PIECE products.
+  supportsWeightSelling      Boolean  @default(false)
 }
 
 model User {
@@ -361,6 +397,17 @@ model CatalogProduct {
   isFeatured   Boolean?
   isArchived   Boolean? @default(false)
   sortOrder    Int?     @default(0)
+
+  // Measurement V2 — quantities in base units; displayUnitCode/displayPrecision formatting only
+  measurementType    MeasurementType @default(PIECE)
+  baseUnitCode       BaseUnitCode    @default(PIECE)
+  displayUnitCode    DisplayUnitCode @default(PIECE)
+  quantityStep       Decimal         @default(1) @db.Decimal(12, 3)
+  minimumQuantity    Decimal         @default(1) @db.Decimal(12, 3)
+  maximumQuantity    Decimal?        @db.Decimal(12, 3)
+  priceBasis         PriceBasis      @default(PER_BASE_UNIT)
+  measurementVersion Int             @default(1)
+  displayPrecision   Int?
 
   @@index([tenantId])
   @@index([tenantId, categoryId])
