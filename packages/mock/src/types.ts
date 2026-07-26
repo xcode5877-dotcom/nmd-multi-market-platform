@@ -30,7 +30,8 @@ export interface RegistryTenant {
   /** Sort order within market (ascending) */
   marketSortOrder?: number;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
-  paymentCapabilities?: { cash: boolean; card: boolean };
+  paymentCapabilities?: { cash: boolean; card: boolean; allowInstallments?: boolean };
+  paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
   /** Admin-controlled homepage sections */
   collections?: HomeCollection[];
   /** Manual override: open | closed | busy */
