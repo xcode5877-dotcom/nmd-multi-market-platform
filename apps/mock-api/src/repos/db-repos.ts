@@ -10,6 +10,7 @@ import { syncCustomersFromRepo } from '../customer-identity.js';
 import {
   attachMeasurementToProduct,
   coerceMeasurementDecimalString,
+  coerceOrderLineSnapshots,
   defaultPieceMeasurement,
   normalizeCatalogProductsForWrite,
   toPrismaBaseUnitCode,
@@ -111,6 +112,7 @@ function orderToDomain(o: {
   isExternal?: boolean | null;
   externalDestination?: string | null;
   manualStoreName?: string | null;
+  pricingSchemaVersion?: number | null;
 }): OrderRecord {
   const base: OrderRecord = {
     id: o.id,
@@ -136,6 +138,14 @@ function orderToDomain(o: {
   (base as Record<string, unknown>).isExternal = o.isExternal ?? false;
   if (o.externalDestination != null) (base as Record<string, unknown>).externalDestination = o.externalDestination;
   if (o.manualStoreName != null) (base as Record<string, unknown>).manualStoreName = o.manualStoreName;
+  (base as Record<string, unknown>).pricingSchemaVersion = o.pricingSchemaVersion ?? 1;
+  // Read-path PIECE defaults for historical lines (no DB rewrite of money/qty)
+  const items = (base as { items?: unknown[] }).items;
+  if (Array.isArray(items)) {
+    (base as Record<string, unknown>).items = items.map((it) =>
+      coerceOrderLineSnapshots((it ?? {}) as Record<string, unknown>)
+    );
+  }
   return base;
 }
 
@@ -146,6 +156,7 @@ function orderToDb(order: OrderRecord): {
   isExternal: boolean;
   externalDestination: string | null;
   manualStoreName: string | null;
+  pricingSchemaVersion: number;
 } {
   const {
     id,
@@ -162,8 +173,9 @@ function orderToDb(order: OrderRecord): {
     isExternal,
     externalDestination,
     manualStoreName,
+    pricingSchemaVersion,
     ...rest
-  } = order;
+  } = order as OrderRecord & { pricingSchemaVersion?: number };
   return {
     id: String(id ?? ''),
     tenantId: tenantId != null ? String(tenantId) : null,
@@ -179,6 +191,7 @@ function orderToDb(order: OrderRecord): {
     isExternal: Boolean(isExternal),
     externalDestination: externalDestination != null ? String(externalDestination) : null,
     manualStoreName: manualStoreName != null ? String(manualStoreName) : null,
+    pricingSchemaVersion: typeof pricingSchemaVersion === 'number' ? pricingSchemaVersion : 1,
     payload: Object.keys(rest).length > 0 ? JSON.stringify(rest) : null,
   };
 }
