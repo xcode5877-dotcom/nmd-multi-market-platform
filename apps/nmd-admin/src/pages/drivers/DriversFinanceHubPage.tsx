@@ -4,7 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Button, Skeleton } from '@nmd/ui';
 import { formatPrice } from '@nmd/core';
 import { Wallet, ArrowLeft } from 'lucide-react';
-import { apiHeaders } from '../../api';
+import {
+  adminReportErrorMessage,
+  fetchAdminReportJson,
+} from '../../lib/adminReportFetch';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -31,17 +34,20 @@ type DriverSummary = {
 export default function DriversFinanceHubPage() {
   const [preset, setPreset] = useState('today');
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['driver-collections-finance-hub', preset],
     queryFn: async () => {
       const q = preset === 'today' || preset === 'yesterday' ? `?preset=${preset}` : '';
-      const res = await fetch(`${MOCK_API_URL}/admin/driver-collections${q}`, {
-        headers: apiHeaders(),
-      });
-      if (!res.ok) throw new Error('failed');
-      return res.json() as Promise<{ drivers: DriverSummary[]; dashboard: Dashboard }>;
+      return fetchAdminReportJson<{ drivers: DriverSummary[]; dashboard: Dashboard }>(
+        `/admin/driver-collections${q}`
+      );
     },
     enabled: !!MOCK_API_URL,
+    retry: (count, err) => {
+      const status = (err as { status?: number })?.status;
+      if (status === 401 || status === 403 || status === 404) return false;
+      return count < 1;
+    },
   });
 
   const totals = useMemo(() => {
@@ -126,9 +132,14 @@ export default function DriversFinanceHubPage() {
         {isLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : isError ? (
-          <p className="text-red-600 text-center py-6">فشل تحميل البيانات</p>
+          <div className="text-center py-6 space-y-3">
+            <p className="text-red-600">{adminReportErrorMessage(error)}</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : (data?.drivers.length ?? 0) === 0 ? (
-          <p className="text-gray-500 text-center py-6">لا توجد بيانات</p>
+          <p className="text-gray-500 text-center py-6">لا توجد بيانات بعد</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">

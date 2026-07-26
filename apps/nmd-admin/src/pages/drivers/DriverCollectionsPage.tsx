@@ -11,6 +11,10 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { apiHeaders } from '../../api';
+import {
+  adminReportErrorMessage,
+  fetchAdminReportJson,
+} from '../../lib/adminReportFetch';
 
 const MOCK_API_URL = import.meta.env.VITE_MOCK_API_URL ?? '';
 
@@ -104,9 +108,7 @@ type SettlementRow = {
 };
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${MOCK_API_URL}${path}`, { headers: apiHeaders() });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json() as Promise<T>;
+  return fetchAdminReportJson<T>(path);
 }
 
 function exportDriversCsv(rows: DriverSummary[]): void {
@@ -522,16 +524,31 @@ export default function DriverCollectionsPage() {
     return `/admin/driver-collections${q ? `?${q}` : ''}`;
   }, [preset, settlementStatus, customFrom, customTo]);
 
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['driver-collections', queryPath],
     queryFn: () =>
       fetchJson<{ drivers: DriverSummary[]; dashboard: Dashboard }>(queryPath),
     enabled: !!MOCK_API_URL && !driverId,
+    retry: (count, err) => {
+      const status = (err as { status?: number })?.status;
+      if (status === 401 || status === 403 || status === 404) return false;
+      return count < 1;
+    },
   });
 
   const { data: history = [] } = useQuery({
     queryKey: ['driver-collection-settlements'],
-    queryFn: () => fetchJson<SettlementRow[]>('/admin/driver-collections/settlements'),
+    queryFn: async () => {
+      try {
+        const rows = await fetchJson<SettlementRow[]>(
+          '/admin/driver-collections/settlements'
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        // History is secondary — never fail the whole report page.
+        return [] as SettlementRow[];
+      }
+    },
     enabled: !!MOCK_API_URL && !driverId,
   });
 
@@ -615,7 +632,12 @@ export default function DriverCollectionsPage() {
         {isLoading ? (
           <Skeleton className="h-48 w-full" />
         ) : isError ? (
-          <p className="text-red-600 text-center py-6">فشل تحميل البيانات</p>
+          <div className="text-center py-8 space-y-3">
+            <p className="text-red-600">{adminReportErrorMessage(error)}</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">
@@ -672,7 +694,7 @@ export default function DriverCollectionsPage() {
               </tbody>
             </table>
             {drivers.length === 0 && (
-              <p className="text-center text-gray-500 py-8">لا توجد بيانات</p>
+              <p className="text-center text-gray-500 py-8">لا توجد بيانات بعد</p>
             )}
           </div>
         )}
@@ -681,7 +703,7 @@ export default function DriverCollectionsPage() {
       <Card className="p-4">
         <h3 className="font-semibold mb-3">سجل التسويات (لا يُحذف)</h3>
         {history.length === 0 ? (
-          <p className="text-sm text-gray-500">لا يوجد سجل</p>
+          <p className="text-sm text-gray-500">لا توجد بيانات بعد</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">

@@ -10943,102 +10943,124 @@ function parseCollectionDatePreset(preset: string | undefined): { from?: string;
   return {};
 }
 
-/** Dashboard cards — never restaurant revenue. */
+/** Dashboard cards — never restaurant revenue. Empty dataset → zeros, not error. */
 app.get('/admin/driver-collections/dashboard', wrapAsync(async (req, res) => {
   const user = req.user;
   if (!user || !isPlatformAdmin(user.role)) {
     return res.status(403).json({ error: 'Forbidden: platform admin only' });
   }
-  const today = new Date().toISOString().slice(0, 10);
-  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
-  res.json(computeCollectionsDashboard(orders, today));
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+    res.json(computeCollectionsDashboard(orders ?? [], today));
+  } catch (e) {
+    console.error('[driver-collections/dashboard]', e);
+    const today = new Date().toISOString().slice(0, 10);
+    res.json(computeCollectionsDashboard([], today));
+  }
 }));
 
-/** Settlement history (append-only). */
+/** Settlement history (append-only). Empty → []. */
 app.get('/admin/driver-collections/settlements', wrapAsync(async (req, res) => {
   const user = req.user;
   if (!user || !isPlatformAdmin(user.role)) {
     return res.status(403).json({ error: 'Forbidden: platform admin only' });
   }
-  const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
-  const from = req.query.from ? String(req.query.from) : undefined;
-  const to = req.query.to ? String(req.query.to) : undefined;
-  const rows = await listCollectionSettlements({ courierId, from, to });
-  const couriers = await repos.couriers.findAll();
-  const byId = new Map(couriers.map((c) => [c.id, c]));
-  res.json(
-    rows.map((r) => ({
-      ...r,
-      courierName: byId.get(r.courierId)?.name ?? r.courierId,
-    }))
-  );
+  try {
+    const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
+    const from = req.query.from ? String(req.query.from) : undefined;
+    const to = req.query.to ? String(req.query.to) : undefined;
+    const rows = await listCollectionSettlements({ courierId, from, to });
+    const couriers = await repos.couriers.findAll();
+    const byId = new Map(couriers.map((c) => [c.id, c]));
+    res.json(
+      (rows ?? []).map((r) => ({
+        ...r,
+        courierName: byId.get(r.courierId)?.name ?? r.courierId,
+      }))
+    );
+  } catch (e) {
+    console.error('[driver-collections/settlements]', e);
+    res.json([]);
+  }
 }));
 
-/** Per-driver summaries for Super Admin driver accounting. */
+/** Per-driver summaries for Super Admin driver accounting. Empty → zeros + []. */
 app.get('/admin/driver-collections', wrapAsync(async (req, res) => {
   const user = req.user;
   if (!user || !isPlatformAdmin(user.role)) {
     return res.status(403).json({ error: 'Forbidden: platform admin only' });
   }
-  const preset = req.query.preset ? String(req.query.preset) : undefined;
-  const presetRange = parseCollectionDatePreset(preset);
-  const from = req.query.from ? String(req.query.from) : presetRange.from;
-  const to = req.query.to ? String(req.query.to) : presetRange.to;
-  const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
-  const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
-  const settlementStatus = (req.query.settlementStatus
-    ? String(req.query.settlementStatus).toUpperCase()
-    : 'ALL') as 'PENDING' | 'SETTLED' | 'ALL';
-  const currentShift = req.query.currentShift === '1' || req.query.currentShift === 'true';
-
-  const couriers = (await repos.couriers.findAll()).map((c) => ({
-    id: c.id,
-    name: c.name,
-    marketId: courierMarketId(c),
-  }));
-  const courierIds = couriers.map((c) => c.id);
-  const shiftStarts = await listActiveShiftStarts(courierIds);
-  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
   const today = new Date().toISOString().slice(0, 10);
+  try {
+    const preset = req.query.preset ? String(req.query.preset) : undefined;
+    const presetRange = parseCollectionDatePreset(preset);
+    const from = req.query.from ? String(req.query.from) : presetRange.from;
+    const to = req.query.to ? String(req.query.to) : presetRange.to;
+    const courierId = req.query.courierId ? String(req.query.courierId) : undefined;
+    const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+    const settlementStatus = (req.query.settlementStatus
+      ? String(req.query.settlementStatus).toUpperCase()
+      : 'ALL') as 'PENDING' | 'SETTLED' | 'ALL';
+    const currentShift = req.query.currentShift === '1' || req.query.currentShift === 'true';
 
-  const filters = {
-    from,
-    to,
-    courierId,
-    marketId,
-    settlementStatus,
-    shiftStart: undefined as string | undefined,
-  };
-
-  // When currentShift filter: restrict each courier to their active shift window.
-  let summaries = aggregateDriverCollections(orders, couriers, {
-    filters: { ...filters, settlementStatus: 'ALL' },
-    today,
-    shiftStartByCourier: shiftStarts,
-  });
-
-  if (currentShift) {
-    summaries = summaries.map((s) => ({
-      ...s,
-      // Surface shift collection as the primary total when filtering current shift
-      driverCollectionTotal: s.currentShiftCollection,
-      deliveryFeesTotal: s.deliveryFeesTotal, // already filtered by date; shift shown separately
+    const couriers = (await repos.couriers.findAll()).map((c) => ({
+      id: c.id,
+      name: c.name,
+      marketId: courierMarketId(c),
     }));
-  }
+    const courierIds = couriers.map((c) => c.id);
+    const shiftStarts = await listActiveShiftStarts(courierIds);
+    const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
 
-  if (settlementStatus === 'PENDING') {
-    summaries = summaries.filter((s) => s.outstandingCollection > 0 || s.pendingOrders > 0);
-  } else if (settlementStatus === 'SETTLED') {
-    summaries = summaries.filter((s) => s.settledOrders > 0);
-  }
+    const filters = {
+      from,
+      to,
+      courierId,
+      marketId,
+      settlementStatus,
+      shiftStart: undefined as string | undefined,
+    };
 
-  res.json({
-    today,
-    settlementMode: getDriverSettlementMode(),
-    filters: { from, to, courierId, marketId, settlementStatus, currentShift },
-    drivers: summaries,
-    dashboard: computeCollectionsDashboard(orders, today),
-  });
+    // When currentShift filter: restrict each courier to their active shift window.
+    let summaries = aggregateDriverCollections(orders ?? [], couriers ?? [], {
+      filters: { ...filters, settlementStatus: 'ALL' },
+      today,
+      shiftStartByCourier: shiftStarts,
+    });
+
+    if (currentShift) {
+      summaries = summaries.map((s) => ({
+        ...s,
+        // Surface shift collection as the primary total when filtering current shift
+        driverCollectionTotal: s.currentShiftCollection,
+        deliveryFeesTotal: s.deliveryFeesTotal, // already filtered by date; shift shown separately
+      }));
+    }
+
+    if (settlementStatus === 'PENDING') {
+      summaries = summaries.filter((s) => s.outstandingCollection > 0 || s.pendingOrders > 0);
+    } else if (settlementStatus === 'SETTLED') {
+      summaries = summaries.filter((s) => s.settledOrders > 0);
+    }
+
+    res.json({
+      today,
+      settlementMode: getDriverSettlementMode(),
+      filters: { from, to, courierId, marketId, settlementStatus, currentShift },
+      drivers: summaries ?? [],
+      dashboard: computeCollectionsDashboard(orders ?? [], today),
+    });
+  } catch (e) {
+    console.error('[driver-collections]', e);
+    res.json({
+      today,
+      settlementMode: getDriverSettlementMode(),
+      filters: {},
+      drivers: [],
+      dashboard: computeCollectionsDashboard([], today),
+    });
+  }
 }));
 
 /** Driver detail + order list (Driver Collection column, not Order Total). */
@@ -11231,7 +11253,7 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
   res.json({ from, to, platformSummary, drivers: rows });
 }));
 
-/** Super Admin: per-store Now Market profit report (commission + delivery fees). */
+/** Super Admin: per-store Now Market profit report (commission + delivery fees). Empty → zeros + []. */
 app.get('/admin/store-profit-report', wrapAsync(async (req, res) => {
   if (!req.user || !isPlatformAdmin(req.user.role)) {
     return res.status(403).json({ error: 'Forbidden: platform admin only' });
@@ -11242,19 +11264,33 @@ app.get('/admin/store-profit-report', wrapAsync(async (req, res) => {
   const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
   const tenantId = req.query.tenantId ? String(req.query.tenantId) : undefined;
   const { from, to } = parseStoreProfitDateRange(period, fromQ, toQ);
-  const [orders, tenants] = await Promise.all([
-    repos.orders.findAll(),
-    repos.tenants.findAll(),
-  ]);
-  const report = computeStoreProfitReport({
-    orders: orders as Record<string, unknown>[],
-    tenants: tenants as { id?: string; name?: string; marketId?: string }[],
-    from,
-    to,
-    marketId,
-    tenantId,
-  });
-  res.json(report);
+  try {
+    const [orders, tenants] = await Promise.all([
+      repos.orders.findAll(),
+      repos.tenants.findAll(),
+    ]);
+    const report = computeStoreProfitReport({
+      orders: (orders ?? []) as Record<string, unknown>[],
+      tenants: (tenants ?? []) as { id?: string; name?: string; marketId?: string }[],
+      from,
+      to,
+      marketId,
+      tenantId,
+    });
+    res.json(report);
+  } catch (e) {
+    console.error('[store-profit-report]', e);
+    res.json(
+      computeStoreProfitReport({
+        orders: [],
+        tenants: [],
+        from,
+        to,
+        marketId,
+        tenantId,
+      })
+    );
+  }
 }));
 
 /** Super Admin: store profit breakdown by day/week/month for one tenant. */
