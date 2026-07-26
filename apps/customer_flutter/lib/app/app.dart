@@ -45,6 +45,8 @@ class _NowMarketAppState extends State<NowMarketApp> {
     _coinsBalanceCubit = CoinsBalanceCubit(_dio);
     // Warm session before first tap (coalesced with splash restore).
     _authBloc.restoreSession();
+    // Restore exact decimal cart quantities after restart.
+    _cartCubit.restorePersisted();
   }
 
   @override

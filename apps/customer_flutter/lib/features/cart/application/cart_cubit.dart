@@ -7,6 +7,7 @@ import '../../../api/api_base.dart';
 import '../../../api/models/product.dart';
 import '../../../measurement/measurement.dart';
 import '../domain/cart_selected_option.dart';
+import '../data/cart_persistence.dart';
 
 final class CartLine extends Equatable {
   const CartLine({
@@ -111,8 +112,11 @@ final class CartLine extends Equatable {
 }
 
 final class CartCubit extends Cubit<List<CartLine>> {
-  CartCubit() : super(const []);
+  CartCubit({CartPersistence? persistence})
+      : _persistence = persistence ?? CartPersistence(),
+        super(const []);
 
+  final CartPersistence _persistence;
   static final _rnd = Random();
 
   static String _newLineKey() =>
@@ -126,6 +130,38 @@ final class CartCubit extends Cubit<List<CartLine>> {
     final active = activeTenantId;
     if (active == null) return false;
     return active != tenantId;
+  }
+
+  Future<void> restorePersisted() async {
+    final lines = await _persistence.load();
+    if (lines.isEmpty) return;
+    emit(lines);
+  }
+
+  Future<void> _persist() => _persistence.save(state);
+
+  bool _sameLineIdentity(CartLine e, {
+    required String tenantId,
+    required String productId,
+    required ProductMeasurement m,
+    required List<CartSelectedOption> selectedOptions,
+    required String optionGroupsJson,
+    required double fixedModifierTotal,
+  }) {
+    return e.tenantId == tenantId &&
+        e.productId == productId &&
+        e.measurement.measurementType == m.measurementType &&
+        e.measurement.quantityStep == m.quantityStep &&
+        e.measurement.measurementVersion == m.measurementVersion &&
+        e.fixedModifierTotal == fixedModifierTotal &&
+        cartSelectedOptionsListsEqual(e.selectedOptions, selectedOptions) &&
+        e.optionGroupsJson == optionGroupsJson;
+  }
+
+  /// Returns null when [qty] is invalid for [m].
+  String? _normalizeAcceptedQuantity(ProductMeasurement m, String qty) {
+    if (!quantityMatchesStep(m, qty)) return null;
+    return parseMeasurementDecimalStrict(qty).normalized;
   }
 
   void addOrIncrement({
@@ -142,21 +178,28 @@ final class CartCubit extends Cubit<List<CartLine>> {
     String optionGroupsJson = '[]',
   }) {
     final m = measurement ?? defaultPieceMeasurement();
-    final qty = coerceMeasurementDecimalString(
+    final qtyRaw = coerceMeasurementDecimalString(
       addQty ?? m.minimumQuantity,
       m.minimumQuantity,
     );
+    final qty = _normalizeAcceptedQuantity(m, qtyRaw);
+    if (qty == null) return;
+
     final list = [...state];
     final i = list.indexWhere(
-      (e) =>
-          e.tenantId == tenantId &&
-          e.productId == productId &&
-          cartSelectedOptionsListsEqual(e.selectedOptions, selectedOptions) &&
-          e.optionGroupsJson == optionGroupsJson,
+      (e) => _sameLineIdentity(
+        e,
+        tenantId: tenantId,
+        productId: productId,
+        m: m,
+        selectedOptions: selectedOptions,
+        optionGroupsJson: optionGroupsJson,
+        fixedModifierTotal: fixedModifierTotal,
+      ),
     );
     if (i >= 0) {
       final line = list[i];
-      // Weighted + modifiers: keep as separate lines (fixed mods don't scale by merge).
+      // Weighted + non-zero fixed mods: keep separate lines (mods don't scale).
       if (m.isWeighted && fixedModifierTotal != 0) {
         list.add(
           CartLine(
@@ -176,7 +219,12 @@ final class CartCubit extends Cubit<List<CartLine>> {
         );
       } else {
         final next = addQuantityDecimals(line.quantity, qty);
-        list[i] = line.copyWith(quantity: next);
+        final accepted = _normalizeAcceptedQuantity(m, next);
+        if (accepted == null) {
+          // Exceeds max or step — keep existing line; never silent-round.
+          return;
+        }
+        list[i] = line.copyWith(quantity: accepted);
       }
     } else {
       list.add(
@@ -197,34 +245,47 @@ final class CartCubit extends Cubit<List<CartLine>> {
       );
     }
     emit(list);
+    // ignore: unawaited_futures
+    _persist();
   }
 
   void setQuantity(String lineKey, String qty) {
+    final list = [...state];
+    final i = list.indexWhere((e) => e.lineKey == lineKey);
+    if (i < 0) return;
+    final line = list[i];
     final parsed = parseMeasurementDecimalStrict(qty);
     if (!parsed.ok || parsed.milli <= 0) {
       removeLine(lineKey);
       return;
     }
-    final list = [...state];
-    final i = list.indexWhere((e) => e.lineKey == lineKey);
-    if (i < 0) return;
-    final line = list[i];
     final min = parseMeasurementDecimalStrict(line.measurement.minimumQuantity);
     if (min.ok && parsed.milli < min.milli) {
       removeLine(lineKey);
       return;
     }
-    list[i] = line.copyWith(quantity: parsed.normalized);
+    final accepted = _normalizeAcceptedQuantity(line.measurement, parsed.normalized);
+    if (accepted == null) {
+      // Invalid step/max — keep previous quantity (no silent round).
+      return;
+    }
+    list[i] = line.copyWith(quantity: accepted);
     emit(list);
+    // ignore: unawaited_futures
+    _persist();
   }
 
   void removeLine(String lineKey) {
-    emit(
-      state.where((e) => e.lineKey != lineKey).toList(),
-    );
+    emit(state.where((e) => e.lineKey != lineKey).toList());
+    // ignore: unawaited_futures
+    _persist();
   }
 
-  void clear() => emit(const []);
+  void clear() {
+    emit(const []);
+    // ignore: unawaited_futures
+    _persistence.clear();
+  }
 
   /// Refresh customer [unitPrice] from fresh catalog (platform fee / displayPrice changes).
   /// Merchant [merchantUnitPrice] is unchanged; markup delta is applied on top.
@@ -265,7 +326,11 @@ final class CartCubit extends Cubit<List<CartLine>> {
         optionGroupsJson: line.optionGroupsJson,
       );
     }).toList();
-    if (changed) emit(next);
+    if (changed) {
+      emit(next);
+      // ignore: unawaited_futures
+      _persist();
+    }
   }
 
   /// Reprice all tenants present in the cart (checkout bootstrap).

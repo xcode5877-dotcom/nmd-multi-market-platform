@@ -667,7 +667,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       ),
                       const SizedBox(height: CustomizationTokens.xs),
                       Text(
-                        'المجموع: ${NmdFormat.money(_previewLineTotal(product, customization))}',
+                        'تقدير: ${NmdFormat.money(_previewLineTotal(product, customization))} (يُؤكَّد عند الدفع)',
                         textAlign: TextAlign.right,
                         style: NmdTypography.bodySmall.copyWith(
                           color: NmdColors.textSecondary,

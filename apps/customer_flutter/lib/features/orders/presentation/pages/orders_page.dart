@@ -226,6 +226,8 @@ class _OrdersPageState extends State<OrdersPage> {
     final catalogByTenant = <String, Map<String, Product>>{};
     var addedLines = 0;
     var blockedLines = 0;
+    String? blockedTenantId;
+    String? blockedProductId;
     for (final o in group.orders) {
       final items = o.items;
       if (items == null) continue;
@@ -243,19 +245,26 @@ class _OrdersPageState extends State<OrdersPage> {
         final m = Map<String, dynamic>.from(raw);
         final pid = m['productId']?.toString() ?? '';
         if (pid.isEmpty) continue;
-        final current = catalog[pid]?.measurement;
+        final catalogProduct = catalog[pid];
+        if (catalogProduct != null && !catalogProduct.canAddToCart) {
+          blockedLines++;
+          blockedTenantId ??= o.tenantId;
+          blockedProductId ??= pid;
+          continue;
+        }
         final check = evaluateReorderLine(
           orderItem: m,
-          currentCatalogMeasurement: current,
+          currentCatalogMeasurement: catalogProduct?.measurement,
         );
         if (check.blocked) {
           blockedLines++;
+          blockedTenantId ??= o.tenantId;
+          blockedProductId ??= pid;
           continue;
         }
         final qty = check.quantity!;
         final measurement = check.measurement!;
         final unit = _reorderUnitPrice(m, qty);
-        final catalogProduct = catalog[pid];
         cart.addOrIncrement(
           tenantId: o.tenantId,
           productId: pid,
@@ -274,14 +283,37 @@ class _OrdersPageState extends State<OrdersPage> {
       }
     }
     if (!mounted) return;
+    final slug = GoRouterState.of(context).pathParameters['slug'] ?? '';
+    void openBlockedProduct() {
+      if (slug.isEmpty ||
+          blockedTenantId == null ||
+          blockedProductId == null) {
+        return;
+      }
+      context.push(
+        '/market/$slug/store/$blockedTenantId/product/$blockedProductId',
+      );
+    }
+
     if (addedLines == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                blockedLines > 0
-                    ? kReorderConfigChangedAr
-                    : 'لا توجد أصناف متاحة لإعادة الطلب',
-                style: GoogleFonts.cairo())),
+          content: Text(
+            blockedLines > 0
+                ? kReorderConfigChangedAr
+                : 'لا توجد أصناف متاحة لإعادة الطلب',
+            style: GoogleFonts.cairo(),
+          ),
+          action: blockedLines > 0 &&
+                  blockedTenantId != null &&
+                  blockedProductId != null &&
+                  slug.isNotEmpty
+              ? SnackBarAction(
+                  label: 'اختيار كمية',
+                  onPressed: openBlockedProduct,
+                )
+              : null,
+        ),
       );
       return;
     }
@@ -289,7 +321,18 @@ class _OrdersPageState extends State<OrdersPage> {
         ? 'أُضيفت بعض المنتجات. $kReorderConfigChangedAr'
         : 'تمت إضافة المنتجات إلى السلة';
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg, style: GoogleFonts.cairo())),
+      SnackBar(
+        content: Text(msg, style: GoogleFonts.cairo()),
+        action: blockedLines > 0 &&
+                blockedTenantId != null &&
+                blockedProductId != null &&
+                slug.isNotEmpty
+            ? SnackBarAction(
+                label: 'اختيار كمية',
+                onPressed: openBlockedProduct,
+              )
+            : null,
+      ),
     );
   }
 
