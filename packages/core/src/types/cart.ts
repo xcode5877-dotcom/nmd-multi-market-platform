@@ -20,7 +20,13 @@ export interface CartItem {
   productId: string;
   productName: string;
   categoryId?: string;
+  /**
+   * Legacy numeric quantity. PIECE/PACKAGE: integer.
+   * WEIGHT/VOLUME may be fractional (JSON number). Prefer quantityDecimal.
+   */
   quantity: number;
+  /** Authoritative quantity as decimal string in base units (Phase B.1). */
+  quantityDecimal?: string;
   basePrice: number;
   /** Repriced customer unit (base + options markup) before campaigns; merchant base stays in basePrice. */
   customerUnitPrice?: number;
@@ -34,4 +40,18 @@ export interface CartItem {
   unitName?: string;
   /** When true, item is sold by weight (decimals); when false, strict integer and "حبة". */
   isWeightBased?: boolean;
+
+  // --- Phase B.1 immutable snapshots (written at order create / add-line) ---
+  measurementTypeSnapshot?: import('../measurement/types.js').MeasurementType;
+  baseUnitCodeSnapshot?: import('../measurement/types.js').BaseUnitCode;
+  displayUnitCodeSnapshot?: import('../measurement/types.js').DisplayUnitCode;
+  quantityStepSnapshot?: string;
+  minimumQuantitySnapshot?: string;
+  maximumQuantitySnapshot?: string | null;
+  priceBasisSnapshot?: import('../measurement/types.js').PriceBasis;
+  measurementVersionSnapshot?: number;
+  displayPrecisionSnapshot?: number | null;
+  basePriceSnapshot?: number;
+  unitPriceSnapshot?: number;
+  lineSubtotalSnapshot?: number;
 }
