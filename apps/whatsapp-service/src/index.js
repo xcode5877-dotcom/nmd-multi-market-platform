@@ -88,6 +88,7 @@ let lastRestartReason = null;
 let restartTimestamps = [];
 let watchdogTimer = null;
 let consecutiveDeadSessionChecks = 0;
+let startupComplete = false;
 
 const USER_DATA_DIR = path.resolve(SESSION_PATH);
 
@@ -342,7 +343,7 @@ function startSessionKeepalive() {
 function startHealthWatchdog() {
   if (watchdogTimer) clearInterval(watchdogTimer);
   watchdogTimer = setInterval(async () => {
-    if (isSoftRestarting || isInitializingClient) return;
+    if (!startupComplete || isSoftRestarting || isInitializingClient) return;
     // Escape hatch: never stay in SOFT_RESTARTING / RESTART_FAILED forever without attempting recovery.
     if (connectionState === 'SOFT_RESTARTING') {
       console.warn('[WhatsApp] Watchdog: clearing stuck SOFT_RESTARTING flag');
@@ -855,12 +856,15 @@ console.log('All API routes (/send-otp, /health) have been initialized');
     console.log(`[WhatsApp Service] Session data path: ${SESSION_PATH}`);
     console.log(`[WhatsApp Service] protocolTimeout=${PROTOCOL_TIMEOUT_MS}ms keepalive=${KEEPALIVE_INTERVAL_MS}ms`);
   });
-  startHealthWatchdog();
   try {
     await withTimeout(initClient(), STARTUP_READY_TIMEOUT_MS, 'startup_initClient');
+    if (clientReady) connectionState = 'CONNECTED';
   } catch (e) {
     console.error('[WhatsApp] Startup init timeout/failure (service stays up for /health + recovery):', e?.message ?? e);
     connectionState = 'STARTUP_FAILED';
+  } finally {
+    startupComplete = true;
+    startHealthWatchdog();
   }
 })().catch((err) => {
   console.error('[WhatsApp Service] Fatal init error:', err);
