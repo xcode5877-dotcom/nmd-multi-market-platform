@@ -18,7 +18,8 @@ Future<void> handleProductQuickAdd({
 }) async {
   if (!available || !product.canAddToCart) return;
 
-  if (productHasOrderModifiers(product)) {
+  // Weight/volume and modifier products need the details page for qty/options.
+  if (productHasOrderModifiers(product) || product.measurement.isWeighted) {
     context.push('/market/$marketSlug/store/$storeId/product/${product.id}');
     return;
   }
@@ -57,6 +58,8 @@ Future<void> handleProductQuickAdd({
     unitPrice: product.customerListPrice,
     merchantUnitPrice: product.basePrice,
     imageUrl: product.imageUrl,
+    addQty: product.minimumQuantity,
+    measurement: product.measurement,
     optionGroupsJson: optionGroupsToOrderJson(product.optionGroups),
   );
 

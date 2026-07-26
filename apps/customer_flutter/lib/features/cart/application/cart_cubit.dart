@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../api/api_base.dart';
 import '../../../api/models/product.dart';
+import '../../../measurement/measurement.dart';
 import '../domain/cart_selected_option.dart';
 
 final class CartLine extends Equatable {
@@ -17,6 +18,8 @@ final class CartLine extends Equatable {
     required this.merchantUnitPrice,
     required this.imageUrl,
     required this.quantity,
+    required this.measurement,
+    this.fixedModifierTotal = 0,
     this.selectedOptions = const [],
     this.optionGroupsJson = '[]',
   });
@@ -26,12 +29,24 @@ final class CartLine extends Equatable {
   final String tenantId;
   final String productId;
   final String name;
-  /// Customer-visible unit price (includes marketplace markup when set).
+
+  /// Customer-visible price per base unit.
+  /// PIECE/PACKAGE: typically base + scaling modifiers.
+  /// WEIGHT/VOLUME: base unit only; see [fixedModifierTotal].
   final double unitPrice;
+
   /// Merchant base unit price for order payout (unchanged by platform markup).
   final double merchantUnitPrice;
   final String imageUrl;
-  final int quantity;
+
+  /// Quantity in **base units** as a normalized decimal string (e.g. `"0.25"`).
+  final String quantity;
+
+  /// Snapshot of product measurement at add-to-cart time.
+  final ProductMeasurement measurement;
+
+  /// Fixed modifier shekels for WEIGHT/VOLUME (not multiplied by qty). Preview only.
+  final double fixedModifierTotal;
 
   /// Web-shaped payload: `PizzaSelectedOption` / `SelectedOption` list.
   final List<CartSelectedOption> selectedOptions;
@@ -39,9 +54,27 @@ final class CartLine extends Equatable {
   /// JSON array string: `[{id,name,items:[{id,name}]}]` for receipts (Arabic option names).
   final String optionGroupsJson;
 
-  double get lineTotal => unitPrice * quantity;
+  /// Badge contribution: PIECE/PACKAGE use integer qty; WEIGHT/VOLUME count as 1 line.
+  int get badgeUnits {
+    if (measurement.isWeighted) return 1;
+    final parsed = parseMeasurementDecimalStrict(quantity);
+    if (!parsed.ok || !isIntegerMilli(parsed.milli)) return 1;
+    return parsed.milli ~/ kMeasurementScale;
+  }
 
-  CartLine copyWith({int? quantity}) {
+  /// Preview line total. Server remains authoritative at checkout.
+  double get lineTotal {
+    final basePart = calculateLineSubtotal(unitPrice, quantity);
+    if (!measurement.isWeighted || fixedModifierTotal == 0) return basePart;
+    return agoraToShekels(
+      (shekelsToAgora(basePart) ?? 0) + (shekelsToAgora(fixedModifierTotal) ?? 0),
+    );
+  }
+
+  String get quantityLabel =>
+      formatQuantityFromMeasurement(quantity, measurement);
+
+  CartLine copyWith({String? quantity}) {
     return CartLine(
       lineKey: lineKey,
       tenantId: tenantId,
@@ -51,6 +84,8 @@ final class CartLine extends Equatable {
       merchantUnitPrice: merchantUnitPrice,
       imageUrl: imageUrl,
       quantity: quantity ?? this.quantity,
+      measurement: measurement,
+      fixedModifierTotal: fixedModifierTotal,
       selectedOptions: selectedOptions,
       optionGroupsJson: optionGroupsJson,
     );
@@ -66,6 +101,10 @@ final class CartLine extends Equatable {
         merchantUnitPrice,
         imageUrl,
         quantity,
+        measurement.measurementType,
+        measurement.quantityStep,
+        measurement.measurementVersion,
+        fixedModifierTotal,
         selectedOptions,
         optionGroupsJson
       ];
@@ -79,7 +118,8 @@ final class CartCubit extends Cubit<List<CartLine>> {
   static String _newLineKey() =>
       '${DateTime.now().microsecondsSinceEpoch}-${_rnd.nextInt(1 << 30)}';
 
-  int get itemCount => state.fold<int>(0, (s, e) => s + e.quantity);
+  /// Cart badge / subtitle count (PIECE sums qty; WEIGHT/VOLUME count as 1 each).
+  int get itemCount => state.fold<int>(0, (s, e) => s + e.badgeUnits);
   String? get activeTenantId => state.isEmpty ? null : state.first.tenantId;
 
   bool hasDifferentTenant(String tenantId) {
@@ -95,10 +135,17 @@ final class CartCubit extends Cubit<List<CartLine>> {
     required double unitPrice,
     double? merchantUnitPrice,
     required String imageUrl,
-    int addQty = 1,
+    String? addQty,
+    ProductMeasurement? measurement,
+    double fixedModifierTotal = 0,
     List<CartSelectedOption> selectedOptions = const [],
     String optionGroupsJson = '[]',
   }) {
+    final m = measurement ?? defaultPieceMeasurement();
+    final qty = coerceMeasurementDecimalString(
+      addQty ?? m.minimumQuantity,
+      m.minimumQuantity,
+    );
     final list = [...state];
     final i = list.indexWhere(
       (e) =>
@@ -109,7 +156,28 @@ final class CartCubit extends Cubit<List<CartLine>> {
     );
     if (i >= 0) {
       final line = list[i];
-      list[i] = line.copyWith(quantity: line.quantity + addQty);
+      // Weighted + modifiers: keep as separate lines (fixed mods don't scale by merge).
+      if (m.isWeighted && fixedModifierTotal != 0) {
+        list.add(
+          CartLine(
+            lineKey: _newLineKey(),
+            tenantId: tenantId,
+            productId: productId,
+            name: name,
+            unitPrice: unitPrice,
+            merchantUnitPrice: merchantUnitPrice ?? unitPrice,
+            imageUrl: imageUrl,
+            quantity: qty,
+            measurement: m,
+            fixedModifierTotal: fixedModifierTotal,
+            selectedOptions: selectedOptions,
+            optionGroupsJson: optionGroupsJson,
+          ),
+        );
+      } else {
+        final next = addQuantityDecimals(line.quantity, qty);
+        list[i] = line.copyWith(quantity: next);
+      }
     } else {
       list.add(
         CartLine(
@@ -120,7 +188,9 @@ final class CartCubit extends Cubit<List<CartLine>> {
           unitPrice: unitPrice,
           merchantUnitPrice: merchantUnitPrice ?? unitPrice,
           imageUrl: imageUrl,
-          quantity: addQty,
+          quantity: qty,
+          measurement: m,
+          fixedModifierTotal: fixedModifierTotal,
           selectedOptions: selectedOptions,
           optionGroupsJson: optionGroupsJson,
         ),
@@ -129,15 +199,22 @@ final class CartCubit extends Cubit<List<CartLine>> {
     emit(list);
   }
 
-  void setQuantity(String lineKey, int qty) {
-    if (qty < 1) {
+  void setQuantity(String lineKey, String qty) {
+    final parsed = parseMeasurementDecimalStrict(qty);
+    if (!parsed.ok || parsed.milli <= 0) {
       removeLine(lineKey);
       return;
     }
     final list = [...state];
     final i = list.indexWhere((e) => e.lineKey == lineKey);
     if (i < 0) return;
-    list[i] = list[i].copyWith(quantity: qty);
+    final line = list[i];
+    final min = parseMeasurementDecimalStrict(line.measurement.minimumQuantity);
+    if (min.ok && parsed.milli < min.milli) {
+      removeLine(lineKey);
+      return;
+    }
+    list[i] = line.copyWith(quantity: parsed.normalized);
     emit(list);
   }
 
@@ -182,6 +259,8 @@ final class CartCubit extends Cubit<List<CartLine>> {
         merchantUnitPrice: line.merchantUnitPrice,
         imageUrl: line.imageUrl,
         quantity: line.quantity,
+        measurement: product.measurement,
+        fixedModifierTotal: line.fixedModifierTotal,
         selectedOptions: line.selectedOptions,
         optionGroupsJson: line.optionGroupsJson,
       );

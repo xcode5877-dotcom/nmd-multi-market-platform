@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/design_system.dart';
+import '../../../../measurement/measurement.dart';
 import '../../../cart/presentation/widgets/cart_modifier_lines.dart';
 import '../../domain/customer_order_vm.dart';
 import 'order_status_badge.dart';
@@ -256,7 +257,11 @@ class _OrderLineItemRow extends StatelessWidget {
     final name = m['productName']?.toString().trim().isNotEmpty == true
         ? m['productName'].toString().trim()
         : 'منتج';
-    final qty = (m['quantity'] is num) ? (m['quantity'] as num).toInt() : 1;
+    final measurement = resolveMeasurementFromOrderLine(m);
+    final qtyLabel = formatQuantityFromMeasurement(
+      orderLineQuantityDecimal(m),
+      measurement,
+    );
     return NmdSurface(
       mode: NmdSurfaceMode.muted,
       padding: const EdgeInsets.fromLTRB(
@@ -269,7 +274,7 @@ class _OrderLineItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '$qty × $name',
+            '$qtyLabel · $name',
             textAlign: TextAlign.right,
             style: NmdTypography.label.copyWith(fontWeight: FontWeight.w800),
           ),

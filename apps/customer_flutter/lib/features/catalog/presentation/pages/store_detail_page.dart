@@ -16,6 +16,7 @@ import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../design_system/premium/premium_marketplace_design_system.dart';
+import '../../../../measurement/measurement.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
@@ -580,6 +581,7 @@ class _CategorySectionWidget extends StatelessWidget {
         available: available,
         heroTag: heroTag,
         description: desc.isEmpty ? null : desc,
+        priceUnitSuffix: priceUnitSuffixAr(p.measurementType),
         onTap: onTap,
         onAddTap: available ? onAdd : null,
       );

@@ -110,10 +110,10 @@ class _NavItem extends StatelessWidget {
     if (fabLike) {
       iconWidget = BlocBuilder<CartCubit, List<CartLine>>(
         buildWhen: (a, b) => a.length != b.length ||
-            a.fold<int>(0, (s, e) => s + e.quantity) !=
-                b.fold<int>(0, (s, e) => s + e.quantity),
+            a.fold<int>(0, (s, e) => s + e.badgeUnits) !=
+                b.fold<int>(0, (s, e) => s + e.badgeUnits),
         builder: (context, lines) {
-          final count = lines.fold<int>(0, (s, e) => s + e.quantity);
+          final count = lines.fold<int>(0, (s, e) => s + e.badgeUnits);
           final label = count > 99 ? '99+' : '$count';
           return Transform.translate(
             offset: const Offset(0, -4),

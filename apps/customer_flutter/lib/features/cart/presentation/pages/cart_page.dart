@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
 import '../../application/cart_cubit.dart';
+import '../../../catalog/presentation/widgets/quantity_selector.dart';
 import '../widgets/cart_modifier_lines.dart';
 import '../widgets/premium_checkout_dock.dart';
 
@@ -53,7 +54,7 @@ class CartPage extends StatelessWidget {
                   final total =
                       lines.fold<double>(0, (s, e) => s + e.lineTotal);
                   final itemCount =
-                      lines.fold<int>(0, (s, e) => s + e.quantity);
+                      lines.fold<int>(0, (s, e) => s + e.badgeUnits);
                   final cart = context.read<CartCubit>();
 
                   return Column(
@@ -136,7 +137,7 @@ class _CartLineCard extends StatefulWidget {
 
   final CartLine line;
   final VoidCallback onRemove;
-  final ValueChanged<int> onQtyChanged;
+  final ValueChanged<String> onQtyChanged;
 
   @override
   State<_CartLineCard> createState() => _CartLineCardState();
@@ -240,9 +241,9 @@ class _CartLineCardState extends State<_CartLineCard>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  NmdFormat.money(line.unitPrice),
+                  line.quantityLabel,
                   textAlign: TextAlign.right,
-                  style: NmdTypography.micro.copyWith(fontSize: 10),
+                  style: NmdTypography.micro.copyWith(fontSize: 11),
                 ),
                 if (line.selectedOptions.isNotEmpty) ...[
                   const SizedBox(height: 3),
@@ -264,9 +265,11 @@ class _CartLineCardState extends State<_CartLineCard>
                           curve: Curves.easeOutCubic,
                         ),
                       ),
-                      child: _CartQtyStepper(
-                        qty: line.quantity,
+                      child: QuantitySelector(
+                        measurement: line.measurement,
+                        value: line.quantity,
                         onChanged: widget.onQtyChanged,
+                        compact: true,
                       ),
                     ),
                     IconButton(
@@ -288,61 +291,6 @@ class _CartLineCardState extends State<_CartLineCard>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CartQtyStepper extends StatelessWidget {
-  const _CartQtyStepper({
-    required this.qty,
-    required this.onChanged,
-  });
-
-  final int qty;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: NmdColors.surfaceMuted.withValues(alpha: 0.85),
-        borderRadius: NmdRadius.borderPill,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _qtyBtn(Icons.remove_rounded, () => onChanged(qty > 1 ? qty - 1 : 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: NmdSpacing.xs),
-            child: Text(
-              '$qty',
-              style: NmdTypography.label.copyWith(
-                fontSize: 13,
-                color: NmdColors.brandPrimary,
-              ),
-            ),
-          ),
-          _qtyBtn(Icons.add_rounded, () => onChanged(qty + 1)),
-        ],
-      ),
-    );
-  }
-
-  Widget _qtyBtn(IconData icon, VoidCallback onTap) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: NmdRadius.borderPill,
-        child: SizedBox(
-          width: 32,
-          height: 32,
-          child: Icon(icon, size: 16, color: NmdColors.brandPrimary),
-        ),
       ),
     );
   }
