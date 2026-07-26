@@ -136,6 +136,7 @@ import {
   computeDriverCollectionAmount,
   createDriverCollectionSettlement,
   enrichOrderWithDriverCollection,
+  getDriverSettlementMode,
   listActiveShiftStarts,
   listCollectionSettlements,
   orderMatchesCollectionFilters,
@@ -5054,6 +5055,15 @@ async function enrichCourierOrders(
         platformCommission: collection.platformCommission,
         driverCollectionAmount: collection.driverCollectionAmount,
         restaurantShare: collection.restaurantShare,
+        driverCashInHand: settlementMeta.driverCashInHand,
+        driverNonCashCollected: settlementMeta.driverNonCashCollected,
+        platformRevenueAmount: settlementMeta.platformRevenueAmount,
+        driverPlatformLiabilityAmount: settlementMeta.driverPlatformLiabilityAmount,
+        driverRestaurantLiabilityAmount: settlementMeta.driverRestaurantLiabilityAmount,
+        totalDriverLiability: settlementMeta.totalDriverLiability,
+        normalizedPaymentMethod: settlementMeta.normalizedPaymentMethod,
+        anomalyCode: settlementMeta.anomalyCode,
+        anomalyMessage: settlementMeta.anomalyMessage,
         settlementStatus: settlementMeta.settlementStatus,
         settledAt: settlementMeta.settledAt,
         settledBy: settlementMeta.settledBy,
@@ -11024,6 +11034,7 @@ app.get('/admin/driver-collections', wrapAsync(async (req, res) => {
 
   res.json({
     today,
+    settlementMode: getDriverSettlementMode(),
     filters: { from, to, courierId, marketId, settlementStatus, currentShift },
     drivers: summaries,
     dashboard: computeCollectionsDashboard(orders, today),
@@ -11105,7 +11116,14 @@ app.post('/admin/driver-collections/:courierId/settle', wrapAsync(async (req, re
     shiftLabel?: string;
     from?: string;
     to?: string;
+    settlementMode?: 'PLATFORM_ONLY' | 'FULL_CASH';
+    settledAmount?: number;
   };
+
+  const settlementMode =
+    body.settlementMode === 'FULL_CASH' || body.settlementMode === 'PLATFORM_ONLY'
+      ? body.settlementMode
+      : getDriverSettlementMode();
 
   let orders = ((await repos.orders.findAll()) as Record<string, unknown>[]).filter(
     (o) => String(o.courierId) === courierId && isDriverCollectionCountable(o)
@@ -11138,6 +11156,8 @@ app.post('/admin/driver-collections/:courierId/settle', wrapAsync(async (req, re
       settlementReference: body.settlementReference,
       settlementNotes: body.settlementNotes,
       shiftLabel: body.shiftLabel,
+      settlementMode,
+      settledAmount: body.settledAmount,
     });
     for (const o of updatedOrders) {
       await repos.orders.update(o as Parameters<typeof repos.orders.update>[0]);
@@ -11147,11 +11167,21 @@ app.post('/admin/driver-collections/:courierId/settle', wrapAsync(async (req, re
       courierName: courier.name,
       amount: settlement.amount,
       ordersCount: settlement.ordersCount,
+      settlementMode: settlement.settlementMode,
     });
   } catch (e) {
-    const err = e as Error & { code?: string };
-    if (err.code === 'NO_PENDING_ORDERS') {
-      return res.status(400).json({ error: err.message, code: err.code });
+    const err = e as Error & { code?: string; expected?: number; got?: number };
+    if (
+      err.code === 'NO_PENDING_ORDERS' ||
+      err.code === 'ANOMALY_BLOCKED' ||
+      err.code === 'PARTIAL_NOT_SUPPORTED'
+    ) {
+      return res.status(400).json({
+        error: err.message,
+        code: err.code,
+        expected: err.expected,
+        got: err.got,
+      });
     }
     throw e;
   }

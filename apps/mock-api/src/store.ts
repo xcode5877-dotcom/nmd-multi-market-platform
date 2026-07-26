@@ -294,11 +294,15 @@ export interface SettlementLogEntry {
   marketId?: string;
 }
 
+/** PLATFORM_ONLY = settle Now Market share; FULL_CASH = settle all driver liability. */
+export type DriverSettlementMode = 'PLATFORM_ONLY' | 'FULL_CASH';
+
 /** Append-only driver collection settlements (Now Market cash reconciliation). */
 export interface DriverCollectionSettlementRecord {
   id: string;
   courierId: string;
   marketId?: string;
+  /** Settlement basis amount (compat with V2 `amount`). */
   amount: number;
   deliveryFeesTotal: number;
   platformCommissionTotal: number;
@@ -311,6 +315,15 @@ export interface DriverCollectionSettlementRecord {
   settlementReference?: string;
   settlementNotes?: string;
   createdAt: string;
+  // V3
+  settlementMode?: DriverSettlementMode;
+  cashInHandTotal?: number;
+  platformLiabilityTotal?: number;
+  restaurantLiabilityTotal?: number;
+  settlementBasisAmount?: number;
+  settledAmount?: number;
+  differenceAmount?: number;
+  entryType?: 'SETTLEMENT' | 'ADJUSTMENT';
 }
 
 /** Persisted inside Customer.accountExtras (Prisma JSON or embedded in JSON store). */
@@ -466,6 +479,11 @@ export interface MockData {
   globalConfig?: {
     paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
     support?: SupportConfig;
+    /**
+     * Driver cash reconciliation mode.
+     * Default PLATFORM_ONLY — matches production: restaurant COD cash is not settled with Super Admin.
+     */
+    driverSettlementMode?: DriverSettlementMode;
   };
 }
 
@@ -649,6 +667,7 @@ const DEFAULT: MockData = {
   globalConfig: {
     paymentMethods: { cash: true, card: true, installments: true },
     support: { ...DEFAULT_SUPPORT_CONFIG },
+    driverSettlementMode: 'PLATFORM_ONLY',
   },
 };
 
@@ -851,6 +870,10 @@ export function parseToMockData(parsed: Partial<MockData>): MockData {
         installments: parsed.globalConfig?.paymentMethods?.installments !== false,
       },
       support: normalizeSupportConfig(parsed.globalConfig?.support),
+      driverSettlementMode:
+        parsed.globalConfig?.driverSettlementMode === 'FULL_CASH'
+          ? 'FULL_CASH'
+          : 'PLATFORM_ONLY',
     },
   };
 }
@@ -1248,6 +1271,8 @@ export function getGlobalConfig(): MockData['globalConfig'] {
       installments: cfg?.paymentMethods?.installments !== false,
     },
     support: normalizeSupportConfig(cfg?.support),
+    driverSettlementMode:
+      cfg?.driverSettlementMode === 'FULL_CASH' ? 'FULL_CASH' : 'PLATFORM_ONLY',
   };
 }
 
@@ -1268,6 +1293,14 @@ export function setGlobalConfig(config: MockData['globalConfig']): void {
     support: normalizeSupportConfig(
       config?.support !== undefined ? config.support : current?.support,
     ),
+    driverSettlementMode:
+      config?.driverSettlementMode === 'FULL_CASH'
+        ? 'FULL_CASH'
+        : config?.driverSettlementMode === 'PLATFORM_ONLY'
+          ? 'PLATFORM_ONLY'
+          : current?.driverSettlementMode === 'FULL_CASH'
+            ? 'FULL_CASH'
+            : 'PLATFORM_ONLY',
   };
   persist();
 }

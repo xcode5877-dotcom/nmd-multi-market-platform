@@ -20,6 +20,13 @@ type Dashboard = {
   settledToday: number;
   deliveryFeesToday: number;
   platformCommissionsToday: number;
+  cashInHandTotal?: number;
+  platformLiabilityTotal?: number;
+  restaurantLiabilityTotal?: number;
+  totalDriverLiability?: number;
+  settledAmountToday?: number;
+  outstandingAmount?: number;
+  settlementMode?: 'PLATFORM_ONLY' | 'FULL_CASH';
 };
 
 type DriverSummary = {
@@ -29,26 +36,46 @@ type DriverSummary = {
   completedOrders: number;
   externalOrders: number;
   appOrders: number;
+  cashOrders?: number;
+  onlinePaidOrders?: number;
   deliveryFeesTotal: number;
   platformCommissionTotal: number;
   driverCollectionTotal: number;
+  cashInHandTotal?: number;
+  platformLiabilityTotal?: number;
+  restaurantLiabilityTotal?: number;
+  totalDriverLiability?: number;
   todayCollection: number;
   currentShiftCollection: number;
   outstandingCollection: number;
   settledCollection: number;
   pendingOrders: number;
   settledOrders: number;
+  anomalyCount?: number;
 };
 
 type OrderRow = {
   orderId: string;
   isExternal: boolean;
+  orderType?: string;
+  normalizedPaymentMethod?: string;
   deliveryFee: number;
   platformCommission: number;
   driverCollectionAmount: number;
   orderTotal: number;
+  customerPayableAmount?: number;
   restaurantShare: number;
+  driverCashInHand?: number;
+  driverNonCashCollected?: number;
+  platformRevenueAmount?: number;
+  driverPlatformLiabilityAmount?: number;
+  driverRestaurantLiabilityAmount?: number;
+  totalDriverLiability?: number;
+  settledAmount?: number;
+  outstandingAmount?: number;
   settlementStatus: 'PENDING' | 'SETTLED';
+  anomalyCode?: string | null;
+  anomalyMessage?: string;
   settledAt?: string;
   createdAt?: string;
   deliveredAt?: string;
@@ -68,6 +95,12 @@ type SettlementRow = {
   settlementNotes?: string;
   shiftLabel?: string;
   status: string;
+  settlementMode?: string;
+  cashInHandTotal?: number;
+  platformLiabilityTotal?: number;
+  restaurantLiabilityTotal?: number;
+  settlementBasisAmount?: number;
+  entryType?: string;
 };
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -80,53 +113,61 @@ function exportDriversCsv(rows: DriverSummary[]): void {
   const headers = [
     'Driver',
     'Orders',
-    'Delivery Fees',
-    'Platform Commission',
-    'Driver Collection',
-    'Settlement Status',
-    'Outstanding',
+    'Cash in hand',
+    'Now Market liability',
+    'Restaurant liability',
+    'Total liability',
     'Settled',
+    'Outstanding',
+    'Anomalies',
   ];
   const lines = rows.map((r) => [
     r.courierName,
     r.completedOrders,
-    r.deliveryFeesTotal,
-    r.platformCommissionTotal,
-    r.driverCollectionTotal,
-    r.outstandingCollection > 0 ? 'Pending' : 'Settled',
-    r.outstandingCollection,
+    r.cashInHandTotal ?? 0,
+    r.platformLiabilityTotal ?? r.driverCollectionTotal,
+    r.restaurantLiabilityTotal ?? 0,
+    r.totalDriverLiability ?? 0,
     r.settledCollection,
+    r.outstandingCollection,
+    r.anomalyCount ?? 0,
   ]);
   const csv = [headers.join(','), ...lines.map((r) => r.join(','))].join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `driver-collections-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `driver-collections-v3-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 function DashboardCards({ data }: { data?: Dashboard }) {
   const cards = [
-    { label: 'تحصيل السائقين اليوم', value: data?.driverCollectionsToday ?? 0 },
-    { label: 'تحصيل معلّق', value: data?.pendingCollections ?? 0, tone: 'amber' },
-    { label: 'تم التسوية اليوم', value: data?.settledToday ?? 0, tone: 'emerald' },
-    { label: 'رسوم التوصيل اليوم', value: data?.deliveryFeesToday ?? 0 },
-    { label: 'عمولة المنصة اليوم', value: data?.platformCommissionsToday ?? 0 },
+    { label: 'إجمالي النقد مع السائقين', value: data?.cashInHandTotal ?? 0 },
+    { label: 'مستحق ناو ماركت', value: data?.platformLiabilityTotal ?? data?.pendingCollections ?? 0, tone: 'teal' },
+    { label: 'مستحق المطاعم مع السائقين', value: data?.restaurantLiabilityTotal ?? 0 },
+    { label: 'إجمالي المطلوب تسويته', value: data?.outstandingAmount ?? data?.totalDriverLiability ?? 0, tone: 'amber' },
+    { label: 'تمت تسويته اليوم', value: data?.settledAmountToday ?? data?.settledToday ?? 0, tone: 'emerald' },
+    { label: 'المتبقي للتسوية', value: data?.outstandingAmount ?? data?.pendingCollections ?? 0, tone: 'amber' },
+    { label: 'رسوم التوصيل (إيراد)', value: data?.deliveryFeesToday ?? 0, hint: 'مكوّن إيراد' },
+    { label: 'عمولة التطبيق (إيراد)', value: data?.platformCommissionsToday ?? 0, hint: 'مكوّن إيراد' },
   ];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {cards.map((c) => (
         <Card key={c.label} className="p-4">
           <p className="text-xs text-gray-500">{c.label}</p>
+          {c.hint ? <p className="text-[10px] text-gray-400">{c.hint}</p> : null}
           <p
             className={`text-xl font-bold tabular-nums ${
               c.tone === 'amber'
                 ? 'text-amber-800'
                 : c.tone === 'emerald'
                   ? 'text-emerald-800'
-                  : 'text-gray-900'
+                  : c.tone === 'teal'
+                    ? 'text-teal-800'
+                    : 'text-gray-900'
             }`}
           >
             {formatPrice(c.value)}
@@ -232,51 +273,61 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
                 <p className="text-lg font-bold tabular-nums">{summary?.completedOrders ?? 0}</p>
               </div>
               <div>
-                <p className="text-gray-500">رسوم التوصيل</p>
-                <p className="text-lg font-bold">{formatPrice(summary?.deliveryFeesTotal ?? 0)}</p>
+                <p className="text-gray-500">نقد مع السائق</p>
+                <p className="text-lg font-bold">{formatPrice(summary?.cashInHandTotal ?? 0)}</p>
               </div>
               <div>
-                <p className="text-gray-500">عمولة المنصة</p>
-                <p className="text-lg font-bold">{formatPrice(summary?.platformCommissionTotal ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-gray-500">تحصيل السائق</p>
+                <p className="text-gray-500">مستحق ناو ماركت</p>
                 <p className="text-lg font-bold text-teal-800">
-                  {formatPrice(summary?.driverCollectionTotal ?? 0)}
+                  {formatPrice(summary?.platformLiabilityTotal ?? summary?.driverCollectionTotal ?? 0)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-500">تحصيل اليوم</p>
-                <p className="text-lg font-bold">{formatPrice(summary?.todayCollection ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-gray-500">الوردية الحالية</p>
+                <p className="text-gray-500">مستحق المطاعم</p>
                 <p className="text-lg font-bold">
-                  {formatPrice(summary?.currentShiftCollection ?? 0)}
+                  {formatPrice(summary?.restaurantLiabilityTotal ?? 0)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-500">معلّق</p>
+                <p className="text-gray-500">إجمالي الالتزام</p>
+                <p className="text-lg font-bold">
+                  {formatPrice(summary?.totalDriverLiability ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-500">معلّق للتسوية</p>
                 <p className="text-lg font-bold text-amber-800">
                   {formatPrice(summary?.outstandingCollection ?? 0)}
                 </p>
               </div>
+              <div>
+                <p className="text-gray-500">شذوذات محاسبية</p>
+                <p className="text-lg font-bold text-red-700 tabular-nums">
+                  {summary?.anomalyCount ?? 0}
+                </p>
+              </div>
             </div>
             <p className="text-xs text-gray-500">
-              إيراد المطعم مخفي هنا — يظهر فقط داخل تفاصيل الطلب.
+              التسوية الافتراضية: PLATFORM_ONLY (مستحق ناو ماركت فقط). إجمالي الطلب ليس مقياس التسوية.
             </p>
           </Card>
 
           <Card className="p-4">
-            <h3 className="font-semibold mb-3">الطلبات — عمود التحصيل (ليس إجمالي الطلب)</h3>
+            <h3 className="font-semibold mb-3">الطلبات — التزام السائق (ليس إجمالي البيع)</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-right">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2">الطلب</th>
-                    <th className="px-3 py-2">النوع</th>
-                    <th className="px-3 py-2">تحصيل السائق</th>
+                    <th className="px-3 py-2">المصدر</th>
+                    <th className="px-3 py-2">الدفع</th>
+                    <th className="px-3 py-2">من الزبون</th>
+                    <th className="px-3 py-2">نقد مع السائق</th>
+                    <th className="px-3 py-2">ناو ماركت</th>
+                    <th className="px-3 py-2">المطعم</th>
+                    <th className="px-3 py-2">الالتزام</th>
                     <th className="px-3 py-2">الحالة</th>
+                    <th className="px-3 py-2">شذوذ</th>
                     <th className="px-3 py-2">تفاصيل</th>
                   </tr>
                 </thead>
@@ -285,13 +336,17 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
                     <tr key={o.orderId} className="border-t border-gray-100">
                       <td className="px-3 py-2 font-mono text-xs">{o.orderId.slice(0, 12)}</td>
                       <td className="px-3 py-2">{o.isExternal ? 'خارجي' : 'تطبيق'}</td>
+                      <td className="px-3 py-2 text-xs">{o.normalizedPaymentMethod ?? '—'}</td>
+                      <td className="px-3 py-2">{formatPrice(o.customerPayableAmount ?? o.orderTotal)}</td>
+                      <td className="px-3 py-2">{formatPrice(o.driverCashInHand ?? 0)}</td>
                       <td className="px-3 py-2 font-semibold text-teal-800">
-                        {formatPrice(o.driverCollectionAmount)}
-                        <span className="block text-[11px] text-gray-500 font-normal">
-                          {o.isExternal
-                            ? 'رسوم توصيل'
-                            : 'توصيل + عمولة المنصة'}
-                        </span>
+                        {formatPrice(o.driverPlatformLiabilityAmount ?? o.driverCollectionAmount)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {formatPrice(o.driverRestaurantLiabilityAmount ?? o.restaurantShare)}
+                      </td>
+                      <td className="px-3 py-2 font-medium">
+                        {formatPrice(o.totalDriverLiability ?? o.driverCollectionAmount)}
                       </td>
                       <td className="px-3 py-2">
                         {o.settlementStatus === 'SETTLED' ? (
@@ -300,6 +355,7 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
                           <span className="text-amber-700 text-xs font-medium">معلّق</span>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-xs text-red-600">{o.anomalyCode ?? '—'}</td>
                       <td className="px-3 py-2">
                         <button
                           type="button"
@@ -362,18 +418,33 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
       >
         {selected && (
           <div className="space-y-2 text-sm">
-            <Row label="إجمالي الطلب" value={formatPrice(selected.orderTotal)} />
+            <Row label="قيمة الطلب / المطلوب من الزبون" value={formatPrice(selected.customerPayableAmount ?? selected.orderTotal)} />
+            <Row label="طريقة الدفع" value={selected.normalizedPaymentMethod ?? '—'} />
+            <Row label="المبلغ النقدي مع السائق" value={formatPrice(selected.driverCashInHand ?? 0)} />
+            <Row label="المبلغ غير النقدي المحصل" value={formatPrice(selected.driverNonCashCollected ?? 0)} />
             <Row label="رسوم التوصيل" value={formatPrice(selected.deliveryFee)} />
-            <Row label="عمولة المنصة" value={formatPrice(selected.platformCommission)} />
+            <Row label="عمولة التطبيق" value={formatPrice(selected.platformCommission)} />
+            <Row label="إيراد ناو ماركت" value={formatPrice(selected.platformRevenueAmount ?? selected.driverCollectionAmount)} />
             <Row
-              label="تحصيل السائق"
-              value={formatPrice(selected.driverCollectionAmount)}
+              label="المطلوب من السائق لناو ماركت"
+              value={formatPrice(selected.driverPlatformLiabilityAmount ?? selected.driverCollectionAmount)}
               emphasis
             />
-            <Row label="حصة المطعم" value={formatPrice(selected.restaurantShare)} />
-            <p className="text-xs text-gray-500 pt-2">
-              حصة المطعم للعرض التفصيلي فقط — ليست جزءاً من محاسبة السائق.
-            </p>
+            <Row
+              label="المطلوب من السائق للمطعم"
+              value={formatPrice(selected.driverRestaurantLiabilityAmount ?? selected.restaurantShare)}
+            />
+            <Row
+              label="إجمالي التزام السائق"
+              value={formatPrice(selected.totalDriverLiability ?? 0)}
+              emphasis
+            />
+            <Row label="حالة التسوية" value={selected.settlementStatus} />
+            {selected.anomalyCode ? (
+              <p className="text-xs text-red-600 pt-2">
+                شذوذ: {selected.anomalyCode} — {selected.anomalyMessage}
+              </p>
+            ) : null}
           </div>
         )}
       </Modal>
@@ -484,8 +555,8 @@ export default function DriverCollectionsPage() {
             محاسبة تحصيل السائقين
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            تحصيل Now Market فقط = رسوم التوصيل (+ عمولة المنصة لطلبات التطبيق). بدون إجمالي الطلب /
-            إيراد المطعم.
+            V3: فصل النقد مع السائق / مستحق ناو ماركت / مستحق المطعم. التسوية الافتراضية PLATFORM_ONLY.
+            الطلبات المدفوعة أونلاين لا تنشئ ديناً وهمياً على السائق.
           </p>
         </div>
         <div className="flex gap-2">
@@ -548,18 +619,20 @@ export default function DriverCollectionsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">
-              <thead className="bg-gray-50">
+                <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2">السائق</th>
                   <th className="px-3 py-2">مكتمل</th>
+                  <th className="px-3 py-2">نقدي</th>
+                  <th className="px-3 py-2">أونلاين</th>
                   <th className="px-3 py-2">خارجي</th>
-                  <th className="px-3 py-2">تطبيق</th>
-                  <th className="px-3 py-2">رسوم التوصيل</th>
-                  <th className="px-3 py-2">عمولة المنصة</th>
-                  <th className="px-3 py-2">تحصيل السائق</th>
-                  <th className="px-3 py-2">اليوم</th>
-                  <th className="px-3 py-2">الوردية</th>
+                  <th className="px-3 py-2">نقد مع السائق</th>
+                  <th className="px-3 py-2">ناو ماركت</th>
+                  <th className="px-3 py-2">المطاعم</th>
+                  <th className="px-3 py-2">إجمالي الالتزام</th>
+                  <th className="px-3 py-2">مسوّى</th>
                   <th className="px-3 py-2">معلّق</th>
+                  <th className="px-3 py-2">شذوذ</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -568,18 +641,24 @@ export default function DriverCollectionsPage() {
                   <tr key={r.courierId} className="border-t border-gray-100">
                     <td className="px-3 py-2 font-medium">{r.courierName}</td>
                     <td className="px-3 py-2 tabular-nums">{r.completedOrders}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.cashOrders ?? 0}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.onlinePaidOrders ?? 0}</td>
                     <td className="px-3 py-2 tabular-nums">{r.externalOrders}</td>
-                    <td className="px-3 py-2 tabular-nums">{r.appOrders}</td>
-                    <td className="px-3 py-2">{formatPrice(r.deliveryFeesTotal)}</td>
-                    <td className="px-3 py-2">{formatPrice(r.platformCommissionTotal)}</td>
+                    <td className="px-3 py-2">{formatPrice(r.cashInHandTotal ?? 0)}</td>
                     <td className="px-3 py-2 font-semibold text-teal-800">
-                      {formatPrice(r.driverCollectionTotal)}
+                      {formatPrice(r.platformLiabilityTotal ?? r.driverCollectionTotal)}
                     </td>
-                    <td className="px-3 py-2">{formatPrice(r.todayCollection)}</td>
-                    <td className="px-3 py-2">{formatPrice(r.currentShiftCollection)}</td>
+                    <td className="px-3 py-2">{formatPrice(r.restaurantLiabilityTotal ?? 0)}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {formatPrice(r.totalDriverLiability ?? 0)}
+                    </td>
+                    <td className="px-3 py-2 text-emerald-800">
+                      {formatPrice(r.settledCollection)}
+                    </td>
                     <td className="px-3 py-2 text-amber-800">
                       {formatPrice(r.outstandingCollection)}
                     </td>
+                    <td className="px-3 py-2 text-red-700 tabular-nums">{r.anomalyCount ?? 0}</td>
                     <td className="px-3 py-2">
                       <Link
                         to={`/drivers/collections/${r.courierId}`}

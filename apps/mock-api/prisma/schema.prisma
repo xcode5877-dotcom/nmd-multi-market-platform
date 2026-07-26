@@ -432,7 +432,7 @@ model DriverPayrollAudit {
 }
 
 /// Append-only Super Admin driver collection settlements (platform cash only).
-/// driverCollectionAmount is derived on orders; this stores settlement history.
+/// Financial order amounts remain derived; this stores settlement history.
 model DriverCollectionSettlement {
   id                       String  @id
   courierId                String
@@ -449,6 +449,15 @@ model DriverCollectionSettlement {
   settlementReference      String?
   settlementNotes          String?
   createdAt                String
+  /// V3 additive fields
+  settlementMode           String  @default("PLATFORM_ONLY") // PLATFORM_ONLY | FULL_CASH
+  cashInHandTotal          Float   @default(0)
+  platformLiabilityTotal   Float   @default(0)
+  restaurantLiabilityTotal Float   @default(0)
+  settlementBasisAmount    Float   @default(0)
+  settledAmount            Float   @default(0)
+  differenceAmount         Float   @default(0)
+  entryType                String  @default("SETTLEMENT") // SETTLEMENT | ADJUSTMENT
 
   @@index([courierId])
   @@index([settledAt])
