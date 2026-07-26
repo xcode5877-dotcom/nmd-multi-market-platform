@@ -2,7 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:customer_flutter/api/models/product.dart';
 import 'package:customer_flutter/features/cart/application/cart_cubit.dart';
+import 'package:customer_flutter/features/cart/data/cart_persistence.dart';
 import 'package:customer_flutter/measurement/measurement.dart';
+
+CartCubit _cart() =>
+    CartCubit(persistence: CartPersistence(store: MemoryCartStore()));
 
 void main() {
   group('formatQuantity', () {
@@ -107,7 +111,7 @@ void main() {
 
   group('Cart', () {
     test('stores decimal quantity and formats label', () {
-      final cubit = CartCubit();
+      final cubit = _cart();
       const m = ProductMeasurement(
         measurementType: measurementTypeWeight,
         baseUnitCode: 'kg',
@@ -132,7 +136,7 @@ void main() {
     });
 
     test('PIECE badge sums quantity', () {
-      final cubit = CartCubit();
+      final cubit = _cart();
       cubit.addOrIncrement(
         tenantId: 't',
         productId: 'p',
