@@ -87,6 +87,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
 
+  /// Per-order delivery area (session). Profile default lives in CustomerProfileCubit.
+  final CheckoutDeliveryAreaController _deliveryArea =
+      CheckoutDeliveryAreaController();
+
   Future<_CheckoutBootstrap>? _bootstrap;
   List<Map<String, dynamic>> _suggestedCoupons = const [];
   _Fulfillment _fulfillment = _Fulfillment.delivery;
@@ -97,6 +101,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _submitting = false;
   bool _postSubmitNavigation = false;
   final Set<String> _touched = {};
+  String? _pendingProfileSyncTown;
 
   @override
   void initState() {
@@ -125,8 +130,80 @@ class _CheckoutPageState extends State<CheckoutPage> {
       context.pop();
       return;
     }
+    _deliveryArea.resetForNewCheckout();
+    _pendingProfileSyncTown = null;
     setState(() {
       _bootstrap = _loadBootstrap(context.read<Dio>(), cart, cartCubit);
+    });
+  }
+
+  int _fallbackFeeAgora(Map<String, dynamic> deliverySettings) {
+    final fee = deliverySettings['deliveryFee'];
+    return fee is num ? deliveryFeeNisToAgora(fee) : 0;
+  }
+
+  void _applyAreaSelection(
+    String areaId,
+    List<Map<String, dynamic>> zones,
+    Map<String, dynamic> deliverySettings,
+  ) {
+    final previousName = _deliveryArea.state.selectedAreaName;
+    _deliveryArea.selectArea(
+      areaId: areaId,
+      activeZones: zones,
+      fallbackFeeAgora: _fallbackFeeAgora(deliverySettings),
+    );
+    final nextName = _deliveryArea.state.selectedAreaName ?? '';
+    final adapted = adaptAddressForAreaChange(
+      currentAddress: _addressCtrl.text,
+      previousAreaName: previousName,
+      newAreaName: nextName,
+    );
+    if (adapted == null) {
+      _addressCtrl.clear();
+      _deliveryArea.markAddressNeedsUpdate(true);
+    } else {
+      _addressCtrl.text = adapted;
+      _deliveryArea.markAddressNeedsUpdate(false);
+    }
+    setState(() {});
+  }
+
+  void _syncProfileDefaultIfNeeded(
+    String profileTown,
+    List<Map<String, dynamic>> zones,
+    Map<String, dynamic> deliverySettings,
+  ) {
+    if (!_deliveryArea.state.initialized) return;
+    if (_deliveryArea.state.hasUserOverridden) {
+      // Keep order override; still refresh remembered default for labels.
+      _deliveryArea.syncProfileDefaultIfNotOverridden(
+        defaultTown: profileTown,
+        activeZones: zones,
+        fallbackFeeAgora: _fallbackFeeAgora(deliverySettings),
+      );
+      return;
+    }
+    final currentDefault = _deliveryArea.state.defaultTown?.trim() ?? '';
+    if (currentDefault == profileTown.trim()) return;
+    if (_pendingProfileSyncTown == profileTown) return;
+    _pendingProfileSyncTown = profileTown;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _deliveryArea.syncProfileDefaultIfNotOverridden(
+          defaultTown: profileTown,
+          activeZones: zones,
+          fallbackFeeAgora: _fallbackFeeAgora(deliverySettings),
+        );
+        final name = _deliveryArea.state.selectedAreaName;
+        if (name != null &&
+            name.isNotEmpty &&
+            isDefaultAddressTemplate(_addressCtrl.text)) {
+          _addressCtrl.text = defaultAddressForTown(name);
+        }
+        _pendingProfileSyncTown = null;
+      });
     });
   }
 
@@ -218,12 +295,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
       final rewards = await api.getCustomerRewards();
       final defaultTown = profile.primaryDeliveryArea;
+      _deliveryArea.initializeFromProfile(
+        defaultTown: defaultTown,
+        activeZones: zones,
+        fallbackFeeAgora: _fallbackFeeAgora(deliverySettings),
+      );
+      final resolvedName = _deliveryArea.state.selectedAreaName ?? defaultTown;
       setState(() {
         _suggestedCoupons = rewards;
-        if (defaultTown.isNotEmpty &&
-            _addressCtrl.text.trim() == _kDefaultDeliveryAddress.trim()) {
-          _addressCtrl.text =
-              '$defaultTown - تواصل معي بالواتساب لتحديد الموقع';
+        if (resolvedName.isNotEmpty &&
+            (_addressCtrl.text.trim() == _kDefaultDeliveryAddress.trim() ||
+                isDefaultAddressTemplate(_addressCtrl.text))) {
+          _addressCtrl.text = defaultAddressForTown(resolvedName);
         }
       });
     }
@@ -412,40 +495,49 @@ class _CheckoutPageState extends State<CheckoutPage> {
             const SnackBar(content: Text('الاسم ورقم الجوال مطلوبان')));
         return;
       }
-      // Always re-read canonical profile area immediately before create-order.
-      final profileCubit = context.read<CustomerProfileCubit>();
-      await profileCubit.refresh();
-      if (!mounted) return;
-      final area = resolveCheckoutDeliveryArea(
-        profileTown: profileCubit.state.primaryDeliveryArea,
-        zones: data.zones,
-      );
+      // Revalidate checkout selection against current active zones.
+      // Do NOT refresh profile into the order area — preserve override.
+      if (_fulfillment == _Fulfillment.delivery && data.zones.isNotEmpty) {
+        _deliveryArea.revalidateSelection(
+          activeZones: data.zones,
+          fallbackFeeAgora: _fallbackFeeAgora(data.deliverySettings),
+        );
+      }
 
       if (_fulfillment == _Fulfillment.delivery) {
-        if (addressText.isEmpty) {
-          messenger?.showSnackBar(
-              const SnackBar(content: Text('عنوان التوصيل مطلوب')));
-          return;
-        }
-        if (!area.hasProfileTown) {
+        if (addressText.isEmpty || _deliveryArea.state.addressNeedsUpdate) {
           messenger?.showSnackBar(
             const SnackBar(
-              content: Text(
-                'يرجى اختيار منطقة التوصيل من الملف الشخصي',
-              ),
+              content: Text('عنوان التوصيل مطلوب ومتوافق مع المنطقة'),
             ),
           );
           return;
         }
-        if (data.zones.isNotEmpty && !area.canDeliver) {
-          messenger?.showSnackBar(
-            const SnackBar(
-              content: Text(
-                'المحل لا يوصّل إلى منطقتك. غيّر المنطقة من الملف الشخصي.',
+        if (data.zones.isNotEmpty) {
+          if (!_deliveryArea.state.hasSelection) {
+            messenger?.showSnackBar(
+              const SnackBar(content: Text('يرجى اختيار منطقة التوصيل')),
+            );
+            return;
+          }
+          final areaName = _deliveryArea.state.selectedAreaName ?? '';
+          if (!isAddressCompatibleWithArea(
+            address: addressText,
+            areaName: areaName,
+          )) {
+            messenger?.showSnackBar(
+              const SnackBar(
+                content: Text('عنوان التوصيل غير متوافق مع المنطقة المختارة'),
               ),
-            ),
-          );
-          return;
+            );
+            return;
+          }
+          if (_deliveryArea.state.error != null) {
+            messenger?.showSnackBar(
+              SnackBar(content: Text(_deliveryArea.state.error!)),
+            );
+            return;
+          }
         }
       }
 
@@ -483,21 +575,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
           if (_fulfillment == _Fulfillment.delivery && addressText.isNotEmpty)
             'deliveryAddress': addressText,
           'orderGroupId': groupId,
-          'delivery': <String, dynamic>{
-            'method':
-                _fulfillment == _Fulfillment.delivery ? 'DELIVERY' : 'PICKUP',
-            // Area identity always from customer profile (never checkout UI).
-            if (_fulfillment == _Fulfillment.delivery &&
-                area.profileTown.isNotEmpty)
-              'deliveryAreaId': area.profileTown,
-            if (_fulfillment == _Fulfillment.delivery && area.zoneId != null)
-              'zoneId': area.zoneId,
-            if (_fulfillment == _Fulfillment.delivery && area.zoneName != null)
-              'zoneName': area.zoneName,
-            if (_fulfillment == _Fulfillment.delivery) 'fee': orderDeliveryFee,
-            if (_fulfillment == _Fulfillment.delivery)
-              'addressText': addressText,
-          },
+          'delivery': _fulfillment == _Fulfillment.delivery
+              ? _deliveryArea.buildCreateOrderDelivery(
+                  method: 'DELIVERY',
+                  feeAgoraForOrder: deliveryFeeNisToAgora(orderDeliveryFee),
+                  addressText: addressText,
+                )
+              : <String, dynamic>{'method': 'PICKUP'},
           if (isFirst && _appliedCoupon != null) 'couponId': _appliedCoupon!.id,
           if (isFirst && _appliedCoupon != null)
             'couponDiscountAmount': _appliedCoupon!.discountAmount,
@@ -709,41 +793,44 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             .watch<CustomerProfileCubit>()
                             .state
                             .primaryDeliveryArea;
-                        final area = resolveCheckoutDeliveryArea(
-                          profileTown: profileTown,
-                          zones: data.zones,
-                        );
-                        final baseDeliveryFee =
-                            (data.deliverySettings['deliveryFee'] is num)
-                                ? (data.deliverySettings['deliveryFee'] as num)
-                                    .toDouble()
-                                : 0.0;
-                        Map<String, dynamic>? selectedZoneForFee;
-                        if (area.zoneId != null) {
-                          for (final z in data.zones) {
-                            if (z['id']?.toString() == area.zoneId) {
-                              selectedZoneForFee = z;
-                              break;
-                            }
-                          }
+                        if (_deliveryArea.state.initialized) {
+                          _syncProfileDefaultIfNeeded(
+                            profileTown,
+                            data.zones,
+                            data.deliverySettings,
+                          );
+                        } else if (data.zones.isNotEmpty ||
+                            profileTown.isNotEmpty) {
+                          // Bootstrap path usually initializes; guard rebuild races.
+                          _deliveryArea.initializeFromProfile(
+                            defaultTown: profileTown,
+                            activeZones: data.zones,
+                            fallbackFeeAgora:
+                                _fallbackFeeAgora(data.deliverySettings),
+                          );
                         }
-                        final baseZoneFee = _fulfillment ==
-                                _Fulfillment.delivery
-                            ? ((selectedZoneForFee != null &&
-                                    selectedZoneForFee['fee'] is num)
-                                ? (selectedZoneForFee['fee'] as num).toDouble()
-                                : baseDeliveryFee)
-                            : 0.0;
+
+                        final areaState = _deliveryArea.state;
+                        final baseZoneFeeAgora =
+                            _fulfillment == _Fulfillment.delivery &&
+                                    areaState.hasSelection
+                                ? areaState.deliveryFeeAgora
+                                : 0;
                         final storeCount = data.orderedTenantIds.length;
-                        final additionalStoreFee = _fulfillment ==
+                        final additionalStoreFeeAgora = _fulfillment ==
                                     _Fulfillment.delivery &&
                                 storeCount > 1
-                            ? (storeCount - 1) * _kAdditionalStoreDeliveryFeeNis
-                            : 0.0;
-                        final deliveryFee =
+                            ? deliveryFeeNisToAgora(
+                                (storeCount - 1) *
+                                    _kAdditionalStoreDeliveryFeeNis,
+                              )
+                            : 0;
+                        final deliveryFeeAgora =
                             _fulfillment == _Fulfillment.delivery
-                                ? baseZoneFee + additionalStoreFee
-                                : 0.0;
+                                ? baseZoneFeeAgora + additionalStoreFeeAgora
+                                : 0;
+                        final deliveryFee =
+                            deliveryFeeAgoraToNis(deliveryFeeAgora);
                         final couponDiscount =
                             _appliedCoupon?.discountAmount ?? 0.0;
                         final grandTotal = math.max(
@@ -753,12 +840,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         final phoneOk = _phoneCtrl.text.trim().isNotEmpty;
                         final addressOk =
                             _fulfillment != _Fulfillment.delivery ||
-                                _addressCtrl.text.trim().isNotEmpty;
-                        // Delivery area is profile-only — never a checkout selector.
-                        final profileAreaOk =
-                            _fulfillment != _Fulfillment.delivery ||
-                                (area.hasProfileTown &&
-                                    (data.zones.isEmpty || area.canDeliver));
+                                (_addressCtrl.text.trim().isNotEmpty &&
+                                    !areaState.addressNeedsUpdate &&
+                                    (areaState.selectedAreaName == null ||
+                                        isAddressCompatibleWithArea(
+                                          address: _addressCtrl.text,
+                                          areaName:
+                                              areaState.selectedAreaName!,
+                                        )));
+                        final areaOk = _fulfillment != _Fulfillment.delivery ||
+                            data.zones.isEmpty ||
+                            areaState.canConfirmDelivery;
                         final cashEnabled =
                             data.tenantPaymentMethods['cash'] != false;
                         if (_paymentMethod == _PaymentMethod.card) {
@@ -773,7 +865,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         final canSubmit = nameOk &&
                             phoneOk &&
                             addressOk &&
-                            profileAreaOk &&
+                            areaOk &&
                             data.sameMarketOk &&
                             hasPaymentOption;
 
@@ -820,28 +912,74 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        InputDecorator(
-                                          decoration: _inputDecoration(
-                                              'منطقة التوصيل'),
-                                          child: Text(
-                                            area.hasProfileTown
-                                                ? area.profileTown
-                                                : 'يرجى اختيار منطقة التوصيل من الملف الشخصي',
-                                            style:
-                                                NmdTypography.bodySmall.copyWith(
-                                              color: area.hasProfileTown
-                                                  ? NmdColors.textPrimary
-                                                  : NmdColors.error,
-                                              fontWeight: FontWeight.w700,
+                                        if (data.zones.isNotEmpty)
+                                          DropdownButtonFormField<String>(
+                                            // ignore: deprecated_member_use
+                                            value: areaState.selectedAreaId !=
+                                                        null &&
+                                                    data.zones.any((z) =>
+                                                        z['id']?.toString() ==
+                                                        areaState
+                                                            .selectedAreaId)
+                                                ? areaState.selectedAreaId
+                                                : null,
+                                            decoration: _inputDecoration(
+                                                'منطقة التوصيل'),
+                                            hint: Text(
+                                              'يرجى اختيار منطقة التوصيل',
+                                              style: NmdTypography.bodySmall
+                                                  .copyWith(
+                                                color: NmdColors.error,
+                                              ),
+                                            ),
+                                            items: data.zones
+                                                .map(
+                                                  (z) => DropdownMenuItem(
+                                                    value: z['id']?.toString(),
+                                                    child: Text(
+                                                      '${z['name'] ?? ''} — ₪${((z['fee'] is num) ? (z['fee'] as num).toStringAsFixed(0) : '0')}',
+                                                      style: NmdTypography
+                                                          .bodySmall,
+                                                    ),
+                                                  ),
+                                                )
+                                                .toList(),
+                                            onChanged: (v) {
+                                              if (v == null) return;
+                                              _applyAreaSelection(
+                                                v,
+                                                data.zones,
+                                                data.deliverySettings,
+                                              );
+                                            },
+                                          ),
+                                        if (areaState.hasSelection) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            areaState.hasUserOverridden
+                                                ? 'لهذا الطلب فقط'
+                                                : 'المنطقة الافتراضية',
+                                            style: NmdTypography.micro.copyWith(
+                                              color: NmdColors.textSecondary,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
-                                        ),
-                                        if (area.hasProfileTown &&
-                                            data.zones.isNotEmpty &&
-                                            !area.zoneMatched) ...[
+                                        ],
+                                        if (areaState.error != null) ...[
                                           const SizedBox(height: NmdSpacing.xs),
                                           Text(
-                                            'المحل لا يوصّل إلى منطقتك. غيّر المنطقة من الملف الشخصي.',
+                                            areaState.error!,
+                                            style: NmdTypography.bodySmall
+                                                .copyWith(
+                                              color: NmdColors.error,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                        if (areaState.addressNeedsUpdate) ...[
+                                          const SizedBox(height: NmdSpacing.xs),
+                                          Text(
+                                            'حدّث عنوان التوصيل ليتوافق مع المنطقة المختارة',
                                             style: NmdTypography.bodySmall
                                                 .copyWith(
                                               color: NmdColors.error,
@@ -854,7 +992,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                           controller: _addressCtrl,
                                           minLines: 2,
                                           maxLines: 3,
-                                          onChanged: (_) => setState(() {}),
+                                          onChanged: (_) {
+                                            final areaName = _deliveryArea
+                                                .state.selectedAreaName;
+                                            if (areaName != null &&
+                                                areaName.isNotEmpty &&
+                                                isAddressCompatibleWithArea(
+                                                  address: _addressCtrl.text,
+                                                  areaName: areaName,
+                                                )) {
+                                              _deliveryArea
+                                                  .markAddressNeedsUpdate(
+                                                      false);
+                                            }
+                                            setState(() {});
+                                          },
                                           decoration: _inputDecoration(
                                                   'عنوان التوصيل',
                                                   hint:

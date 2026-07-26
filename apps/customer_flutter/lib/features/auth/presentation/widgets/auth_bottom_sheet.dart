@@ -157,7 +157,8 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
     setState(() => _townsLoading = true);
     try {
       final dio = context.read<Dio>();
-      final towns = await DeliveryTownRepository(dio).fetchTowns();
+      final towns =
+          await DeliveryTownRepository(dio).fetchTowns(forceRefresh: true);
       if (mounted) {
         setState(() {
           _deliveryTowns = towns;
