@@ -84,3 +84,27 @@ export type {
   OrderLineSnapshot,
   AuthoritativeOrderLineFields,
 } from './order-snapshot.js';
+
+export {
+  WEIGHT_STEP_PRESETS,
+  VOLUME_STEP_PRESETS,
+  defaultCatalogMeasurementForm,
+  measurementFormFromProduct,
+  applyMeasurementTypeSwitch,
+  effectiveStepString,
+  buildMeasurementPayload,
+  buildMeasurementApiPayload,
+  validateCatalogMeasurementForm,
+  mapMeasurementErrorToAr,
+  priceBasisExplanationAr,
+  buildMeasurementPricePreview,
+  measurementBadgeAr,
+  measurementPriceBadgeAr,
+  measurementStepHintAr,
+  measurementTypeSwitchRequiresConfirm,
+} from './catalog-form.js';
+export type {
+  CatalogMeasurementFormState,
+  CatalogMeasurementFieldError,
+  MeasurementPreviewRow,
+} from './catalog-form.js';
