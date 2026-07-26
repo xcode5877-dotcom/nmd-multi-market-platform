@@ -9,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../api/resolve_image_url.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
-import '../../../../design_system/premium/premium_marketplace_design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/rewards_cubit.dart';

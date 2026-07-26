@@ -264,7 +264,9 @@ bool _parseAvailability(Map<String, dynamic> json) {
   final status = (json['status']?.toString() ?? '').toLowerCase();
   if (status == 'out_of_stock' ||
       status == 'unavailable' ||
-      status == 'disabled') return false;
+      status == 'disabled') {
+    return false;
+  }
   return true;
 }
 

@@ -183,16 +183,23 @@ void main() {
   });
 
   group('E. Opt-in header', () {
-    test('DioClient interceptor sets Measurement V2 header', () {
-      // Contract: supported builds always set this on the shared Dio factory.
-      final dio = DioClient.create(TokenStorage());
-      final hasInterceptor = dio.interceptors.any((i) => i is Interceptor);
-      expect(hasInterceptor, isTrue);
-      // Simulate the factory policy used in DioClient.create.
+    test('DioClient interceptor sets Measurement V2 header', () async {
       const header = 'X-Nmd-Supports-Measurement-V2';
-      final options = RequestOptions(path: '/catalog/t1');
-      options.headers[header] = 'true';
-      expect(options.headers[header], 'true');
+      final dio = DioClient.create(TokenStorage());
+      RequestOptions? seen;
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            seen = options;
+            handler.resolve(
+              Response(requestOptions: options, data: <String, dynamic>{}, statusCode: 200),
+            );
+          },
+        ),
+      );
+      await dio.get<Map<String, dynamic>>('/catalog/t1');
+      expect(seen, isNotNull);
+      expect(seen!.headers[header], 'true');
       dio.close();
     });
   });

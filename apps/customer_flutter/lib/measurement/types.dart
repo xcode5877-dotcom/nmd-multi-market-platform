@@ -1,5 +1,5 @@
-/// Measurement V2 types — mirror of `@nmd/core` measurement types.
-/// Never infer; values come from the server.
+// Measurement V2 types — mirror of `@nmd/core` measurement types.
+// Never infer; values come from the server.
 
 typedef MeasurementType = String;
 typedef BaseUnitCode = String;

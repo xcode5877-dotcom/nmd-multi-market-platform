@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:customer_flutter/features/catalog/presentation/customization/pizza_topping_visual_resolver.dart';
