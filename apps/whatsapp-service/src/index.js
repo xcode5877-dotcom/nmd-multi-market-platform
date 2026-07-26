@@ -22,6 +22,10 @@ const MAX_SEND_FAILURES_BEFORE_SOFT_RESTART =
   Number(process.env.WA_MAX_SEND_FAILURES) || 2;
 const SOFT_RESTART_INIT_TIMEOUT_MS =
   Number(process.env.WA_SOFT_RESTART_INIT_TIMEOUT_MS) || 90_000;
+const MAX_RESTARTS_PER_WINDOW = Number(process.env.WA_MAX_RESTARTS_PER_WINDOW) || 3;
+const RESTART_WINDOW_MS = Number(process.env.WA_RESTART_WINDOW_MS) || 15 * 60 * 1000;
+const WATCHDOG_INTERVAL_MS = Number(process.env.WA_WATCHDOG_INTERVAL_MS) || 60_000;
+const STARTUP_READY_TIMEOUT_MS = Number(process.env.WA_STARTUP_READY_TIMEOUT_MS) || 120_000;
 
 /** Build Postgres connection from DATABASE_URL or DB_* env vars. */
 function getDatabaseUrl() {
@@ -77,6 +81,13 @@ let lastOperationalError = null;
 let lastSendOkAt = null;
 let consecutiveSendFailures = 0;
 let chromeStartedAt = null;
+let restartCount = 0;
+let lastRestartAt = null;
+let lastRestartReason = null;
+/** @type {number[]} */
+let restartTimestamps = [];
+let watchdogTimer = null;
+let consecutiveDeadSessionChecks = 0;
 
 const USER_DATA_DIR = path.resolve(SESSION_PATH);
 
@@ -224,17 +235,45 @@ function markSendFailure(err) {
   );
 }
 
-async function softRestartClient({ reason = 'manual' } = {}) {
+function canSoftRestart(reason) {
+  const now = Date.now();
+  restartTimestamps = restartTimestamps.filter((t) => now - t < RESTART_WINDOW_MS);
+  if (restartTimestamps.length >= MAX_RESTARTS_PER_WINDOW) {
+    console.error(
+      JSON.stringify({
+        level: 'warning',
+        event: 'WA_RESTART_BUDGET_EXCEEDED',
+        reason,
+        restartCount,
+        windowMs: RESTART_WINDOW_MS,
+        max: MAX_RESTARTS_PER_WINDOW,
+        at: new Date().toISOString(),
+      }),
+    );
+    connectionState = 'RESTART_BUDGET_EXCEEDED';
+    return false;
+  }
+  return true;
+}
+
+async function softRestartClient({ reason = 'manual', recreateSession = false } = {}) {
   if (isSoftRestarting || isInitializingClient) {
     console.log('[WhatsApp] softRestart skipped: already restarting or initializing');
     return { ok: false, error: 'restart already in progress' };
+  }
+  if (!canSoftRestart(reason)) {
+    return { ok: false, error: 'restart budget exceeded — wait before retrying or scan QR' };
   }
   isSoftRestarting = true;
   clientReady = false;
   clientOperational = false;
   connectionState = 'SOFT_RESTARTING';
   readySince = null;
-  console.log('[WhatsApp] Soft restart (LocalAuth preserved):', reason);
+  restartCount += 1;
+  lastRestartAt = new Date().toISOString();
+  lastRestartReason = reason;
+  restartTimestamps.push(Date.now());
+  console.log('[WhatsApp] Soft restart (LocalAuth preserved):', reason, 'restart#', restartCount);
   if (keepaliveTimer) {
     clearInterval(keepaliveTimer);
     keepaliveTimer = null;
@@ -252,17 +291,25 @@ async function softRestartClient({ reason = 'manual' } = {}) {
     client = null;
   }
   deleteSingletonLocks(USER_DATA_DIR);
+  if (recreateSession) {
+    console.warn('[WhatsApp] Dead session — clearing LocalAuth for QR re-pair');
+    clearSessionData();
+  }
   try {
     // Bound init so a hung Puppeteer initialize cannot leave the service
     // permanently stuck in SOFT_RESTARTING (OTP 503 forever).
     await withTimeout(initClient(), SOFT_RESTART_INIT_TIMEOUT_MS, 'initClient');
+    if (clientReady) {
+      consecutiveDeadSessionChecks = 0;
+      connectionState = 'CONNECTED';
+    }
     return { ok: clientReady };
   } catch (e) {
     console.error('[WhatsApp] soft restart init failed:', e?.message ?? String(e));
     return { ok: false, error: e?.message ?? String(e) };
   } finally {
     isSoftRestarting = false;
-    if (!clientReady && connectionState === 'SOFT_RESTARTING') {
+    if (!clientReady && (connectionState === 'SOFT_RESTARTING' || connectionState === 'UNKNOWN')) {
       connectionState = 'RESTART_FAILED';
     }
   }
@@ -284,11 +331,46 @@ function startSessionKeepalive() {
     if (!clientReady || isSoftRestarting || isInitializingClient) return;
     try {
       await verifyClientOperational({ reason: 'keepalive' });
+      consecutiveDeadSessionChecks = 0;
     } catch (e) {
       console.warn('[WhatsApp] Keepalive failed:', e?.message ?? String(e));
       await softRestartClient({ reason: 'keepalive_failed' });
     }
   }, KEEPALIVE_INTERVAL_MS);
+}
+
+function startHealthWatchdog() {
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  watchdogTimer = setInterval(async () => {
+    if (isSoftRestarting || isInitializingClient) return;
+    // Escape hatch: never stay in SOFT_RESTARTING / RESTART_FAILED forever without attempting recovery.
+    if (connectionState === 'SOFT_RESTARTING') {
+      console.warn('[WhatsApp] Watchdog: clearing stuck SOFT_RESTARTING flag');
+      isSoftRestarting = false;
+      connectionState = 'RESTART_FAILED';
+    }
+    if (!clientReady) {
+      consecutiveDeadSessionChecks += 1;
+      if (consecutiveDeadSessionChecks >= 3) {
+        const recreate = consecutiveDeadSessionChecks >= 6;
+        await softRestartClient({
+          reason: recreate ? 'watchdog_dead_session' : 'watchdog_not_ready',
+          recreateSession: recreate,
+        });
+      }
+      return;
+    }
+    try {
+      await verifyClientOperational({ reason: 'watchdog' });
+      consecutiveDeadSessionChecks = 0;
+    } catch (e) {
+      consecutiveDeadSessionChecks += 1;
+      console.warn('[WhatsApp] Watchdog operational failure:', e?.message ?? String(e));
+      if (consecutiveDeadSessionChecks >= 2) {
+        await softRestartClient({ reason: 'watchdog_unhealthy' });
+      }
+    }
+  }, WATCHDOG_INTERVAL_MS);
 }
 
 async function initClient() {
@@ -648,6 +730,14 @@ app.get('/health', (_req, res) => {
     ready: clientReady,
     operational: clientOperational,
     connectionState,
+    provider: 'whatsapp-web',
+    session: {
+      ready: clientReady,
+      readySince,
+      path: SESSION_PATH,
+    },
+    connection: connectionState,
+    queue: { note: 'queue lives in mock-api OTP pipeline' },
     battery: lastBattery
       ? {
           percent: lastBattery.battery,
@@ -659,7 +749,13 @@ app.get('/health', (_req, res) => {
     lastOperationalCheckAt,
     lastOperationalError,
     lastSendOkAt,
+    lastSuccessfulSend: lastSendOkAt,
     consecutiveSendFailures,
+    restartCount,
+    lastRestartAt,
+    lastRestartReason,
+    restartsInWindow: restartTimestamps.filter((t) => Date.now() - t < RESTART_WINDOW_MS).length,
+    maxRestartsPerWindow: MAX_RESTARTS_PER_WINDOW,
   });
 });
 
@@ -754,12 +850,18 @@ console.log('All API routes (/send-otp, /health) have been initialized');
 
 (async () => {
   await initDb();
-  await initClient();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[WhatsApp Service] HTTP server listening on 0.0.0.0:${PORT}`);
     console.log(`[WhatsApp Service] Session data path: ${SESSION_PATH}`);
     console.log(`[WhatsApp Service] protocolTimeout=${PROTOCOL_TIMEOUT_MS}ms keepalive=${KEEPALIVE_INTERVAL_MS}ms`);
   });
+  startHealthWatchdog();
+  try {
+    await withTimeout(initClient(), STARTUP_READY_TIMEOUT_MS, 'startup_initClient');
+  } catch (e) {
+    console.error('[WhatsApp] Startup init timeout/failure (service stays up for /health + recovery):', e?.message ?? e);
+    connectionState = 'STARTUP_FAILED';
+  }
 })().catch((err) => {
   console.error('[WhatsApp Service] Fatal init error:', err);
   process.exit(1);

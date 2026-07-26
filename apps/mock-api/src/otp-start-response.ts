@@ -1,7 +1,9 @@
 /**
  * Client-facing shape for POST /customer/auth/start.
- * Delivery failure must not be reported as a successful send.
+ * Never HTTP 200 unless a provider accepted delivery (or approved bypass).
  */
+
+import { OTP_DELIVERY_FAILED } from './otp/types.js';
 
 export type OtpStartDeliveryInput = {
   playReview: boolean;
@@ -14,9 +16,10 @@ export type OtpStartDeliveryInput = {
 
 export type OtpStartClientBody = {
   ok: boolean;
-  whatsAppSent: boolean;
-  smsSent: boolean;
-  sentVia: 'play_review' | 'both' | 'whatsapp' | 'sms' | 'none';
+  error?: typeof OTP_DELIVERY_FAILED | string;
+  whatsAppSent?: boolean;
+  smsSent?: boolean;
+  sentVia?: 'play_review' | 'both' | 'whatsapp' | 'sms' | 'none';
   deliveryFailed?: boolean;
   deliveryError?: string;
   hint?: string;
@@ -31,7 +34,23 @@ export function buildOtpStartClientResponse(input: OtpStartDeliveryInput): {
   const mockOrDevCode = Boolean(input.devCode);
   const clientSeesSuccess = deliveryOk || mockOrDevCode || input.playReview;
 
-  const sentVia: OtpStartClientBody['sentVia'] = input.playReview
+  if (!clientSeesSuccess) {
+    return {
+      httpStatus: 503,
+      body: {
+        ok: false,
+        error: OTP_DELIVERY_FAILED,
+        deliveryFailed: true,
+        deliveryError: input.whatsAppError || OTP_DELIVERY_FAILED,
+        sentVia: 'none',
+        whatsAppSent: false,
+        smsSent: false,
+        hint: 'OTP logged to server console and otp-debug.log if configured',
+      },
+    };
+  }
+
+  const sentVia: NonNullable<OtpStartClientBody['sentVia']> = input.playReview
     ? 'play_review'
     : input.whatsAppSent && input.smsSent
       ? 'both'
@@ -42,25 +61,12 @@ export function buildOtpStartClientResponse(input: OtpStartDeliveryInput): {
           : 'none';
 
   const body: OtpStartClientBody = {
-    ok: clientSeesSuccess,
-    // Keep legacy field meaning: "client may proceed as if a channel worked"
-    // (includes mock/devCode / play-review). Prefer `sentVia` + `ok` for new clients.
-    whatsAppSent: clientSeesSuccess,
+    ok: true,
+    whatsAppSent: true,
     smsSent: input.smsSent,
     sentVia,
   };
+  if (input.devCode) body.devCode = input.devCode;
 
-  if (!deliveryOk && !mockOrDevCode) {
-    body.deliveryFailed = true;
-    body.deliveryError = input.whatsAppError || 'OTP delivery failed';
-    body.hint = 'OTP logged to server console and otp-debug.log if configured';
-  }
-  if (input.devCode) {
-    body.devCode = input.devCode;
-  }
-
-  return {
-    httpStatus: clientSeesSuccess ? 200 : 503,
-    body,
-  };
+  return { httpStatus: 200, body };
 }

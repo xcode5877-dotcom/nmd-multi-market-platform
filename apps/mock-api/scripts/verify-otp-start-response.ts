@@ -13,9 +13,9 @@ function main() {
   });
   assert.equal(failed.httpStatus, 503);
   assert.equal(failed.body.ok, false);
+  assert.equal(failed.body.error, 'OTP_DELIVERY_FAILED');
   assert.equal(failed.body.sentVia, 'none');
   assert.equal(failed.body.deliveryFailed, true);
-  assert.match(String(failed.body.deliveryError), /WHATSAPP_DEVICE_OFFLINE/);
 
   const waOk = buildOtpStartClientResponse({
     playReview: false,

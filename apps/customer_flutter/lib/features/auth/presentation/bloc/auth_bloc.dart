@@ -153,11 +153,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final check = await _repo.checkPhone(phone);
       final start = await _repo.startOtp(phone);
       if (!start.deliveredSuccessfully) {
+        final deliveryMsg = start.error == 'OTP_DELIVERY_FAILED'
+            ? 'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.'
+            : (start.error ??
+                'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.');
         emit(
           state.copyWith(
             loading: false,
-            error: start.error ??
-                'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.',
+            error: deliveryMsg,
           ),
         );
         return;

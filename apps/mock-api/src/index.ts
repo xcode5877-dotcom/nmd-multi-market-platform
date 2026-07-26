@@ -171,8 +171,16 @@ import {
   normalizeHypQuery,
   verifyHypResponseMac,
 } from './hyp-service.js';
-import { sendOtpViaExternalWhatsAppApi } from './services/externalWhatsAppOtp.js';
 import { buildOtpStartClientResponse } from './otp-start-response.js';
+import {
+  buildOtpProvidersFromEnv,
+  collectOtpDiagnostics,
+  deliverOtpViaPipeline,
+  markOtpDeliveryFailure,
+  markOtpDeliverySuccess,
+  normalizeOtpPhone,
+  startOtpHealthWatchdog,
+} from './otp/index.js';
 import { aggregateMerchantStats, dateRangeForMerchant, orderPaymentChannel, type MerchantTimeRange } from './merchant-stats.js';
 import {
   computePlatformFee,
@@ -1517,78 +1525,39 @@ function maskSecret(v: string | undefined, keep = 4): string {
   return `${v.slice(0, keep)}…(${v.length} chars)`;
 }
 
-// Ops: check if WhatsApp OTP gateway is reachable + which OTP env vars are loaded (no secrets). No auth.
-app.get('/customer/auth/otp-gateway-health', async (_req, res) => {
-  const useLegacy =
-    process.env.USE_LEGACY_WHATSAPP_GATEWAY === '1' || process.env.USE_LEGACY_WHATSAPP_GATEWAY === 'true';
-  let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
-  if (useLegacy && !gatewayUrl) {
-    gatewayUrl = 'http://whatsapp-service:3000';
-  }
-  const extUrl = (process.env.WHATSAPP_API_URL || '').replace(/\/$/, '');
-  const otpEnv = {
-    WHATSAPP_API_URL: extUrl ? `${extUrl.slice(0, 48)}${extUrl.length > 48 ? '…' : ''}` : '',
-    WHATSAPP_TOKEN_set: !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_TOKEN.length > 0),
-    WHATSAPP_TOKEN_preview: maskSecret(process.env.WHATSAPP_TOKEN),
-    WHATSAPP_GATEWAY_URL: (process.env.WHATSAPP_GATEWAY_URL || '').trim().slice(0, 48) || '',
-    WHATSAPP_SERVICE_URL: (process.env.WHATSAPP_SERVICE_URL || '').trim().slice(0, 48) || '',
-    effectiveGatewayUrl: gatewayUrl ? `${gatewayUrl.slice(0, 40)}${gatewayUrl.length > 40 ? '…' : ''}` : '',
-    WA_API_KEY_set: !!(process.env.WA_API_KEY && process.env.WA_API_KEY.length > 0),
-    WA_API_KEY_preview: maskSecret(process.env.WA_API_KEY),
-    USE_LEGACY_WHATSAPP_GATEWAY: process.env.USE_LEGACY_WHATSAPP_GATEWAY || '',
-    FAWAZ_PHONE_set: !!(process.env.FAWAZ_PHONE || process.env.MOCK_OTP_FIXED_PHONES),
-    SMS_GATEWAY_URL_set: !!(process.env.SMS_GATEWAY_URL && process.env.SMS_GATEWAY_URL.length > 0),
-    SMS_API_KEY_set: !!(process.env.SMS_API_KEY && process.env.SMS_API_KEY.length > 0),
-    TWILIO_ACCOUNT_SID_set: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.length > 0),
-    TWILIO_AUTH_TOKEN_set: !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 0),
-    TWILIO_FROM_NUMBER: process.env.TWILIO_FROM_NUMBER || '',
-    MOCK_OTP: process.env.MOCK_OTP || '',
-    NODE_ENV: process.env.NODE_ENV || '',
-  };
-  const externalConfigured = !!(extUrl && process.env.WHATSAPP_TOKEN);
-  if (!gatewayUrl && !externalConfigured) {
-    return res.json({
-      gatewayConfigured: false,
-      gatewayReachable: false,
-      ready: false,
-      externalWhatsAppConfigured: false,
-      otpEnv,
-    });
-  }
-  if (externalConfigured) {
-    return res.json({
-      externalWhatsAppConfigured: true,
-      gatewayConfigured: !!gatewayUrl,
-      gatewayReachable: null,
-      ready: null,
-      note: 'OTP WhatsApp uses WHATSAPP_API_URL + WHATSAPP_TOKEN (UltraMsg-compatible). Legacy /health only if USE_LEGACY_WHATSAPP_GATEWAY.',
-      otpEnv,
-    });
-  }
-  try {
-    const healthRes = await whatsAppFetch(`${gatewayUrl.replace(/\/$/, '')}/health`, {
-      method: 'GET',
-      headers: process.env.WA_API_KEY ? { 'x-api-key': process.env.WA_API_KEY } : undefined,
-    });
-    const data = (await healthRes.json().catch(() => ({}))) as { ready?: boolean };
-    res.json({
-      gatewayConfigured: true,
-      gatewayReachable: healthRes.ok,
-      ready: healthRes.ok && data.ready === true,
-      externalWhatsAppConfigured: false,
-      otpEnv,
-    });
-  } catch (e) {
-    res.json({
-      gatewayConfigured: true,
-      gatewayReachable: false,
-      ready: false,
-      externalWhatsAppConfigured: false,
-      error: e instanceof Error ? e.message : 'Request failed',
-      otpEnv,
-    });
-  }
-});
+/** Ordered OTP delivery providers (WhatsApp → SMS → Twilio). */
+const otpProviders = buildOtpProvidersFromEnv();
+
+// Ops: OTP provider + queue health (no secrets). No auth.
+app.get('/customer/auth/otp-gateway-health', wrapAsync(async (_req, res) => {
+  const diag = await collectOtpDiagnostics(otpProviders);
+  const wa = diag.providers.find((p) => p.name === 'whatsapp' || p.name === 'external_whatsapp');
+  res.status(diag.anyProviderHealthy ? 200 : 503).json({
+    ok: diag.anyProviderHealthy,
+    provider: wa?.name ?? diag.providers.find((p) => p.configured)?.name ?? 'none',
+    queue: {
+      size: diag.queue.size,
+      active: diag.queue.active,
+      completed: diag.queue.completed,
+      failed: diag.queue.failed,
+    },
+    session: {
+      ready: wa?.detail?.ready ?? false,
+      operational: wa?.detail?.operational ?? false,
+      connectionState: wa?.detail?.connectionState ?? null,
+      readySince: wa?.detail?.readySince ?? null,
+    },
+    connection: wa?.detail?.connectionState ?? null,
+    lastSuccessfulSend: wa?.detail?.lastSendOkAt ?? diag.lastSuccessfulDeliveryAt,
+    restartCount: wa?.detail?.restartCount ?? 0,
+    providers: diag.providers.map((p) => ({
+      name: p.name,
+      configured: p.configured,
+      healthy: p.healthy,
+    })),
+    alert: diag.alert,
+  });
+}));
 
 app.get('/api/internal/whatsapp/reset', async (_req, res) => {
   const useLegacy =
@@ -1632,171 +1601,20 @@ app.get('/internal/whatsapp/reset', async (req, res) => {
   return res.redirect(307, '/api/internal/whatsapp/reset');
 });
 
-/**
- * Legacy: internal whatsapp-service (Docker) — only if USE_LEGACY_WHATSAPP_GATEWAY=1.
- */
-function classifyWhatsAppOtpError(rawError: string, status?: number): string {
-  const e = (rawError || '').toLowerCase();
-  if (status === 503 || e.includes('client not ready') || e.includes('not ready') || e.includes('disconnected')) {
-    return 'WHATSAPP_DEVICE_OFFLINE: WhatsApp is not connected. Please scan QR and keep phone online.';
-  }
-  if (e.includes('timeout') || e.includes('getchatbyid')) {
-    return 'WHATSAPP_TIMEOUT: Gateway timed out while reaching WhatsApp. Try reset and rescan QR.';
-  }
-  if (e.includes('unauthorized') || status === 401) {
-    return 'WHATSAPP_AUTH_ERROR: WA_API_KEY mismatch between mock-api and whatsapp-service.';
-  }
-  return rawError || 'WHATSAPP_SEND_FAILED';
-}
-
-async function sendOtpViaGateway(
-  gatewayUrl: string,
-  waApiKey: string,
-  /** Digits only, country code, no + (e.g. 972501234567) — matches whatsapp-service normalizePhone */
-  phoneDigits: string,
-  code: string,
-  retries = 0
-): Promise<{ sent: boolean; status?: number; error?: string }> {
-  const url = `${gatewayUrl.replace(/\/$/, '')}/send-otp`;
-  const gatewayHost = gatewayUrl.replace(/^https?:\/\//, '').split('/')[0] || 'gateway';
-  const opts: RequestInit = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': waApiKey },
-    body: JSON.stringify({ phone: phoneDigits, code }),
-  };
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const sendRes = await whatsAppFetch(url, opts);
-      const responseText = await sendRes.text();
-      let parsed: { success?: boolean; error?: string; message?: string } = {};
-      try {
-        parsed = JSON.parse(responseText) as { success?: boolean; error?: string; message?: string };
-      } catch {
-        /* non-JSON body */
-      }
-      // Gateway must return JSON { success: true }; treat anything else as failure → SMS fallback
-      const waOk = sendRes.ok && parsed.success === true;
-      const response = {
-        status: sendRes.status,
-        ok: sendRes.ok,
-        success: parsed.success,
-        error: parsed.error ?? parsed.message,
-        bodyPreview: responseText.length > 400 ? `${responseText.slice(0, 400)}…` : responseText,
-      };
-      console.log('OTP-SEND-DEBUG:', { phone: phoneDigits, code, response });
-      if (waOk) {
-        return { sent: true };
-      }
-      console.warn(
-        `[customer/auth/start] WhatsApp send-otp failed (attempt ${attempt + 1}/${retries + 1}):`,
-        sendRes.status,
-        gatewayHost,
-        responseText.slice(0, 200)
-      );
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      console.warn(
-        '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
-      );
-      const raw = ((parsed.error ?? parsed.message ?? responseText.slice(0, 200)) || '').trim();
-      return { sent: false, status: sendRes.status, error: classifyWhatsAppOtpError(raw, sendRes.status) };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.log('OTP-SEND-DEBUG:', { phone: phoneDigits, code, response: { error: msg, network: true } });
-      console.warn(
-        `[customer/auth/start] WhatsApp send-otp error (attempt ${attempt + 1}/${retries + 1}):`,
-        gatewayHost,
-        msg
-      );
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      console.warn(
-        '[customer/auth/start] If OTP is delayed, check WhatsApp gateway GET /health and third-party provider status page for outages.'
-      );
-      return { sent: false, error: classifyWhatsAppOtpError(msg) };
-    }
-  }
-  return { sent: false };
-}
-
-function normalizePhoneForSms(phone: string): string | null {
-  const digits = String(phone ?? '').replace(/\D/g, '');
-  if (!digits || digits.length < 9) return null;
-  // Israel numbers are usually local 05xxxxxxxx. Convert to +9725xxxxxxxx (E.164-like).
-  const withCountry = digits.startsWith('0') ? '972' + digits.slice(1) : digits.length <= 10 ? '972' + digits : digits;
-  return '+' + withCountry;
-}
-
-async function sendOtpViaSmsGateway(
-  smsGatewayUrl: string,
-  apiKey: string,
-  phone: string,
-  code: string
-): Promise<{ sent: boolean; error?: string; status?: number }> {
-  const url = `${smsGatewayUrl.replace(/\/$/, '')}/send-otp`;
-  const phoneTo = normalizePhoneForSms(phone);
-  if (!phoneTo) return { sent: false, error: 'Invalid phone for SMS' };
-
-  const message = `رمز التحقق الخاص بك هو: ${String(code).trim()}`;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ phone: phoneTo, code, message }),
-    });
-    if (res.ok) return { sent: true };
-    const errText = await res.text().catch(() => '');
-    return { sent: false, status: res.status, error: errText.slice(0, 200) || `HTTP ${res.status}` };
-  } catch (e) {
-    return { sent: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-async function sendOtpViaTwilio(
-  accountSid: string,
-  authToken: string,
-  fromNumber: string,
-  phone: string,
-  code: string
-): Promise<{ sent: boolean; error?: string }> {
-  const phoneTo = normalizePhoneForSms(phone);
-  if (!phoneTo) return { sent: false, error: 'Invalid phone for SMS' };
-  if (!fromNumber) return { sent: false, error: 'Missing TWILIO_FROM_NUMBER' };
-
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
-  const message = `رمز التحقق الخاص بك هو: ${String(code).trim()}`;
-  const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basicAuth}` },
-      body: new URLSearchParams({ To: phoneTo, From: fromNumber, Body: message }),
-    });
-    if (res.ok) return { sent: true };
-    const errText = await res.text().catch(() => '');
-    return { sent: false, error: errText.slice(0, 200) || `Twilio HTTP error ${res.status}` };
-  } catch (e) {
-    return { sent: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
 app.post('/customer/auth/start', async (req, res) => {
   const { phone } = req.body as { phone?: string };
   if (!phone || typeof phone !== 'string') {
     console.log('[customer/auth/start] 400: phone required');
     return res.status(400).json({ error: 'phone required' });
   }
-  const phoneDigits = normalizeInternationalPhoneDigits(phone);
+  const phoneDigits = normalizeOtpPhone(phone) ?? normalizeInternationalPhoneDigits(phone);
   if (!phoneDigits || phoneDigits.length < 9) {
     console.log('[customer/auth/start] 400: invalid phone', phone);
     return res.status(400).json({ error: 'Invalid phone format' });
   }
-  const result = createOtp(phone);
+
+  // Generate OTP immediately (in-memory) — never block on providers for code creation.
+  const result = createOtp(phoneDigits);
   if (!result.ok) {
     console.log('[customer/auth/start] 429:', result.error, result.code);
     return res.status(429).json({ error: result.error, code: result.code });
@@ -1809,69 +1627,45 @@ app.post('/customer/auth/start', async (req, res) => {
       '[customer/auth/start] Google Play review phone — OTP delivery skipped (use app-access credentials)',
     );
   }
-  const externalApiUrl = (process.env.WHATSAPP_API_URL || '').trim().replace(/\/$/, '');
-  const externalToken = (process.env.WHATSAPP_TOKEN || '').trim();
-  let gatewayUrl = (process.env.WHATSAPP_GATEWAY_URL || process.env.WHATSAPP_SERVICE_URL || '').trim().replace(/\/$/, '');
-  const waApiKey = process.env.WA_API_KEY;
-  const useLegacyGateway = process.env.USE_LEGACY_WHATSAPP_GATEWAY === '1' || process.env.USE_LEGACY_WHATSAPP_GATEWAY === 'true';
-  if (useLegacyGateway && !gatewayUrl) {
-    gatewayUrl = 'http://whatsapp-service:3000';
-  }
 
   let whatsAppSent = false;
-  let whatsAppError: string | undefined;
-  if (!playReview && externalApiUrl && externalToken && result.codeForSending) {
-    const ext = await sendOtpViaExternalWhatsAppApi(externalApiUrl, externalToken, phoneDigits, result.codeForSending);
-    whatsAppSent = ext.sent;
-    if (!ext.sent && ext.providerError) {
-      console.error('[customer/auth/start] External WhatsApp API error (exact provider message):', ext.providerError);
-    }
-  } else if (!playReview && useLegacyGateway && gatewayUrl && waApiKey && result.codeForSending) {
-    const sendResult = await sendOtpViaGateway(gatewayUrl, waApiKey, phoneDigits, result.codeForSending, 0);
-    whatsAppSent = sendResult.sent;
-    if (!sendResult.sent && sendResult.error) {
-      whatsAppError = sendResult.error;
-      console.error('[customer/auth/start] Legacy gateway error:', sendResult.error);
-    }
-    // Debugging: if legacy whatsapp connection fails, always print the OTP code to container logs
-    // (even if SMS fallback succeeds) so Fawaz can manually sign in while the gateway is down.
-    if (!sendResult.sent && result.codeForSending) {
-      const shouldLogOtp = process.env.OTP_LOG_ON_WA_FAIL === '1' || process.env.NODE_ENV !== 'production';
-      if (shouldLogOtp) {
-        logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_connection_failed');
-      }
-    }
-  }
-
-  // If WhatsApp failed or was not configured, try SMS (custom gateway first, then Twilio).
   let smsSent = false;
-  if (!playReview && !whatsAppSent && result.codeForSending) {
-    const smsGatewayUrl = (process.env.SMS_GATEWAY_URL || '').replace(/\/$/, '');
-    const smsApiKey = process.env.SMS_API_KEY ?? '';
-    if (smsGatewayUrl && smsApiKey) {
-      const smsRes = await sendOtpViaSmsGateway(smsGatewayUrl, smsApiKey, phoneDigits, result.codeForSending);
-      smsSent = smsRes.sent;
-      if (!smsRes.sent) {
-        console.warn('[customer/auth/start] SMS gateway fallback failed:', smsRes.error);
-      }
-    }
-    if (!smsSent) {
-      const twilioSid = process.env.TWILIO_ACCOUNT_SID ?? '';
-      const twilioToken = process.env.TWILIO_AUTH_TOKEN ?? '';
-      const twilioFrom = process.env.TWILIO_FROM_NUMBER ?? '';
-      if (twilioSid && twilioToken && twilioFrom) {
-        const smsRes = await sendOtpViaTwilio(twilioSid, twilioToken, twilioFrom, phoneDigits, result.codeForSending);
-        smsSent = smsRes.sent;
-        if (!smsRes.sent) console.warn('[customer/auth/start] Twilio SMS fallback failed:', smsRes.error);
-      }
-    }
-  }
+  let whatsAppError: string | undefined;
 
-  if (!whatsAppSent && smsSent) {
-    console.warn('[customer/auth/start] WhatsApp delivery failed; SMS delivered the OTP.');
-  }
-  if (!playReview && !whatsAppSent && !smsSent && result.codeForSending) {
-    logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_and_sms_failed');
+  if (!playReview && result.codeForSending) {
+    const delivery = await deliverOtpViaPipeline({
+      phoneCanonical: phoneDigits,
+      code: result.codeForSending,
+      providers: otpProviders,
+      playReview: false,
+    });
+    whatsAppSent = delivery.whatsAppSent;
+    smsSent = delivery.smsSent;
+    if (!delivery.ok) {
+      whatsAppError = delivery.error;
+      console.error('[customer/auth/start] Delivery pipeline failed:', {
+        phone: phoneDigits,
+        attempts: delivery.attempts,
+        error: delivery.error,
+      });
+      const shouldLogOtp =
+        process.env.OTP_LOG_ON_WA_FAIL === '1' || process.env.NODE_ENV !== 'production';
+      if (shouldLogOtp) {
+        logOtpManualFallback(phoneDigits, result.codeForSending, 'whatsapp_and_sms_failed');
+      }
+      markOtpDeliveryFailure(delivery.error);
+    } else {
+      markOtpDeliverySuccess();
+      if (!whatsAppSent && smsSent) {
+        console.warn('[customer/auth/start] WhatsApp delivery failed; SMS delivered the OTP.');
+      }
+      console.log('OTP-SEND-DEBUG:', {
+        phone: phoneDigits,
+        provider: delivery.provider,
+        sentVia: delivery.sentVia,
+        attempts: delivery.attempts,
+      });
+    }
   }
 
   const { httpStatus, body } = buildOtpStartClientResponse({
@@ -1884,13 +1678,36 @@ app.post('/customer/auth/start', async (req, res) => {
   if (body.ok) {
     console.log(`[customer/auth/start] ${httpStatus} → OTP sent via ${body.sentVia}`);
   } else {
-    console.error(
-      `[customer/auth/start] ${httpStatus} → delivery failed (sentVia=${body.sentVia}):`,
-      body.deliveryError,
-    );
+    console.error(`[customer/auth/start] ${httpStatus} →`, body.error, body.deliveryError);
   }
   res.status(httpStatus).json(body);
 });
+
+/** Platform admin: OTP delivery diagnostics. */
+app.get('/admin/otp/diagnostics', wrapAsync(async (req, res) => {
+  const user = req.user as { role?: string } | undefined;
+  if (!user || !isPlatformAdmin(user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const diag = await collectOtpDiagnostics(otpProviders);
+  res.json({
+    currentProvider:
+      diag.providers.find((p) => p.healthy)?.name ??
+      diag.providers.find((p) => p.configured)?.name ??
+      'none',
+    whatsAppState: diag.providers.find((p) => p.name === 'whatsapp')?.detail ?? null,
+    queueSize: diag.queue.size,
+    queue: diag.queue,
+    lastSend: diag.lastSuccessfulDeliveryAt,
+    lastFailure: diag.lastFailureAt,
+    lastFailureError: diag.lastFailureError,
+    lastRestart: diag.providers.find((p) => p.name === 'whatsapp')?.detail?.lastRestartAt ?? null,
+    restartCount: diag.providers.find((p) => p.name === 'whatsapp')?.detail?.restartCount ?? 0,
+    providers: diag.providers,
+    alert: diag.alert,
+    at: diag.at,
+  });
+}));
 
 function normalizePhoneForMatch(phone: string): string {
   return normalizeInternationalPhoneDigits(phone) ?? '';
@@ -11047,6 +10864,7 @@ const DATA_FILE_PATH = process.env.DATA_FILE || join(process.cwd(), 'data.json')
   app.listen(PORT, '0.0.0.0', () => {
     logExpressRoutes(app);
     console.log(`Mock API server running at http://0.0.0.0:${PORT} (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? 'json'})`);
+    startOtpHealthWatchdog(() => otpProviders, 60_000);
     if (storageDriver === 'json') {
       console.log(`DATA_FILE=${DATA_FILE_PATH} — ensure process has write permission so admin email and other updates persist.`);
     }
