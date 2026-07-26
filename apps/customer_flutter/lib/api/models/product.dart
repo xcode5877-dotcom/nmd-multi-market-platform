@@ -190,6 +190,7 @@ class Product {
     required this.isAvailable,
     required this.stockQuantity,
     required this.measurement,
+    this.measurementConfigValid = true,
   });
 
   final String id;
@@ -205,6 +206,10 @@ class Product {
 
   /// Server Measurement V2 config (never inferred client-side).
   final ProductMeasurement measurement;
+
+  /// False when authoritative V2 fields are present but illegal.
+  /// Invalid configs are not silently converted to sellable PIECE.
+  final bool measurementConfigValid;
 
   MeasurementType get measurementType => measurement.measurementType;
   BaseUnitCode get baseUnitCode => measurement.baseUnitCode;
@@ -224,7 +229,8 @@ class Product {
     return (stockQuantity ?? 1) > 0;
   }
 
-  bool get canAddToCart => isAvailable && isInStock;
+  bool get canAddToCart =>
+      isAvailable && isInStock && measurementConfigValid;
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final groups = (json['optionGroups'] as List<dynamic>? ?? const <dynamic>[])
@@ -232,6 +238,7 @@ class Product {
         .map((e) => ProductOptionGroup.fromJson(Map<String, dynamic>.from(e)))
         .where((g) => g.id.isNotEmpty && g.items.isNotEmpty)
         .toList();
+    final resolved = resolveProductMeasurementDetailed(json);
     return Product(
       id: (json['id']?.toString() ?? '').trim(),
       name: (json['name']?.toString() ?? '').trim(),
@@ -245,7 +252,8 @@ class Product {
       optionGroups: groups,
       isAvailable: _parseAvailability(json),
       stockQuantity: _parseStock(json),
-      measurement: resolveProductMeasurement(json),
+      measurement: resolved.measurement,
+      measurementConfigValid: resolved.valid,
     );
   }
 }

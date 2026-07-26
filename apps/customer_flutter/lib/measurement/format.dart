@@ -31,7 +31,11 @@ String? priceUnitSuffixAr(MeasurementType type) {
   return null;
 }
 
-/// Format a base-unit quantity for display (parity with `@nmd/core` formatQuantity).
+/// Format a base-unit quantity for display.
+///
+/// Policy (B.2 PART 14):
+/// - Sub-unit amounts prefer g/ml when that is the catalog display preference.
+/// - At/above 1 base unit, prefer kg/litre labels (never show `1000 غرام` for 1 kg).
 String formatQuantity({
   required Object quantityBase,
   required BaseUnitCode baseUnitCode,
@@ -41,18 +45,28 @@ String formatQuantity({
   final parsed = parseMeasurementDecimalStrict(quantityBase);
   if (!parsed.ok) return '0 ${arabicUnitLabel(displayUnitCode)}';
 
+  var effectiveDisplay = displayUnitCode;
+  // Prefer base unit label at/above 1 base unit when catalog asked for g/ml.
+  if (parsed.milli >= kMeasurementScale) {
+    if (baseUnitCode == 'kg' && displayUnitCode == 'g') {
+      effectiveDisplay = 'kg';
+    } else if (baseUnitCode == 'l' && displayUnitCode == 'ml') {
+      effectiveDisplay = 'l';
+    }
+  }
+
   final displayMilli = baseMilliToDisplayMilli(
     parsed.milli,
     baseUnitCode,
-    displayUnitCode,
+    effectiveDisplay,
   );
-  final label = arabicUnitLabel(displayUnitCode);
-  final isAtomicDisplay = displayUnitCode == 'g' ||
-      displayUnitCode == 'ml' ||
-      displayUnitCode == 'piece' ||
-      displayUnitCode == 'pack' ||
-      displayUnitCode == 'box' ||
-      displayUnitCode == 'bundle';
+  final label = arabicUnitLabel(effectiveDisplay);
+  final isAtomicDisplay = effectiveDisplay == 'g' ||
+      effectiveDisplay == 'ml' ||
+      effectiveDisplay == 'piece' ||
+      effectiveDisplay == 'pack' ||
+      effectiveDisplay == 'box' ||
+      effectiveDisplay == 'bundle';
 
   var amountStr = isAtomicDisplay && displayMilli % 1000 == 0
       ? '${displayMilli ~/ 1000}'

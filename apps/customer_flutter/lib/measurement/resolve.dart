@@ -1,5 +1,6 @@
 import 'decimal.dart';
 import 'types.dart';
+import 'validate.dart';
 
 ProductMeasurement defaultPieceMeasurement() => const ProductMeasurement(
       measurementType: measurementTypePiece,
@@ -13,6 +14,19 @@ ProductMeasurement defaultPieceMeasurement() => const ProductMeasurement(
       displayPrecision: 0,
     );
 
+/// Result of reading product measurement from catalog JSON.
+class ProductMeasurementResolve {
+  const ProductMeasurementResolve({
+    required this.measurement,
+    required this.valid,
+    this.errorCode,
+  });
+
+  final ProductMeasurement measurement;
+  final bool valid;
+  final String? errorCode;
+}
+
 bool _hasAuthoritativeFields(Map<String, dynamic> json) {
   return json['measurementType'] != null ||
       json['baseUnitCode'] != null ||
@@ -24,16 +38,41 @@ bool _hasAuthoritativeFields(Map<String, dynamic> json) {
       json.containsKey('displayPrecision');
 }
 
-/// Resolve product measurement from server fields. Never invent WEIGHT/VOLUME.
-/// Legacy `isWeightBased` alone is not used to invent config without type —
-/// if authoritative fields exist, use them; otherwise PIECE defaults.
-ProductMeasurement resolveProductMeasurement(Map<String, dynamic>? json) {
-  if (json == null) return defaultPieceMeasurement();
+/// Resolve product measurement from server fields.
+///
+/// Precedence:
+/// 1. Authoritative V2 fields when present (never overridden by `unitName`).
+/// 2. Missing V2 fields → safe legacy PIECE defaults.
+/// 3. Explicit invalid V2 config → [valid]=false (not silently converted to PIECE).
+///
+/// Do not invent WEIGHT from `unitName` / `isWeightBased` alone without base units.
+ProductMeasurementResolve resolveProductMeasurementDetailed(
+  Map<String, dynamic>? json,
+) {
+  if (json == null) {
+    return ProductMeasurementResolve(
+      measurement: defaultPieceMeasurement(),
+      valid: true,
+    );
+  }
 
-  if (!_hasAuthoritativeFields(json) && json['isWeightBased'] != true) {
-    // Legacy piece / missing fields
+  final hasAuth = _hasAuthoritativeFields(json);
+
+  if (!hasAuth) {
+    // Legacy-only / missing: PIECE. Do not invent WEIGHT from unitName.
+    if (json['isWeightBased'] == true) {
+      final base = (json['baseUnitCode']?.toString() ?? '').toLowerCase();
+      if (base != 'kg' && base != 'l') {
+        // Legacy weight flag without V2 units — unavailable rather than fake PIECE.
+        return ProductMeasurementResolve(
+          measurement: defaultPieceMeasurement(),
+          valid: false,
+          errorCode: 'legacy_weight_without_v2',
+        );
+      }
+    }
     final step = coerceMeasurementDecimalString(json['quantityStep'], '1');
-    return ProductMeasurement(
+    final m = ProductMeasurement(
       measurementType: measurementTypePiece,
       baseUnitCode: 'piece',
       displayUnitCode: 'piece',
@@ -44,56 +83,109 @@ ProductMeasurement resolveProductMeasurement(Map<String, dynamic>? json) {
       measurementVersion: 1,
       displayPrecision: 0,
     );
+    final v = validateProductMeasurement(m);
+    return ProductMeasurementResolve(
+      measurement: m,
+      valid: v.ok,
+      errorCode: v.reason,
+    );
   }
 
-  final typeRaw = (json['measurementType']?.toString() ?? '').toUpperCase();
-  var type = typeRaw;
-  if (type.isEmpty && json['isWeightBased'] == true) {
-    // Legacy weight signal without V2 type — treat as WEIGHT kg/g only when
-    // dual-emit already present from a V2-capable catalog. Without baseUnitCode,
-    // fall back to PIECE to avoid inventing illegal config.
-    final base = (json['baseUnitCode']?.toString() ?? '').toLowerCase();
-    if (base == 'kg' || base == 'l') {
-      type = base == 'l' ? measurementTypeVolume : measurementTypeWeight;
-    } else {
-      return defaultPieceMeasurement();
-    }
+  final typeRaw = (json['measurementType']?.toString() ?? '').trim().toUpperCase();
+  if (typeRaw.isEmpty) {
+    return ProductMeasurementResolve(
+      measurement: defaultPieceMeasurement(),
+      valid: false,
+      errorCode: 'missing_measurement_type',
+    );
   }
-  if (type.isEmpty) type = measurementTypePiece;
+
+  const known = {
+    measurementTypePiece,
+    measurementTypeWeight,
+    measurementTypeVolume,
+    measurementTypePackage,
+  };
+  if (!known.contains(typeRaw)) {
+    return ProductMeasurementResolve(
+      measurement: defaultPieceMeasurement(),
+      valid: false,
+      errorCode: 'unknown_measurement_type',
+    );
+  }
 
   String base;
   String display;
-  switch (type) {
+  switch (typeRaw) {
     case measurementTypeWeight:
       base = 'kg';
       display = (json['displayUnitCode']?.toString() ?? 'g').toLowerCase();
-      if (display != 'kg' && display != 'g') display = 'g';
+      if (display != 'kg' && display != 'g') {
+        return ProductMeasurementResolve(
+          measurement: defaultPieceMeasurement(),
+          valid: false,
+          errorCode: 'invalid_display_unit',
+        );
+      }
       break;
     case measurementTypeVolume:
       base = 'l';
       display = (json['displayUnitCode']?.toString() ?? 'ml').toLowerCase();
-      if (display != 'l' && display != 'ml') display = 'ml';
+      if (display != 'l' && display != 'ml') {
+        return ProductMeasurementResolve(
+          measurement: defaultPieceMeasurement(),
+          valid: false,
+          errorCode: 'invalid_display_unit',
+        );
+      }
       break;
     case measurementTypePackage:
-      base = (json['baseUnitCode']?.toString() ?? 'pack').toLowerCase();
-      if (base != 'pack' && base != 'box' && base != 'bundle') base = 'pack';
+      base = (json['baseUnitCode']?.toString() ?? '').toLowerCase();
+      if (base != 'pack' && base != 'box' && base != 'bundle') {
+        return ProductMeasurementResolve(
+          measurement: defaultPieceMeasurement(),
+          valid: false,
+          errorCode: 'invalid_package_unit',
+        );
+      }
       display = base;
       break;
     default:
-      type = measurementTypePiece;
       base = 'piece';
       display = 'piece';
   }
 
-  final step = coerceMeasurementDecimalString(json['quantityStep'], '1');
-  final min = coerceMeasurementDecimalString(
-    json['minimumQuantity'] ?? step,
-    step,
+  final stepParsed = parseMeasurementDecimalStrict(json['quantityStep'] ?? '1');
+  if (!stepParsed.ok) {
+    return ProductMeasurementResolve(
+      measurement: defaultPieceMeasurement(),
+      valid: false,
+      errorCode: 'invalid_step',
+    );
+  }
+  final minParsed = parseMeasurementDecimalStrict(
+    json['minimumQuantity'] ?? stepParsed.normalized,
   );
+  if (!minParsed.ok) {
+    return ProductMeasurementResolve(
+      measurement: defaultPieceMeasurement(),
+      valid: false,
+      errorCode: 'invalid_minimum',
+    );
+  }
+
   String? max;
   if (json['maximumQuantity'] != null &&
       json['maximumQuantity'].toString().trim().isNotEmpty) {
-    max = coerceMeasurementDecimalString(json['maximumQuantity'], min);
+    final maxParsed = parseMeasurementDecimalStrict(json['maximumQuantity']);
+    if (!maxParsed.ok) {
+      return ProductMeasurementResolve(
+        measurement: defaultPieceMeasurement(),
+        valid: false,
+        errorCode: 'invalid_maximum',
+      );
+    }
+    max = maxParsed.normalized;
   }
 
   final versionRaw = json['measurementVersion'];
@@ -109,20 +201,34 @@ ProductMeasurement resolveProductMeasurement(Map<String, dynamic>? json) {
         : int.tryParse(json['displayPrecision'].toString());
   }
 
-  return ProductMeasurement(
-    measurementType: type,
+  final candidate = ProductMeasurement(
+    measurementType: typeRaw,
     baseUnitCode: base,
     displayUnitCode: display,
-    quantityStep: step,
-    minimumQuantity: min,
+    quantityStep: stepParsed.normalized,
+    minimumQuantity: minParsed.normalized,
     maximumQuantity: max,
     priceBasis: priceBasisPerBaseUnit,
-    measurementVersion: version < 1 ? 1 : version,
+    measurementVersion: version,
     displayPrecision: precision,
   );
+  final v = validateProductMeasurement(candidate);
+  if (!v.ok) {
+    return ProductMeasurementResolve(
+      measurement: candidate,
+      valid: false,
+      errorCode: v.reason,
+    );
+  }
+  return ProductMeasurementResolve(measurement: candidate, valid: true);
 }
 
-/// Resolve measurement from order-line snapshots (never reinterpret).
+/// Convenience: measurement only (legacy callers). Prefer [resolveProductMeasurementDetailed].
+ProductMeasurement resolveProductMeasurement(Map<String, dynamic>? json) {
+  return resolveProductMeasurementDetailed(json).measurement;
+}
+
+/// Resolve measurement from order-line snapshots (never reinterpret via catalog).
 ProductMeasurement resolveMeasurementFromOrderLine(Map<String, dynamic> m) {
   final snapType = m['measurementTypeSnapshot'] ?? m['measurementType'];
   final snapBase = m['baseUnitCodeSnapshot'] ?? m['baseUnitCode'];
@@ -137,7 +243,7 @@ ProductMeasurement resolveMeasurementFromOrderLine(Map<String, dynamic> m) {
     return defaultPieceMeasurement();
   }
 
-  return resolveProductMeasurement({
+  return resolveProductMeasurementDetailed({
     'measurementType': snapType,
     'baseUnitCode': snapBase,
     'displayUnitCode': snapDisplay,
@@ -146,10 +252,18 @@ ProductMeasurement resolveMeasurementFromOrderLine(Map<String, dynamic> m) {
     'maximumQuantity': snapMax,
     'measurementVersion': snapVersion ?? 1,
     'displayPrecision': snapPrecision,
-  });
+  }).measurement;
 }
 
 String orderLineQuantityDecimal(Map<String, dynamic> m) {
+  if (m['measurementV2Required'] == true && m['quantity'] == null) {
+    // Redacted for unsupported clients — supported app should still have quantityDecimal.
+    final qd = m['quantityDecimal'];
+    if (qd != null && qd.toString().trim().isNotEmpty) {
+      return coerceMeasurementDecimalString(qd, '1');
+    }
+    return '1';
+  }
   final qd = m['quantityDecimal'];
   if (qd != null && qd.toString().trim().isNotEmpty) {
     return coerceMeasurementDecimalString(qd, '1');

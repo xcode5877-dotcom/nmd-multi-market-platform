@@ -22,7 +22,7 @@ class ReorderLineCheck {
 }
 
 const kReorderConfigChangedAr =
-    'تغيّرت إعدادات هذا المنتج. يرجى اختيار كمية جديدة.';
+    'تغيّرت طريقة بيع هذا المنتج، اختر كمية جديدة';
 
 /// Block reorder of a single line when catalog measurement no longer matches
 /// the order-line snapshot (type/step/version). Never auto-round.

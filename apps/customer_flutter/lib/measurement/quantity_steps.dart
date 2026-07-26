@@ -2,27 +2,30 @@ import 'decimal.dart';
 import 'format.dart';
 import 'types.dart';
 
-/// Build selectable quantity options from server step/min/max (chips / wheel).
-List<String> buildQuantityOptions(ProductMeasurement m, {int maxOptions = 24}) {
+/// Build bounded chip options from server step/min/max.
+/// Cap prevents huge lists (e.g. step 0.05 × max 100). Remaining range via ±.
+List<String> buildQuantityOptions(ProductMeasurement m, {int maxOptions = 12}) {
   final step = parseMeasurementDecimalStrict(m.quantityStep);
   final min = parseMeasurementDecimalStrict(m.minimumQuantity);
   if (!step.ok || !min.ok || step.milli <= 0) {
     return const ['1'];
   }
 
-  int? maxMilli;
+  int? configuredMax;
   if (m.maximumQuantity != null && m.maximumQuantity!.trim().isNotEmpty) {
     final max = parseMeasurementDecimalStrict(m.maximumQuantity);
-    if (max.ok) maxMilli = max.milli;
+    if (max.ok) configuredMax = max.milli;
   }
 
-  // Default span: enough to show friendly options (e.g. up to ~2 kg / 2 l / 12 pcs)
-  maxMilli ??= min.milli + step.milli * (m.isWeighted ? 8 : 11);
-  if (maxMilli < min.milli) maxMilli = min.milli;
+  // Practical chip window: ~8 steps above min when max is huge/absent.
+  final practicalEnd = min.milli + step.milli * (m.isWeighted ? 8 : 11);
+  final end = configuredMax == null
+      ? practicalEnd
+      : (configuredMax < practicalEnd ? configuredMax : practicalEnd);
+  final maxMilli = end < min.milli ? min.milli : end;
 
   final out = <String>[];
   var cur = min.milli;
-  // Align to step grid from min
   while (cur <= maxMilli && out.length < maxOptions) {
     out.add(milliToNormalizedString(cur));
     cur += step.milli;
