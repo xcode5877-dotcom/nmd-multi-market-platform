@@ -16,6 +16,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthPhoneSubmitted>(_onPhoneSubmitted);
     on<AuthOtpContinue>(_onOtpContinue);
     on<AuthProfileSubmit>(_onProfileSubmit);
+    on<AuthDeliveryTownSubmit>(_onDeliveryTownSubmit);
     on<AuthResetRequested>(_onReset);
     on<AuthSessionRestored>(_onSessionRestored);
   }
@@ -217,6 +218,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
+  Future<bool> _needsDeliveryTownSetup() async {
+    final me = await _repo.fetchCurrentCustomer();
+    final town = me?.defaultDeliveryTown?.trim() ?? '';
+    return town.isEmpty;
+  }
+
   Future<void> _completeOtpVerification({
     required Emitter<AuthState> emit,
     required String phone,
@@ -231,6 +238,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           code: code,
           name: null,
         );
+        final needsTown = await _needsDeliveryTownSetup();
+        if (needsTown) {
+          final me = await _repo.fetchCurrentCustomer();
+          emit(
+            state.copyWith(
+              loading: false,
+              step: AuthStep.deliveryTown,
+              phone: phone,
+              profileName: me?.name?.trim() ?? '',
+              isNewUser: result.isNewUser,
+            ),
+          );
+          return;
+        }
         emit(
           state.copyWith(
             loading: false,
@@ -269,6 +290,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         );
         return;
       }
+      final needsTown = await _needsDeliveryTownSetup();
+      if (needsTown) {
+        final me = await _repo.fetchCurrentCustomer();
+        emit(
+          state.copyWith(
+            loading: false,
+            step: AuthStep.deliveryTown,
+            phone: phone,
+            profileName: me?.name?.trim() ?? '',
+            isNewUser: false,
+          ),
+        );
+        return;
+      }
       emit(
         state.copyWith(
           loading: false,
@@ -277,7 +312,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isNewUser: false,
         ),
       );
-      nmdPostLoginTrace('AUTH_SUCCESS', 'verifyOtp new user with existing profile');
+      nmdPostLoginTrace(
+          'AUTH_SUCCESS', 'verifyOtp new user with existing profile');
     } catch (e) {
       emit(state.copyWith(
         loading: false,
@@ -296,17 +332,44 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(state.copyWith(error: 'أدخل اسمك'));
       return;
     }
+    emit(
+      state.copyWith(
+        profileName: name,
+        step: AuthStep.deliveryTown,
+        clearError: true,
+      ),
+    );
+  }
+
+  Future<void> _onDeliveryTownSubmit(
+    AuthDeliveryTownSubmit event,
+    Emitter<AuthState> emit,
+  ) async {
+    final town = event.town.trim();
+    if (town.isEmpty) {
+      emit(state.copyWith(error: 'اختر منطقتك الرئيسية'));
+      return;
+    }
+    final name = state.profileName.trim();
+    if (name.isEmpty) {
+      emit(state.copyWith(error: 'أدخل اسمك'));
+      return;
+    }
     emit(state.copyWith(loading: true, clearError: true));
     try {
-      await _repo.updateCustomerName(name);
+      await _repo.updateCustomerProfile(
+        name: name,
+        defaultDeliveryTown: town,
+        source: 'registration',
+      );
       emit(
         state.copyWith(
           loading: false,
           step: AuthStep.done,
-          isNewUser: true,
+          isNewUser: state.isNewUser ?? true,
         ),
       );
-      nmdPostLoginTrace('AUTH_SUCCESS', 'profile submit');
+      nmdPostLoginTrace('AUTH_SUCCESS', 'delivery town submit');
     } catch (e) {
       emit(state.copyWith(
         loading: false,

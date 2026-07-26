@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/auth/ensure_customer_auth.dart';
-import '../../core/debug/nmd_post_login_trace.dart';
+import '../../core/auth/protected_customer_navigation.dart';
+import '../../core/debug/order_window_log.dart';
 import '../../core/navigation/safe_back_navigation.dart';
+import '../../features/account/presentation/widgets/default_delivery_town_setup_gate.dart';
 import '../../widgets/global_nmd_header.dart';
 import '../../widgets/nmd_bottom_nav.dart';
 
@@ -58,6 +60,9 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     final path = GoRouterState.of(context).uri.path;
     final tab = MainLayout.tabFromPath(path);
+    orderWindowLog(
+      '[ORDER_WINDOW] MainLayout build path=$path shellTab=${tab.name}',
+    );
     final showShellAppBar = tab != MainTab.home &&
         tab != MainTab.rewards &&
         !MainLayout.isSubRouteWithoutShellAppBar(path) &&
@@ -77,13 +82,15 @@ class _MainLayoutState extends State<MainLayout> {
               ),
             ),
           Expanded(
-            child: ColoredBox(
-              color: showShellAppBar
-                  ? (tab == MainTab.rewards
-                      ? const Color(0xFF0A0E14)
-                      : Colors.white)
-                  : Colors.transparent,
-              child: widget.child,
+            child: DefaultDeliveryTownSetupGate(
+              child: ColoredBox(
+                color: showShellAppBar
+                    ? (tab == MainTab.rewards
+                        ? const Color(0xFF0A0E14)
+                        : Colors.white)
+                    : Colors.transparent,
+                child: widget.child,
+              ),
             ),
           ),
           NmdBottomNav(
@@ -96,35 +103,39 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Future<void> _onTabSelected(BuildContext context, MainTab tab) async {
-    if (_tabNavBusy) return;
+    if (kDebugMode) {
+      debugPrint('[NAV-AUDIT] bottom tab tap tab=${tab.name}');
+    }
+    if (_tabNavBusy) {
+      if (kDebugMode) debugPrint('[NAV-AUDIT] bottom tab blocked — tabNavBusy');
+      return;
+    }
     _tabNavBusy = true;
     try {
-      final base = '/market/${widget.marketSlug}';
+      if (!context.mounted) return;
       switch (tab) {
         case MainTab.home:
-          context.go(base);
-          return;
+          orderWindowLogHomeNavigation(
+            'MainLayout._onTabSelected:home',
+            '/market/${widget.marketSlug}',
+          );
+          context.go('/market/${widget.marketSlug}');
         case MainTab.rewards:
-          context.go('$base/rewards');
-          return;
+          context.go('/market/${widget.marketSlug}/rewards');
         case MainTab.cart:
-          context.go('$base/cart');
-          return;
+          context.go('/market/${widget.marketSlug}/cart');
         case MainTab.account:
-          await openCustomerAccount(context, widget.marketSlug);
-          return;
+          await navigateToProtectedCustomerDestination(
+            context,
+            marketSlug: widget.marketSlug,
+            destination: ProtectedCustomerDestination.account,
+          );
         case MainTab.orders:
-          final router = GoRouter.of(context);
-          final ok = await ensureCustomerAuth(context);
-          if (!context.mounted) {
-            if (ok) {
-              nmdPostLoginTrace('NAVIGATING_TO_ORDERS_ROUTER_FALLBACK', '$base/orders');
-              router.go('$base/orders');
-            }
-            return;
-          }
-          if (ok) context.go('$base/orders');
-          return;
+          await navigateToProtectedCustomerDestination(
+            context,
+            marketSlug: widget.marketSlug,
+            destination: ProtectedCustomerDestination.orders,
+          );
       }
     } finally {
       _tabNavBusy = false;

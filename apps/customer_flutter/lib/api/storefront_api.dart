@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 
+import '../features/account/data/delivery_town_parser.dart';
 import '../features/catalog/data/pillar_nav_item.dart';
 import '../features/catalog/data/sub_category_nav_item.dart';
 import 'markets_picker_load_result.dart';
@@ -570,6 +571,16 @@ class StorefrontApi {
         .toList();
   }
 
+  /// `GET /public/delivery-towns` — supported delivery areas list.
+  Future<List<String>> getDeliveryTowns() async {
+    final response = await dio.get<dynamic>('/public/delivery-towns');
+    try {
+      return parseDeliveryTownsResponse(response.data);
+    } on FormatException {
+      return const <String>[];
+    }
+  }
+
   /// `GET /customer/me` — requires customer JWT.
   Future<Map<String, dynamic>?> getCustomerMe() async {
     try {
@@ -754,6 +765,8 @@ class StorefrontApi {
     String? email,
     String? city,
     String? avatarUrl,
+    String? defaultDeliveryTown,
+    String? source,
   }) async {
     try {
       final response = await dio.patch<dynamic>(
@@ -762,6 +775,10 @@ class StorefrontApi {
           'name': name.trim(),
           'email': email?.trim() ?? '',
           'city': city?.trim() ?? '',
+          if (defaultDeliveryTown != null)
+            'defaultDeliveryTown': defaultDeliveryTown.trim(),
+          if (source != null && source.trim().isNotEmpty)
+            'source': source.trim(),
           if (avatarUrl != null && avatarUrl.trim().isNotEmpty)
             'avatarUrl': avatarUrl.trim(),
         },
@@ -824,6 +841,54 @@ class StorefrontApi {
     final data = response.data;
     if (data is Map) return Map<String, dynamic>.from(data);
     throw Exception('Invalid order response');
+  }
+
+  /// Editing window status for a checkout group (server-owned timer).
+  Future<Map<String, dynamic>> getOrderEditingWindow(String orderGroupId) async {
+    final response = await dio.get<dynamic>(
+      '/customer/order-groups/$orderGroupId/editing-window',
+    );
+    final data = response.data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw Exception('Invalid editing-window response');
+  }
+
+  Future<Map<String, dynamic>> sendOrderGroupNow(String orderGroupId) async {
+    final response = await dio.post<dynamic>(
+      '/customer/order-groups/$orderGroupId/send-now',
+    );
+    final data = response.data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw Exception('Invalid send-now response');
+  }
+
+  Future<Map<String, dynamic>> cancelOrderGroup(String orderGroupId) async {
+    final response = await dio.post<dynamic>(
+      '/customer/order-groups/$orderGroupId/cancel',
+    );
+    final data = response.data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw Exception('Invalid cancel response');
+  }
+
+  Future<Map<String, dynamic>> patchOrderGroup(
+    String orderGroupId, {
+    String? notes,
+    String? deliveryAddress,
+    List<Map<String, dynamic>>? orders,
+  }) async {
+    final body = <String, dynamic>{
+      if (notes != null) 'notes': notes,
+      if (deliveryAddress != null) 'deliveryAddress': deliveryAddress,
+      if (orders != null) 'orders': orders,
+    };
+    final response = await dio.patch<dynamic>(
+      '/customer/order-groups/$orderGroupId',
+      data: body,
+    );
+    final data = response.data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw Exception('Invalid patch order-group response');
   }
 
   /// Server-authoritative checkout totals (platform fee hidden in merchandise amount).

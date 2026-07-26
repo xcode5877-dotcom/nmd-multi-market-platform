@@ -4,6 +4,7 @@ enum AuthStep {
   phone,
   otp,
   profile,
+  deliveryTown,
   done,
 }
 
@@ -18,6 +19,7 @@ final class AuthState extends Equatable {
     this.pendingOtpCode,
     this.error,
     this.isNewUser,
+    this.profileName = '',
   });
 
   const AuthState.initial()
@@ -29,7 +31,8 @@ final class AuthState extends Equatable {
         devCode = null,
         pendingOtpCode = null,
         error = null,
-        isNewUser = null;
+        isNewUser = null,
+        profileName = '';
 
   final AuthStep step;
   final bool loading;
@@ -42,6 +45,7 @@ final class AuthState extends Equatable {
   final String? pendingOtpCode;
   final String? error;
   final bool? isNewUser;
+  final String profileName;
 
   AuthState copyWith({
     AuthStep? step,
@@ -53,6 +57,7 @@ final class AuthState extends Equatable {
     String? pendingOtpCode,
     String? error,
     bool? isNewUser,
+    String? profileName,
     bool clearError = false,
     bool clearDevCode = false,
     bool clearPendingOtp = false,
@@ -68,6 +73,7 @@ final class AuthState extends Equatable {
           clearPendingOtp ? null : (pendingOtpCode ?? this.pendingOtpCode),
       error: clearError ? null : (error ?? this.error),
       isNewUser: isNewUser ?? this.isNewUser,
+      profileName: profileName ?? this.profileName,
     );
   }
 
@@ -82,5 +88,6 @@ final class AuthState extends Equatable {
         pendingOtpCode,
         error,
         isNewUser,
+        profileName,
       ];
 }

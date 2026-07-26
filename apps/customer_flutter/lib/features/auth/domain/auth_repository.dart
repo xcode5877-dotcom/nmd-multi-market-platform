@@ -14,4 +14,11 @@ abstract interface class AuthRepository {
 
   /// Updates display name after OTP verification (existing `/customer/profile`).
   Future<void> updateCustomerName(String name);
+
+  /// Saves profile fields after registration or one-time setup.
+  Future<void> updateCustomerProfile({
+    required String name,
+    String? defaultDeliveryTown,
+    String source = 'profile',
+  });
 }

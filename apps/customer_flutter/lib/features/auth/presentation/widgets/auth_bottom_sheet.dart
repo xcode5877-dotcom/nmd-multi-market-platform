@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,20 +7,59 @@ import 'package:lottie/lottie.dart';
 import 'package:pinput/pinput.dart';
 
 import '../../../../core/auth/app_review_demo_access.dart';
+import '../../../../core/auth/customer_auth_launcher.dart';
 import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
+import '../../../account/data/delivery_town_repository.dart';
+import '../../../account/presentation/widgets/delivery_town_picker_sheet.dart';
 import '../bloc/auth_bloc.dart';
 
 bool _authSheetOpen = false;
 
+void _authSheetAudit(String message) {
+  debugPrint('[AUTH-AUDIT] $message');
+}
+
+/// Clears a stale open flag when no root modal route is mounted.
+void recoverStuckAuthSheetIfNeeded(BuildContext context) {
+  if (!_authSheetOpen) return;
+  final navigator = Navigator.maybeOf(context, rootNavigator: true);
+  final hasModal = navigator?.canPop() ?? false;
+  if (!hasModal) {
+    _authSheetOpen = false;
+    _authSheetAudit('recoverStuckAuthSheet: cleared stale open flag');
+  }
+}
+
+@visibleForTesting
+void resetAuthSheetOpenForTest() {
+  _authSheetOpen = false;
+}
+
+@visibleForTesting
+bool isAuthSheetOpenForTest() => _authSheetOpen;
+
+@visibleForTesting
+void setAuthSheetOpenForTest(bool value) {
+  _authSheetOpen = value;
+}
+
 Future<bool> showAuthBottomSheet(BuildContext context) async {
-  if (_authSheetOpen) return false;
+  recoverStuckAuthSheetIfNeeded(context);
+  _authSheetAudit(
+    'showAuthBottomSheet enter open=$_authSheetOpen mounted=${context.mounted}',
+  );
+  if (_authSheetOpen) {
+    _authSheetAudit('showAuthBottomSheet blocked — sheet already open');
+    return false;
+  }
   _authSheetOpen = true;
   final authBloc = context.read<AuthBloc>();
   authBloc.add(const AuthResetRequested());
 
   bool? result;
   try {
+    _authSheetAudit('showAuthBottomSheet pushing modal useRootNavigator=true');
     result = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -32,8 +72,13 @@ Future<bool> showAuthBottomSheet(BuildContext context) async {
         child: const _AuthBottomSheetView(),
       ),
     );
+    _authSheetAudit('showAuthBottomSheet modal closed result=$result');
+  } catch (e, st) {
+    _authSheetAudit('showAuthBottomSheet error: $e\n$st');
+    result = false;
   } finally {
     _authSheetOpen = false;
+    _authSheetAudit('showAuthBottomSheet finally open=false');
   }
 
   return result == true;
@@ -58,6 +103,9 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
   final _nameFocus = FocusNode();
 
   bool _successTimerStarted = false;
+  List<String> _deliveryTowns = const [];
+  String? _selectedDeliveryTown;
+  bool _townsLoading = false;
 
   @override
   void dispose() {
@@ -86,6 +134,11 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
         if (mounted) _nameFocus.requestFocus();
       });
     }
+    if (state.step == AuthStep.deliveryTown &&
+        _deliveryTowns.isEmpty &&
+        !_townsLoading) {
+      _loadDeliveryTowns();
+    }
     if (state.step == AuthStep.done && !_successTimerStarted) {
       _successTimerStarted = true;
       nmdPostLoginTrace('POST_LOGIN_START', 'auth sheet success animation');
@@ -100,10 +153,40 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
     }
   }
 
+  Future<void> _loadDeliveryTowns() async {
+    setState(() => _townsLoading = true);
+    try {
+      final dio = context.read<Dio>();
+      final towns = await DeliveryTownRepository(dio).fetchTowns();
+      if (mounted) {
+        setState(() {
+          _deliveryTowns = towns;
+          _townsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _townsLoading = false);
+    }
+  }
+
+  Future<void> _openDeliveryTownPicker() async {
+    if (_deliveryTowns.isEmpty) await _loadDeliveryTowns();
+    if (!mounted || _deliveryTowns.isEmpty) return;
+    final picked = await showDeliveryTownPickerSheet(
+      context,
+      towns: _deliveryTowns,
+      selectedTown: _selectedDeliveryTown,
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedDeliveryTown = picked);
+    }
+  }
+
   int _stepIndex(AuthStep step) => switch (step) {
         AuthStep.phone => 0,
         AuthStep.otp => 1,
         AuthStep.profile => 2,
+        AuthStep.deliveryTown => 2,
         AuthStep.done => 3,
       };
 
@@ -231,6 +314,21 @@ class _AuthBottomSheetViewState extends State<_AuthBottomSheetView> {
           onSubmit: () => context.read<AuthBloc>().add(
                 AuthProfileSubmit(_nameController.text),
               ),
+        );
+      case AuthStep.deliveryTown:
+        return _DeliveryTownStep(
+          loading: state.loading,
+          townsLoading: _townsLoading,
+          selectedTown: _selectedDeliveryTown,
+          onOpenPicker: _openDeliveryTownPicker,
+          onSubmit: () {
+            final town = _selectedDeliveryTown?.trim() ?? '';
+            if (town.isEmpty) {
+              context.read<AuthBloc>().add(const AuthDeliveryTownSubmit(''));
+              return;
+            }
+            context.read<AuthBloc>().add(AuthDeliveryTownSubmit(town));
+          },
         );
     }
   }
@@ -566,6 +664,81 @@ class _ProfileStep extends StatelessWidget {
         const SizedBox(height: NmdSpacing.md),
         NmdButton(
           label: 'إنشاء الحساب',
+          loading: loading,
+          onPressed: loading ? null : onSubmit,
+        ),
+      ],
+    );
+  }
+}
+
+class _DeliveryTownStep extends StatelessWidget {
+  const _DeliveryTownStep({
+    required this.loading,
+    required this.townsLoading,
+    required this.selectedTown,
+    required this.onOpenPicker,
+    required this.onSubmit,
+  });
+
+  final bool loading;
+  final bool townsLoading;
+  final String? selectedTown;
+  final VoidCallback onOpenPicker;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'اختر منطقتك الرئيسية',
+          textAlign: TextAlign.center,
+          style: NmdTypography.h2,
+        ),
+        const SizedBox(height: NmdSpacing.xs),
+        Text(
+          'سنستخدم هذه المنطقة تلقائيًا عند إتمام الطلب، ويمكنك تغييرها لاحقًا.',
+          textAlign: TextAlign.center,
+          style: NmdTypography.bodySmall.copyWith(height: 1.45),
+        ),
+        const SizedBox(height: NmdSpacing.lg),
+        InkWell(
+          onTap: townsLoading ? null : onOpenPicker,
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: 'المنطقة الرئيسية',
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              suffixIcon: townsLoading
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : const Icon(Icons.keyboard_arrow_down_rounded),
+            ),
+            child: Text(
+              selectedTown?.trim().isNotEmpty == true
+                  ? selectedTown!
+                  : 'اختر منطقة',
+              textAlign: TextAlign.right,
+              style: NmdTypography.body.copyWith(
+                color: selectedTown?.trim().isNotEmpty == true
+                    ? NmdColors.textPrimary
+                    : NmdColors.textSecondary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: NmdSpacing.md),
+        NmdButton(
+          label: 'متابعة',
           loading: loading,
           onPressed: loading ? null : onSubmit,
         ),

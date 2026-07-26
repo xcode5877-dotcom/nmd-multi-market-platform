@@ -4,12 +4,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../core/network/dio_client.dart';
 import '../core/network/token_storage.dart';
+import '../features/account/application/customer_profile_cubit.dart';
 import '../features/auth/data/auth_remote_data_source.dart';
 import '../features/auth/data/auth_repository_impl.dart';
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/cart/application/cart_cubit.dart';
 import '../features/loyalty/application/coins_balance_cubit.dart';
+import '../features/loyalty/application/coins_balance_registry.dart';
+import '../core/bootstrap/first_frame_controller.dart';
+import '../core/debug/boot_trace.dart';
+import '../core/debug/order_window_route_observer.dart';
 import '../core/push/push_notification_listener.dart';
+import '../core/support/support_hub_chrome.dart';
+import '../features/support/presentation/widgets/support_floating_hub_host.dart';
 import 'app_scroll_behavior.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
@@ -28,7 +35,9 @@ class _NowMarketAppState extends State<NowMarketApp> {
   late final AuthRepositoryImpl _authRepository;
   late final AuthBloc _authBloc;
   late final CartCubit _cartCubit;
+  late final CustomerProfileCubit _customerProfileCubit;
   late final CoinsBalanceCubit _coinsBalanceCubit;
+  late final OrderWindowGoRouterObserver _orderWindowRouteObserver;
 
   @override
   void initState() {
@@ -42,14 +51,35 @@ class _NowMarketAppState extends State<NowMarketApp> {
     );
     _authBloc = AuthBloc(_authRepository);
     _cartCubit = CartCubit();
-    _coinsBalanceCubit = CoinsBalanceCubit(_dio);
+    _customerProfileCubit = CustomerProfileCubit(_dio);
+    _coinsBalanceCubit = CoinsBalanceCubit(_dio, _tokenStorage);
+    CoinsBalanceRegistry.register(_coinsBalanceCubit);
     // Warm session before first tap (coalesced with splash restore).
-    _authBloc.restoreSession();
+    _authBloc.restoreSession().then((ok) {
+      if (ok) _customerProfileCubit.refresh();
+    });
+    _authBloc.stream.listen((state) {
+      if (state.step == AuthStep.done) {
+        _customerProfileCubit.refresh();
+      } else if (state.step == AuthStep.phone) {
+        _customerProfileCubit.clear();
+      }
+    });
+    _orderWindowRouteObserver = OrderWindowGoRouterObserver(appRouter);
+    // Attach only after first frame is released and router is mounted — never during initState.
+    FirstFrameController.instance.addOnReleasedListener((reason) {
+      if (!mounted) return;
+      _orderWindowRouteObserver.attach();
+      bootTrace('OrderWindowGoRouterObserver attached after firstFrame reason=$reason');
+    });
   }
 
   @override
   void dispose() {
+    _orderWindowRouteObserver.detach();
     _cartCubit.close();
+    _customerProfileCubit.close();
+    CoinsBalanceRegistry.register(null);
     _coinsBalanceCubit.close();
     _authBloc.close();
     _dio.close();
@@ -68,6 +98,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
         providers: [
           BlocProvider<AuthBloc>.value(value: _authBloc),
           BlocProvider<CartCubit>.value(value: _cartCubit),
+          BlocProvider<CustomerProfileCubit>.value(value: _customerProfileCubit),
           BlocProvider<CoinsBalanceCubit>.value(value: _coinsBalanceCubit),
         ],
         child: PushNotificationListener(
@@ -79,13 +110,16 @@ class _NowMarketAppState extends State<NowMarketApp> {
             scrollBehavior: const NmdAppScrollBehavior(),
             routerConfig: appRouter,
             builder: (context, child) {
-              if (child == null) {
-                return const ColoredBox(
-                  color: Colors.white,
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              return child;
+              final content = child ??
+                  const ColoredBox(
+                    color: Colors.white,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+              return SupportFloatingHubHost(
+                router: appRouter,
+                modalDepth: SupportHubChrome.modalDepth,
+                child: content,
+              );
             },
           ),
         ),

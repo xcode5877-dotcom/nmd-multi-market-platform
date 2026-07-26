@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/app_routes.dart';
+import '../../../../core/auth/customer_logout.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -23,9 +25,60 @@ class AccountPage extends StatelessWidget {
   }
 
   Future<void> _signIn(BuildContext context) async {
+    if (kDebugMode) {
+      debugPrint('[AUTH-AUDIT] account login button tap');
+    }
     await ensureCustomerAuth(context);
     if (!context.mounted) return;
     context.read<CoinsBalanceCubit>().refresh();
+  }
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(
+            'تسجيل الخروج',
+            style: NmdTypography.h3,
+          ),
+          content: Text(
+            'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+            style: NmdTypography.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'إلغاء',
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'تسجيل الخروج',
+                style: NmdTypography.label.copyWith(
+                  color: NmdColors.error,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    await performCustomerLogout(context);
+    if (!context.mounted) return;
+
+    final slug = GoRouterState.of(context).pathParameters['slug'] ?? '';
+    if (slug.isEmpty) return;
+    context.go('/market/$slug');
   }
 
   @override
@@ -37,14 +90,16 @@ class AccountPage extends StatelessWidget {
 
     return ColoredBox(
       color: NmdColors.surfaceMuted,
-      child: ListView(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           NmdSpacing.screenHorizontal,
           NmdSpacing.sm,
           NmdSpacing.screenHorizontal,
           NmdSpacing.xxl,
         ),
-        children: [
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           NmdSectionHeader(
             title: 'حسابي',
             subtitle: loggedIn
@@ -127,9 +182,9 @@ class AccountPage extends StatelessWidget {
             padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
           ),
           _AccountTile(
-            title: 'المساعدة والدعم',
-            subtitle: 'واتساب، اتصال، والأسئلة الشائعة',
-            icon: Icons.help_outline_rounded,
+            title: 'مركز الدعم',
+            subtitle: 'واتساب، اتصال هاتفي، والأسئلة الشائعة',
+            icon: Icons.support_agent_rounded,
             onTap: () => _openAfterAuth(
               context,
               (s) async => context.push(AppRoutes.help(s)),
@@ -138,11 +193,48 @@ class AccountPage extends StatelessWidget {
           if (!loggedIn) ...[
             const SizedBox(height: NmdSpacing.md),
             NmdButton(
+              key: const Key('account_login_button'),
               label: 'تسجيل الدخول',
               onPressed: () => _signIn(context),
             ),
           ],
-        ],
+          if (loggedIn) ...[
+            const SizedBox(height: NmdSpacing.xl),
+            _LogoutButton(onPressed: () => _confirmLogout(context)),
+          ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      key: const Key('account_logout_button'),
+      onPressed: onPressed,
+      icon: const Icon(Icons.logout_rounded, size: 20),
+      label: Text(
+        'تسجيل الخروج',
+        style: NmdTypography.bodyBold.copyWith(color: NmdColors.error),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: NmdColors.error,
+        side: const BorderSide(color: NmdColors.error, width: 1.4),
+        minimumSize: const Size(double.infinity, 52),
+        padding: const EdgeInsets.symmetric(
+          horizontal: NmdSpacing.md,
+          vertical: NmdSpacing.sm,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: NmdRadius.borderPill,
+        ),
       ),
     );
   }
@@ -213,6 +305,7 @@ class _IdentityHeader extends StatelessWidget {
           ),
           if (!loggedIn)
             NmdButton(
+              key: const Key('account_login_compact_button'),
               label: 'دخول',
               size: NmdButtonSize.compact,
               expand: false,

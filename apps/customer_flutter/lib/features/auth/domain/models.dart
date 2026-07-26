@@ -34,9 +34,11 @@ class CustomerMeResult {
     required this.phone,
     this.id,
     this.name,
+    this.defaultDeliveryTown,
   });
 
   final String phone;
   final String? id;
   final String? name;
+  final String? defaultDeliveryTown;
 }

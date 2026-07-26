@@ -21,6 +21,7 @@ class AuthRemoteDataSource {
       phone: phone,
       id: data['id']?.toString(),
       name: data['name']?.toString(),
+      defaultDeliveryTown: data['defaultDeliveryTown']?.toString(),
     );
   }
 
@@ -97,9 +98,23 @@ class AuthRemoteDataSource {
   }
 
   Future<void> updateCustomerName(String name) async {
+    await updateCustomerProfile(name: name, source: 'registration');
+  }
+
+  Future<void> updateCustomerProfile({
+    required String name,
+    String? defaultDeliveryTown,
+    String source = 'profile',
+  }) async {
     await _dio.patch<Map<String, dynamic>>(
       '/customer/profile',
-      data: <String, dynamic>{'name': name.trim()},
+      data: <String, dynamic>{
+        'name': name.trim(),
+        if (defaultDeliveryTown != null &&
+            defaultDeliveryTown.trim().isNotEmpty)
+          'defaultDeliveryTown': defaultDeliveryTown.trim(),
+        'source': source,
+      },
       options: Options(
         headers: const {'Accept': 'application/json, text/plain, */*'},
       ),

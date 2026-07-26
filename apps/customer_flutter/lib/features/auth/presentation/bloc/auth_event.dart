@@ -24,13 +24,22 @@ final class AuthOtpContinue extends AuthEvent {
   List<Object?> get props => [code];
 }
 
-/// New user: submit display name and complete verify with stored OTP.
+/// New user: submit display name, then delivery town step.
 final class AuthProfileSubmit extends AuthEvent {
   const AuthProfileSubmit(this.name);
   final String name;
 
   @override
   List<Object?> get props => [name];
+}
+
+/// New or existing user: submit required default delivery town.
+final class AuthDeliveryTownSubmit extends AuthEvent {
+  const AuthDeliveryTownSubmit(this.town);
+  final String town;
+
+  @override
+  List<Object?> get props => [town];
 }
 
 final class AuthResetRequested extends AuthEvent {

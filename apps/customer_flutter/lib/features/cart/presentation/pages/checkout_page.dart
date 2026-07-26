@@ -8,9 +8,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../account/application/customer_profile_cubit.dart';
+import '../../../account/domain/checkout_delivery_area.dart';
 import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/debug/order_window_log.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/cart_cubit.dart';
 import '../widgets/cart_modifier_lines.dart';
@@ -88,11 +91,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
   List<Map<String, dynamic>> _suggestedCoupons = const [];
   _Fulfillment _fulfillment = _Fulfillment.delivery;
   _PaymentMethod _paymentMethod = _PaymentMethod.cash;
-  String? _selectedZoneId;
   _AppliedCoupon? _appliedCoupon;
   String? _couponError;
   bool _couponLoading = false;
   bool _submitting = false;
+  bool _postSubmitNavigation = false;
   final Set<String> _touched = {};
 
   @override
@@ -103,6 +106,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   void dispose() {
+    orderWindowLog(
+      '[ORDER_WINDOW] checkout dispose postSubmit=$_postSubmitNavigation',
+    );
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
@@ -201,10 +207,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
             : <String, dynamic>{});
 
     if (mounted) {
-      await _refreshProfileAndRewards(api);
-      if (_selectedZoneId == null && zones.isNotEmpty) {
-        setState(() => _selectedZoneId = zones.first['id']?.toString());
+      final profileCubit = context.read<CustomerProfileCubit>();
+      await profileCubit.refresh();
+      final profile = profileCubit.state;
+      if (profile.name != null && profile.name!.isNotEmpty) {
+        _nameCtrl.text = profile.name!;
       }
+      if (profile.phone != null && profile.phone!.isNotEmpty) {
+        _phoneCtrl.text = profile.phone!;
+      }
+      final rewards = await api.getCustomerRewards();
+      final defaultTown = profile.primaryDeliveryArea;
+      setState(() {
+        _suggestedCoupons = rewards;
+        if (defaultTown.isNotEmpty &&
+            _addressCtrl.text.trim() == _kDefaultDeliveryAddress.trim()) {
+          _addressCtrl.text =
+              '$defaultTown - تواصل معي بالواتساب لتحديد الموقع';
+        }
+      });
     }
 
     return _CheckoutBootstrap(
@@ -329,6 +350,34 @@ class _CheckoutPageState extends State<CheckoutPage> {
     };
   }
 
+  void _navigateToEditingWindow(GoRouter router, String slug, String groupId) {
+    _postSubmitNavigation = true;
+    final target = '/market/$slug/order-editing/$groupId';
+    final current =
+        router.routerDelegate.currentConfiguration.uri.path;
+    orderWindowLog('[ORDER_WINDOW] before navigation current=$current');
+    orderWindowLog('[ORDER_WINDOW] target=$target');
+    orderWindowLog('[ORDER_WINDOW] _navigateToEditingWindow called mounted=$mounted');
+    router.go(target);
+    final after = router.routerDelegate.currentConfiguration.uri.path;
+    orderWindowLog('[ORDER_WINDOW] after router.go location=$after mounted=$mounted');
+  }
+
+  void _deferCartClear(CartCubit cartCubit) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      orderWindowLog('[ORDER_WINDOW] deferred cart clear (post-navigation frame)');
+      cartCubit.clear();
+    });
+  }
+
+  void _showCheckoutSuccessSnackBar(
+    ScaffoldMessengerState? messenger,
+    String message,
+  ) {
+    orderWindowLog('[ORDER_WINDOW] success snackbar shown message=$message');
+    messenger?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _submit(
     BuildContext context,
     _CheckoutBootstrap data,
@@ -339,6 +388,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ) async {
     if (_submitting) return;
     setState(() => _submitting = true);
+    orderWindowLog('[ORDER_WINDOW] checkout begin');
     final dio = context.read<Dio>();
     final api = StorefrontApi(dio);
     final cartCubit = context.read<CartCubit>();
@@ -362,16 +412,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
             const SnackBar(content: Text('الاسم ورقم الجوال مطلوبان')));
         return;
       }
+      // Always re-read canonical profile area immediately before create-order.
+      final profileCubit = context.read<CustomerProfileCubit>();
+      await profileCubit.refresh();
+      if (!mounted) return;
+      final area = resolveCheckoutDeliveryArea(
+        profileTown: profileCubit.state.primaryDeliveryArea,
+        zones: data.zones,
+      );
+
       if (_fulfillment == _Fulfillment.delivery) {
         if (addressText.isEmpty) {
           messenger?.showSnackBar(
               const SnackBar(content: Text('عنوان التوصيل مطلوب')));
           return;
         }
-        if (data.zones.isNotEmpty &&
-            (_selectedZoneId == null || _selectedZoneId!.isEmpty)) {
+        if (!area.hasProfileTown) {
           messenger?.showSnackBar(
-              const SnackBar(content: Text('اختر منطقة التوصيل')));
+            const SnackBar(
+              content: Text(
+                'يرجى اختيار منطقة التوصيل من الملف الشخصي',
+              ),
+            ),
+          );
+          return;
+        }
+        if (data.zones.isNotEmpty && !area.canDeliver) {
+          messenger?.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'المحل لا يوصّل إلى منطقتك. غيّر المنطقة من الملف الشخصي.',
+              ),
+            ),
+          );
           return;
         }
       }
@@ -383,14 +456,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   Text('لا يمكن الجمع بين متاجر من أسواق مختلفة في طلب واحد.')),
         );
         return;
-      }
-
-      Map<String, dynamic>? selectedZone;
-      for (final z in data.zones) {
-        if (z['id']?.toString() == _selectedZoneId) {
-          selectedZone = z;
-          break;
-        }
       }
 
       final groupId = _orderGroupId();
@@ -421,9 +486,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
           'delivery': <String, dynamic>{
             'method':
                 _fulfillment == _Fulfillment.delivery ? 'DELIVERY' : 'PICKUP',
-            if (selectedZone != null) 'zoneId': selectedZone['id']?.toString(),
-            if (selectedZone != null)
-              'zoneName': selectedZone['name']?.toString(),
+            // Area identity always from customer profile (never checkout UI).
+            if (_fulfillment == _Fulfillment.delivery &&
+                area.profileTown.isNotEmpty)
+              'deliveryAreaId': area.profileTown,
+            if (_fulfillment == _Fulfillment.delivery && area.zoneId != null)
+              'zoneId': area.zoneId,
+            if (_fulfillment == _Fulfillment.delivery && area.zoneName != null)
+              'zoneName': area.zoneName,
             if (_fulfillment == _Fulfillment.delivery) 'fee': orderDeliveryFee,
             if (_fulfillment == _Fulfillment.delivery)
               'addressText': addressText,
@@ -435,6 +505,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
         await api.postOrder(body);
       }
+
+      orderWindowLog('[ORDER_WINDOW] POST /orders success');
 
       if (_paymentMethod == _PaymentMethod.card) {
         try {
@@ -470,11 +542,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
             );
             return;
           }
-          cartCubit.clear();
+          orderWindowLog(
+            '[ORDER_WINDOW] checkout success groupId=$groupId mounted=$mounted',
+          );
+          _navigateToEditingWindow(router, slug, groupId);
+          if (!mounted) return;
+          _showCheckoutSuccessSnackBar(
+            messenger,
+            'تم الدفع بنجاح عبر البطاقة',
+          );
+          _deferCartClear(cartCubit);
           await coinsCubit.load();
-          messenger?.showSnackBar(
-              const SnackBar(content: Text('تم الدفع بنجاح عبر البطاقة')));
-          router.go('/market/$slug/orders');
         } catch (e) {
           if (!mounted) return;
           messenger?.showSnackBar(
@@ -485,10 +563,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       if (!mounted) return;
-      cartCubit.clear();
-      messenger
-          ?.showSnackBar(const SnackBar(content: Text('تم إرسال طلبك بنجاح')));
-      router.go('/market/$slug/orders');
+      orderWindowLog(
+        '[ORDER_WINDOW] checkout success groupId=$groupId mounted=$mounted',
+      );
+      _navigateToEditingWindow(router, slug, groupId);
+      if (!mounted) return;
+      _showCheckoutSuccessSnackBar(messenger, 'تم إنشاء طلبك');
+      _deferCartClear(cartCubit);
     } on DioException catch (e) {
       if (!mounted) return;
       final msg =
@@ -532,7 +613,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 child: BlocBuilder<CartCubit, List<CartLine>>(
                   builder: (context, lines) {
                     if (lines.isEmpty) {
+                      if (_postSubmitNavigation || _submitting) {
+                        orderWindowLog(
+                          '[ORDER_WINDOW] empty cart after submit — skip auto-pop '
+                          'postSubmit=$_postSubmitNavigation submitting=$_submitting',
+                        );
+                        return const SizedBox.shrink();
+                      }
                       WidgetsBinding.instance.addPostFrameCallback((_) {
+                        orderWindowLog(
+                          '[ORDER_WINDOW] empty cart auto-pop mounted=${context.mounted} '
+                          '→ pops route (may expose /market/:slug home if editing was top)',
+                        );
                         if (context.mounted) context.pop();
                       });
                       return const SizedBox.shrink();
@@ -613,16 +705,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           });
                         }
 
+                        final profileTown = context
+                            .watch<CustomerProfileCubit>()
+                            .state
+                            .primaryDeliveryArea;
+                        final area = resolveCheckoutDeliveryArea(
+                          profileTown: profileTown,
+                          zones: data.zones,
+                        );
                         final baseDeliveryFee =
                             (data.deliverySettings['deliveryFee'] is num)
                                 ? (data.deliverySettings['deliveryFee'] as num)
                                     .toDouble()
                                 : 0.0;
                         Map<String, dynamic>? selectedZoneForFee;
-                        for (final z in data.zones) {
-                          if (z['id']?.toString() == _selectedZoneId) {
-                            selectedZoneForFee = z;
-                            break;
+                        if (area.zoneId != null) {
+                          for (final z in data.zones) {
+                            if (z['id']?.toString() == area.zoneId) {
+                              selectedZoneForFee = z;
+                              break;
+                            }
                           }
                         }
                         final baseZoneFee = _fulfillment ==
@@ -652,10 +754,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         final addressOk =
                             _fulfillment != _Fulfillment.delivery ||
                                 _addressCtrl.text.trim().isNotEmpty;
-                        final zoneOk = _fulfillment != _Fulfillment.delivery ||
-                            data.zones.isEmpty ||
-                            (_selectedZoneId != null &&
-                                _selectedZoneId!.isNotEmpty);
+                        // Delivery area is profile-only — never a checkout selector.
+                        final profileAreaOk =
+                            _fulfillment != _Fulfillment.delivery ||
+                                (area.hasProfileTown &&
+                                    (data.zones.isEmpty || area.canDeliver));
                         final cashEnabled =
                             data.tenantPaymentMethods['cash'] != false;
                         if (_paymentMethod == _PaymentMethod.card) {
@@ -670,359 +773,353 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         final canSubmit = nameOk &&
                             phoneOk &&
                             addressOk &&
-                            zoneOk &&
+                            profileAreaOk &&
                             data.sameMarketOk &&
                             hasPaymentOption;
 
-                        return Column(
+                        return Stack(
+                          fit: StackFit.expand,
                           children: [
-                            Expanded(
-                              child: ListView(
-                                primary: true,
-                                padding: const EdgeInsets.fromLTRB(
-                                  NmdSpacing.screenHorizontal,
-                                  NmdSpacing.xxs,
-                                  NmdSpacing.screenHorizontal,
-                                  NmdSpacing.xxs,
+                            ListView(
+                              primary: true,
+                              padding: const EdgeInsets.fromLTRB(
+                                NmdSpacing.screenHorizontal,
+                                NmdSpacing.xxs,
+                                NmdSpacing.screenHorizontal,
+                                kPremiumCheckoutDockScrollInset,
+                              ),
+                              children: [
+                                _CheckoutTrustBadge(),
+                                if (!data.sameMarketOk) ...[
+                                  const SizedBox(height: NmdSpacing.xs),
+                                  _CheckoutSection(
+                                    child: Text(
+                                      'لا يمكن الجمع بين متاجر من أسواق مختلفة في طلب واحد.',
+                                      style: NmdTypography.label.copyWith(
+                                        color: NmdColors.error,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: NmdSpacing.xxs),
+                                _CheckoutSection(
+                                  title: 'طريقة الاستلام',
+                                  child: _FulfillmentToggle(
+                                    delivery: deliveryMode,
+                                    pickup: pickupMode,
+                                    value: _fulfillment,
+                                    onChanged: (v) =>
+                                        setState(() => _fulfillment = v),
+                                  ),
                                 ),
-                                children: [
-                                  _CheckoutTrustBadge(),
-                                  if (!data.sameMarketOk) ...[
-                                    const SizedBox(height: NmdSpacing.xs),
-                                    _CheckoutSection(
-                                      child: Text(
-                                        'لا يمكن الجمع بين متاجر من أسواق مختلفة في طلب واحد.',
-                                        style: NmdTypography.label.copyWith(
-                                          color: NmdColors.error,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: NmdSpacing.xxs),
-                                  _CheckoutSection(
-                                    title: 'طريقة الاستلام',
-                                    child: _FulfillmentToggle(
-                                      delivery: deliveryMode,
-                                      pickup: pickupMode,
-                                      value: _fulfillment,
-                                      onChanged: (v) =>
-                                          setState(() => _fulfillment = v),
-                                    ),
-                                  ),
-                                  if (_fulfillment ==
-                                      _Fulfillment.delivery) ...[
-                                    const SizedBox(height: NmdSpacing.xs),
-                                    _CheckoutSection(
-                                      title: 'العنوان والمنطقة',
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          if (data.zones.isNotEmpty)
-                                            DropdownButtonFormField<String>(
-                                              // ignore: deprecated_member_use
-                                              value: _selectedZoneId != null &&
-                                                      data.zones.any((z) =>
-                                                          z['id']?.toString() ==
-                                                          _selectedZoneId)
-                                                  ? _selectedZoneId
-                                                  : null,
-                                              decoration: _inputDecoration(
-                                                  'منطقة التوصيل'),
-                                              items: data.zones
-                                                  .map(
-                                                    (z) => DropdownMenuItem(
-                                                      value:
-                                                          z['id']?.toString(),
-                                                      child: Text(
-                                                        '${z['name'] ?? ''} — ₪${((z['fee'] is num) ? (z['fee'] as num).toStringAsFixed(0) : '0')}',
-                                                        style: NmdTypography
-                                                            .bodySmall,
-                                                      ),
-                                                    ),
-                                                  )
-                                                  .toList(),
-                                              onChanged: (v) => setState(
-                                                  () => _selectedZoneId = v),
-                                            ),
-                                          if (data.zones.isNotEmpty)
-                                            const SizedBox(
-                                                height: NmdSpacing.xs),
-                                          TextField(
-                                            controller: _addressCtrl,
-                                            minLines: 2,
-                                            maxLines: 3,
-                                            onChanged: (_) => setState(() {}),
-                                            decoration: _inputDecoration(
-                                                    'عنوان التوصيل',
-                                                    hint:
-                                                        _kDefaultDeliveryAddress)
-                                                .copyWith(
-                                              errorText: _touched.contains(
-                                                          'address') &&
-                                                      _addressCtrl.text
-                                                          .trim()
-                                                          .isEmpty
-                                                  ? 'مطلوب للتوصيل'
-                                                  : null,
-                                            ),
-                                            onTap: () => setState(
-                                                () => _touched.add('address')),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                if (_fulfillment == _Fulfillment.delivery) ...[
                                   const SizedBox(height: NmdSpacing.xs),
                                   _CheckoutSection(
-                                    title: 'بيانات التواصل',
+                                    title: 'العنوان والمنطقة',
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        _LabeledField(
-                                          label: 'الاسم',
-                                          controller: _nameCtrl,
-                                          touched: _touched.contains('name'),
-                                          errorText: _touched
-                                                      .contains('name') &&
-                                                  _nameCtrl.text.trim().isEmpty
-                                              ? 'مطلوب'
-                                              : null,
-                                          onChanged: (_) => setState(() {}),
-                                          onTap: () => setState(
-                                              () => _touched.add('name')),
-                                        ),
-                                        const SizedBox(height: NmdSpacing.xs),
-                                        _LabeledField(
-                                          label: 'رقم الجوال',
-                                          controller: _phoneCtrl,
-                                          keyboardType: TextInputType.phone,
-                                          touched: _touched.contains('phone'),
-                                          errorText: _touched
-                                                      .contains('phone') &&
-                                                  _phoneCtrl.text.trim().isEmpty
-                                              ? 'مطلوب'
-                                              : null,
-                                          onChanged: (_) => setState(() {}),
-                                          onTap: () => setState(
-                                              () => _touched.add('phone')),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: NmdSpacing.xs),
-                                  _CheckoutSection(
-                                    title: 'طريقة الدفع',
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        if (cashEnabled)
-                                          _PaymentOptionTile(
-                                            title: 'نقداً عند الاستلام',
-                                            subtitle: 'الدفع نقداً عند التسليم',
-                                            selected: _paymentMethod ==
-                                                _PaymentMethod.cash,
-                                            onTap: () => setState(() =>
-                                                _paymentMethod =
-                                                    _PaymentMethod.cash),
+                                        InputDecorator(
+                                          decoration: _inputDecoration(
+                                              'منطقة التوصيل'),
+                                          child: Text(
+                                            area.hasProfileTown
+                                                ? area.profileTown
+                                                : 'يرجى اختيار منطقة التوصيل من الملف الشخصي',
+                                            style:
+                                                NmdTypography.bodySmall.copyWith(
+                                              color: area.hasProfileTown
+                                                  ? NmdColors.textPrimary
+                                                  : NmdColors.error,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
-                                        const SizedBox(height: NmdSpacing.xs),
-                                        _PaymentOptionTile(
-                                          title: 'بطاقة ائتمان — قريبًا',
-                                          subtitle: 'سيتوفر قريباً',
-                                          selected: false,
-                                          enabled: false,
-                                          onTap: () {},
                                         ),
-                                        if (!hasPaymentOption)
+                                        if (area.hasProfileTown &&
+                                            data.zones.isNotEmpty &&
+                                            !area.zoneMatched) ...[
+                                          const SizedBox(height: NmdSpacing.xs),
                                           Text(
-                                            'لا توجد طرق دفع مفعّلة حالياً لهذا المتجر.',
-                                            style: NmdTypography.micro.copyWith(
+                                            'المحل لا يوصّل إلى منطقتك. غيّر المنطقة من الملف الشخصي.',
+                                            style: NmdTypography.bodySmall
+                                                .copyWith(
                                               color: NmdColors.error,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
+                                        ],
+                                        const SizedBox(height: NmdSpacing.xs),
+                                        TextField(
+                                          controller: _addressCtrl,
+                                          minLines: 2,
+                                          maxLines: 3,
+                                          onChanged: (_) => setState(() {}),
+                                          decoration: _inputDecoration(
+                                                  'عنوان التوصيل',
+                                                  hint:
+                                                      _kDefaultDeliveryAddress)
+                                              .copyWith(
+                                            errorText:
+                                                _touched.contains('address') &&
+                                                        _addressCtrl.text
+                                                            .trim()
+                                                            .isEmpty
+                                                    ? 'مطلوب للتوصيل'
+                                                    : null,
+                                          ),
+                                          onTap: () => setState(
+                                              () => _touched.add('address')),
+                                        ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: NmdSpacing.xs),
-                                  _CheckoutSection(
-                                    title: 'ملخص الطلب',
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        for (var ti = 0;
-                                            ti < data.orderedTenantIds.length;
-                                            ti++) ...[
-                                          if (ti > 0)
-                                            const SizedBox(height: NmdSpacing.xs),
-                                          if (data.orderedTenantIds.length > 1)
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                data.tenantNames[
-                                                        data.orderedTenantIds[
-                                                            ti]] ??
-                                                    'متجر',
-                                                style: NmdTypography.micro
-                                                    .copyWith(
-                                                  color: NmdColors.brandPrimary,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+                                ],
+                                const SizedBox(height: NmdSpacing.xs),
+                                _CheckoutSection(
+                                  title: 'بيانات التواصل',
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _LabeledField(
+                                        label: 'الاسم',
+                                        controller: _nameCtrl,
+                                        touched: _touched.contains('name'),
+                                        errorText: _touched.contains('name') &&
+                                                _nameCtrl.text.trim().isEmpty
+                                            ? 'مطلوب'
+                                            : null,
+                                        onChanged: (_) => setState(() {}),
+                                        onTap: () => setState(
+                                            () => _touched.add('name')),
+                                      ),
+                                      const SizedBox(height: NmdSpacing.xs),
+                                      _LabeledField(
+                                        label: 'رقم الجوال',
+                                        controller: _phoneCtrl,
+                                        keyboardType: TextInputType.phone,
+                                        touched: _touched.contains('phone'),
+                                        errorText: _touched.contains('phone') &&
+                                                _phoneCtrl.text.trim().isEmpty
+                                            ? 'مطلوب'
+                                            : null,
+                                        onChanged: (_) => setState(() {}),
+                                        onTap: () => setState(
+                                            () => _touched.add('phone')),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: NmdSpacing.xs),
+                                _CheckoutSection(
+                                  title: 'طريقة الدفع',
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (cashEnabled)
+                                        _PaymentOptionTile(
+                                          title: 'نقداً عند الاستلام',
+                                          subtitle: 'الدفع نقداً عند التسليم',
+                                          selected: _paymentMethod ==
+                                              _PaymentMethod.cash,
+                                          onTap: () => setState(() =>
+                                              _paymentMethod =
+                                                  _PaymentMethod.cash),
+                                        ),
+                                      const SizedBox(height: NmdSpacing.xs),
+                                      _PaymentOptionTile(
+                                        title: 'بطاقة ائتمان — قريبًا',
+                                        subtitle: 'سيتوفر قريباً',
+                                        selected: false,
+                                        enabled: false,
+                                        onTap: () {},
+                                      ),
+                                      if (!hasPaymentOption)
+                                        Text(
+                                          'لا توجد طرق دفع مفعّلة حالياً لهذا المتجر.',
+                                          style: NmdTypography.micro.copyWith(
+                                            color: NmdColors.error,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: NmdSpacing.xs),
+                                _CheckoutSection(
+                                  title: 'ملخص الطلب',
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (var ti = 0;
+                                          ti < data.orderedTenantIds.length;
+                                          ti++) ...[
+                                        if (ti > 0)
+                                          const SizedBox(height: NmdSpacing.xs),
+                                        if (data.orderedTenantIds.length > 1)
+                                          Align(
+                                            alignment: Alignment.centerRight,
+                                            child: Text(
+                                              data.tenantNames[data
+                                                      .orderedTenantIds[ti]] ??
+                                                  'متجر',
+                                              style:
+                                                  NmdTypography.micro.copyWith(
+                                                color: NmdColors.brandPrimary,
+                                                fontWeight: FontWeight.w700,
                                               ),
                                             ),
-                                          ...lines
-                                              .where((l) =>
-                                                  l.tenantId ==
-                                                  data.orderedTenantIds[ti])
-                                              .map((line) => Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            bottom: 6),
-                                                    child: _CheckoutItemTile(
-                                                        line: line),
-                                                  )),
-                                        ],
-                                        const SizedBox(height: NmdSpacing.xs),
-                                        const Divider(
-                                          height: 1,
-                                          color: NmdColors.divider,
-                                        ),
-                                        const SizedBox(height: NmdSpacing.xs),
+                                          ),
+                                        ...lines
+                                            .where((l) =>
+                                                l.tenantId ==
+                                                data.orderedTenantIds[ti])
+                                            .map((line) => Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          bottom: 6),
+                                                  child: _CheckoutItemTile(
+                                                      line: line),
+                                                )),
+                                      ],
+                                      const SizedBox(height: NmdSpacing.xs),
+                                      const Divider(
+                                        height: 1,
+                                        color: NmdColors.divider,
+                                      ),
+                                      const SizedBox(height: NmdSpacing.xs),
+                                      _checkoutSumRow(
+                                        'المجموع',
+                                        NmdFormat.money(subtotalAll),
+                                        NmdColors.textPrimary,
+                                      ),
+                                      if (_fulfillment ==
+                                          _Fulfillment.delivery) ...[
+                                        const SizedBox(height: 4),
                                         _checkoutSumRow(
-                                          'المجموع',
-                                          NmdFormat.money(subtotalAll),
+                                          'التوصيل',
+                                          NmdFormat.money(deliveryFee),
                                           NmdColors.textPrimary,
                                         ),
-                                        if (_fulfillment ==
-                                            _Fulfillment.delivery) ...[
-                                          const SizedBox(height: 4),
-                                          _checkoutSumRow(
-                                            'التوصيل',
-                                            NmdFormat.money(deliveryFee),
-                                            NmdColors.textPrimary,
+                                      ],
+                                      if (couponDiscount > 0) ...[
+                                        const SizedBox(height: 4),
+                                        _checkoutSumRow(
+                                          'خصم',
+                                          NmdFormat.moneySigned(
+                                            couponDiscount,
+                                            negative: true,
                                           ),
-                                        ],
-                                        if (couponDiscount > 0) ...[
-                                          const SizedBox(height: 4),
-                                          _checkoutSumRow(
-                                            'خصم',
-                                            NmdFormat.moneySigned(
-                                              couponDiscount,
-                                              negative: true,
-                                            ),
-                                            NmdColors.error,
-                                          ),
-                                        ],
-                                        const SizedBox(height: NmdSpacing.xs),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              NmdFormat.money(grandTotal),
-                                              style: NmdTypography.price.copyWith(
-                                                fontSize: 17,
-                                              ),
-                                            ),
-                                            Text(
-                                              'الإجمالي',
-                                              style: NmdTypography.bodyBold,
-                                            ),
-                                          ],
+                                          NmdColors.error,
                                         ),
                                       ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: NmdSpacing.xs),
-                                  _CheckoutSection(
-                                    title: 'كود الخصم',
-                                    child: PremiumCouponApplyRow(
-                                      controller: _couponCtrl,
-                                      loading: _couponLoading,
-                                      error: _couponError,
-                                      appliedCode: _appliedCoupon?.code,
-                                      onApply: _couponLoading
-                                          ? () {}
-                                          : () => _applyCoupon(
-                                                api,
-                                                code: _couponCtrl.text,
-                                                primaryTenantId:
-                                                    data.primaryTenantId,
-                                                cartStoreIds:
-                                                    data.orderedTenantIds,
-                                                subtotalAll: subtotalAll,
-                                                customerPhone: _phoneCtrl.text
-                                                        .trim()
-                                                        .isNotEmpty
-                                                    ? _phoneCtrl.text.trim()
-                                                    : null,
-                                              ),
-                                    ),
-                                  ),
-                                  if (_suggestedCoupons.isNotEmpty) ...[
-                                    const SizedBox(height: NmdSpacing.xxs),
-                                    SizedBox(
-                                      height: 34,
-                                      child: ListView.separated(
-                                        scrollDirection: Axis.horizontal,
-                                        reverse: true,
-                                        primary: false,
-                                        itemCount: _suggestedCoupons.length,
-                                        separatorBuilder: (_, __) =>
-                                            const SizedBox(width: 6),
-                                        itemBuilder: (context, i) {
-                                          final code = _suggestedCoupons[i]
-                                                  ['code']
-                                              ?.toString() ??
-                                              '';
-                                          return NmdChip(
-                                            label: code,
-                                            selected: false,
-                                            onTap: _couponLoading
-                                                ? null
-                                                : () {
-                                                    _couponCtrl.text = code;
-                                                    _applyCoupon(
-                                                      api,
-                                                      code: code,
-                                                      primaryTenantId:
-                                                          data.primaryTenantId,
-                                                      cartStoreIds:
-                                                          data.orderedTenantIds,
-                                                      subtotalAll: subtotalAll,
-                                                      customerPhone: _phoneCtrl
-                                                              .text
-                                                              .trim()
-                                                              .isNotEmpty
-                                                          ? _phoneCtrl.text
-                                                              .trim()
-                                                          : null,
-                                                    );
-                                                  },
-                                          );
-                                        },
+                                      const SizedBox(height: NmdSpacing.xs),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            NmdFormat.money(grandTotal),
+                                            style: NmdTypography.price.copyWith(
+                                              fontSize: 17,
+                                            ),
+                                          ),
+                                          Text(
+                                            'الإجمالي',
+                                            style: NmdTypography.bodyBold,
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: NmdSpacing.xs),
+                                _CheckoutSection(
+                                  title: 'كود الخصم',
+                                  child: PremiumCouponApplyRow(
+                                    controller: _couponCtrl,
+                                    loading: _couponLoading,
+                                    error: _couponError,
+                                    appliedCode: _appliedCoupon?.code,
+                                    onApply: _couponLoading
+                                        ? () {}
+                                        : () => _applyCoupon(
+                                              api,
+                                              code: _couponCtrl.text,
+                                              primaryTenantId:
+                                                  data.primaryTenantId,
+                                              cartStoreIds:
+                                                  data.orderedTenantIds,
+                                              subtotalAll: subtotalAll,
+                                              customerPhone: _phoneCtrl.text
+                                                      .trim()
+                                                      .isNotEmpty
+                                                  ? _phoneCtrl.text.trim()
+                                                  : null,
+                                            ),
+                                  ),
+                                ),
+                                if (_suggestedCoupons.isNotEmpty) ...[
                                   const SizedBox(height: NmdSpacing.xxs),
-                                  _CheckoutSection(
-                                    title: 'ملاحظات',
-                                    child: NmdInput(
-                                      controller: _notesCtrl,
-                                      label: 'ملاحظات للمتجر',
-                                      hint: 'اختياري',
-                                      maxLines: 2,
+                                  SizedBox(
+                                    height: 34,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      reverse: true,
+                                      primary: false,
+                                      itemCount: _suggestedCoupons.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(width: 6),
+                                      itemBuilder: (context, i) {
+                                        final code = _suggestedCoupons[i]
+                                                    ['code']
+                                                ?.toString() ??
+                                            '';
+                                        return NmdChip(
+                                          label: code,
+                                          selected: false,
+                                          onTap: _couponLoading
+                                              ? null
+                                              : () {
+                                                  _couponCtrl.text = code;
+                                                  _applyCoupon(
+                                                    api,
+                                                    code: code,
+                                                    primaryTenantId:
+                                                        data.primaryTenantId,
+                                                    cartStoreIds:
+                                                        data.orderedTenantIds,
+                                                    subtotalAll: subtotalAll,
+                                                    customerPhone: _phoneCtrl
+                                                            .text
+                                                            .trim()
+                                                            .isNotEmpty
+                                                        ? _phoneCtrl.text.trim()
+                                                        : null,
+                                                  );
+                                                },
+                                        );
+                                      },
                                     ),
                                   ),
-                                  const SizedBox(height: kPremiumCheckoutDockScrollInset),
                                 ],
-                              ),
+                                const SizedBox(height: NmdSpacing.xxs),
+                                _CheckoutSection(
+                                  title: 'ملاحظات',
+                                  child: NmdInput(
+                                    controller: _notesCtrl,
+                                    label: 'ملاحظات للمتجر',
+                                    hint: 'اختياري',
+                                    maxLines: 2,
+                                  ),
+                                ),
+                              ],
                             ),
                             PremiumCheckoutDock(
+                              floating: true,
                               total: grandTotal,
                               label: 'تأكيد الطلب',
                               loading: _submitting,
@@ -1162,9 +1259,7 @@ class _PaymentOptionTile extends StatelessWidget {
             vertical: NmdSpacing.xs,
           ),
           decoration: BoxDecoration(
-            color: selected
-                ? NmdColors.tintAliveSoft
-                : NmdColors.surfaceMuted,
+            color: selected ? NmdColors.tintAliveSoft : NmdColors.surfaceMuted,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: selected
@@ -1202,10 +1297,12 @@ class _PaymentOptionTile extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    Text(subtitle, style: NmdTypography.micro.copyWith(
-                      fontSize: 10,
-                      color: NmdColors.textSecondary.withValues(alpha: 0.92),
-                    )),
+                    Text(subtitle,
+                        style: NmdTypography.micro.copyWith(
+                          fontSize: 10,
+                          color:
+                              NmdColors.textSecondary.withValues(alpha: 0.92),
+                        )),
                   ],
                 ),
               ),

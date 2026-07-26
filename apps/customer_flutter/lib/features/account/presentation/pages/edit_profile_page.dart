@@ -1,13 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/support/open_support_whatsapp.dart';
 import '../../../../widgets/nmd_text_field.dart';
+import '../../application/customer_profile_cubit.dart';
 import '../../data/profile_cities.dart';
+import '../../data/delivery_town_repository.dart';
+import '../widgets/delivery_town_picker_sheet.dart';
 import '../widgets/account_sub_scaffold.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -26,6 +29,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   String? _avatarUrl;
   String? _selectedCity;
+  String? _selectedDeliveryTown;
+  List<String> _deliveryTowns = const [];
 
   bool _loading = true;
   bool _saving = false;
@@ -51,7 +56,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _loadProfile() async {
     final dio = context.read<Dio>();
-    final me = await StorefrontApi(dio).getCustomerMe();
+    final api = StorefrontApi(dio);
+    try {
+      _deliveryTowns = await DeliveryTownRepository(dio).fetchTowns();
+    } catch (_) {
+      _deliveryTowns = const [];
+    }
+    final me = await api.getCustomerMe();
     if (!mounted) return;
     if (me == null) {
       setState(() => _loading = false);
@@ -60,11 +71,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
       return;
     }
+    context.read<CustomerProfileCubit>().applyFromMe(me);
     setState(() {
       _nameCtrl.text = '${me['name'] ?? ''}'.trim();
       _emailCtrl.text = '${me['email'] ?? ''}'.trim();
       _phoneCtrl.text = '${me['phone'] ?? ''}'.trim();
       _selectedCity = me['city'] as String?;
+      _selectedDeliveryTown =
+          me['defaultDeliveryTown']?.toString().trim().isNotEmpty == true
+              ? me['defaultDeliveryTown']!.toString().trim()
+              : null;
       if (_selectedCity != null && _selectedCity!.isNotEmpty) {
         _cityCtrl.text = _selectedCity!;
       }
@@ -90,12 +106,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
     final dio = context.read<Dio>();
+    final town = _selectedDeliveryTown?.trim() ?? '';
     final res = await StorefrontApi(dio).patchCustomerProfile(
       name: _nameCtrl.text,
       email: _emailCtrl.text.trim(),
       city: _selectedCity?.trim() ?? '',
+      defaultDeliveryTown: town,
       avatarUrl: _avatarUrl,
+      source: 'profile',
     );
+    if (!mounted) return;
+    if (res != null) {
+      context.read<CustomerProfileCubit>().applyFromMe({
+        ...res,
+        'defaultDeliveryTown':
+            res['defaultDeliveryTown']?.toString().trim().isNotEmpty == true
+                ? res['defaultDeliveryTown'].toString().trim()
+                : town,
+        'name': res['name']?.toString().trim().isNotEmpty == true
+            ? res['name'].toString().trim()
+            : _nameCtrl.text.trim(),
+      });
+    }
     if (!mounted) return;
     setState(() => _saving = false);
     final messenger = ScaffoldMessenger.of(context);
@@ -114,6 +146,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('قريباً: تغيير الصورة')),
     );
+  }
+
+  Future<void> _openDeliveryTownPicker() async {
+    FocusScope.of(context).unfocus();
+    if (_deliveryTowns.isEmpty) {
+      try {
+        final towns =
+            await DeliveryTownRepository(context.read<Dio>()).fetchTowns();
+        if (mounted) setState(() => _deliveryTowns = towns);
+      } catch (_) {}
+    }
+    if (!mounted || _deliveryTowns.isEmpty) return;
+    final picked = await showDeliveryTownPickerSheet(
+      context,
+      towns: _deliveryTowns,
+      selectedTown: _selectedDeliveryTown,
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedDeliveryTown = picked);
+    }
   }
 
   void _openCityPicker() {
@@ -309,6 +361,31 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 suffixIcon: const Icon(
                   Icons.keyboard_arrow_down_rounded,
                   color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _openDeliveryTownPicker,
+                borderRadius: BorderRadius.circular(12),
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: 'المنطقة الرئيسية',
+                    hintText: 'اختر منطقتك الرئيسية',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+                  ),
+                  child: Text(
+                    _selectedDeliveryTown?.trim().isNotEmpty == true
+                        ? _selectedDeliveryTown!
+                        : 'اختر القرية',
+                    textAlign: TextAlign.right,
+                    style: NmdTypography.body.copyWith(
+                      color: _selectedDeliveryTown?.trim().isNotEmpty == true
+                          ? NmdColors.textPrimary
+                          : NmdColors.textSecondary,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 32),

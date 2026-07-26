@@ -1,4 +1,3 @@
-
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
@@ -87,5 +86,18 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> updateCustomerName(String name) {
     return _remote.updateCustomerName(name);
+  }
+
+  @override
+  Future<void> updateCustomerProfile({
+    required String name,
+    String? defaultDeliveryTown,
+    String source = 'profile',
+  }) {
+    return _remote.updateCustomerProfile(
+      name: name,
+      defaultDeliveryTown: defaultDeliveryTown,
+      source: source,
+    );
   }
 }
