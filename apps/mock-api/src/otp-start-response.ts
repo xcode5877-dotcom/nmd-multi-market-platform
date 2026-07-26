@@ -31,7 +31,10 @@ export function buildOtpStartClientResponse(input: OtpStartDeliveryInput): {
   body: OtpStartClientBody;
 } {
   const deliveryOk = input.whatsAppSent || input.smsSent;
-  const mockOrDevCode = Boolean(input.devCode);
+  // Never treat a logged/dev code as delivery success in production.
+  const allowDevCodeBypass =
+    process.env.NODE_ENV !== 'production' || process.env.ALLOW_OTP_DEV_CODE === '1';
+  const mockOrDevCode = Boolean(input.devCode) && allowDevCodeBypass;
   const clientSeesSuccess = deliveryOk || mockOrDevCode || input.playReview;
 
   if (!clientSeesSuccess) {

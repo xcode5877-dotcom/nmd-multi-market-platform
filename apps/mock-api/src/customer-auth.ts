@@ -130,13 +130,17 @@ export function createOtp(
     console.warn('[OTP-FIXED] MOCK_OTP is set but FAWAZ_PHONE / MOCK_OTP_FIXED_PHONES is empty. Normalized request phone:', key);
   }
 
-  const isDevOrMock =
-    process.env.NODE_ENV !== 'production' ||
+  const exposeDevCode =
+    process.env.NODE_ENV === 'development' ||
+    process.env.ALLOW_OTP_DEV_CODE === '1' ||
     process.env.MOCK_OTP === '1' ||
     process.env.MOCK_OTP === 'true' ||
     (applyFixed && fixedMock !== null);
-  if (isDevOrMock) {
-    console.log(`[OTP] ${phone} (normalized: ${key}) → code: ${code} (expires in 5 min)`);
+  // Always log generation for ops; never return the code to clients in production
+  // unless an explicit mock/dev bypass is configured.
+  console.log(`[OTP] ${phone} (normalized: ${key}) → code generated (expires in 5 min)`);
+  if (exposeDevCode) {
+    console.log(`[OTP-DEV] ${phone} (normalized: ${key}) → code: ${code}`);
     return { ok: true, codeForSending: code, devCode: code };
   }
 

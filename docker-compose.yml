@@ -122,6 +122,7 @@ services:
     command: ["node", "/app/apps/mock-api/dist/index.js"]
     environment:
       PORT: "5190"
+      NODE_ENV: production
       # Must match volume uploads_data:/app/uploads — static /uploads and multer use this path.
       UPLOADS_DIR: "/app/uploads"
       STORAGE_DRIVER: "db"
