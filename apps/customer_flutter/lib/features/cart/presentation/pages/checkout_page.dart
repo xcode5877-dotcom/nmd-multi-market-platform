@@ -1287,7 +1287,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               ],
                             ),
                             PremiumCheckoutDock(
-                              floating: true,
                               total: grandTotal,
                               label: 'تأكيد الطلب',
                               loading: _submitting,
