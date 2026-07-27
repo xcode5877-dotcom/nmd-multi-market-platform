@@ -37,6 +37,7 @@ const PlatformFeesOverviewPage = lazy(() => import('./pages/PlatformFeesOverview
 const StoreSettlementPage = lazy(() => import('./pages/StoreSettlementPage'));
 const MarketplaceEconomicsPage = lazy(() => import('./pages/MarketplaceEconomicsPage'));
 const StoreProfitReportPage = lazy(() => import('./pages/StoreProfitReportPage'));
+const FinancialReportsPage = lazy(() => import('./pages/FinancialReportsPage'));
 const TenantDeliverySettingsPage = lazy(() => import('./pages/TenantDeliverySettingsPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/CategoriesAdminPage'));
 const PillarCategoryManagerPage = lazy(() => import('./pages/PillarCategoryManagerPage'));
@@ -101,6 +102,7 @@ function Content() {
         <Route path="platform-fees" element={<RootOnlyRoute><PlatformFeesOverviewPage /></RootOnlyRoute>} />
         <Route path="economics" element={<RootOnlyRoute><MarketplaceEconomicsPage /></RootOnlyRoute>} />
         <Route path="store-profit-report" element={<RootOnlyRoute><StoreProfitReportPage /></RootOnlyRoute>} />
+        <Route path="finance/reports" element={<RootOnlyRoute><FinancialReportsPage /></RootOnlyRoute>} />
         <Route path="categories" element={<RootOnlyRoute><CategoriesAdminPage /></RootOnlyRoute>} />
         <Route path="pillars" element={<RootOnlyRoute><PillarCategoryManagerPage /></RootOnlyRoute>} />
         <Route path="tenants/:id" element={<RootOnlyRoute><TenantDetailPage /></RootOnlyRoute>} />

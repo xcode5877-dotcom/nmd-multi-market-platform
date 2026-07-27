@@ -130,6 +130,8 @@ const TENANT_ADMIN_MODULES: ReadonlySet<AdminModule> = new Set([
 export const ROUTE_MODULE_MAP: Record<string, AdminModule> = {
   '/monitoring': 'monitoring',
   '/economics': 'platformEconomics',
+  '/finance/reports': 'platformEconomics',
+  '/store-profit-report': 'superAdminReports',
   '/markets': 'marketsList',
   '/tenants': 'allTenants',
   '/platform-fees': 'platformFees',
