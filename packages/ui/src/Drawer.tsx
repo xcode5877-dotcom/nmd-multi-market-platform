@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { Button } from './Button';
+import { getBodyScrollLockCount, lockBodyScroll, unlockBodyScroll } from './body-scroll-lock';
 
 export interface DrawerProps {
   open: boolean;
@@ -15,18 +17,22 @@ export interface DrawerProps {
 
 export function Drawer({ open, onClose, title, children, side = 'end', contentClassName }: DrawerProps) {
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    if (open) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Nested Modal holds an extra scroll lock — do not close the drawer underneath.
+      if (getBodyScrollLockCount() > 1) return;
+      onClose();
+    };
+    if (!open) return undefined;
+    document.addEventListener('keydown', handleEscape);
+    lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      unlockBodyScroll();
     };
   }, [open, onClose]);
 
-  const isRtl = document.documentElement.dir === 'rtl';
+  const isRtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
   const fromStart = side === 'start';
   const fromEnd = side === 'end';
 
@@ -40,18 +46,21 @@ export function Drawer({ open, onClose, title, children, side = 'end', contentCl
         : '100%'
       : '100%';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
-      {open && (
+      {open ? (
         <div
+          key="nmd-drawer-root"
           className="fixed inset-0 z-[9999] flex"
           style={{ justifyContent: fromStart ? 'flex-start' : 'flex-end' }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'drawer-title' : undefined}
         >
-          {/* Full-screen backdrop: dims everything including sidebar and navbar */}
           <motion.div
+            key="nmd-drawer-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -60,6 +69,7 @@ export function Drawer({ open, onClose, title, children, side = 'end', contentCl
             aria-hidden
           />
           <motion.div
+            key="nmd-drawer-panel"
             initial={{ x: xOffset }}
             animate={{ x: 0 }}
             exit={{ x: xOffset }}
@@ -80,7 +90,8 @@ export function Drawer({ open, onClose, title, children, side = 'end', contentCl
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 py-4 pb-20">{children}</div>
           </motion.div>
         </div>
-      )}
-    </AnimatePresence>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
   );
 }

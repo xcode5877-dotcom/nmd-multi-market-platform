@@ -34,4 +34,6 @@ export interface CartItem {
   unitName?: string;
   /** When true, item is sold by weight (decimals); when false, strict integer and "حبة". */
   isWeightBased?: boolean;
+  /** Optional per-line note (admin / kitchen). */
+  notes?: string;
 }

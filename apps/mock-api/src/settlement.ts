@@ -3,15 +3,13 @@
  * Pickup cash → store debt; delivery cash → platform collected; online → merchant liability.
  */
 
-import { PrismaClient } from '@prisma/client';
 import {
   ceilShekel,
   roundMoney,
   type MarketplacePricingContext,
   computeMarketplaceDisplayPricing,
 } from './platform-fee.js';
-
-const prisma = new PrismaClient();
+import { prisma } from './db.js';
 
 export type SettlementClass = 'PICKUP_CASH' | 'DELIVERY_CASH' | 'ONLINE_PLATFORM';
 

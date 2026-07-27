@@ -41,6 +41,20 @@ export function formatTimeGregorian(date: Date | string): string {
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+/** Simple Arabic relative time (minutes/hours/days ago). */
+export function formatRelativeTimeAr(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '—';
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return 'الآن';
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `منذ ${mins} د`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `منذ ${hours} س`;
+  const days = Math.floor(hours / 24);
+  return `منذ ${days} ي`;
+}
+
 /**
  * Format as ISO date YYYY-MM-DD (Gregorian).
  */

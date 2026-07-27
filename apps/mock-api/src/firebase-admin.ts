@@ -99,6 +99,14 @@ export async function sendFCMToToken(
     return { success: false, error: a ? 'Missing token' : 'FCM not configured' };
   }
   try {
+    const dataPayload = Object.fromEntries(
+      Object.entries({
+        ...(payload.data ?? {}),
+        title: payload.title,
+        body: payload.body,
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+      }).map(([k, v]) => [k, String(v)])
+    );
     const messageId = await a.messaging().send({
       token: token.trim(),
       notification: {
@@ -106,10 +114,7 @@ export async function sendFCMToToken(
         body: payload.body,
         ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
       },
-      data: {
-        ...(payload.data ?? {}),
-        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
-      },
+      data: dataPayload,
       android: {
         priority: 'high',
         notification: {

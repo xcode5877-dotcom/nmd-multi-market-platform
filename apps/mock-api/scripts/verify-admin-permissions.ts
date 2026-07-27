@@ -178,6 +178,17 @@ console.log('\nCustomer JWT shared-route allowlist');
     !isCustomerAllowedSharedRoute('POST', '/rewards/reward-1/redeem'),
     'CUSTOMER allowlist blocks POST /rewards/:id/redeem (use /customer/rewards/:id/redeem)'
   );
+  assert(
+    !isCustomerAllowedSharedRoute('POST', '/admin/contests/x/draw'),
+    'CUSTOMER allowlist blocks POST /admin/contests/:id/draw'
+  );
+  assert(
+    !isCustomerAllowedSharedRoute('GET', '/admin/contest-draws'),
+    'CUSTOMER allowlist blocks GET /admin/contest-draws'
+  );
+  assert(canAccessRoute('SUPER_ADMIN', '/contests'), 'SUPER_ADMIN can access /contests');
+  assert(!canAccessRoute('TENANT_ADMIN', '/contests'), 'TENANT_ADMIN cannot access /contests');
+  assert(!canAccessRoute('COURIER', '/contests'), 'COURIER cannot access /contests');
 }
 
 async function runLiveTests(): Promise<void> {

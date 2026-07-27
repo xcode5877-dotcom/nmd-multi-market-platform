@@ -16,6 +16,11 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { Modal } from './Modal';
 export { ConfirmDialog } from './ConfirmDialog';
 export { Drawer } from './Drawer';
+export {
+  lockBodyScroll,
+  unlockBodyScroll,
+  getBodyScrollLockCount,
+} from './body-scroll-lock';
 export { Skeleton } from './Skeleton';
 export { ToastProvider, useToast } from './Toast';
 export { TenantSwitcher } from './TenantSwitcher';

@@ -694,6 +694,20 @@ export class MockApiClient implements ApiClient {
     throw new Error('API required');
   }
 
+  async updateCoupon(id: string, body: { type?: 'FIXED' | 'PERCENT'; value?: number; tenantId?: string | null; storeId?: string | null; oneTimeUse?: boolean; winnerPhone?: string | null; expiresAt?: string | null; isActive?: boolean }): Promise<{ id: string; code: string; type: string; value: number; tenantId?: string | null; storeId?: string | null; oneTimeUse: boolean; winnerPhone?: string | null; usedAt?: string | null; createdAt: string; expiresAt?: string | null }> {
+    if (this.useApi) {
+      return apiFetch(`/coupons/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+    }
+    throw new Error('API required');
+  }
+
+  async deactivateCoupon(id: string): Promise<{ id: string; code: string; expiresAt?: string | null }> {
+    if (this.useApi) {
+      return apiFetch(`/coupons/${encodeURIComponent(id)}/deactivate`, { method: 'POST' });
+    }
+    throw new Error('API required');
+  }
+
   async getCampaigns(tenantId: string): Promise<Campaign[]> {
     if (this.useApi) {
       try {
@@ -863,16 +877,24 @@ export class MockApiClient implements ApiClient {
   }
 
   /** List customers (ROOT_ADMIN: all; TENANT_ADMIN: only those who interacted with their tenant; MARKET_ADMIN: their market). */
-  async listCustomers(tenantSlug?: string): Promise<{
+  async listCustomers(tenantSlug?: string, trustFilter?: string): Promise<{
     id: string;
     phone: string;
     name?: string;
     email?: string;
     createdAt?: string;
     lastActivityAt?: string;
+    riskLevel?: string;
+    requiresConfirmation?: boolean;
+    cashOnDeliveryAllowed?: boolean;
+    hasIncidents?: boolean;
+    totalIncidents?: number;
   }[]> {
     if (!this.useApi) return [];
-    const q = tenantSlug ? `?tenantSlug=${encodeURIComponent(tenantSlug)}` : '';
+    const q = new URLSearchParams();
+    if (tenantSlug) q.set('tenantSlug', tenantSlug);
+    if (trustFilter && trustFilter !== 'ALL') q.set('trustFilter', trustFilter);
+    const qs = q.toString();
     return apiFetch<{
       id: string;
       phone: string;
@@ -880,7 +902,67 @@ export class MockApiClient implements ApiClient {
       email?: string;
       createdAt?: string;
       lastActivityAt?: string;
-    }[]>(`/customers${q}`);
+      riskLevel?: string;
+      requiresConfirmation?: boolean;
+      cashOnDeliveryAllowed?: boolean;
+      hasIncidents?: boolean;
+      totalIncidents?: number;
+    }[]>(`/customers${qs ? `?${qs}` : ''}`);
+  }
+
+  async getCustomerTrust(customerId: string) {
+    if (!this.useApi) throw new Error('getCustomerTrust requires API');
+    return apiFetch(`/customers/${encodeURIComponent(customerId)}/trust`);
+  }
+
+  async getCustomerTrustIncidents(customerId: string) {
+    if (!this.useApi) throw new Error('getCustomerTrustIncidents requires API');
+    return apiFetch<{ incidents: unknown[] }>(`/customers/${encodeURIComponent(customerId)}/incidents`);
+  }
+
+  async addCustomerTrustIncident(
+    customerId: string,
+    body: {
+      incidentType: string;
+      severity: string;
+      note?: string;
+      orderId?: string;
+      expiresAt?: string;
+      immediateAction?: string;
+      escalateTo?: string;
+    },
+  ) {
+    if (!this.useApi) throw new Error('addCustomerTrustIncident requires API');
+    return apiFetch(`/customers/${encodeURIComponent(customerId)}/incident`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async patchCustomerRisk(
+    customerId: string,
+    body: {
+      riskLevel?: string;
+      requiresConfirmation?: boolean;
+      cashOnDeliveryAllowed?: boolean;
+      status?: string;
+      expiresAt?: string | null;
+      active?: boolean;
+    },
+  ) {
+    if (!this.useApi) throw new Error('patchCustomerRisk requires API');
+    return apiFetch(`/customers/${encodeURIComponent(customerId)}/risk`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async resolveCustomerTrustIncident(customerId: string, incidentId: string) {
+    if (!this.useApi) throw new Error('resolveCustomerTrustIncident requires API');
+    return apiFetch(`/customers/${encodeURIComponent(customerId)}/resolve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ incidentId }),
+    });
   }
 
   /** Create TENANT_ADMIN for an existing tenant (legacy stores). */
@@ -1543,6 +1625,53 @@ export class MockApiClient implements ApiClient {
   async hardDeleteOrder(orderId: string): Promise<void> {
     if (!this.useApi) return;
     await apiFetch(`/orders/${encodeURIComponent(orderId)}/hard-delete`, { method: 'DELETE' });
+  }
+
+  /**
+   * Super Admin privileged order management (add/remove/qty/modifiers/notes).
+   * Requires useApi + ROOT_ADMIN | SUPER_ADMIN.
+   */
+  async manageOrder(
+    orderId: string,
+    body: {
+      reason: string;
+      reasonDetail?: string;
+      operations: Array<Record<string, unknown>>;
+      expectedRevision?: number;
+      idempotencyKey?: string;
+    }
+  ): Promise<{ order: Order; modification: Record<string, unknown>; idempotent?: boolean }> {
+    if (!this.useApi) {
+      throw new Error('manageOrder requires VITE_MOCK_API_URL (remote API)');
+    }
+    const idem =
+      body.idempotencyKey?.trim() ||
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `manage-${crypto.randomUUID()}`
+        : `manage-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const payload = { ...body, idempotencyKey: idem };
+    return apiFetch<{ order: Order; modification: Record<string, unknown>; idempotent?: boolean }>(
+      `/admin/orders/${encodeURIComponent(orderId)}/manage`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+        headers: { 'Idempotency-Key': idem },
+      }
+    );
+  }
+
+  /** Super Admin order modification history (immutable trail). */
+  async getOrderModifications(orderId: string): Promise<{
+    orderId: string;
+    status?: string;
+    editable: boolean;
+    blockReason: string | null;
+    modifications: Array<Record<string, unknown>>;
+  }> {
+    if (!this.useApi) {
+      return { orderId, editable: false, blockReason: 'API unavailable', modifications: [] };
+    }
+    return apiFetch(`/admin/orders/${encodeURIComponent(orderId)}/modifications`);
   }
 
   async listCampaignsApi(tenantId: string): Promise<unknown[]> {

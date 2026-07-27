@@ -358,6 +358,30 @@ export async function appendLedgerEntry(input: {
   return id;
 }
 
+export type DriverEarningsPreview = {
+  deliveryFeeShareAmount: number;
+  orderCommissionAmount: number;
+  totalDriverEarning: number;
+};
+
+/** Preview-only driver earning components — does not write ledger entries. */
+export async function computeDriverEarningsPreview(
+  order: Record<string, unknown>,
+  courierId: string
+): Promise<DriverEarningsPreview> {
+  const config = await getOrCreatePayrollConfig(courierId);
+  const { deliveryFee, subtotalWithoutDelivery } = extractOrderEarningsBase(order);
+  const deliveryFeeShareAmount = roundMoney(deliveryFee * (config.deliveryFeeShare / 100));
+  const tenantId = order.tenantId ? String(order.tenantId) : undefined;
+  const commissionPercent = await resolveOrderCommissionPercent(courierId, tenantId);
+  const orderCommissionAmount = roundMoney(subtotalWithoutDelivery * (commissionPercent / 100));
+  return {
+    deliveryFeeShareAmount,
+    orderCommissionAmount,
+    totalDriverEarning: roundMoney(deliveryFeeShareAmount + orderCommissionAmount),
+  };
+}
+
 export function extractOrderEarningsBase(order: Record<string, unknown>): {
   deliveryFee: number;
   subtotalWithoutDelivery: number;

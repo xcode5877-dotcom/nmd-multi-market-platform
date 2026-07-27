@@ -49,6 +49,7 @@ const PIZZA_PRODUCTS: Product[] = [
         maxSelected: 3,
         selectionType: 'multi',
         allowHalfPlacement: true,
+        allowSplitting: true,
         items: [
           { id: 'poi-3', name: 'Mushrooms', priceModifier: 5, sortOrder: 0, placement: 'HALF' as const },
           { id: 'poi-4', name: 'Olives', priceModifier: 4, sortOrder: 1, placement: 'HALF' as const },

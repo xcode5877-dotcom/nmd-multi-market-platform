@@ -1,6 +1,7 @@
 import { formatMoney } from './utils/money.js';
 
-export { formatDateGregorian, formatDateTimeGregorian, formatTimeGregorian, formatDateISO } from './utils/dates.js';
+export { formatDateGregorian, formatDateTimeGregorian, formatTimeGregorian, formatDateISO, formatRelativeTimeAr } from './utils/dates.js';
+export { sortByOperationalStatus } from './utils/store-sort.js';
 export { customerUnitPrice, customerComparePrice } from './utils/customer-price.js';
 
 /**

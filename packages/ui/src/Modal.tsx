@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { Button } from './Button';
+import { lockBodyScroll, unlockBodyScroll } from './body-scroll-lock';
 
 export interface ModalProps {
   open: boolean;
@@ -9,48 +11,57 @@ export interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
-  /** Use for stacking above other modals (e.g. 100000 above contest popup at 99999). */
+  /** Use for stacking above drawers (Drawer is z-9999). Default keeps modals above drawers. */
   zIndex?: number;
 }
 
-export function Modal({ open, onClose, title, children, size = 'md', zIndex }: ModalProps) {
+const DEFAULT_MODAL_Z_INDEX = 10050;
+
+export function Modal({ open, onClose, title, children, size = 'md', zIndex = DEFAULT_MODAL_Z_INDEX }: ModalProps) {
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    if (open) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (!open) return undefined;
+    document.addEventListener('keydown', handleEscape);
+    lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      unlockBodyScroll();
     };
   }, [open, onClose]);
 
   const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
-      {open && (
+      {open ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={zIndex !== undefined ? { zIndex } : undefined}
+          key="nmd-modal-root"
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ zIndex }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'modal-title' : undefined}
         >
           <motion.div
+            key="nmd-modal-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             onClick={onClose}
             className="absolute inset-0 bg-black/50"
             aria-hidden="true"
           />
           <motion.div
+            key="nmd-modal-panel"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.15 }}
             className={`relative flex flex-col w-full max-h-[90vh] ${sizes[size]} bg-white rounded-[var(--radius)] shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
@@ -67,7 +78,8 @@ export function Modal({ open, onClose, title, children, size = 'md', zIndex }: M
             <div className="p-4 overflow-y-auto min-h-0">{children}</div>
           </motion.div>
         </div>
-      )}
-    </AnimatePresence>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
   );
 }

@@ -7,6 +7,15 @@ import type { MarketsRepo, TenantsRepo, UsersRepo, CouriersRepo, CustomersRepo, 
 import type { DeliveryZoneRecord } from '../store.js';
 import { parseMarketBrandingColumn, serializeMarketBrandingColumn } from '../market-branding-storage.js';
 import { syncCustomersFromRepo } from '../customer-identity.js';
+import {
+  attachMeasurementToProduct,
+  coerceMeasurementDecimalString,
+  defaultPieceMeasurement,
+  normalizeCatalogProductsForWrite,
+  toPrismaBaseUnitCode,
+  toPrismaDisplayUnitCode,
+} from '@nmd/core';
+import type { Prisma } from '@prisma/client';
 
 function marketToDomain(m: { id: string; name: string; slug: string; imageUrl: string | null; branding: string | null; isActive: boolean; sortOrder: number | null; paymentCapabilities: string | null; paymentMethods?: string | null }): Market {
   const { branding, platformFeeConfig } = parseMarketBrandingColumn(m.branding);
@@ -40,6 +49,7 @@ function tenantToDomain(t: {
   collections: string | null;
   addressLine?: string | null; location?: string | null; deliveryRadiusKm?: number | null;
   pillarId?: string | null; subCategoryId?: string | null;
+  supportsWeightSelling?: boolean | null;
 }): RegistryTenant {
   return {
     id: t.id,
@@ -90,6 +100,7 @@ function tenantToDomain(t: {
     deliveryRadiusKm: t.deliveryRadiusKm ?? undefined,
     pillarId: t.pillarId ?? undefined,
     subCategoryId: t.subCategoryId ?? undefined,
+    supportsWeightSelling: t.supportsWeightSelling === true,
   };
 }
 
@@ -100,6 +111,10 @@ function orderToDomain(o: {
   isExternal?: boolean | null;
   externalDestination?: string | null;
   manualStoreName?: string | null;
+  submissionScheduledAt?: Date | null;
+  submittedAt?: Date | null;
+  revision?: number | null;
+  cancelledBeforeSubmission?: boolean | null;
 }): OrderRecord {
   const base: OrderRecord = {
     id: o.id,
@@ -125,7 +140,21 @@ function orderToDomain(o: {
   (base as Record<string, unknown>).isExternal = o.isExternal ?? false;
   if (o.externalDestination != null) (base as Record<string, unknown>).externalDestination = o.externalDestination;
   if (o.manualStoreName != null) (base as Record<string, unknown>).manualStoreName = o.manualStoreName;
+  // Gate columns are source of truth (overwrite any payload copies)
+  (base as Record<string, unknown>).submissionScheduledAt = o.submissionScheduledAt
+    ? o.submissionScheduledAt.toISOString()
+    : undefined;
+  (base as Record<string, unknown>).submittedAt = o.submittedAt ? o.submittedAt.toISOString() : undefined;
+  (base as Record<string, unknown>).revision = typeof o.revision === 'number' ? o.revision : 0;
+  (base as Record<string, unknown>).cancelledBeforeSubmission = o.cancelledBeforeSubmission === true;
   return base;
+}
+
+function parseOrderDateField(value: unknown): Date | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function orderToDb(order: OrderRecord): {
@@ -135,6 +164,10 @@ function orderToDb(order: OrderRecord): {
   isExternal: boolean;
   externalDestination: string | null;
   manualStoreName: string | null;
+  submissionScheduledAt: Date | null;
+  submittedAt: Date | null;
+  revision: number;
+  cancelledBeforeSubmission: boolean;
 } {
   const {
     id,
@@ -151,8 +184,19 @@ function orderToDb(order: OrderRecord): {
     isExternal,
     externalDestination,
     manualStoreName,
+    submissionScheduledAt,
+    submittedAt,
+    revision,
+    cancelledBeforeSubmission,
     ...rest
   } = order;
+  // Strip gate keys from payload so columns remain source of truth
+  delete (rest as Record<string, unknown>).submissionScheduledAt;
+  delete (rest as Record<string, unknown>).submittedAt;
+  delete (rest as Record<string, unknown>).revision;
+  delete (rest as Record<string, unknown>).cancelledBeforeSubmission;
+  // Append-only history lives in OrderModification table — never persist in payload
+  delete (rest as Record<string, unknown>).modificationHistory;
   return {
     id: String(id ?? ''),
     tenantId: tenantId != null ? String(tenantId) : null,
@@ -168,6 +212,10 @@ function orderToDb(order: OrderRecord): {
     isExternal: Boolean(isExternal),
     externalDestination: externalDestination != null ? String(externalDestination) : null,
     manualStoreName: manualStoreName != null ? String(manualStoreName) : null,
+    submissionScheduledAt: parseOrderDateField(submissionScheduledAt),
+    submittedAt: parseOrderDateField(submittedAt),
+    revision: typeof revision === 'number' && Number.isFinite(revision) ? Math.max(0, Math.floor(revision)) : 0,
+    cancelledBeforeSubmission: cancelledBeforeSubmission === true,
     payload: Object.keys(rest).length > 0 ? JSON.stringify(rest) : null,
   };
 }
@@ -257,6 +305,7 @@ export function createDbTenantsRepo(): TenantsRepo {
             deliveryRadiusKm: (t as RegistryTenant).deliveryRadiusKm ?? null,
             pillarId: (t as RegistryTenant).pillarId ?? null,
             subCategoryId: (t as RegistryTenant).subCategoryId ?? null,
+            supportsWeightSelling: (t as RegistryTenant).supportsWeightSelling === true,
           })),
         });
       }
@@ -477,9 +526,30 @@ export function createDbOrdersRepo(): OrdersRepo {
   };
 }
 
+function decimalToApiString(value: unknown, fallback = '1'): string {
+  if (value == null) return fallback;
+  return coerceMeasurementDecimalString(
+    typeof value === 'object' && value !== null && 'toString' in value
+      ? String((value as { toString: () => string }).toString())
+      : value,
+    fallback
+  );
+}
+
 function catalogToDomain(
   categories: { id: string; tenantId: string; name: string; slug: string; description: string | null; imageUrl: string | null; sortOrder: number; parentId: string | null; isVisible: boolean | null; markupExempt?: boolean }[],
-  products: { id: string; tenantId: string; categoryId: string; name: string; slug: string; description: string | null; type: string; basePrice: number; currency: string; imageUrl: string | null; images: string | null; optionGroups: string | null; variants: string | null; stock: number | null; isAvailable: boolean; createdAt: string | null; isFeatured: boolean | null; isArchived: boolean | null; sortOrder: number | null }[],
+  products: Array<{
+    id: string; tenantId: string; categoryId: string; name: string; slug: string; description: string | null; type: string; basePrice: number; currency: string; imageUrl: string | null; images: string | null; optionGroups: string | null; variants: string | null; stock: number | null; isAvailable: boolean; createdAt: string | null; isFeatured: boolean | null; isArchived: boolean | null; sortOrder: number | null;
+    measurementType?: string;
+    baseUnitCode?: string;
+    displayUnitCode?: string;
+    quantityStep?: unknown;
+    minimumQuantity?: unknown;
+    maximumQuantity?: unknown;
+    priceBasis?: string;
+    measurementVersion?: number | null;
+    displayPrecision?: number | null;
+  }>,
   optionGroups: { id: string; tenantId: string; name: string; type: string | null; required: boolean; minSelected: number; maxSelected: number; selectionType: string; scope: string | null; scopeId: string | null; allowHalfPlacement: boolean | null; items: string | null }[]
 ): TenantCatalog {
   const catArr = categories.map((c) => ({
@@ -495,6 +565,7 @@ function catalogToDomain(
     markupExempt: c.markupExempt ?? false,
   }));
   const prodArr = products.map((p) => {
+    const defaults = defaultPieceMeasurement();
     const base: Record<string, unknown> = {
       id: p.id,
       tenantId: p.tenantId,
@@ -512,11 +583,22 @@ function catalogToDomain(
       isFeatured: p.isFeatured ?? undefined,
       isArchived: p.isArchived ?? undefined,
       sortOrder: p.sortOrder ?? undefined,
+      measurementType: p.measurementType ?? defaults.measurementType,
+      baseUnitCode: p.baseUnitCode ?? defaults.baseUnitCode,
+      displayUnitCode: p.displayUnitCode ?? defaults.displayUnitCode,
+      quantityStep: decimalToApiString(p.quantityStep, defaults.quantityStep),
+      minimumQuantity: decimalToApiString(p.minimumQuantity, defaults.minimumQuantity),
+      maximumQuantity:
+        p.maximumQuantity == null ? null : decimalToApiString(p.maximumQuantity, defaults.minimumQuantity),
+      priceBasis: p.priceBasis ?? defaults.priceBasis,
+      measurementVersion: p.measurementVersion ?? defaults.measurementVersion,
+      displayPrecision: p.displayPrecision ?? null,
     };
     if (p.images) base.images = JSON.parse(p.images) as unknown;
     if (p.optionGroups) base.optionGroups = JSON.parse(p.optionGroups) as unknown;
     if (p.variants) base.variants = JSON.parse(p.variants) as unknown;
-    return base;
+    // Dual-emit legacy + normalize API unit codes (Prisma enums → lowercase)
+    return attachMeasurementToProduct(base);
   });
   const grpArr = optionGroups.map((g) => {
     const base: Record<string, unknown> = {
@@ -555,79 +637,93 @@ export function createDbCatalogRepo(): CatalogRepo {
       return catalogToDomain(categories, products, optionGroups);
     },
     async setCatalog(tenantId: string, catalog: TenantCatalog) {
-      await prisma.$transaction([
-        prisma.catalogCategory.deleteMany({ where: { tenantId } }),
-        prisma.catalogProduct.deleteMany({ where: { tenantId } }),
-        prisma.catalogOptionGroup.deleteMany({ where: { tenantId } }),
-      ]);
       const cats = (catalog.categories ?? []) as { id?: string; tenantId?: string; name?: string; slug?: string; description?: string; imageUrl?: string; sortOrder?: number; parentId?: string | null; isVisible?: boolean; markupExempt?: boolean }[];
-      const prods = (catalog.products ?? []) as { id?: string; tenantId?: string; categoryId?: string; name?: string; slug?: string; description?: string; type?: string; basePrice?: number; currency?: string; imageUrl?: string; images?: unknown; optionGroups?: unknown; variants?: unknown; stock?: number; isAvailable?: boolean; createdAt?: string; isFeatured?: boolean; isArchived?: boolean; sortOrder?: number }[];
+      const rawProds = (catalog.products ?? []) as Record<string, unknown>[];
       const grps = (catalog.optionGroups ?? []) as { id?: string; tenantId?: string; name?: string; type?: string; required?: boolean; minSelected?: number; maxSelected?: number; selectionType?: string; scope?: string; scopeId?: string; allowHalfPlacement?: boolean; items?: unknown[] }[];
-      for (const c of cats) {
-        if (c.id) {
-          await prisma.catalogCategory.create({
-            data: {
-              id: c.id,
-              tenantId,
-              name: c.name ?? '',
-              slug: c.slug ?? '',
-              description: c.description ?? null,
-              imageUrl: c.imageUrl ?? null,
-              sortOrder: c.sortOrder ?? 0,
-              parentId: c.parentId ?? null,
-              isVisible: c.isVisible ?? true,
-              markupExempt: c.markupExempt ?? false,
-            },
-          });
+
+      // Fail-closed BEFORE any DB mutation: invalid measurement aborts with previous catalog intact.
+      const prods = normalizeCatalogProductsForWrite(rawProds);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.catalogCategory.deleteMany({ where: { tenantId } });
+        await tx.catalogProduct.deleteMany({ where: { tenantId } });
+        await tx.catalogOptionGroup.deleteMany({ where: { tenantId } });
+
+        for (const c of cats) {
+          if (c.id) {
+            await tx.catalogCategory.create({
+              data: {
+                id: c.id,
+                tenantId,
+                name: c.name ?? '',
+                slug: c.slug ?? '',
+                description: c.description ?? null,
+                imageUrl: c.imageUrl ?? null,
+                sortOrder: c.sortOrder ?? 0,
+                parentId: c.parentId ?? null,
+                isVisible: c.isVisible ?? true,
+                markupExempt: c.markupExempt ?? false,
+              },
+            });
+          }
         }
-      }
-      for (const p of prods) {
-        if (p.id) {
-          await prisma.catalogProduct.create({
+        for (const p of prods) {
+          if (!p.id) continue;
+          await tx.catalogProduct.create({
             data: {
-              id: p.id,
+              id: String(p.id),
               tenantId,
-              categoryId: p.categoryId ?? '',
-              name: p.name ?? '',
-              slug: p.slug ?? '',
-              description: p.description ?? null,
-              type: p.type ?? 'SIMPLE',
-              basePrice: p.basePrice ?? 0,
-              currency: p.currency ?? 'ILS',
-              imageUrl: p.imageUrl ?? null,
+              categoryId: String(p.categoryId ?? ''),
+              name: String(p.name ?? ''),
+              slug: String(p.slug ?? ''),
+              description: (p.description as string | undefined) ?? null,
+              type: String(p.type ?? 'SIMPLE'),
+              basePrice: Number(p.basePrice) || 0,
+              currency: String(p.currency ?? 'ILS'),
+              imageUrl: (p.imageUrl as string | undefined) ?? null,
               images: p.images != null ? JSON.stringify(p.images) : null,
               optionGroups: p.optionGroups != null ? JSON.stringify(p.optionGroups) : null,
               variants: p.variants != null ? JSON.stringify(p.variants) : null,
-              stock: p.stock ?? null,
-              isAvailable: p.isAvailable ?? true,
-              createdAt: p.createdAt ?? null,
-              isFeatured: p.isFeatured ?? null,
-              isArchived: p.isArchived ?? false,
-              sortOrder: p.sortOrder ?? 0,
+              stock: p.stock != null ? Number(p.stock) : null,
+              isAvailable: p.isAvailable !== false,
+              createdAt: (p.createdAt as string | undefined) ?? null,
+              isFeatured: (p.isFeatured as boolean | undefined) ?? null,
+              isArchived: (p.isArchived as boolean | undefined) ?? false,
+              sortOrder: Number(p.sortOrder) || 0,
+              measurementType: p.measurementType,
+              baseUnitCode: toPrismaBaseUnitCode(p.baseUnitCode),
+              displayUnitCode: toPrismaDisplayUnitCode(p.displayUnitCode),
+              quantityStep: p.quantityStep as unknown as Prisma.Decimal,
+              minimumQuantity: p.minimumQuantity as unknown as Prisma.Decimal,
+              maximumQuantity:
+                p.maximumQuantity == null ? null : (p.maximumQuantity as unknown as Prisma.Decimal),
+              priceBasis: p.priceBasis,
+              measurementVersion: p.measurementVersion,
+              displayPrecision: p.displayPrecision,
             },
           });
         }
-      }
-      for (const g of grps) {
-        if (g.id) {
-          await prisma.catalogOptionGroup.create({
-            data: {
-              id: g.id,
-              tenantId,
-              name: g.name ?? '',
-              type: g.type ?? null,
-              required: g.required ?? false,
-              minSelected: g.minSelected ?? 0,
-              maxSelected: g.maxSelected ?? 1,
-              selectionType: g.selectionType ?? 'single',
-              scope: g.scope ?? null,
-              scopeId: g.scopeId ?? null,
-              allowHalfPlacement: g.allowHalfPlacement ?? null,
-              items: g.items != null ? JSON.stringify(g.items) : null,
-            },
-          });
+        for (const g of grps) {
+          if (g.id) {
+            await tx.catalogOptionGroup.create({
+              data: {
+                id: g.id,
+                tenantId,
+                name: g.name ?? '',
+                type: g.type ?? null,
+                required: g.required ?? false,
+                minSelected: g.minSelected ?? 0,
+                maxSelected: g.maxSelected ?? 1,
+                selectionType: g.selectionType ?? 'single',
+                scope: g.scope ?? null,
+                scopeId: g.scopeId ?? null,
+                allowHalfPlacement: g.allowHalfPlacement ?? null,
+                items: g.items != null ? JSON.stringify(g.items) : null,
+              },
+            });
+          }
         }
-      }
+      });
     },
   };
 }

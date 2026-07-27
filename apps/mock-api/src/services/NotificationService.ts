@@ -237,9 +237,11 @@ export function triggerStatusNotification(
 /** Arabic push messages for order status (customer app). CONFIRMED=processing, READY/COMPLETED=shipped, DELIVERED=delivered. */
 export const CUSTOMER_PUSH_MESSAGES: Record<string, { title: string; body: string }> = {
   CONFIRMED: { title: 'تحديث الطلب', body: 'طلبك قيد التنفيذ الآن! 👨‍🍳' },
+  ACCEPTED: { title: 'تحديث الطلب', body: 'طلبك قيد التنفيذ الآن! 👨‍🍳' },
   READY: { title: 'تحديث الطلب', body: 'طلبك في الطريق إليك! 🚚' },
   COMPLETED: { title: 'تحديث الطلب', body: 'طلبك في الطريق إليك! 🚚' },
   DELIVERED: { title: 'تم التوصيل', body: 'تم توصيل الطلب، بالهناء والشفاء! 🍽️' },
+  ORDER_UPDATED: { title: 'تحديث الطلب', body: 'تم تعديل تفاصيل طلبك — افتح التتبع لعرض التحديث.' },
 };
 
 /**

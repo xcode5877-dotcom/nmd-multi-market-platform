@@ -11,6 +11,7 @@ import {
   approveExpense,
   autoCloseStaleShifts,
   computeEarningsSummary,
+  computeDriverEarningsPreview,
   computeWorkedMinutes,
   endShift,
   extractOrderEarningsBase,
@@ -82,6 +83,20 @@ function runUnitTests(): void {
 }
 
 async function runIntegrationTests(): Promise<void> {
+  console.log('\n--- Integration: driver earnings preview ---');
+  const preview = await computeDriverEarningsPreview(
+    {
+      payment: { breakdown: { itemsTotal: 100, deliveryFee: 12 } },
+      total: 112,
+      customerTotal: 112,
+    },
+    TEST_COURIER
+  );
+  assert(preview.deliveryFeeShareAmount === 12, 'preview delivery fee share counted');
+  assert(preview.orderCommissionAmount === 5, 'preview commission 5% of food subtotal');
+  assert(preview.totalDriverEarning === 17, 'preview total = delivery share + commission');
+  assert(preview.totalDriverEarning !== 112, 'preview total is not full order total');
+
   console.log('\n--- Integration: shifts ---');
   await cleanup();
   await ensureTestCourier();

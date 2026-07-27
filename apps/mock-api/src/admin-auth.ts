@@ -48,12 +48,15 @@ const CUSTOMER_ALLOWED_SHARED_ROUTES: { method: string; path: RegExp }[] = [
   { method: 'GET', path: /^\/pillars$/ },
   { method: 'GET', path: /^\/sub-categories$/ },
   { method: 'GET', path: /^\/app-config$/ },
+  { method: 'GET', path: /^\/config\/support$/ },
+  { method: 'POST', path: /^\/analytics\/support$/ },
   { method: 'GET', path: /^\/campaigns$/ },
   { method: 'GET', path: /^\/contest\/active$/ },
   { method: 'GET', path: /^\/contest\/me$/ },
   { method: 'GET', path: /^\/lucky-wheel\/prizes$/ },
   { method: 'GET', path: /^\/global-categories$/ },
   { method: 'GET', path: /^\/categories$/ },
+  { method: 'GET', path: /^\/public\/delivery-towns$/ },
   { method: 'GET', path: /^\/public\/orders\/[^/]+$/ },
 ];
 

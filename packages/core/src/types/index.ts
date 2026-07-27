@@ -10,3 +10,4 @@ export * from './campaign';
 export * from './delivery';
 export * from './pricing';
 export * from './modifier-icon';
+export * from './customer-trust';

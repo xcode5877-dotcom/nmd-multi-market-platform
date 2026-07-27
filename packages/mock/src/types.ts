@@ -31,6 +31,7 @@ export interface RegistryTenant {
   marketSortOrder?: number;
   /** Payment capabilities: cash-first; card=false shows "Coming soon" in storefront */
   paymentCapabilities?: { cash: boolean; card: boolean };
+  paymentMethods?: { cash: boolean; card: boolean; installments: boolean };
   /** Admin-controlled homepage sections */
   collections?: HomeCollection[];
   /** Manual override: open | closed | busy */
@@ -82,12 +83,14 @@ export interface MarketCourier {
   scopeId: string;
   marketId?: string;
   name: string;
+  email?: string;
   phone?: string;
   isActive: boolean;
   isOnline: boolean;
   capacity: number;
   isAvailable?: boolean;
   deliveryCount?: number;
+  allowedStoreIds?: string[];
 }
 
 /** Market courier with performance metrics + gamification (from GET /markets/:marketId/couriers/stats) */

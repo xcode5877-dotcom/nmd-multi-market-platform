@@ -1,4 +1,19 @@
+import type {
+  BaseUnitCode,
+  DisplayUnitCode,
+  MeasurementType,
+  PriceBasis,
+} from '../measurement/types.js';
+
 export type ProductType = 'SIMPLE' | 'CONFIGURABLE' | 'PIZZA' | 'APPAREL';
+
+export type {
+  BaseUnitCode,
+  DisplayUnitCode,
+  MeasurementType,
+  PriceBasis,
+  ProductMeasurement,
+} from '../measurement/types.js';
 
 export type OptionSelectionType = 'single' | 'multi';
 
@@ -112,10 +127,41 @@ export interface Product {
   isArchived?: boolean;
   /** Display order within category (lower = first). Storefront sorts by this then createdAt. */
   sortOrder?: number;
-  /** Quantity increment for add-to-cart (default 1). Use 0.5 for vegetables/butchery (e.g. kg). */
-  quantityStep?: number;
-  /** Unit label for display (e.g. "كيلو", "حبة", "كرتونة"). Default "حبة" when omitted. */
+
+  /** Measurement V2 — sold-by type (PIECE | WEIGHT | VOLUME | PACKAGE). */
+  measurementType?: MeasurementType;
+  /** Pricing unit: kg | l | piece | pack | box | bundle. Never g/ml. */
+  baseUnitCode?: BaseUnitCode;
+  /** Formatting unit only (may be g/ml for WEIGHT/VOLUME). */
+  displayUnitCode?: DisplayUnitCode;
+  /**
+   * Quantity increment in **base units** (normalized decimal string, e.g. "0.25").
+   * Legacy clients may still send/read a number.
+   */
+  quantityStep?: string | number;
+  /** Minimum purchase quantity in base units. */
+  minimumQuantity?: string | number;
+  /** Optional maximum purchase quantity in base units. */
+  maximumQuantity?: string | number | null;
+  /** Always PER_BASE_UNIT in v1 (price of one base unit). */
+  priceBasis?: PriceBasis;
+  /**
+   * Measurement interpretation version. Default 1.
+   * Phase B must copy this into every new order-line snapshot.
+   */
+  measurementVersion?: number;
+  /**
+   * Max displayed decimal places (0–3). Formatting only — never pricing/validation.
+   */
+  displayPrecision?: number | null;
+
+  /**
+   * @deprecated Dual-emit only. Derived from measurementType WEIGHT/VOLUME.
+   * Prefer measurementType / baseUnitCode / displayUnitCode.
+   */
   unitName?: string;
-  /** When true, product is sold by weight/fraction (show decimals and weight unit). When false, always integer and "حبة". */
+  /**
+   * @deprecated Dual-emit only. Prefer measurementType.
+   */
   isWeightBased?: boolean;
 }

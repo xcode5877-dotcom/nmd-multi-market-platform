@@ -8,6 +8,7 @@
 import type { RegistryTenant } from './store.js';
 import { getDeliveryJobs } from './store.js';
 import type { Repos } from './repos/types.js';
+import { isAwaitingMerchantSubmission, isCancelledBeforeMerchantSubmission } from './order-submission-gate.js';
 
 export const NEAR_READY_WINDOW_MINUTES = 10;
 export const BATCH_WINDOW_MINUTES = 7;
@@ -44,6 +45,8 @@ export function isOrderEligibleForMarketDispatch(order: OrderRecord, tenants: Re
   if (mode !== 'MARKET') return false;
   if (order.fulfillmentType === 'PICKUP' || order.fulfillmentType === 'IN_STORE') return false;
   if (order.fulfillmentType !== 'DELIVERY') return false;
+  if (isCancelledBeforeMerchantSubmission(order)) return false;
+  if (isAwaitingMerchantSubmission(order)) return false;
   if (['OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELED'].includes(order.status ?? '')) return false;
 
   if (tenantType === 'RESTAURANT') {
@@ -70,6 +73,7 @@ export async function evaluateFallback(marketId: string, repos: Repos): Promise<
   const changedOrders: OrderRecord[] = [];
   orders.forEach((o) => {
     if (!o.tenantId || !tenantIds.has(o.tenantId)) return;
+    if (isCancelledBeforeMerchantSubmission(o) || isAwaitingMerchantSubmission(o)) return;
     if (o.deliveryAssignmentMode === 'MARKET' || o.fallbackTriggeredAt) return;
     if (o.fulfillmentType === 'PICKUP' || o.fulfillmentType === 'IN_STORE') return;
     const tenant = getTenant(tenants, o.tenantId);
