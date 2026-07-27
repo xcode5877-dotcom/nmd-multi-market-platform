@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import type { Order } from '@nmd/core';
+import { formatQuantity } from '@nmd/core';
 import { Card, Button, DataTable, Drawer, InlineBadge, PageHeader, FiltersBar, EmptyState, ConfirmDialog, useToast, Modal, OrderListFilters, OrderListCountsBar, OrderSourceBadge } from '@nmd/ui';
 import { Package, Bell, MessageCircle, FileText, Phone, Truck, Trash2, Eye } from 'lucide-react';
 import { useAdminContext } from '../context/AdminContext';
@@ -981,7 +982,44 @@ function OrderDrawerContent({
               <li key={i} className="flex justify-between items-start text-sm gap-3">
                 <ProductThumb src={(item as { imageUrl?: string }).imageUrl} />
                 <div className="min-w-0 flex-1">
-                  <span>{item.productName} × {item.quantity}</span>
+                  <span>
+                    {item.productName} ×{' '}
+                    {(() => {
+                      const snap = item as {
+                        quantityDecimal?: string;
+                        quantity?: number;
+                        baseUnitCodeSnapshot?: string;
+                        displayUnitCodeSnapshot?: string;
+                        displayPrecisionSnapshot?: number | null;
+                        unitName?: string;
+                        isWeightBased?: boolean;
+                      };
+                      const qtyBase = snap.quantityDecimal ?? snap.quantity;
+                      if (
+                        snap.baseUnitCodeSnapshot &&
+                        snap.displayUnitCodeSnapshot &&
+                        qtyBase != null &&
+                        qtyBase !== ''
+                      ) {
+                        return formatQuantity({
+                          quantityBase: qtyBase,
+                          baseUnitCode: snap.baseUnitCodeSnapshot as 'kg' | 'l' | 'piece' | 'pack' | 'box' | 'bundle',
+                          displayUnitCode: snap.displayUnitCodeSnapshot as
+                            | 'kg'
+                            | 'g'
+                            | 'l'
+                            | 'ml'
+                            | 'piece'
+                            | 'pack'
+                            | 'box'
+                            | 'bundle',
+                          displayPrecision: snap.displayPrecisionSnapshot ?? null,
+                        });
+                      }
+                      const unit = snap.unitName ? ` ${snap.unitName}` : '';
+                      return `${snap.quantity ?? 1}${unit}`;
+                    })()}
+                  </span>
                   {variantLabelsNode.length > 0 && (
                     <span className="block text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5">{variantLabelsNode}</span>
                   )}
