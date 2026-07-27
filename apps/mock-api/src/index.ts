@@ -96,8 +96,49 @@ import {
   isOrderManagementEditable,
   normalizeAndValidateMeasurementForWrite,
   isInvalidMeasurementConfigError,
+  coerceOrderLineSnapshots,
+  orderLineHasFractionalQuantity,
+  feeBillableItemUnits,
+  parseOrderQuantity,
   type ModifierIcon,
+  type Campaign,
 } from '@nmd/core';
+import { resolveAuthoritativeOrderLines } from './order-measurement.js';
+
+/** FIXED_ITEM fee units from an authoritative line (never floor kg/litre). */
+function feeBillableUnitsForLine(line: {
+  measurementTypeSnapshot?: string;
+  quantityDecimal?: string;
+  quantity?: number;
+}): number {
+  const mt = (line.measurementTypeSnapshot ?? 'PIECE') as 'PIECE' | 'WEIGHT' | 'VOLUME' | 'PACKAGE';
+  const q = parseOrderQuantity(line.quantityDecimal ?? line.quantity ?? 1);
+  if (!q.ok) return 0;
+  return feeBillableItemUnits(mt, q.milli);
+}
+
+/** Clients that understand Measurement V2 fractional quantities / snapshots. */
+function clientSupportsMeasurementV2(req: express.Request): boolean {
+  const h = String(req.headers['x-nmd-supports-measurement-v2'] ?? '').toLowerCase();
+  return h === '1' || h === 'true';
+}
+
+/** Hide unsupported fractional line payloads from legacy clients (Phase B.1 compatibility gate). */
+function presentOrderForClient(order: Record<string, unknown>, supportsV2: boolean): Record<string, unknown> {
+  const items = Array.isArray(order.items) ? (order.items as Record<string, unknown>[]) : [];
+  const mapped = items.map((raw) => {
+    const item = coerceOrderLineSnapshots(raw);
+    if (supportsV2 || !orderLineHasFractionalQuantity(item)) return item;
+    return {
+      ...item,
+      quantity: null,
+      quantityDecimal: item.quantityDecimal,
+      measurementV2Required: true,
+    };
+  });
+  return { ...order, items: mapped };
+}
+
 import { getDispatchQueue } from './delivery-engine.js';
 import { isCourierListTerminalStatus, syncAdminDeliveredOrder } from './delivery-status-sync.js';
 import {
@@ -8806,30 +8847,56 @@ app.post('/orders', wrapAsync(async (req, res) => {
     }
   }
 
-  let orderSubtotal = (created as { subtotal?: number }).subtotal ?? (created as { items?: { totalPrice?: number }[] }).items?.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0) ?? 0;
+  // --- Phase B.1: server-authoritative quantity + pricing + snapshots (before any persist) ---
+  const tenantIdForCatalog = created.tenantId ?? '';
+  if (!tenantIdForCatalog) {
+    return res.status(400).json({ code: 'INVALID_QUANTITY', error: 'tenantId is required' });
+  }
+  const catalog = await repos.catalog.getCatalog(tenantIdForCatalog);
+  const clientLines = ((created as { items?: unknown[] }).items ?? []) as Parameters<
+    typeof resolveAuthoritativeOrderLines
+  >[0]['clientLines'];
+  const tenantCampaigns = (getCampaigns() as Campaign[]).filter(
+    (c) => !c.tenantId || c.tenantId === tenantIdForCatalog
+  );
+  const resolved = resolveAuthoritativeOrderLines({
+    tenantId: tenantIdForCatalog,
+    supportsWeightSelling: tenant?.supportsWeightSelling === true,
+    catalog,
+    clientLines,
+    campaigns: tenantCampaigns,
+    endpoint: 'POST /orders',
+  });
+  if (!resolved.ok) {
+    return res.status(resolved.status).json(resolved.body);
+  }
+  (created as Record<string, unknown>).items = resolved.lines;
+  (created as Record<string, unknown>).pricingSchemaVersion = 1;
+
+  let orderSubtotal = resolved.subtotal;
   const orderDeliveryFee = (created as { delivery?: { fee?: number } }).delivery?.fee ?? 0;
   let couponDiscount = 0;
   const orderCouponId = (order as { couponId?: string }).couponId;
   const clientCouponDiscount = Number((order as { couponDiscountAmount?: number }).couponDiscountAmount);
   if (orderCouponId) {
-    if (clientCouponDiscount > 0) {
-      couponDiscount = Math.min(clientCouponDiscount, orderSubtotal + orderDeliveryFee);
-    } else {
-      const coupon = await prisma.coupon.findUnique({ where: { id: orderCouponId } });
-      if (coupon && !coupon.usedAt && (!coupon.expiresAt || coupon.expiresAt > now)) {
-        if (!coupon.tenantId || coupon.tenantId === created.tenantId) {
-          const customerPhoneNorm = normalizePhoneForCoupon((created as { customerPhone?: string }).customerPhone ?? (req as express.Request & { customer?: { phone?: string } }).customer?.phone);
-          if (!coupon.oneTimeUse || !coupon.winnerPhone || normalizePhoneForCoupon(coupon.winnerPhone) === customerPhoneNorm) {
-            if (coupon.type === 'FIXED') couponDiscount = Math.min(Number(coupon.value), orderSubtotal);
-            else if (coupon.type === 'PERCENT') couponDiscount = Math.min((orderSubtotal * Number(coupon.value)) / 100, orderSubtotal);
-          }
+    // Prefer server coupon rules; ignore client discount when coupon row exists.
+    const coupon = await prisma.coupon.findUnique({ where: { id: orderCouponId } });
+    if (coupon && !coupon.usedAt && (!coupon.expiresAt || coupon.expiresAt > now)) {
+      if (!coupon.tenantId || coupon.tenantId === created.tenantId) {
+        const customerPhoneNorm = normalizePhoneForCoupon((created as { customerPhone?: string }).customerPhone ?? (req as express.Request & { customer?: { phone?: string } }).customer?.phone);
+        if (!coupon.oneTimeUse || !coupon.winnerPhone || normalizePhoneForCoupon(coupon.winnerPhone) === customerPhoneNorm) {
+          if (coupon.type === 'FIXED') couponDiscount = Math.min(Number(coupon.value), orderSubtotal);
+          else if (coupon.type === 'PERCENT') couponDiscount = Math.min((orderSubtotal * Number(coupon.value)) / 100, orderSubtotal);
         }
       }
+    } else if (clientCouponDiscount > 0) {
+      // Fallback only when coupon row unavailable — still capped by authoritative subtotal
+      couponDiscount = Math.min(clientCouponDiscount, orderSubtotal);
     }
   }
   const legacyTotal = Math.max(0, orderSubtotal + orderDeliveryFee - couponDiscount);
-  const orderItems = (created as { items?: { quantity?: number; totalPrice?: number }[] }).items ?? [];
-  const itemCount = orderItems.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+  const orderItems = resolved.lines;
+  const itemCount = resolved.feeItemCount;
   const marketForFee = tenant?.marketId
     ? ((await repos.markets.findAll()) as Market[]).find((m) => m.id === tenant.marketId)
     : undefined;
@@ -8838,21 +8905,18 @@ app.post('/orders', wrapAsync(async (req, res) => {
     tenantFeeOverride: tenant?.financialConfig?.platformFee,
     featureFlagEnabled: isPlatformFeeEnabled(),
   };
-  const tenantIdForCatalog = created.tenantId ?? '';
-  const { categoryExemptById, productCategoryById } = tenantIdForCatalog
-    ? await buildCatalogExemptionMaps(tenantIdForCatalog)
-    : { categoryExemptById: new Map<string, boolean>(), productCategoryById: new Map<string, string>() };
+  const { categoryExemptById, productCategoryById } = await buildCatalogExemptionMaps(tenantIdForCatalog);
   const displayLines = orderItems.map((i, idx) => {
-    const item = i as { productId?: string; categoryId?: string; totalPrice?: number; quantity?: number };
     const catId =
-      item.categoryId ||
-      (item.productId ? productCategoryById.get(String(item.productId)) : undefined);
+      i.categoryId ||
+      (i.productId ? productCategoryById.get(String(i.productId)) : undefined);
     const markupExempt = catId ? categoryExemptById.get(String(catId)) === true : false;
     return {
       lineId: String(idx),
-      baseAmount: roundMoney(Number(item.totalPrice) || 0),
-      quantity: Math.max(1, Number(item.quantity) || 1),
-      itemCount: Math.max(0, Math.floor(Number(item.quantity) || 1)),
+      baseAmount: roundMoney(Number(i.lineSubtotalSnapshot ?? i.totalPrice) || 0),
+      quantity: Number(i.quantityDecimal ?? i.quantity) || 1,
+      // FIXED_ITEM billable units: PIECE integer qty; WEIGHT/VOLUME = 1 per line (never floor kg)
+      itemCount: feeBillableUnitsForLine(i),
       markupExempt,
       categoryId: catId,
     };
@@ -8960,7 +9024,7 @@ app.get('/orders/:orderId', wrapAsync(async (req, res) => {
   if (req.user && req.user.role !== 'CUSTOMER' && req.user.role !== 'COURIER') {
     await enrichOrdersWithCustomerTrust(prisma, [order as Record<string, unknown>]);
   }
-  res.json(order);
+  res.json(presentOrderForClient(order as Record<string, unknown>, clientSupportsMeasurementV2(req)));
 }));
 
 /** Public order status: no auth. Returns safe fields for customer order confirmation + courier for tracking. */
