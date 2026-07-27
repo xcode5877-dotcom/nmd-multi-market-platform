@@ -79,6 +79,8 @@ final class DioClient {
       InterceptorsWrapper(
         onRequest: (options, handler) {
           _ensureNmdGatewayUrl(options);
+          // Opt in to Measurement V2 fractional quantities / order presentation.
+          options.headers['X-Nmd-Supports-Measurement-V2'] = 'true';
           final url = options.uri.toString();
           if (kDebugMode || kNmdApiLog) {
             developer.log(url, name: 'NMD_HTTP');

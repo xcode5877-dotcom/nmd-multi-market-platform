@@ -34,6 +34,9 @@
     "verify:order-management": "tsx scripts/verify-order-management.ts",
     "verify:order-visibility": "tsx scripts/verify-order-visibility.ts",
     "verify:measurement-v2": "tsx scripts/verify-measurement-v2.ts",
+    "verify:measurement-v2-orders": "tsx scripts/verify-measurement-v2-orders.ts",
+    "verify:measurement-v2-b1-migration": "tsx scripts/verify-measurement-v2-b1-migration.ts",
+    "verify:measurement-v2-catalog-form": "tsx scripts/verify-measurement-v2-catalog-form.ts",
     "verify:customer-trust": "tsx scripts/verify-customer-trust.ts",
     "report:stuck-courier-orders": "tsx scripts/report-stuck-courier-orders.ts"
   },

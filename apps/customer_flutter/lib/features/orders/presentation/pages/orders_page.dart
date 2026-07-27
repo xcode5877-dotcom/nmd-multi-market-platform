@@ -14,6 +14,9 @@ import '../../../../design_system/design_system.dart';
 import '../../../../core/network/token_storage.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../cart/application/cart_cubit.dart';
+import '../../../../measurement/measurement.dart';
+import '../../../../api/storefront_api.dart';
+import '../../../../api/models/product.dart';
 import '../../../catalog/application/service_lead_actions.dart';
 import '../../../catalog/data/tenant_contact_info.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
@@ -216,49 +219,132 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  void _reorderGroup(CustomerOrderGroup group) {
+  Future<void> _reorderGroup(CustomerOrderGroup group) async {
     final cart = context.read<CartCubit>();
+    final dio = context.read<Dio>();
+    final api = StorefrontApi(dio);
+    final catalogByTenant = <String, Map<String, Product>>{};
     var addedLines = 0;
+    var blockedLines = 0;
+    String? blockedTenantId;
+    String? blockedProductId;
     for (final o in group.orders) {
       final items = o.items;
       if (items == null) continue;
+      if (!catalogByTenant.containsKey(o.tenantId)) {
+        try {
+          final products = await api.getCatalogProducts(o.tenantId);
+          catalogByTenant[o.tenantId] = {for (final p in products) p.id: p};
+        } catch (_) {
+          catalogByTenant[o.tenantId] = {};
+        }
+      }
+      final catalog = catalogByTenant[o.tenantId]!;
       for (final raw in items) {
         if (raw is! Map) continue;
         final m = Map<String, dynamic>.from(raw);
         final pid = m['productId']?.toString() ?? '';
         if (pid.isEmpty) continue;
-        final qty = (m['quantity'] as num?)?.toInt() ?? 1;
-        double unit;
-        if (m['basePrice'] is num) {
-          unit = (m['basePrice'] as num).toDouble();
-        } else {
-          final tp = (m['totalPrice'] as num?)?.toDouble() ?? 0;
-          unit = qty > 0 ? tp / qty : tp;
+        final catalogProduct = catalog[pid];
+        if (catalogProduct != null && !catalogProduct.canAddToCart) {
+          blockedLines++;
+          blockedTenantId ??= o.tenantId;
+          blockedProductId ??= pid;
+          continue;
         }
+        final check = evaluateReorderLine(
+          orderItem: m,
+          currentCatalogMeasurement: catalogProduct?.measurement,
+        );
+        if (check.blocked) {
+          blockedLines++;
+          blockedTenantId ??= o.tenantId;
+          blockedProductId ??= pid;
+          continue;
+        }
+        final qty = check.quantity!;
+        final measurement = check.measurement!;
+        final unit = _reorderUnitPrice(m, qty);
         cart.addOrIncrement(
           tenantId: o.tenantId,
           productId: pid,
-          name: m['productName']?.toString() ?? 'منتج',
-          unitPrice: unit,
-          imageUrl: m['imageUrl']?.toString() ?? '',
+          name: m['productName']?.toString() ??
+              catalogProduct?.name ??
+              'منتج',
+          unitPrice: catalogProduct?.customerListPrice ?? unit,
+          merchantUnitPrice: catalogProduct?.basePrice ?? unit,
+          imageUrl: m['imageUrl']?.toString() ??
+              catalogProduct?.imageUrl ??
+              '',
           addQty: qty,
+          measurement: measurement,
         );
         addedLines++;
       }
     }
+    if (!mounted) return;
+    final slug = GoRouterState.of(context).pathParameters['slug'] ?? '';
+    void openBlockedProduct() {
+      if (slug.isEmpty ||
+          blockedTenantId == null ||
+          blockedProductId == null) {
+        return;
+      }
+      context.push(
+        '/market/$slug/store/$blockedTenantId/product/$blockedProductId',
+      );
+    }
+
     if (addedLines == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('لا توجد أصناف متاحة لإعادة الطلب',
-                style: GoogleFonts.cairo())),
+          content: Text(
+            blockedLines > 0
+                ? kReorderConfigChangedAr
+                : 'لا توجد أصناف متاحة لإعادة الطلب',
+            style: GoogleFonts.cairo(),
+          ),
+          action: blockedLines > 0 &&
+                  blockedTenantId != null &&
+                  blockedProductId != null &&
+                  slug.isNotEmpty
+              ? SnackBarAction(
+                  label: 'اختيار كمية',
+                  onPressed: openBlockedProduct,
+                )
+              : null,
+        ),
       );
       return;
     }
+    final msg = blockedLines > 0
+        ? 'أُضيفت بعض المنتجات. $kReorderConfigChangedAr'
+        : 'تمت إضافة المنتجات إلى السلة';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content:
-              Text('تمت إضافة المنتجات إلى السلة', style: GoogleFonts.cairo())),
+        content: Text(msg, style: GoogleFonts.cairo()),
+        action: blockedLines > 0 &&
+                blockedTenantId != null &&
+                blockedProductId != null &&
+                slug.isNotEmpty
+            ? SnackBarAction(
+                label: 'اختيار كمية',
+                onPressed: openBlockedProduct,
+              )
+            : null,
+      ),
     );
+  }
+
+  double _reorderUnitPrice(Map<String, dynamic> m, String qty) {
+    if (m['basePrice'] is num) {
+      return (m['basePrice'] as num).toDouble();
+    }
+    final tp = (m['totalPrice'] as num?)?.toDouble() ?? 0;
+    final q = parseMeasurementDecimalStrict(qty);
+    if (!q.ok || q.milli <= 0) return tp;
+    final totalAgora = shekelsToAgora(tp) ?? 0;
+    return agoraToShekels((totalAgora * kMeasurementScale) ~/ q.milli);
   }
 
   Future<void> _contactStore(CustomerOrderVm order) async {

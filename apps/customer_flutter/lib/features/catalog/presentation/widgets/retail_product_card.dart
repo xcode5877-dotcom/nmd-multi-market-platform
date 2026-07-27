@@ -17,6 +17,7 @@ class RetailProductCard extends StatefulWidget {
     required this.onTap,
     this.onAddTap,
     this.description,
+    this.priceUnitSuffix,
   });
 
   final double width;
@@ -28,6 +29,9 @@ class RetailProductCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onAddTap;
   final String? description;
+
+  /// e.g. `كغم` / `لتر` → shown as `₪40 / كغم`.
+  final String? priceUnitSuffix;
 
   static const double cardHeight = MarketplaceCardLayout.productCardHeight;
   static const double imageHeight = MarketplaceCardLayout.productImageHeight;
@@ -69,7 +73,10 @@ class _RetailProductCardState extends State<RetailProductCard>
 
   @override
   Widget build(BuildContext context) {
-    final priceStr = NmdFormat.price(widget.price);
+    final suffix = (widget.priceUnitSuffix ?? '').trim();
+    final priceStr = suffix.isEmpty
+        ? NmdFormat.price(widget.price)
+        : '${NmdFormat.price(widget.price)} / $suffix';
     final desc = (widget.description ?? '').trim();
     final showDesc = desc.isNotEmpty;
     final showAdd = widget.onAddTap != null;

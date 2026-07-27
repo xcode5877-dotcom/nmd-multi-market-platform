@@ -13,11 +13,26 @@ import type {
   VariantOptionValue,
   OptionGroupType,
 } from '@nmd/core';
-import { generateId, formatMoney } from '@nmd/core';
+import {
+  generateId,
+  formatMoney,
+  defaultCatalogMeasurementForm,
+  measurementFormFromProduct,
+  buildMeasurementApiPayload,
+  validateCatalogMeasurementForm,
+  mapMeasurementErrorToAr,
+  measurementBadgeAr,
+  measurementPriceBadgeAr,
+  measurementStepHintAr,
+  resolveProductMeasurementForRead,
+  type CatalogMeasurementFormState,
+  type CatalogMeasurementFieldError,
+} from '@nmd/core';
 import { uploadFiles, MockApiClient } from '@nmd/mock';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMarketModifierIcons, resolveMarketSlugFromId } from '../lib/modifierIcons';
+import { MeasurementProductFields } from '../components/MeasurementProductFields';
 
 const USE_API = !!import.meta.env.VITE_MOCK_API_URL;
 const api = new MockApiClient();
@@ -112,6 +127,29 @@ function ProductCard({
         <div className="min-w-0 flex-1">
           <h3 className="font-bold text-slate-900 truncate">{product.name}</h3>
           <p className="text-sm text-slate-500 truncate">{categoryName}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {(() => {
+              const m = resolveProductMeasurementForRead(product as unknown as Record<string, unknown>);
+              const badge = measurementBadgeAr(m.measurementType);
+              const priceBadge = measurementPriceBadgeAr(m.measurementType);
+              const stepHint = measurementStepHintAr(product as unknown as Record<string, unknown>);
+              return (
+                <>
+                  <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                    {badge}
+                  </span>
+                  {priceBadge && (
+                    <span className="inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-500">
+                      {priceBadge}
+                    </span>
+                  )}
+                  {stepHint && (
+                    <span className="text-[11px] text-slate-500 truncate max-w-full">{stepHint}</span>
+                  )}
+                </>
+              );
+            })()}
+          </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             {isQuickPriceActive ? (
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -135,7 +173,7 @@ function ProductCard({
               <button
                 type="button"
                 onClick={() => onPriceClick(product)}
-                className="font-bold text-xl text-primary hover:underline focus:outline-none"
+                className="font-bold text-xl text-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
                 title="تعديل السعر"
               >
                 ₪{formatMoney(product.basePrice)}
@@ -246,10 +284,11 @@ export default function ProductsPage() {
     lastItemsCount: 0,
     isArchived: false,
     sortOrder: 0,
-    quantityStep: 1,
-    unitName: 'حبة',
-    isWeightBased: false,
+    measurement: defaultCatalogMeasurementForm('PIECE') as CatalogMeasurementFormState,
   });
+  const [measurementErrors, setMeasurementErrors] = useState<CatalogMeasurementFieldError[]>([]);
+  const supportsWeightSelling =
+    (tenant as { supportsWeightSelling?: boolean } | null)?.supportsWeightSelling === true;
   /** Option groups for current tenant only (from catalog / Options page). */
   const catalogOptionGroups = adminData.getOptionGroups().filter(
     (g) =>
@@ -358,8 +397,17 @@ export default function ProductsPage() {
     sortOrder,
   });
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim() || !form.categoryId) return;
+    const mErrors = validateCatalogMeasurementForm(form.measurement, {
+      supportsWeightSelling,
+    });
+    if (mErrors.length > 0) {
+      setMeasurementErrors(mErrors);
+      addToast(mErrors[0]?.message || 'تحقق من إعدادات القياس', 'error');
+      return;
+    }
+    setMeasurementErrors([]);
     setSaving(true);
     const slug = form.slug || form.name.toLowerCase().replace(/\s/g, '-');
     const images = [...(form.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -367,11 +415,10 @@ export default function ProductsPage() {
     const linkedGroups = catalogOptionGroups.filter((g) => form.selectedOptionGroupIds.includes(g.id));
     const allOptionGroups = [...linkedGroups, ...form.optionGroups];
     const optionGroupIds = form.selectedOptionGroupIds;
-    const effectiveWeight = form.isWeightBased;
-    const effectiveStep = effectiveWeight ? form.quantityStep : 1;
-    const effectiveUnit = effectiveWeight ? form.unitName : 'حبة';
+    const measurementApi = buildMeasurementApiPayload(form.measurement);
+    let next: Product[];
     if (editing) {
-      const next = products.map((p) =>
+      next = products.map((p) =>
         p.id === editing.id
           ? {
               ...p,
@@ -394,17 +441,13 @@ export default function ProductsPage() {
               lastItemsCount: form.lastItemsCount,
               isArchived: form.isArchived,
               sortOrder: form.sortOrder,
-              quantityStep: effectiveStep,
-              unitName: effectiveUnit,
-              isWeightBased: effectiveWeight,
+              ...measurementApi,
             }
           : p
       );
-      setProducts(next);
-      adminData.setProducts(next);
     } else {
       const maxOrder = products.length > 0 ? Math.max(...products.map((p) => p.sortOrder ?? 0), 0) : 0;
-      const next: Product[] = [
+      next = [
         ...products,
         {
           id: generateId(),
@@ -432,42 +475,61 @@ export default function ProductsPage() {
           lastItemsCount: form.isLastItems ? form.lastItemsCount : undefined,
           isArchived: form.isArchived,
           sortOrder: form.sortOrder ?? maxOrder + 1,
-          quantityStep: effectiveStep,
-          unitName: effectiveUnit,
-          isWeightBased: effectiveWeight,
+          ...measurementApi,
         },
       ];
-      setProducts(next);
-      adminData.setProducts(next);
     }
-    setDrawerOpen(false);
-    setEditing(null);
-    setForm({
-      name: '',
-      slug: '',
-      description: '',
-      categoryId: '',
-      type: 'SIMPLE',
-      basePrice: 0,
-      imageUrl: '',
-      images: [],
-      selectedOptionGroupIds: [],
-      optionGroups: [],
-      variants: [],
-      isFeatured: false,
-      inStock: true,
-      quantity: undefined,
-      lowStockThreshold: undefined,
-      isLastItems: false,
-      lastItemsCount: 0,
-      isArchived: false,
-      sortOrder: 0,
-      quantityStep: 1,
-      unitName: 'حبة',
-      isWeightBased: false,
-    });
-    setSaving(false);
-    addToast('تم الحفظ بنجاح', 'success');
+    try {
+      if (USE_API) {
+        await api.setCatalogApi(tenantId!, {
+          categories: adminData.getCategories(),
+          products: next,
+          optionGroups: adminData.getOptionGroups(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['catalog', tenantId] });
+      } else {
+        adminData.setProducts(next);
+      }
+      setProducts(next);
+      setDrawerOpen(false);
+      setEditing(null);
+      setForm({
+        name: '',
+        slug: '',
+        description: '',
+        categoryId: '',
+        type: 'SIMPLE',
+        basePrice: 0,
+        imageUrl: '',
+        images: [],
+        selectedOptionGroupIds: [],
+        optionGroups: [],
+        variants: [],
+        isFeatured: false,
+        inStock: true,
+        quantity: undefined,
+        lowStockThreshold: undefined,
+        isLastItems: false,
+        lastItemsCount: 0,
+        isArchived: false,
+        sortOrder: 0,
+        measurement: defaultCatalogMeasurementForm('PIECE'),
+      });
+      addToast('تم الحفظ بنجاح', 'success');
+    } catch (err) {
+      const e = err as Error & {
+        code?: string;
+        messageAr?: string;
+        details?: { field?: string };
+      };
+      const code = e.code || 'INVALID_MEASUREMENT_CONFIG';
+      const field = typeof e.details?.field === 'string' ? e.details.field : 'measurementType';
+      const message = mapMeasurementErrorToAr(code, e.messageAr || e.message || 'فشل حفظ المنتج');
+      setMeasurementErrors([{ field, code, message }]);
+      addToast(message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = (id: string) => {
@@ -510,17 +572,16 @@ export default function ProductsPage() {
       lastItemsCount: p.lastItemsCount ?? 0,
       isArchived: p.isArchived ?? false,
       sortOrder: p.sortOrder ?? 0,
-      quantityStep: (p as { quantityStep?: number }).quantityStep ?? 1,
-      unitName: (p as { unitName?: string }).unitName ?? 'حبة',
-      isWeightBased: (p as { isWeightBased?: boolean }).isWeightBased ?? ((p as { quantityStep?: number }).quantityStep ?? 1) < 1,
+      measurement: measurementFormFromProduct(p as unknown as Record<string, unknown>),
     });
+    setMeasurementErrors([]);
     setDrawerOpen(true);
   };
 
   const openAdd = () => {
     setEditing(null);
     const maxOrder = products.length > 0 ? Math.max(...products.map((p) => p.sortOrder ?? 0), 0) : 0;
-    const defaultWeight = (tenant as { supportsWeightSelling?: boolean } | null)?.supportsWeightSelling === true;
+    // Never auto-enable WEIGHT from tenant capability — always start PIECE.
     setForm({
       name: '',
       slug: '',
@@ -541,10 +602,9 @@ export default function ProductsPage() {
       lastItemsCount: 0,
       isArchived: false,
       sortOrder: maxOrder + 1,
-      quantityStep: defaultWeight ? 0.25 : 1,
-      unitName: defaultWeight ? 'كيلو' : 'حبة',
-      isWeightBased: defaultWeight,
+      measurement: defaultCatalogMeasurementForm('PIECE'),
     });
+    setMeasurementErrors([]);
     setDrawerOpen(true);
   };
 
@@ -954,55 +1014,27 @@ export default function ProductsPage() {
             onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as ProductType }))}
           />
           <Input
-            label="السعر (₪)"
+            label="السعر الأساسي (₪)"
             type="number"
             value={form.basePrice}
             onChange={(e) => setForm((f) => ({ ...f, basePrice: +e.target.value }))}
           />
-          <div className="space-y-3 p-4 rounded-xl border border-gray-200 bg-gray-50/50">
-            <p className="text-sm font-semibold text-gray-800">نظام البيع بالأوزان</p>
-            <p className="text-xs text-gray-500">اختيار لكل منتج: يمكن أن يكون الحليب (وحدة واحدة) واللحم (ربع كيلو) في نفس المتجر.</p>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.isWeightBased}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setForm((f) => ({
-                    ...f,
-                    isWeightBased: checked,
-                    ...(checked && !['كيلو', 'جرام', 'لتر'].includes(f.unitName) ? { unitName: 'كيلو' as const, quantityStep: 0.25 } : {}),
-                  }));
-                }}
-                className="rounded border-gray-300 text-primary focus:ring-primary"
-              />
-              <span className="text-sm font-medium text-gray-700">هذا المنتج يباع بالوزن</span>
-            </label>
-            {form.isWeightBased && (
-              <>
-                <Select
-                  label="وحدة القياس"
-                  options={[
-                    { value: 'كيلو', label: 'كيلو' },
-                    { value: 'جرام', label: 'جرام' },
-                    { value: 'لتر', label: 'لتر' },
-                  ]}
-                  value={form.unitName}
-                  onChange={(e) => setForm((f) => ({ ...f, unitName: e.target.value }))}
-                />
-                <Select
-                  label="قفزة الكمية"
-                  options={[
-                    { value: '0.25', label: '0.25 (ربع)' },
-                    { value: '0.5', label: '0.50 (نص)' },
-                    { value: '1', label: '1.0 (واحد)' },
-                  ]}
-                  value={String(form.quantityStep)}
-                  onChange={(e) => setForm((f) => ({ ...f, quantityStep: parseFloat(e.target.value) || 1 }))}
-                />
-              </>
-            )}
-          </div>
+          <MeasurementProductFields
+            value={form.measurement}
+            onChange={(measurement) => {
+              setForm((f) => ({ ...f, measurement }));
+              setMeasurementErrors([]);
+            }}
+            basePrice={form.basePrice}
+            supportsWeightSelling={supportsWeightSelling}
+            lockedWeightedExisting={
+              !!editing &&
+              !supportsWeightSelling &&
+              (form.measurement.measurementType === 'WEIGHT' ||
+                form.measurement.measurementType === 'VOLUME')
+            }
+            fieldErrors={measurementErrors}
+          />
           <div className="space-y-2" dir="rtl">
             <label className="block text-sm font-medium text-gray-700">معرض الصور</label>
             <input

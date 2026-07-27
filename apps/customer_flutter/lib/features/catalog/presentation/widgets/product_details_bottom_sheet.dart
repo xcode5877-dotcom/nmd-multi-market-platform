@@ -98,7 +98,8 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
           name: name,
           unitPrice: price,
           imageUrl: imageUrl,
-          addQty: _qty,
+          addQty: '$_qty',
+          measurement: parsed.measurement,
           optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
         );
         Navigator.of(context).pop();
@@ -111,7 +112,8 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
       name: name,
       unitPrice: price,
       imageUrl: imageUrl,
-      addQty: _qty,
+      addQty: '$_qty',
+      measurement: parsed.measurement,
       optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
     );
     Navigator.of(context).pop();

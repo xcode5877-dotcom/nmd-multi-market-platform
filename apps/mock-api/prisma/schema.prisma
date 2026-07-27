@@ -266,10 +266,14 @@ model Order {
   createdAt           String?
   payment             String? // JSON (kept for response shape; Payment table is source of truth for finance)
   deliveryTimeline    String? // JSON
-  payload             String? // JSON: items, delivery, customerName, etc.
+  // Order lines live in payload JSON (no OrderItem table). Phase B.1 writes immutable
+  // measurement/pricing snapshot fields onto each payload item at create time.
+  payload             String? // JSON: items (+ snapshots), delivery, customerName, etc.
   isExternal          Boolean  @default(false) // manual driver-entered delivery (off-app)
   externalDestination String? // city / village label
   manualStoreName     String? // free-text store name when no tenant/store was selected
+  /// 1 = Phase B.1+ orders may include measurement snapshots on payload items. Historical rows stay 1 with PIECE defaults on read.
+  pricingSchemaVersion Int     @default(1)
   /// Customer editing window: merchant submit scheduled at (null = legacy / delay-0 path uses now).
   submissionScheduledAt DateTime?
   /// Set atomically when merchant notify runs once. Both timestamps null = legacy visible.

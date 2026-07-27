@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:customer_flutter/api/models/product.dart';
 import 'package:customer_flutter/features/cart/application/cart_cubit.dart';
+import 'package:customer_flutter/features/cart/data/cart_persistence.dart';
 
 void main() {
   test('Product.customerListPrice prefers displayPrice', () {
@@ -20,7 +21,8 @@ void main() {
   });
 
   test('CartCubit.repriceFromCatalog applies platform markup delta', () {
-    final cubit = CartCubit();
+    final cubit =
+        CartCubit(persistence: CartPersistence(store: MemoryCartStore()));
     cubit.addOrIncrement(
       tenantId: 't',
       productId: 'x',

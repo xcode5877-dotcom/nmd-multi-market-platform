@@ -9,6 +9,8 @@ import '../../../../core/navigation/safe_back_navigation.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
+import '../../../../measurement/measurement.dart';
+import '../widgets/quantity_selector.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../data/modifier_icon_library.dart';
@@ -56,6 +58,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   final GlobalKey _customizationSectionKey = GlobalKey();
 
   bool _descExpanded = false;
+  String? _addQty;
+  String? _addQtyProductId;
   late final AnimationController _dockBounceController;
   late final Animation<double> _dockScale;
 
@@ -176,18 +180,47 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 
     _flyToCart(imageUrl: product.imageUrl);
     final customization = _customization;
+    final qty = _addQty ?? product.minimumQuantity;
+    final weighted = product.measurement.isWeighted;
+    final unit = weighted ? product.customerListPrice : computedUnitPrice;
+    final merchantUnit = weighted ? product.basePrice : merchantUnitPrice;
+    final fixedMods = weighted
+        ? (computedUnitPrice - product.customerListPrice)
+        : 0.0;
     cart.addOrIncrement(
       tenantId: widget.storeId,
       productId: product.id,
       name: product.name,
-      unitPrice: computedUnitPrice,
-      merchantUnitPrice: merchantUnitPrice,
+      unitPrice: unit,
+      merchantUnitPrice: merchantUnit,
       imageUrl: product.imageUrl,
-      addQty: 1,
+      addQty: qty,
+      measurement: product.measurement,
+      fixedModifierTotal: fixedMods < 0 ? 0 : fixedMods,
       selectedOptions:
           customization?.buildCartSelectedOptions() ?? const [],
       optionGroupsJson: optionGroupsToOrderJson(product.optionGroups),
     );
+  }
+
+
+  void _ensureAddQty(Product product) {
+    if (_addQtyProductId == product.id && _addQty != null) return;
+    _addQtyProductId = product.id;
+    _addQty = product.minimumQuantity;
+  }
+
+  double _previewLineTotal(Product product, ProductCustomizationController c) {
+    final qty = _addQty ?? product.minimumQuantity;
+    if (product.measurement.isWeighted) {
+      final base = calculateLineSubtotal(product.customerListPrice, qty);
+      final modDelta = c.customerUnitPrice - product.customerListPrice;
+      if (modDelta == 0) return base;
+      return agoraToShekels(
+        (shekelsToAgora(base) ?? 0) + (shekelsToAgora(modDelta) ?? 0),
+      );
+    }
+    return calculateLineSubtotal(c.customerUnitPrice, qty);
   }
 
   void _ensureCustomization(Product product) {
@@ -373,6 +406,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           final storeClosed = payload.storeStatus == 'closed';
           final isServices = payload.isServicesStore;
           _ensureCustomization(product);
+          _ensureAddQty(product);
           final customization = _customization!;
           final tier = effectiveCustomizationTier(product);
           logCustomizationPlan(
@@ -457,7 +491,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       return AnimatedBuilder(
                         animation: _dockScale,
                         builder: (context, child) => FloatingSmartCta(
-                          price: customization.customerUnitPrice,
+                          price: _previewLineTotal(product, customization),
                           missingRequired: missingRequired,
                           disabled: storeClosed || !product.canAddToCart,
                           scale: _dockScale.value,
@@ -588,7 +622,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                NmdFormat.money(computedUnitPrice),
+                                () {
+                                  final u = priceUnitSuffixAr(
+                                      product.measurementType);
+                                  final money =
+                                      NmdFormat.money(computedUnitPrice);
+                                  return u == null ? money : '$money / $u';
+                                }(),
                                 style: NmdTypography.price.copyWith(
                                   fontSize: 18,
                                 ),
@@ -606,6 +646,32 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                             ? 'المحل مغلق حالياً'
                             : 'غير متوفر حالياً',
                         tone: NmdBadgeTone.neutral,
+                      ),
+                    ],
+                    if (!isServices) ...[
+                      const SizedBox(height: CustomizationTokens.sm),
+                      Text(
+                        product.measurement.isWeighted
+                            ? 'اختر الكمية'
+                            : 'الكمية',
+                        textAlign: TextAlign.right,
+                        style: NmdTypography.label.copyWith(
+                          color: NmdColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: CustomizationTokens.xs),
+                      QuantitySelector(
+                        measurement: product.measurement,
+                        value: _addQty ?? product.minimumQuantity,
+                        onChanged: (q) => setState(() => _addQty = q),
+                      ),
+                      const SizedBox(height: CustomizationTokens.xs),
+                      Text(
+                        'تقدير: ${NmdFormat.money(_previewLineTotal(product, customization))} (يُؤكَّد عند الدفع)',
+                        textAlign: TextAlign.right,
+                        style: NmdTypography.bodySmall.copyWith(
+                          color: NmdColors.textSecondary,
+                        ),
                       ),
                     ],
                     if (desc.isNotEmpty) ...[

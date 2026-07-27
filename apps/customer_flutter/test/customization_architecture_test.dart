@@ -26,6 +26,13 @@ Product _product({
     optionGroups: groups,
     isAvailable: true,
     stockQuantity: 1,
+    measurement: Product.fromJson({
+      'id': 'p1',
+      'name': 'Test',
+      'categoryId': 'c1',
+      'basePrice': base,
+      'optionGroups': [],
+    }).measurement,
   );
 }
 

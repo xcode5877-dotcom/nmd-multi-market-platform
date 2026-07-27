@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../measurement/measurement.dart';
 import '../resolve_image_url.dart';
 
 class ProductCategory {
@@ -188,6 +189,8 @@ class Product {
     required this.optionGroups,
     required this.isAvailable,
     required this.stockQuantity,
+    required this.measurement,
+    this.measurementConfigValid = true,
   });
 
   final String id;
@@ -201,11 +204,33 @@ class Product {
   final bool isAvailable;
   final int? stockQuantity;
 
+  /// Server Measurement V2 config (never inferred client-side).
+  final ProductMeasurement measurement;
+
+  /// False when authoritative V2 fields are present but illegal.
+  /// Invalid configs are not silently converted to sellable PIECE.
+  final bool measurementConfigValid;
+
+  MeasurementType get measurementType => measurement.measurementType;
+  BaseUnitCode get baseUnitCode => measurement.baseUnitCode;
+  DisplayUnitCode get displayUnitCode => measurement.displayUnitCode;
+  String get quantityStep => measurement.quantityStep;
+  String get minimumQuantity => measurement.minimumQuantity;
+  String? get maximumQuantity => measurement.maximumQuantity;
+  int? get displayPrecision => measurement.displayPrecision;
+  int get measurementVersion => measurement.measurementVersion;
+
   /// Customer-visible list price (marketplace repriced when [displayPrice] is set).
   double get customerListPrice => displayPrice ?? basePrice;
 
-  bool get isInStock => (stockQuantity ?? 1) > 0;
-  bool get canAddToCart => isAvailable && isInStock;
+  bool get isInStock {
+    // Weighted catalog items are not sold against integer piece stock.
+    if (measurement.isWeighted) return isAvailable;
+    return (stockQuantity ?? 1) > 0;
+  }
+
+  bool get canAddToCart =>
+      isAvailable && isInStock && measurementConfigValid;
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final groups = (json['optionGroups'] as List<dynamic>? ?? const <dynamic>[])
@@ -213,6 +238,7 @@ class Product {
         .map((e) => ProductOptionGroup.fromJson(Map<String, dynamic>.from(e)))
         .where((g) => g.id.isNotEmpty && g.items.isNotEmpty)
         .toList();
+    final resolved = resolveProductMeasurementDetailed(json);
     return Product(
       id: (json['id']?.toString() ?? '').trim(),
       name: (json['name']?.toString() ?? '').trim(),
@@ -226,6 +252,8 @@ class Product {
       optionGroups: groups,
       isAvailable: _parseAvailability(json),
       stockQuantity: _parseStock(json),
+      measurement: resolved.measurement,
+      measurementConfigValid: resolved.valid,
     );
   }
 }
@@ -236,13 +264,27 @@ bool _parseAvailability(Map<String, dynamic> json) {
   final status = (json['status']?.toString() ?? '').toLowerCase();
   if (status == 'out_of_stock' ||
       status == 'unavailable' ||
-      status == 'disabled') return false;
+      status == 'disabled') {
+    return false;
+  }
   return true;
 }
 
 int? _parseStock(Map<String, dynamic> json) {
-  final stock = json['stockQuantity'] ?? json['stock'] ?? json['quantity'];
-  if (stock == null) return null;
+  // Prefer explicit stock keys. Avoid treating Measurement V2 sold-qty fields
+  // as inventory when `quantity` is ambiguous.
+  final stock = json['stockQuantity'] ?? json['stock'];
+  if (stock == null) {
+    // Legacy catalogs may only expose integer stock as `quantity` on PIECE.
+    final m = resolveProductMeasurement(json);
+    if (m.isWeighted) {
+      return null;
+    }
+    final q = json['quantity'];
+    if (q == null) return null;
+    if (q is num) return q.toInt();
+    return int.tryParse(q.toString());
+  }
   if (stock is num) return stock.toInt();
   return int.tryParse(stock.toString());
 }

@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
+import '../../../../measurement/measurement.dart';
 import '../../../cart/application/cart_cubit.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../data/pillar_kind.dart';
@@ -195,6 +196,7 @@ class _CategoryProductsPageState extends State<CategoryProductsPage> {
                         imageUrl: p.imageUrl,
                         available: p.canAddToCart,
                         heroTag: heroTag,
+                        priceUnitSuffix: priceUnitSuffixAr(p.measurementType),
                         onTap: () => context.push(
                           '/market/${widget.marketSlug}/store/${widget.storeId}/product/${p.id}',
                         ),
