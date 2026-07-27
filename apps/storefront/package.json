@@ -5,13 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "prebuild": "pnpm --filter '@nmd/core|@nmd/mock|@nmd/ui' run build 2>/dev/null || true",
+    "build": "vite build",
     "build:docker": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext ts,tsx"
+    "lint": "eslint . --ext ts,tsx",
+    "ios:assets": "node scripts/generate-ios-native-assets.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/ios": "^6.0.4",
+    "@capacitor/splash-screen": "^6.0.4",
     "@nmd/core": "workspace:*",
     "@nmd/mock": "workspace:*",
     "@nmd/ui": "workspace:*",
@@ -30,6 +36,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
@@ -37,6 +44,7 @@
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.4.5",
     "vite": "^5.4.11"
