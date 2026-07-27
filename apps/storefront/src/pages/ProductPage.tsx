@@ -13,6 +13,7 @@ import { ProductPageSkeleton } from '../components/skeletons';
 import { useAppStore } from '../store/app';
 import { useCartStore } from '../store/cart';
 import { useBottomNav } from '../contexts/BottomNavContext';
+import { isWeightBasedLine, storefrontLineTotal } from '../lib/measurement-line-total';
 
 const api = new MockApiClient();
 
@@ -222,9 +223,9 @@ export default function ProductPage() {
   });
 
   const [selected, setSelected] = useState<SelectedOption[] | PizzaSelectedOption[]>([]);
-  const isWeightBasedProduct =
-    (product && (product as { isWeightBased?: boolean }).isWeightBased === true) ||
-    ((product && (product as { quantityStep?: number }).quantityStep) ?? 1) < 1;
+  const isWeightBasedProduct = isWeightBasedLine(
+    (product ?? {}) as { isWeightBased?: boolean; measurementType?: string; quantityStep?: number | string }
+  );
   const quantityStep = isWeightBasedProduct
     ? ((product && (product as { quantityStep?: number }).quantityStep) ?? 1)
     : 1;
@@ -369,11 +370,56 @@ export default function ProductPage() {
     if (matchingVariant?.priceOverride != null) return matchingVariant.priceOverride;
     return calculatePrice(product, effectiveSelected);
   }, [product, matchingVariant, effectiveSelected]);
-  const totalPrice = roundMoney(unitPrice * quantity);
-  const { discount } = product
-    ? applyCampaign(totalPrice, campaigns ?? [], product.id, product.categoryId)
-    : { discount: 0 };
-  const finalPrice = totalPrice - discount;
+  const productOnlyUnit = useMemo(() => {
+    if (!product) return 0;
+    if (matchingVariant?.priceOverride != null) return matchingVariant.priceOverride;
+    return customerUnitPrice(product);
+  }, [product, matchingVariant]);
+  const optionDelta = roundMoney(unitPrice - productOnlyUnit);
+  const { totalPrice, customerUnitForCart } = useMemo(() => {
+    if (!product) return { totalPrice: 0, customerUnitForCart: 0 };
+    if (isWeightBasedProduct) {
+      const campaign = applyCampaign(productOnlyUnit, campaigns ?? [], product.id, product.categoryId);
+      const productUnit = roundMoney(Math.max(0, productOnlyUnit - campaign.discount));
+      return {
+        totalPrice: storefrontLineTotal({
+          unitPrice: productUnit,
+          quantity,
+          isWeightBased: true,
+          fixedModifier: optionDelta,
+        }),
+        customerUnitForCart: productUnit,
+      };
+    }
+    const campaign = applyCampaign(unitPrice, campaigns ?? [], product.id, product.categoryId);
+    const unitAfter = roundMoney(Math.max(0, unitPrice - campaign.discount));
+    return {
+      totalPrice: storefrontLineTotal({ unitPrice: unitAfter, quantity, isWeightBased: false }),
+      customerUnitForCart: unitAfter,
+    };
+  }, [
+    product,
+    isWeightBasedProduct,
+    productOnlyUnit,
+    unitPrice,
+    optionDelta,
+    quantity,
+    campaigns,
+  ]);
+  const finalPrice = totalPrice;
+  const priceBeforeCampaign = useMemo(() => {
+    if (!product) return 0;
+    if (isWeightBasedProduct) {
+      return storefrontLineTotal({
+        unitPrice: productOnlyUnit,
+        quantity,
+        isWeightBased: true,
+        fixedModifier: optionDelta,
+      });
+    }
+    return storefrontLineTotal({ unitPrice, quantity, isWeightBased: false });
+  }, [product, isWeightBasedProduct, productOnlyUnit, unitPrice, optionDelta, quantity]);
+  const discount = roundMoney(Math.max(0, priceBeforeCampaign - finalPrice));
 
   const handleOptionChange = (
     groupId: string,
@@ -440,7 +486,7 @@ export default function ProductPage() {
           categoryId: product.categoryId,
           quantity,
           basePrice: product.basePrice,
-          customerUnitPrice: unitPrice,
+          customerUnitPrice: customerUnitForCart,
           selectedOptions: effectiveSelected,
           optionGroups: product.optionGroups,
           totalPrice,
@@ -550,7 +596,7 @@ export default function ProductPage() {
           <p className="text-xl font-bold" style={{ color: '#0a0a0a' }}>
             {discount > 0 ? (
               <>
-                <span className="line-through opacity-60 text-base me-1">{formatMoney(totalPrice)}</span>
+                <span className="line-through opacity-60 text-base me-1">{formatMoney(priceBeforeCampaign)}</span>
                 {formatMoney(finalPrice)}
               </>
             ) : (

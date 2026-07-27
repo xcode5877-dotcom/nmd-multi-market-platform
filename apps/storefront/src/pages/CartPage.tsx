@@ -210,11 +210,11 @@ export default function CartPage() {
                     <div className="text-end">
                       {campaignDiscount > 0 && (
                         <p className="text-xs text-neutral-400 line-through">
-                          {formatPrice(roundMoney(priceBeforeDiscount * item.quantity))}
+                          {formatPrice(roundMoney(priceBeforeDiscount))}
                         </p>
                       )}
                       <p className="font-semibold text-gray-900">
-                        {formatPrice(roundMoney(finalPrice * item.quantity))}
+                        {formatPrice(roundMoney(finalPrice))}
                       </p>
                     </div>
                   </div>

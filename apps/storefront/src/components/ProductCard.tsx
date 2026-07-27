@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Info } from 'lucide-react';
 import type { Product, Campaign } from '@nmd/core';
 import { applyCampaign, formatMoney } from '@nmd/core';
+import { isWeightBasedLine, storefrontLineTotal } from '../lib/measurement-line-total';
 import { getCustomerListPrice, getCustomerStrikethroughPrice } from '../lib/customer-price';
 import { useToast } from '@nmd/ui';
 import { useAppStore } from '../store/app';
@@ -94,23 +95,24 @@ function ProductCardInner({
       return;
     }
     const finalPrice = listPrice - discount;
-    const isWeightBased =
-      (product as { isWeightBased?: boolean }).isWeightBased === true ||
-      ((product as { quantityStep?: number }).quantityStep ?? 1) < 1;
+    const isWeightBased = isWeightBasedLine(product as { isWeightBased?: boolean; measurementType?: string; quantityStep?: number | string });
+    const step = isWeightBased ? Number((product as { quantityStep?: number }).quantityStep ?? 1) || 1 : 1;
+    const qty = isWeightBased ? step : 1;
+    const lineTotal = storefrontLineTotal({ unitPrice: finalPrice, quantity: qty, isWeightBased });
     addItem(
       tenantId,
       {
         productId: product.id,
         productName: product.name,
         categoryId: product.categoryId,
-        quantity: 1,
+        quantity: qty,
         basePrice: product.basePrice,
         customerUnitPrice: listPrice,
         selectedOptions: [],
         optionGroups: product.optionGroups ?? [],
-        totalPrice: finalPrice,
+        totalPrice: lineTotal,
         imageUrl: product.images?.[0]?.url ?? product.imageUrl,
-        quantityStep: isWeightBased ? (product as { quantityStep?: number }).quantityStep ?? 1 : 1,
+        quantityStep: step,
         unitName: isWeightBased ? (product as { unitName?: string }).unitName ?? 'حبة' : 'حبة',
         isWeightBased,
       },

@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@nmd/core';
-import { generateId, roundMoney } from '@nmd/core';
+import { generateId, roundMoney, calculateLineSubtotal } from '@nmd/core';
 import type { Product } from '@nmd/core';
 import { repriceCartItemsFromCatalog } from '../lib/reprice-cart';
+import { isWeightBasedLine, storefrontLineTotal } from '../lib/measurement-line-total';
 
 const EMPTY_ITEMS: CartItem[] = [];
 
@@ -74,11 +75,33 @@ export const useCartStore = create<CartState>()(
           return {
             carts: {
               ...state.carts,
-              [tenantId]: items.map((i) =>
-                i.id === itemId
-                  ? { ...i, quantity, totalPrice: roundMoney((i.totalPrice / i.quantity) * quantity) }
-                  : i
-              ),
+              [tenantId]: items.map((i) => {
+                if (i.id !== itemId) return i;
+                const unit = Number(i.customerUnitPrice ?? i.basePrice) || 0;
+                if (isWeightBasedLine(i)) {
+                  const prevProduct = calculateLineSubtotal(unit, i.quantity);
+                  const fixedMod = roundMoney((Number(i.totalPrice) || 0) - prevProduct);
+                  return {
+                    ...i,
+                    quantity,
+                    totalPrice: storefrontLineTotal({
+                      unitPrice: unit,
+                      quantity,
+                      isWeightBased: true,
+                      fixedModifier: Math.max(0, fixedMod),
+                    }),
+                  };
+                }
+                return {
+                  ...i,
+                  quantity,
+                  totalPrice: storefrontLineTotal({
+                    unitPrice: unit || roundMoney((Number(i.totalPrice) || 0) / (Number(i.quantity) || 1)),
+                    quantity,
+                    isWeightBased: false,
+                  }),
+                };
+              }),
             },
           };
         }),

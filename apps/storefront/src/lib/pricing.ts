@@ -1,5 +1,6 @@
 import type { CartItem, Campaign, OptionItem } from '@nmd/core';
 import { applyCampaign, customerUnitPrice, roundMoney } from '@nmd/core';
+import { isWeightBasedLine, storefrontLineTotal } from './measurement-line-total';
 
 export interface PricedCartItem {
   item: CartItem;
@@ -12,10 +13,15 @@ export interface PricedCartItem {
   customerPriceBeforeDiscount: number;
   priceBeforeDiscount: number;
   campaignDiscount: number;
-  /** Customer-visible unit after campaign. */
+  /**
+   * Customer-visible **line** total after campaign (agora/milli).
+   * For PIECE this equals unit×qty; for WEIGHT it is product×qty + fixed modifiers.
+   */
   finalPrice: number;
-  /** Merchant unit after campaign (for order payload). */
+  /** Merchant **line** total after campaign. */
   merchantFinalPrice: number;
+  /** Customer-visible unit after campaign (product unit for WEIGHT; full unit for PIECE). */
+  finalUnitPrice: number;
   campaign?: Campaign;
 }
 
@@ -58,6 +64,53 @@ export function priceCartItem(item: CartItem, campaigns: Campaign[]): PricedCart
   const customerOptionDelta = optionDeltaFromSelection(item, true);
   const merchantBase = item.basePrice;
   const customerBase = item.customerUnitPrice ?? item.basePrice;
+  const weight = isWeightBasedLine(item);
+
+  if (weight) {
+    // WEIGHT/VOLUME: customerUnitPrice is product-only; options are fixed per line.
+    const merchantCampaign = applyCampaign(merchantBase, campaigns, item.productId, item.categoryId);
+    const customerCampaign = applyCampaign(customerBase, campaigns, item.productId, item.categoryId);
+    const merchantUnit = Math.max(0, merchantBase - merchantCampaign.discount);
+    const customerUnit = Math.max(0, customerBase - customerCampaign.discount);
+    const merchantLineBefore = storefrontLineTotal({
+      unitPrice: merchantBase,
+      quantity: item.quantity,
+      isWeightBased: true,
+      fixedModifier: merchantOptionDelta,
+    });
+    const customerLineBefore = storefrontLineTotal({
+      unitPrice: customerBase,
+      quantity: item.quantity,
+      isWeightBased: true,
+      fixedModifier: customerOptionDelta,
+    });
+    const merchantFinalPrice = storefrontLineTotal({
+      unitPrice: merchantUnit,
+      quantity: item.quantity,
+      isWeightBased: true,
+      fixedModifier: merchantOptionDelta,
+    });
+    const finalPrice = storefrontLineTotal({
+      unitPrice: customerUnit,
+      quantity: item.quantity,
+      isWeightBased: true,
+      fixedModifier: customerOptionDelta,
+    });
+    return {
+      item,
+      basePrice: merchantBase,
+      optionDelta: customerOptionDelta,
+      merchantPriceBeforeDiscount: merchantLineBefore,
+      customerPriceBeforeDiscount: customerLineBefore,
+      priceBeforeDiscount: customerLineBefore,
+      campaignDiscount: roundMoney(customerLineBefore - finalPrice),
+      finalPrice,
+      merchantFinalPrice,
+      finalUnitPrice: customerUnit,
+      campaign: customerCampaign.campaign,
+    };
+  }
+
   const merchantPriceBeforeDiscount = merchantBase + merchantOptionDelta;
   const customerPriceBeforeDiscount = customerBase + customerOptionDelta;
 
@@ -74,19 +127,40 @@ export function priceCartItem(item: CartItem, campaigns: Campaign[]): PricedCart
     item.categoryId
   );
 
-  const merchantFinalPrice = Math.max(0, merchantPriceBeforeDiscount - merchantCampaign.discount);
-  const finalPrice = Math.max(0, customerPriceBeforeDiscount - customerCampaign.discount);
+  const merchantFinalUnit = Math.max(0, merchantPriceBeforeDiscount - merchantCampaign.discount);
+  const finalUnit = Math.max(0, customerPriceBeforeDiscount - customerCampaign.discount);
+  const merchantFinalPrice = storefrontLineTotal({
+    unitPrice: merchantFinalUnit,
+    quantity: item.quantity,
+    isWeightBased: false,
+  });
+  const finalPrice = storefrontLineTotal({
+    unitPrice: finalUnit,
+    quantity: item.quantity,
+    isWeightBased: false,
+  });
+  const merchantLineBefore = storefrontLineTotal({
+    unitPrice: merchantPriceBeforeDiscount,
+    quantity: item.quantity,
+    isWeightBased: false,
+  });
+  const customerLineBefore = storefrontLineTotal({
+    unitPrice: customerPriceBeforeDiscount,
+    quantity: item.quantity,
+    isWeightBased: false,
+  });
 
   return {
     item,
     basePrice: merchantBase,
     optionDelta: customerOptionDelta,
-    merchantPriceBeforeDiscount,
-    customerPriceBeforeDiscount,
-    priceBeforeDiscount: customerPriceBeforeDiscount,
-    campaignDiscount: customerCampaign.discount,
+    merchantPriceBeforeDiscount: merchantLineBefore,
+    customerPriceBeforeDiscount: customerLineBefore,
+    priceBeforeDiscount: customerLineBefore,
+    campaignDiscount: roundMoney(customerLineBefore - finalPrice),
     finalPrice,
     merchantFinalPrice,
+    finalUnitPrice: finalUnit,
     campaign: customerCampaign.campaign,
   };
 }
@@ -103,19 +177,11 @@ export function priceCart(
   merchantTotal: number;
 } {
   const priced = items.map((i) => priceCartItem(i, campaigns));
-  const subtotal = roundMoney(
-    priced.reduce((s, p) => s + p.customerPriceBeforeDiscount * p.item.quantity, 0)
-  );
-  const discountTotal = roundMoney(
-    priced.reduce((s, p) => s + p.campaignDiscount * p.item.quantity, 0)
-  );
-  const total = roundMoney(priced.reduce((s, p) => s + p.finalPrice * p.item.quantity, 0));
-  const merchantSubtotal = roundMoney(
-    priced.reduce((s, p) => s + p.merchantPriceBeforeDiscount * p.item.quantity, 0)
-  );
-  const merchantTotal = roundMoney(
-    priced.reduce((s, p) => s + p.merchantFinalPrice * p.item.quantity, 0)
-  );
+  const subtotal = roundMoney(priced.reduce((s, p) => s + p.customerPriceBeforeDiscount, 0));
+  const discountTotal = roundMoney(priced.reduce((s, p) => s + p.campaignDiscount, 0));
+  const total = roundMoney(priced.reduce((s, p) => s + p.finalPrice, 0));
+  const merchantSubtotal = roundMoney(priced.reduce((s, p) => s + p.merchantPriceBeforeDiscount, 0));
+  const merchantTotal = roundMoney(priced.reduce((s, p) => s + p.merchantFinalPrice, 0));
   return { priced, subtotal, discountTotal, total, merchantSubtotal, merchantTotal };
 }
 

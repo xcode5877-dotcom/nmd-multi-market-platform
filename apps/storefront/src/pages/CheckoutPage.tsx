@@ -262,7 +262,8 @@ export default function CheckoutPage() {
           tenantId: tid,
           items: row.priced.map((p) => ({
             ...p.item,
-            totalPrice: roundMoney(p.merchantFinalPrice * p.item.quantity),
+            totalPrice: roundMoney(p.merchantFinalPrice),
+            quantityDecimal: String(p.item.quantity),
           })),
           fulfillmentType,
           paymentMethod: 'CASH',
@@ -603,7 +604,7 @@ export default function CheckoutPage() {
                       )}
                     </div>
                     <span className="font-medium flex-shrink-0">
-                      {formatPrice(roundMoney(finalPrice * item.quantity))}
+                      {formatPrice(roundMoney(finalPrice))}
                     </span>
                   </div>
                 ))
