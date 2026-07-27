@@ -217,6 +217,21 @@ import {
   parseStoreProfitDateRange,
 } from './store-profit-report.js';
 import {
+  BUSINESS_TIMEZONE,
+  aggregateDriverCollections,
+  buildFinancialSummary,
+  computeAreaReport,
+  computeOrderSourceReport,
+  computePaymentMethodReport,
+  computeShopReport,
+  computeTimeseries,
+  detectFinancialAnomalies,
+  formatBusinessDay,
+  parseFinancialReportRange,
+  toCsv,
+  type FinancialReportFilters,
+} from './financial-reports.js';
+import {
   rejectCustomerOnAdminRoutes,
   assertCatalogTenantAccess,
   sanitizeCatalogPayloadForRole,
@@ -11317,6 +11332,370 @@ app.get('/admin/store-profit-report/:tenantId/breakdown', wrapAsync(async (req, 
     granularity,
     breakdown,
   });
+}));
+
+function parseFinancialReportFilters(req: express.Request): FinancialReportFilters {
+  const timezone = String(req.query.timezone || BUSINESS_TIMEZONE);
+  const { from, to, preset } = parseFinancialReportRange(
+    req.query.preset ? String(req.query.preset) : undefined,
+    req.query.from ? String(req.query.from) : undefined,
+    req.query.to ? String(req.query.to) : undefined,
+    timezone
+  );
+  const orderSourceRaw = String(req.query.orderSource || 'ALL').toUpperCase();
+  const orderSource =
+    orderSourceRaw === 'APP' || orderSourceRaw === 'EXTERNAL' ? orderSourceRaw : 'ALL';
+  const settlementRaw = String(req.query.settlementStatus || 'ALL').toUpperCase();
+  const settlementStatus =
+    settlementRaw === 'PENDING' || settlementRaw === 'SETTLED' ? settlementRaw : 'ALL';
+  return {
+    from,
+    to,
+    preset,
+    timezone,
+    shopId: req.query.shopId ? String(req.query.shopId) : undefined,
+    courierId: req.query.courierId ? String(req.query.courierId) : undefined,
+    deliveryAreaId: req.query.deliveryAreaId ? String(req.query.deliveryAreaId) : undefined,
+    paymentMethod: req.query.paymentMethod ? String(req.query.paymentMethod) : undefined,
+    orderSource,
+    settlementStatus,
+  };
+}
+
+/** Financial Reports V1 — summary + period comparison (platform admin only). */
+app.get('/admin/financial-reports/summary', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json(buildFinancialSummary({ orders: orders ?? [], filters }));
+}));
+
+app.get('/admin/financial-reports/timeseries', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json({ period: filters, rows: computeTimeseries(orders ?? [], filters) });
+}));
+
+app.get('/admin/financial-reports/shops', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const [orders, tenants] = await Promise.all([repos.orders.findAll(), repos.tenants.findAll()]);
+  res.json({
+    period: filters,
+    rows: computeShopReport(
+      (orders ?? []) as Record<string, unknown>[],
+      (tenants ?? []) as { id?: string; name?: string }[],
+      filters
+    ),
+  });
+}));
+
+app.get('/admin/financial-reports/delivery-areas', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json({
+    period: filters,
+    rows: computeAreaReport(orders ?? [], filters),
+    note: 'منطقة الطلب من delivery.zoneName أو externalDestination — ليس defaultDeliveryTown للعميل.',
+  });
+}));
+
+app.get('/admin/financial-reports/drivers', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const [orders, couriers] = await Promise.all([
+    repos.orders.findAll(),
+    repos.couriers.findAll(),
+  ]);
+  const courierList = (couriers ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    marketId: (c as { marketId?: string }).marketId,
+  }));
+  const rows = aggregateDriverCollections(
+    (orders ?? []) as Record<string, unknown>[],
+    courierList,
+    {
+      filters: {
+        from: filters.from,
+        to: filters.to,
+        courierId: filters.courierId,
+        settlementStatus: filters.settlementStatus || 'ALL',
+      },
+      today: formatBusinessDay(new Date(), filters.timezone),
+    }
+  );
+  res.json({ period: filters, rows });
+}));
+
+app.get('/admin/financial-reports/payment-methods', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json({ period: filters, rows: computePaymentMethodReport(orders ?? [], filters) });
+}));
+
+app.get('/admin/financial-reports/order-sources', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json({ period: filters, rows: computeOrderSourceReport(orders ?? [], filters) });
+}));
+
+app.get('/admin/financial-reports/refunds', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const summary = buildFinancialSummary({
+    orders: (await repos.orders.findAll()) as Record<string, unknown>[],
+    filters,
+  });
+  res.json({
+    period: filters,
+    cancelledOrderCount: summary.current.cancelledOrderCount,
+    refundedOrderCount: summary.current.refundedOrderCount,
+    refundedGross: summary.current.refundedGross,
+    completedOrderCount: summary.current.completedOrderCount,
+    cancellationRate:
+      summary.current.completedOrderCount + summary.current.cancelledOrderCount > 0
+        ? Math.round(
+            (summary.current.cancelledOrderCount /
+              (summary.current.completedOrderCount + summary.current.cancelledOrderCount)) *
+              1000
+          ) / 10
+        : 0,
+    limitation:
+      'لا يوجد refundAmount منظم على الطلب؛ المبالغ المستردة معلوماتية من حالة REFUNDED فقط.',
+  });
+}));
+
+app.get('/admin/financial-reports/anomalies', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const orders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  res.json({ period: filters, rows: detectFinancialAnomalies(orders ?? [], filters) });
+}));
+
+app.get('/admin/financial-reports/export', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only' });
+  }
+  const filters = parseFinancialReportFilters(req);
+  const kind = String(req.query.kind || 'summary').toLowerCase();
+  const [orders, tenants, couriers] = await Promise.all([
+    repos.orders.findAll(),
+    repos.tenants.findAll(),
+    repos.couriers.findAll(),
+  ]);
+  const orderRows = (orders ?? []) as Record<string, unknown>[];
+  const withMeta = (body: string) =>
+    `\uFEFF# timezone=${filters.timezone}\n# from=${filters.from}\n# to=${filters.to}\n# kind=${kind}\n${body.replace(/^\uFEFF/, '')}`;
+
+  let csv = '';
+
+  if (kind === 'shops') {
+    const rows = computeShopReport(
+      orderRows,
+      (tenants ?? []) as { id?: string; name?: string }[],
+      filters
+    );
+    csv = toCsv(
+      [
+        'shopId',
+        'shopName',
+        'completedOrders',
+        'cancelledOrders',
+        'grossOrderValue',
+        'restaurantPayable',
+        'platformCommission',
+        'deliveryFee',
+        'platformRevenue',
+        'avgOrderValue',
+        'refundedGross',
+      ],
+      rows.map((r) => [
+        r.shopId,
+        r.shopName,
+        r.completedOrderCount,
+        r.cancelledOrderCount,
+        r.grossOrderValue,
+        r.restaurantPayable,
+        r.platformCommission,
+        r.deliveryFee,
+        r.platformRevenue,
+        r.averageOrderValue,
+        r.refundedGross,
+      ])
+    );
+  } else if (kind === 'delivery-areas') {
+    const rows = computeAreaReport(orderRows, filters);
+    csv = toCsv(
+      [
+        'areaName',
+        'deliveredOrders',
+        'cancelledOrders',
+        'grossOrderValue',
+        'deliveryFeeRevenue',
+        'platformCommission',
+        'platformRevenue',
+      ],
+      rows.map((r) => [
+        r.areaName,
+        r.deliveredOrders,
+        r.cancelledOrders,
+        r.grossOrderValue,
+        r.deliveryFeeRevenue,
+        r.platformCommission,
+        r.platformRevenue,
+      ])
+    );
+  } else if (kind === 'drivers') {
+    const rows = aggregateDriverCollections(
+      orderRows,
+      (couriers ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        marketId: (c as { marketId?: string }).marketId,
+      })),
+      {
+        filters: { from: filters.from, to: filters.to, courierId: filters.courierId },
+        today: formatBusinessDay(new Date(), filters.timezone),
+      }
+    );
+    csv = toCsv(
+      [
+        'courierId',
+        'courierName',
+        'completedOrders',
+        'cashInHand',
+        'platformLiability',
+        'restaurantLiability',
+        'totalLiability',
+        'settled',
+        'outstanding',
+        'anomalies',
+      ],
+      rows.map((r) => [
+        r.courierId,
+        r.courierName,
+        r.completedOrders,
+        r.cashInHandTotal ?? 0,
+        r.platformLiabilityTotal ?? r.driverCollectionTotal,
+        r.restaurantLiabilityTotal ?? 0,
+        r.totalDriverLiability ?? 0,
+        r.settledCollection,
+        r.outstandingCollection,
+        r.anomalyCount ?? 0,
+      ])
+    );
+  } else if (kind === 'payment-methods') {
+    const rows = computePaymentMethodReport(orderRows, filters);
+    csv = toCsv(
+      [
+        'paymentMethod',
+        'orderCount',
+        'grossOrderValue',
+        'platformRevenue',
+        'cashCollected',
+        'refundedGross',
+        'cancelled',
+      ],
+      rows.map((r) => [
+        r.paymentMethod,
+        r.orderCount,
+        r.grossOrderValue,
+        r.platformRevenue,
+        r.cashCollectedByDrivers,
+        r.refundedGross,
+        r.cancelledCount,
+      ])
+    );
+  } else if (kind === 'order-sources') {
+    const rows = computeOrderSourceReport(orderRows, filters);
+    csv = toCsv(
+      [
+        'source',
+        'orderCount',
+        'grossOrderValue',
+        'deliveryFees',
+        'commissions',
+        'platformRevenue',
+        'cancelled',
+        'cancellationRate',
+      ],
+      rows.map((r) => [
+        r.source,
+        r.orderCount,
+        r.grossOrderValue,
+        r.deliveryFees,
+        r.commissions,
+        r.platformRevenue,
+        r.cancelledCount,
+        r.cancellationRate,
+      ])
+    );
+  } else if (kind === 'anomalies') {
+    const rows = detectFinancialAnomalies(orderRows, filters);
+    csv = toCsv(
+      ['anomalyCode', 'severity', 'entityType', 'entityId', 'message', 'detectedAt'],
+      rows.map((r) => [r.anomalyCode, r.severity, r.entityType, r.entityId, r.message, r.detectedAt])
+    );
+  } else if (kind === 'refunds') {
+    const summary = buildFinancialSummary({ orders: orderRows, filters });
+    const c = summary.current;
+    csv = toCsv(
+      ['metric', 'value'],
+      [
+        ['cancelledOrderCount', c.cancelledOrderCount],
+        ['refundedOrderCount', c.refundedOrderCount],
+        ['refundedGross', c.refundedGross],
+        ['completedOrderCount', c.completedOrderCount],
+      ]
+    );
+  } else {
+    const summary = buildFinancialSummary({ orders: orderRows, filters });
+    const c = summary.current;
+    csv = toCsv(
+      ['metric', 'value', 'note'],
+      [
+        ['grossOrderValue', c.grossOrderValue, 'sales volume not platform revenue'],
+        ['platformRevenue', c.platformRevenue, 'delivery+commission (app) or delivery (external)'],
+        ['deliveryFeeRevenue', c.deliveryFeeRevenue, ''],
+        ['platformCommissionRevenue', c.platformCommissionRevenue, ''],
+        ['restaurantPayable', c.restaurantPayable, 'COD residual with drivers'],
+        ['driverCashInHand', c.driverCashInHand, ''],
+        ['driverPlatformLiability', c.driverPlatformLiability, ''],
+        ['driverOutstandingAmount', c.driverOutstandingAmount, ''],
+        ['refundedGross', c.refundedGross, 'informational'],
+      ]
+    );
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="financial-report-${kind}-${filters.from}-${filters.to}.csv"`
+  );
+  res.send(withMeta(csv));
 }));
 
 /** Super Admin: tenant driver commission overrides. */

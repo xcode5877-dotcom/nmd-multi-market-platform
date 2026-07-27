@@ -28,6 +28,7 @@
     "verify:driver-collections": "tsx scripts/verify-driver-collections.ts",
     "smoke:driver-collections-http": "tsx scripts/smoke-driver-collections-http.ts",
     "verify:store-profit-report": "tsx scripts/verify-store-profit-report.ts",
+    "verify:financial-reports": "tsx scripts/verify-financial-reports.ts",
     "verify:customer-default-town": "tsx scripts/verify-customer-default-town.ts",
     "verify:order-submission-gate": "tsx scripts/verify-order-submission-gate.ts",
     "verify:order-management": "tsx scripts/verify-order-management.ts",
