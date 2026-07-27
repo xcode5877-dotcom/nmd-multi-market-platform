@@ -51,6 +51,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
     );
     _authBloc = AuthBloc(_authRepository);
     _cartCubit = CartCubit();
+    _cartCubit.restorePersisted();
     _customerProfileCubit = CustomerProfileCubit(_dio);
     _coinsBalanceCubit = CoinsBalanceCubit(_dio, _tokenStorage);
     CoinsBalanceRegistry.register(_coinsBalanceCubit);

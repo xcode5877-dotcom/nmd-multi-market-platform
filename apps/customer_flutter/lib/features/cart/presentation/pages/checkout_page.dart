@@ -14,6 +14,7 @@ import '../../../../core/errors/app_error_mapper.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/debug/order_window_log.dart';
+import '../../../../measurement/measurement.dart';
 import '../../../loyalty/application/coins_balance_cubit.dart';
 import '../../application/cart_cubit.dart';
 import '../widgets/cart_modifier_lines.dart';
@@ -403,7 +404,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Map<String, dynamic> _lineToOrderItem(CartLine line) {
-    final merchantTotal = line.merchantUnitPrice * line.quantity;
+    // Client preview only — server recomputes authoritative totals.
+    final merchantBase = calculateLineSubtotal(
+      line.merchantUnitPrice,
+      line.quantity,
+    );
+    final merchantTotal = line.measurement.isWeighted
+        ? agoraToShekels(
+            (shekelsToAgora(merchantBase) ?? 0) +
+                (shekelsToAgora(line.fixedModifierTotal) ?? 0),
+          )
+        : merchantBase;
     final modifierLines =
         modifierLinesFromCart(line.selectedOptions, line.optionGroupsJson);
     final modifierSummaryAr = modifierLines.map((m) => m.text).toList();
@@ -419,11 +430,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
           },
         )
         .toList();
+    final qtyParsed = parseMeasurementDecimalStrict(line.quantity);
+    final quantityField = qtyParsed.ok && isIntegerMilli(qtyParsed.milli)
+        ? qtyParsed.milli ~/ kMeasurementScale
+        : line.quantity;
     return <String, dynamic>{
       'id': 'line-${line.lineKey}',
       'productId': line.productId,
       'productName': line.name,
-      'quantity': line.quantity,
+      'quantity': quantityField,
+      'quantityDecimal': line.quantity,
       'basePrice': line.merchantUnitPrice,
       'selectedOptions': selected,
       'optionGroups': jsonDecode(line.optionGroupsJson) as List<dynamic>,
@@ -1717,7 +1733,7 @@ class _CheckoutItemTile extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${line.quantity} × ${NmdFormat.money(line.unitPrice)}',
+                  '${line.quantityLabel} · ${NmdFormat.money(line.unitPrice)}',
                   style: NmdTypography.micro.copyWith(
                     color: NmdColors.textSecondary,
                   ),
