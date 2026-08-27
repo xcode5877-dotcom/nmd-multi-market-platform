@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../api/api_base.dart';
 import '../../../api/models/product.dart';
+import '../../../api/models/product_measurement.dart';
 import '../domain/cart_selected_option.dart';
 
 final class CartLine extends Equatable {
@@ -19,6 +20,7 @@ final class CartLine extends Equatable {
     required this.quantity,
     this.selectedOptions = const [],
     this.optionGroupsJson = '[]',
+    this.measurement,
   });
 
   /// Stable id for this row (supports multiple lines same product with different modifiers).
@@ -26,12 +28,16 @@ final class CartLine extends Equatable {
   final String tenantId;
   final String productId;
   final String name;
+
   /// Customer-visible unit price (includes marketplace markup when set).
   final double unitPrice;
+
   /// Merchant base unit price for order payout (unchanged by platform markup).
   final double merchantUnitPrice;
   final String imageUrl;
-  final int quantity;
+
+  /// Order quantity: piece count (1, 2, …) or base units for weight (0.25 kg, …).
+  final double quantity;
 
   /// Web-shaped payload: `PizzaSelectedOption` / `SelectedOption` list.
   final List<CartSelectedOption> selectedOptions;
@@ -39,9 +45,26 @@ final class CartLine extends Equatable {
   /// JSON array string: `[{id,name,items:[{id,name}]}]` for receipts (Arabic option names).
   final String optionGroupsJson;
 
+  final ProductMeasurement? measurement;
+
+  bool get isWeightLine => measurement?.isWeightProduct ?? false;
+
   double get lineTotal => unitPrice * quantity;
 
-  CartLine copyWith({int? quantity}) {
+  /// Badge / subtitle count (weight lines count as one cart item).
+  int get badgeCount => isWeightLine ? 1 : max(1, quantity.round());
+
+  String get quantityDisplayLabel {
+    if (isWeightLine && measurement != null) {
+      return measurement!.formatQuantityLabel(quantity);
+    }
+    if (quantity == quantity.roundToDouble()) {
+      return '${quantity.toInt()}';
+    }
+    return quantity.toString();
+  }
+
+  CartLine copyWith({double? quantity}) {
     return CartLine(
       lineKey: lineKey,
       tenantId: tenantId,
@@ -53,6 +76,7 @@ final class CartLine extends Equatable {
       quantity: quantity ?? this.quantity,
       selectedOptions: selectedOptions,
       optionGroupsJson: optionGroupsJson,
+      measurement: measurement,
     );
   }
 
@@ -67,7 +91,8 @@ final class CartLine extends Equatable {
         imageUrl,
         quantity,
         selectedOptions,
-        optionGroupsJson
+        optionGroupsJson,
+        measurement,
       ];
 }
 
@@ -79,7 +104,7 @@ final class CartCubit extends Cubit<List<CartLine>> {
   static String _newLineKey() =>
       '${DateTime.now().microsecondsSinceEpoch}-${_rnd.nextInt(1 << 30)}';
 
-  int get itemCount => state.fold<int>(0, (s, e) => s + e.quantity);
+  int get itemCount => state.fold<int>(0, (s, e) => s + e.badgeCount);
   String? get activeTenantId => state.isEmpty ? null : state.first.tenantId;
 
   bool hasDifferentTenant(String tenantId) {
@@ -95,9 +120,10 @@ final class CartCubit extends Cubit<List<CartLine>> {
     required double unitPrice,
     double? merchantUnitPrice,
     required String imageUrl,
-    int addQty = 1,
+    double addQty = 1,
     List<CartSelectedOption> selectedOptions = const [],
     String optionGroupsJson = '[]',
+    ProductMeasurement? measurement,
   }) {
     final list = [...state];
     final i = list.indexWhere(
@@ -123,14 +149,15 @@ final class CartCubit extends Cubit<List<CartLine>> {
           quantity: addQty,
           selectedOptions: selectedOptions,
           optionGroupsJson: optionGroupsJson,
+          measurement: measurement,
         ),
       );
     }
     emit(list);
   }
 
-  void setQuantity(String lineKey, int qty) {
-    if (qty < 1) {
+  void setQuantity(String lineKey, double qty) {
+    if (qty <= 0) {
       removeLine(lineKey);
       return;
     }
@@ -184,6 +211,7 @@ final class CartCubit extends Cubit<List<CartLine>> {
         quantity: line.quantity,
         selectedOptions: line.selectedOptions,
         optionGroupsJson: line.optionGroupsJson,
+        measurement: line.measurement ?? product.measurement,
       );
     }).toList();
     if (changed) emit(next);

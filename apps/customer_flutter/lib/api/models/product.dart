@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../resolve_image_url.dart';
+import 'product_measurement.dart';
 
 class ProductCategory {
   const ProductCategory({
@@ -188,6 +189,7 @@ class Product {
     required this.optionGroups,
     required this.isAvailable,
     required this.stockQuantity,
+    this.measurement,
   });
 
   final String id;
@@ -200,12 +202,15 @@ class Product {
   final List<ProductOptionGroup> optionGroups;
   final bool isAvailable;
   final int? stockQuantity;
+  final ProductMeasurement? measurement;
 
   /// Customer-visible list price (marketplace repriced when [displayPrice] is set).
   double get customerListPrice => displayPrice ?? basePrice;
 
   bool get isInStock => (stockQuantity ?? 1) > 0;
   bool get canAddToCart => isAvailable && isInStock;
+
+  bool get isWeightProduct => measurement?.isWeightProduct ?? false;
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final groups = (json['optionGroups'] as List<dynamic>? ?? const <dynamic>[])
@@ -226,6 +231,7 @@ class Product {
       optionGroups: groups,
       isAvailable: _parseAvailability(json),
       stockQuantity: _parseStock(json),
+      measurement: ProductMeasurement.fromProductJson(json),
     );
   }
 }

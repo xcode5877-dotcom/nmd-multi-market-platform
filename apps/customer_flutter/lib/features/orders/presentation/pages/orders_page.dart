@@ -241,7 +241,7 @@ class _OrdersPageState extends State<OrdersPage> {
           name: m['productName']?.toString() ?? 'منتج',
           unitPrice: unit,
           imageUrl: m['imageUrl']?.toString() ?? '',
-          addQty: qty,
+          addQty: qty.toDouble(),
         );
         addedLines++;
       }
