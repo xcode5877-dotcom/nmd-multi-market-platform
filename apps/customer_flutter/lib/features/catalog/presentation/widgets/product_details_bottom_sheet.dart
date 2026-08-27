@@ -58,6 +58,36 @@ class _ProductSheetBody extends StatefulWidget {
 
 class _ProductSheetBodyState extends State<_ProductSheetBody> {
   int _qty = 1;
+  late double _weightQty;
+
+  @override
+  void initState() {
+    super.initState();
+    final parsed = Product.fromJson(widget.product);
+    final m = parsed.measurement;
+    if (m != null && parsed.isWeightProduct) {
+      final options = m.selectableQuantities();
+      _weightQty = options.isNotEmpty
+          ? options.first
+          : (m.minimumQuantity > 0 ? m.minimumQuantity : m.quantityStep);
+    } else {
+      _weightQty = 0.25;
+    }
+  }
+
+  double _orderQuantity(Product parsed) =>
+      parsed.isWeightProduct ? _weightQty : _qty.toDouble();
+
+  void _stepWeight(Product parsed, int direction) {
+    final m = parsed.measurement;
+    if (m == null || !parsed.isWeightProduct) return;
+    final options = m.selectableQuantities();
+    if (options.isEmpty) return;
+    final idx = options.indexWhere((q) => (q - _weightQty).abs() < 0.0001);
+    final nextIdx = (idx < 0 ? 0 : idx) + direction;
+    if (nextIdx < 0 || nextIdx >= options.length) return;
+    setState(() => _weightQty = options[nextIdx]);
+  }
 
   void _addToCart({
     required BuildContext context,
@@ -98,8 +128,9 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
           name: name,
           unitPrice: price,
           imageUrl: imageUrl,
-          addQty: _qty,
+          addQty: _orderQuantity(parsed),
           optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
+          measurement: parsed.measurement,
         );
         Navigator.of(context).pop();
       });
@@ -111,8 +142,9 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
       name: name,
       unitPrice: price,
       imageUrl: imageUrl,
-      addQty: _qty,
+      addQty: _orderQuantity(parsed),
       optionGroupsJson: optionGroupsToOrderJson(parsed.optionGroups),
+      measurement: parsed.measurement,
     );
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +169,8 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
     final price = parsed.customerListPrice;
     final productId = p['id']?.toString() ?? '';
     final imageUrl = productImageUrl(p);
-    final lineTotal = price * _qty;
+    final orderQty = parsed.isWeightProduct ? _weightQty : _qty.toDouble();
+    final lineTotal = price * orderQty;
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final canAdd = parsed.canAddToCart;
@@ -223,7 +256,9 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
                               fontSize: 22,
                             ),
                           ),
-                          if (_qty > 1) ...[
+                          if (orderQty > (parsed.isWeightProduct
+                              ? (parsed.measurement?.minimumQuantity ?? 0)
+                              : 1)) ...[
                             const SizedBox(width: NmdSpacing.sm),
                             Text(
                               '· الإجمالي ₪${lineTotal.toStringAsFixed(2)}',
@@ -267,12 +302,36 @@ class _ProductSheetBodyState extends State<_ProductSheetBody> {
                   ),
                   child: Row(
                     children: [
-                      _QtyStepper(
-                        qty: _qty,
-                        onDecrement: () =>
-                            setState(() => _qty = _qty > 1 ? _qty - 1 : 1),
-                        onIncrement: () => setState(() => _qty++),
-                      ),
+                      if (parsed.isWeightProduct && parsed.measurement != null)
+                        _WeightQtyStepper(
+                          label: parsed.measurement!
+                              .formatQuantityLabel(_weightQty),
+                          canDecrement: () {
+                            final options =
+                                parsed.measurement!.selectableQuantities();
+                            final idx = options.indexWhere(
+                              (q) => (q - _weightQty).abs() < 0.0001,
+                            );
+                            return idx > 0;
+                          }(),
+                          canIncrement: () {
+                            final options =
+                                parsed.measurement!.selectableQuantities();
+                            final idx = options.indexWhere(
+                              (q) => (q - _weightQty).abs() < 0.0001,
+                            );
+                            return idx >= 0 && idx < options.length - 1;
+                          }(),
+                          onDecrement: () => _stepWeight(parsed, -1),
+                          onIncrement: () => _stepWeight(parsed, 1),
+                        )
+                      else
+                        _QtyStepper(
+                          qty: _qty,
+                          onDecrement: () =>
+                              setState(() => _qty = _qty > 1 ? _qty - 1 : 1),
+                          onIncrement: () => setState(() => _qty++),
+                        ),
                       const SizedBox(width: NmdSpacing.sm),
                       Expanded(
                         child: NmdButton(
@@ -369,6 +428,67 @@ class _QtyStepper extends StatelessWidget {
           IconButton(
             onPressed: onIncrement,
             icon: const Icon(Icons.add_rounded, color: NmdColors.brandPrimary),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Weight/volume stepper: walks [ProductMeasurement.selectableQuantities] only.
+class _WeightQtyStepper extends StatelessWidget {
+  const _WeightQtyStepper({
+    required this.label,
+    required this.canDecrement,
+    required this.canIncrement,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  final String label;
+  final bool canDecrement;
+  final bool canIncrement;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: NmdColors.borderBrand),
+        borderRadius: NmdRadius.borderPill,
+        color: NmdColors.tintAliveMuted,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: canDecrement ? onDecrement : null,
+            icon: Icon(
+              Icons.remove_rounded,
+              color: canDecrement
+                  ? NmdColors.brandPrimary
+                  : NmdColors.brandPrimary.withValues(alpha: 0.35),
+            ),
+            visualDensity: VisualDensity.compact,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: NmdSpacing.xxs),
+            child: Text(
+              label,
+              style: NmdTypography.bodyBold
+                  .copyWith(color: NmdColors.brandPrimary),
+            ),
+          ),
+          IconButton(
+            onPressed: canIncrement ? onIncrement : null,
+            icon: Icon(
+              Icons.add_rounded,
+              color: canIncrement
+                  ? NmdColors.brandPrimary
+                  : NmdColors.brandPrimary.withValues(alpha: 0.35),
+            ),
             visualDensity: VisualDensity.compact,
           ),
         ],

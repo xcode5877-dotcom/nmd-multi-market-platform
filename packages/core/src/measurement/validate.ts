@@ -78,7 +78,29 @@ export function validateMeasurementConfiguration(
   }
 
   let maximumQuantity: string | null = null;
-  if (input.maximumQuantity != null && input.maximumQuantity !== '') {
+  const maxMissing =
+    input.maximumQuantity == null || input.maximumQuantity === '';
+  // WEIGHT/VOLUME writes must define an upper bound. PIECE/PACKAGE may omit max.
+  // Existing DB rows with null max remain readable; customer UI exposes min only.
+  if (
+    maxMissing &&
+    (measurementType === 'WEIGHT' || measurementType === 'VOLUME')
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_MEASUREMENT_CONFIG',
+        error: 'maximumQuantity is required for WEIGHT/VOLUME products',
+        messageAr: 'الحد الأقصى للكمية مطلوب للمنتجات المباعة بالوزن أو الحجم',
+        details: {
+          field: 'maximumQuantity',
+          value: input.maximumQuantity,
+          measurementType,
+        },
+      },
+    };
+  }
+  if (!maxMissing) {
     const maxParsed = parseMeasurementDecimalStrict(input.maximumQuantity);
     if (!maxParsed.ok) {
       return fail(`Invalid maximumQuantity (${maxParsed.reason})`, {

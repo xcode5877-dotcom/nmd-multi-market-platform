@@ -11,6 +11,8 @@ import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
+import '../../application/order_editing_product_add.dart';
+import '../../../orders/application/order_editing_session_registry.dart';
 import '../../data/modifier_icon_library.dart';
 import '../../data/pillar_kind.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -19,11 +21,16 @@ import '../../data/tenant_contact_info.dart';
 import '../widgets/service_cinematic_experience.dart';
 import '../customization/product_customization_tier.dart';
 import '../customization/customization_step_plan.dart';
-import '../customization/customization_tokens.dart';
 import '../customization/product_customization_controller.dart';
-import '../widgets/floating_smart_cta.dart';
 import '../widgets/product_customization_surface.dart';
-import '../widgets/product_images/product_image_gallery.dart';
+import '../widgets/weight_quantity_selector.dart';
+import '../widgets/product_details/product_details_bottom_bar.dart';
+import '../widgets/product_details/product_details_description.dart';
+import '../widgets/product_details/product_details_layout_tokens.dart';
+import '../widgets/product_details/product_details_media_section.dart';
+import '../widgets/product_details/product_details_summary_header.dart';
+import '../widgets/product_details/product_details_presentation_mode.dart';
+import '../widgets/product_details/product_details_presentation_resolver.dart';
 import '../widgets/product_images/product_image_urls.dart';
 import '../../../../widgets/app_error_view.dart';
 
@@ -56,6 +63,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   final GlobalKey _customizationSectionKey = GlobalKey();
 
   bool _descExpanded = false;
+  int _addQty = 1;
+  int _activeGalleryIndex = 0;
   late final AnimationController _dockBounceController;
   late final Animation<double> _dockScale;
 
@@ -66,9 +75,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
   void initState() {
     super.initState();
     _future = _load();
+    _future.then((payload) {
+      if (mounted) {
+        setState(() => _activeGalleryIndex = payload.heroImageIndex);
+      }
+    });
     _dockBounceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 200),
     );
     _dockScale = TweenSequence<double>([
       TweenSequenceItem(tween: Tween<double>(begin: 1, end: 1.045), weight: 45),
@@ -113,11 +127,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     final product = products.where((p) => p.id == widget.productId).toList();
     if (product.isEmpty) throw Exception('Product not found');
     Map<String, dynamic>? rawProduct;
+    List<Map<String, dynamic>> categoryRows = const [];
     try {
       final catalog = await api.getCatalog(widget.storeId);
-      final rows =
-          (catalog['products'] as List<dynamic>? ?? const <dynamic>[])
-              .whereType<Map>();
+      categoryRows = categoryRowsFromCatalog(catalog);
+      final rows = (catalog['products'] as List<dynamic>? ?? const <dynamic>[])
+          .whereType<Map>();
       for (final row in rows) {
         if ((row['id']?.toString() ?? '') == widget.productId) {
           rawProduct = Map<String, dynamic>.from(row);
@@ -127,17 +142,34 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     } catch (_) {
       rawProduct = null;
     }
-    final galleryUrls = _resolveGalleryUrls(product.first, rawProduct);
+    final resolvedProduct = product.first;
+    final presentationConfig = ProductDetailsPresentationResolver.configFor(
+      ProductDetailsPresentationContext(
+        product: resolvedProduct,
+        rawProduct: rawProduct,
+        categoryTitle: categoryTitleForProduct(
+          categoryId: resolvedProduct.categoryId,
+          categoryRows: categoryRows,
+        ),
+        pillar: pillarForTenant(pillarIdRaw?.toString(), pillars),
+        tenantCategoryName: tenantCategoryLabel(tenant),
+        tenantName: tenantDisplayName(tenant),
+        subCategoryTitle: tenantSubCategoryTitle(tenant),
+      ),
+    );
+    final galleryUrls = _resolveGalleryUrls(resolvedProduct, rawProduct);
     return _ProductPagePayload(
-      product: product.first,
+      product: resolvedProduct,
       imageUrls: galleryUrls,
-      heroImageIndex: productHeroImageIndex(galleryUrls, product.first.imageUrl),
+      heroImageIndex:
+          productHeroImageIndex(galleryUrls, resolvedProduct.imageUrl),
       storeStatus:
           (tenant['operationalStatus']?.toString() ?? 'closed').toLowerCase(),
       isServicesStore: isServicesStore,
       tenantIdForLeads: tenantIdForLeads,
       contact: const TenantContactInfo(),
       officeContact: officeContact,
+      presentationConfig: presentationConfig,
     );
   }
 
@@ -146,8 +178,33 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     required double computedUnitPrice,
     required double merchantUnitPrice,
     required bool storeClosed,
+    int? addQty,
+    double? addWeightQty,
+    String? flyImageUrl,
   }) async {
     if (storeClosed || !product.canAddToCart) return;
+
+    final orderQty = product.isWeightProduct
+        ? (addWeightQty ?? _customization?.orderQuantity ?? product.measurement!.minimumQuantity)
+        : (addQty ?? _addQty).toDouble();
+
+    if (OrderEditingSessionRegistry.isActive) {
+      if (!OrderEditingSessionRegistry.matchesTenant(widget.storeId)) {
+        showOrderEditingWrongStoreMessage(context);
+        return;
+      }
+      await tryAddProductToOrderEditingSession(
+        context: context,
+        product: product,
+        tenantId: widget.storeId,
+        quantity: orderQty.round().clamp(1, 999),
+        merchantUnitPrice: merchantUnitPrice,
+        selectedOptions: _customization?.buildCartSelectedOptions() ?? const [],
+      );
+      return;
+    }
+
+    final customization = _customization;
     final cart = context.read<CartCubit>();
     if (cart.hasDifferentTenant(widget.storeId)) {
       final shouldClear = await showDialog<bool>(
@@ -174,8 +231,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       cart.clear();
     }
 
-    _flyToCart(imageUrl: product.imageUrl);
-    final customization = _customization;
+    final qty = orderQty;
+    _flyToCart(imageUrl: flyImageUrl ?? product.imageUrl);
     cart.addOrIncrement(
       tenantId: widget.storeId,
       productId: product.id,
@@ -183,10 +240,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       unitPrice: computedUnitPrice,
       merchantUnitPrice: merchantUnitPrice,
       imageUrl: product.imageUrl,
-      addQty: 1,
-      selectedOptions:
-          customization?.buildCartSelectedOptions() ?? const [],
+      addQty: qty,
+      selectedOptions: customization?.buildCartSelectedOptions() ?? const [],
       optionGroupsJson: optionGroupsToOrderJson(product.optionGroups),
+      measurement: product.measurement,
     );
   }
 
@@ -386,17 +443,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           final heroIndex = payload.heroImageIndex;
 
           final desc = product.description.trim();
-          final shouldReadMore = desc.length > 220;
-          final shownDesc = !_descExpanded && shouldReadMore
-              ? '${desc.substring(0, 220)}...'
-              : desc;
+          final presentation = payload.presentationConfig;
 
-          return Scaffold(
-            backgroundColor: NmdColors.surfaceBase,
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (isServices)
+          if (isServices) {
+            return Scaffold(
+              backgroundColor: NmdColors.surfaceBase,
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
                   CinematicScrollChrome(
                     scrollController: _scrollController,
                     title: product.name,
@@ -418,68 +472,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       customization: customization,
                       tier: tier,
                       desc: desc,
-                      shownDesc: shownDesc,
-                      shouldReadMore: shouldReadMore,
+                      presentation: presentation,
                     ),
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _productHeader(
-                        context,
-                        showCart: true,
-                        cartIconKey: _cartIconKey,
-                      ),
-                      Expanded(
-                        child: _buildProductScrollView(
-                          product: product,
-                          heroTag: heroTag,
-                          imageUrls: galleryUrls,
-                          heroImageIndex: heroIndex,
-                          isServices: isServices,
-                          storeClosed: storeClosed,
-                          customization: customization,
-                          tier: tier,
-                          desc: desc,
-                          shownDesc: shownDesc,
-                          shouldReadMore: shouldReadMore,
-                        ),
-                      ),
-                    ],
                   ),
-                if (!isServices)
-                  ListenableBuilder(
-                    listenable: customization,
-                    builder: (context, _) {
-                      final missingRequired =
-                          customization.missingRequired.isNotEmpty;
-                      return AnimatedBuilder(
-                        animation: _dockScale,
-                        builder: (context, child) => FloatingSmartCta(
-                          price: customization.customerUnitPrice,
-                          missingRequired: missingRequired,
-                          disabled: storeClosed || !product.canAddToCart,
-                          scale: _dockScale.value,
-                          onPressed: () {
-                            if (missingRequired) {
-                              _scrollToCustomization();
-                              return;
-                            }
-                            _handleAddToCart(
-                              product: product,
-                              computedUnitPrice:
-                                  customization.customerUnitPrice,
-                              merchantUnitPrice:
-                                  customization.merchantUnitPrice,
-                              storeClosed: storeClosed,
-                            );
-                          },
-                        ),
-                      );
-                    },
-                  )
-                else
                   CinematicServiceDock(
                     onPressed: () async {
                       final dio = context.read<Dio>();
@@ -496,6 +491,100 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       );
                     },
                   ),
+                ],
+              ),
+            );
+          }
+
+          return Scaffold(
+            backgroundColor: NmdColors.surfaceBase,
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _productHeader(
+                  context,
+                  showCart: true,
+                  cartIconKey: _cartIconKey,
+                ),
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _buildProductScrollView(
+                        product: product,
+                        heroTag: heroTag,
+                        imageUrls: galleryUrls,
+                        heroImageIndex: heroIndex,
+                        isServices: isServices,
+                        storeClosed: storeClosed,
+                        customization: customization,
+                        tier: tier,
+                        desc: desc,
+                        presentation: presentation,
+                      ),
+                      ListenableBuilder(
+                        listenable: customization,
+                        builder: (context, _) {
+                          final missingRequired =
+                              customization.missingRequired.isNotEmpty;
+                          return AnimatedBuilder(
+                            animation: _dockScale,
+                            builder: (context, child) {
+                              final measurement = product.measurement;
+                              final isWeight = product.isWeightProduct;
+                              final weightLabel = isWeight && measurement != null
+                                  ? measurement.formatQuantityLabel(
+                                      customization.orderQuantity,
+                                    )
+                                  : null;
+                              return ProductDetailsBottomBar(
+                              unitPrice: customization.customerUnitPrice,
+                              quantity: _addQty,
+                              isWeightProduct: isWeight,
+                              weightQuantityLabel: weightLabel,
+                              lineTotal: customization.lineTotal,
+                              canWeightDecrement: customization.canStepWeightDown,
+                              canWeightIncrement: customization.canStepWeightUp,
+                              onWeightStep: isWeight
+                                  ? (dir) {
+                                      customization.stepWeightQuantity(dir);
+                                      setState(() {});
+                                    }
+                                  : null,
+                              onQuantityChanged: (qty) =>
+                                  setState(() => _addQty = qty),
+                              missingRequired: missingRequired,
+                              disabled: storeClosed || !product.canAddToCart,
+                              scale: _dockScale.value,
+                              onPressed: () {
+                                if (missingRequired) {
+                                  _scrollToCustomization();
+                                  return;
+                                }
+                                final flyUrl = galleryUrls.isNotEmpty
+                                    ? galleryUrls[_activeGalleryIndex.clamp(
+                                        0,
+                                        galleryUrls.length - 1,
+                                      )]
+                                    : product.imageUrl;
+                                _handleAddToCart(
+                                  product: product,
+                                  computedUnitPrice:
+                                      customization.customerUnitPrice,
+                                  merchantUnitPrice:
+                                      customization.merchantUnitPrice,
+                                  storeClosed: storeClosed,
+                                  flyImageUrl: flyUrl,
+                                );
+                              },
+                            );
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           );
@@ -514,49 +603,27 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
     required ProductCustomizationController customization,
     required ProductCustomizationTier tier,
     required String desc,
-    required String shownDesc,
-    required bool shouldReadMore,
+    required ProductDetailsPresentationConfig presentation,
   }) {
     return CustomScrollView(
       controller: _scrollController,
       primary: false,
       slivers: [
         SliverToBoxAdapter(
-          child: isServices
-              ? ProductImageGallery(
-                  imageUrls: imageUrls,
-                  heroTag: heroTag,
-                  initialIndex: heroImageIndex,
-                  height: productImageGalleryHeight(
-                    context,
-                    isServices: isServices,
-                  ),
-                  imageKey: _imageKey,
-                  isServices: isServices,
-                )
-              : ClipPath(
-                  clipper: ProductImageCurvedClipper(),
-                  child: ProductImageGallery(
-                    imageUrls: imageUrls,
-                    heroTag: heroTag,
-                    initialIndex: heroImageIndex,
-                    height: productImageGalleryHeight(
-                      context,
-                      isServices: isServices,
-                    ),
-                    imageKey: _imageKey,
-                    isServices: isServices,
-                  ),
-                ),
+          child: ProductDetailsMediaSection(
+            imageUrls: imageUrls,
+            heroTag: heroTag,
+            initialIndex: heroImageIndex,
+            imageKey: _imageKey,
+            isServices: isServices,
+            onActiveIndexChanged: (index) =>
+                setState(() => _activeGalleryIndex = index),
+            presentation: isServices ? null : presentation,
+          ),
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              CustomizationTokens.md,
-              isServices ? 28 : CustomizationTokens.md,
-              CustomizationTokens.md,
-              CustomizationTokens.sm,
-            ),
+            padding: productDetailsBodyPadding(isServices: isServices),
             child: ListenableBuilder(
               listenable: customization,
               builder: (context, _) {
@@ -564,43 +631,59 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      textDirection: TextDirection.rtl,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            product.name,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: NmdTypography.display.copyWith(
-                              fontSize: isServices ? 24 : 20,
-                              height: 1.12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: isServices ? -0.4 : 0,
-                            ),
-                          ),
+                    if (isServices)
+                      Text(
+                        product.name,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: NmdTypography.display.copyWith(
+                          fontSize: 24,
+                          height: 1.12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.4,
                         ),
-                        if (!isServices) ...[
-                          const SizedBox(width: CustomizationTokens.sm),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                NmdFormat.money(computedUnitPrice),
+                      )
+                    else ...[
+                      ProductDetailsSummaryHeader(title: product.name),
+                      SizedBox(height: ProductDetailsLayoutTokens.titleGap),
+                      if (product.isWeightProduct && product.measurement != null) ...[
+                        Row(
+                          textDirection: TextDirection.rtl,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${NmdFormat.money(computedUnitPrice)} / كغ',
+                                textAlign: TextAlign.right,
                                 style: NmdTypography.price.copyWith(
-                                  fontSize: 18,
+                                  fontSize: ProductDetailsLayoutTokens.typePrice,
+                                  fontWeight: FontWeight.w700,
+                                  color: NmdColors.brandPrimary,
                                 ),
                               ),
-                            ],
+                            ),
+                            if (product.canAddToCart && !storeClosed)
+                              NmdBadge(label: 'متوفر', tone: NmdBadgeTone.success),
+                          ],
+                        ),
+                        SizedBox(height: ProductDetailsLayoutTokens.itemGap),
+                        Text(
+                          'الإجمالي: ${NmdFormat.money(customization.lineTotal)}',
+                          textAlign: TextAlign.right,
+                          style: NmdTypography.label.copyWith(
+                            color: NmdColors.textSecondary,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                      ] else
+                        ProductDetailsPriceRow(
+                          price: computedUnitPrice,
+                          showAvailable: product.canAddToCart && !storeClosed,
+                        ),
+                    ],
                     if (!isServices &&
                         (storeClosed || !product.canAddToCart)) ...[
-                      const SizedBox(height: CustomizationTokens.xs),
+                      SizedBox(height: ProductDetailsLayoutTokens.itemGap),
                       NmdBadge(
                         label: storeClosed
                             ? 'المحل مغلق حالياً'
@@ -608,73 +691,69 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                         tone: NmdBadgeTone.neutral,
                       ),
                     ],
-                    if (desc.isNotEmpty) ...[
-                      _FadeInUpSection(
-                        delayMs: 50,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const SizedBox(height: CustomizationTokens.sm),
-                            Text(
-                              shownDesc,
-                              style: NmdTypography.bodySmall.copyWith(
-                                height: 1.6,
-                                color: isServices
-                                    ? NmdColors.textSecondary
-                                    : null,
-                              ),
-                            ),
-                            if (shouldReadMore) ...[
-                              const SizedBox(
-                                  height: CustomizationTokens.xs),
-                              GestureDetector(
-                                onTap: () => setState(
-                                    () => _descExpanded = !_descExpanded),
-                                child: Text(
-                                  _descExpanded ? 'عرض أقل' : 'عرض المزيد',
-                                  style: NmdTypography.label.copyWith(
-                                    color: NmdColors.brandPrimary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            if (!isServices) ...[
-                              const SizedBox(height: CustomizationTokens.sm),
-                              const Divider(
-                                height: 1,
-                                color: NmdColors.divider,
-                              ),
-                            ],
-                          ],
+                    if (desc.isNotEmpty && !isServices) ...[
+                      SizedBox(height: ProductDetailsLayoutTokens.itemGap),
+                      ProductDetailsDescription(
+                        text: desc,
+                        expanded: _descExpanded,
+                        onToggleExpand: () => setState(
+                          () => _descExpanded = !_descExpanded,
                         ),
+                        sectionLabel: presentation.descriptionSectionLabel,
+                        emphasis: presentation.descriptionEmphasis,
                       ),
                     ],
-                    const SizedBox(height: CustomizationTokens.sm),
-                    if (!isServices)
-                      _FadeInUpSection(
-                        delayMs: 80,
-                        child: KeyedSubtree(
-                          key: _customizationSectionKey,
-                          child: ProductCustomizationSurface(
+                    if (desc.isNotEmpty && isServices) ...[
+                      const SizedBox(
+                        height: ProductDetailsLayoutTokens.sectionGap,
+                      ),
+                      ProductDetailsDescription(
+                        text: desc,
+                        expanded: _descExpanded,
+                        onToggleExpand: () => setState(
+                          () => _descExpanded = !_descExpanded,
+                        ),
+                        sectionLabel: presentation.descriptionSectionLabel,
+                        emphasis: presentation.descriptionEmphasis,
+                      ),
+                    ],
+                    if (!isServices) ...[
+                      if (product.isWeightProduct && product.measurement != null) ...[
+                        const SizedBox(
+                          height: ProductDetailsLayoutTokens.sectionGap,
+                        ),
+                        WeightQuantitySelector(
+                          measurement: product.measurement!,
+                          selectedQuantity: customization.orderQuantity,
+                          unitPricePerBase: computedUnitPrice,
+                          enabled: !storeClosed && product.canAddToCart,
+                          onSelected: customization.setWeightQuantity,
+                        ),
+                      ],
+                      const SizedBox(
+                        height: ProductDetailsLayoutTokens.sectionGap,
+                      ),
+                      KeyedSubtree(
+                        key: _customizationSectionKey,
+                        child: ProductCustomizationSurface(
+                          product: product,
+                          controller: customization,
+                          tier: tier,
+                          storeClosed: storeClosed,
+                          presentation: presentation,
+                          onOpenAdvancedBuilder: () => _openAdvancedBuilder(
                             product: product,
-                            controller: customization,
-                            tier: tier,
                             storeClosed: storeClosed,
-                            onOpenAdvancedBuilder: () => _openAdvancedBuilder(
-                              product: product,
-                              storeClosed: storeClosed,
-                            ),
-                            onAddToCart: () => _handleAddToCart(
-                              product: product,
-                              computedUnitPrice:
-                                  customization.customerUnitPrice,
-                              merchantUnitPrice:
-                                  customization.merchantUnitPrice,
-                              storeClosed: storeClosed,
-                            ),
+                          ),
+                          onAddToCart: () => _handleAddToCart(
+                            product: product,
+                            computedUnitPrice: customization.customerUnitPrice,
+                            merchantUnitPrice: customization.merchantUnitPrice,
+                            storeClosed: storeClosed,
                           ),
                         ),
                       ),
+                    ],
                   ],
                 );
               },
@@ -685,7 +764,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           padding: EdgeInsets.only(
             bottom: isServices
                 ? PremiumMarketplaceDesignSystem.heroBookPillHeight + 28
-                : productCtaScrollInset(context),
+                : ProductDetailsBottomBar.scrollInset(context),
           ),
         ),
       ],
@@ -726,6 +805,7 @@ class _ProductPagePayload {
     required this.tenantIdForLeads,
     required this.contact,
     required this.officeContact,
+    required this.presentationConfig,
   });
 
   final Product product;
@@ -738,58 +818,5 @@ class _ProductPagePayload {
   /// Product-level override (future); empty until API exposes per-service phones.
   final TenantContactInfo contact;
   final TenantContactInfo officeContact;
-}
-
-class _FadeInUpSection extends StatefulWidget {
-  const _FadeInUpSection({
-    required this.child,
-    this.delayMs = 0,
-  });
-
-  final Widget child;
-  final int delayMs;
-
-  @override
-  State<_FadeInUpSection> createState() => _FadeInUpSectionState();
-}
-
-class _FadeInUpSectionState extends State<_FadeInUpSection>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 220),
-  );
-  late final Animation<double> _fade = CurvedAnimation(
-    parent: _controller,
-    curve: Curves.easeOut,
-  );
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.08),
-    end: Offset.zero,
-  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-
-  @override
-  void initState() {
-    super.initState();
-    Future<void>.delayed(Duration(milliseconds: widget.delayMs), () {
-      if (mounted) _controller.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: widget.child,
-      ),
-    );
-  }
+  final ProductDetailsPresentationConfig presentationConfig;
 }

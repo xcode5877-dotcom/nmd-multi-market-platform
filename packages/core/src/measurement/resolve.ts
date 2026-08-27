@@ -120,13 +120,22 @@ export function resolveProductMeasurement(product: MeasurementProductInput | nul
         ? legacyStepParsed.normalized
         : '0.5';
 
+    // Honor explicit min/max from Admin when present (legacy triad + V2 bounds).
+    const minParsed = parseMeasurementDecimalStrict(product.minimumQuantity);
+    const min = minParsed.ok ? minParsed.normalized : step;
+    let max: string | null = null;
+    if (product.maximumQuantity != null && product.maximumQuantity !== '') {
+      const maxParsed = parseMeasurementDecimalStrict(product.maximumQuantity);
+      max = maxParsed.ok ? maxParsed.normalized : null;
+    }
+
     return {
       measurementType,
       baseUnitCode,
       displayUnitCode,
       quantityStep: step,
-      minimumQuantity: step,
-      maximumQuantity: null,
+      minimumQuantity: min,
+      maximumQuantity: max,
       priceBasis: 'PER_BASE_UNIT',
       measurementVersion: 1,
       displayPrecision: null,

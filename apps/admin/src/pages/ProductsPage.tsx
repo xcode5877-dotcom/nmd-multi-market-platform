@@ -249,6 +249,8 @@ export default function ProductsPage() {
     quantityStep: 1,
     unitName: 'حبة',
     isWeightBased: false,
+    minimumQuantity: 1,
+    maximumQuantity: null as number | null,
   });
   /** Option groups for current tenant only (from catalog / Options page). */
   const catalogOptionGroups = adminData.getOptionGroups().filter(
@@ -360,6 +362,20 @@ export default function ProductsPage() {
 
   const save = () => {
     if (!form.name.trim() || !form.categoryId) return;
+    const effectiveWeight = form.isWeightBased;
+    const effectiveStep = effectiveWeight ? form.quantityStep : 1;
+    const effectiveMin = effectiveWeight
+      ? (form.minimumQuantity > 0 ? form.minimumQuantity : effectiveStep)
+      : 1;
+    const effectiveMax = effectiveWeight
+      ? (form.maximumQuantity != null && form.maximumQuantity > 0
+          ? form.maximumQuantity
+          : null)
+      : null;
+    if (effectiveWeight && (effectiveMax == null || effectiveMax < effectiveMin)) {
+      addToast('الحد الأقصى للكمية مطلوب للمنتجات المباعة بالوزن/الحجم', 'error');
+      return;
+    }
     setSaving(true);
     const slug = form.slug || form.name.toLowerCase().replace(/\s/g, '-');
     const images = [...(form.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -367,9 +383,57 @@ export default function ProductsPage() {
     const linkedGroups = catalogOptionGroups.filter((g) => form.selectedOptionGroupIds.includes(g.id));
     const allOptionGroups = [...linkedGroups, ...form.optionGroups];
     const optionGroupIds = form.selectedOptionGroupIds;
-    const effectiveWeight = form.isWeightBased;
-    const effectiveStep = effectiveWeight ? form.quantityStep : 1;
     const effectiveUnit = effectiveWeight ? form.unitName : 'حبة';
+    const weightFields = effectiveWeight
+      ? (() => {
+          const unit = String(effectiveUnit).trim();
+          let measurementType: 'WEIGHT' | 'VOLUME' = 'WEIGHT';
+          let baseUnitCode: 'kg' | 'l' = 'kg';
+          let displayUnitCode: 'kg' | 'g' | 'l' | 'ml' = 'kg';
+          // Accept both form labels (جرام) and API dual-emit (غرام) so re-save
+          // does not flip displayUnitCode g → kg.
+          if (unit === 'لتر') {
+            measurementType = 'VOLUME';
+            baseUnitCode = 'l';
+            displayUnitCode = 'l';
+          } else if (unit === 'جرام' || unit === 'غرام' || unit === 'g') {
+            displayUnitCode = 'g';
+          } else if (unit === 'مل' || unit === 'ml') {
+            measurementType = 'VOLUME';
+            baseUnitCode = 'l';
+            displayUnitCode = 'ml';
+          }
+          const canonicalUnitName =
+            displayUnitCode === 'g'
+              ? 'جرام'
+              : displayUnitCode === 'l' || displayUnitCode === 'ml'
+                ? 'لتر'
+                : 'كيلو';
+          return {
+            measurementType,
+            baseUnitCode,
+            displayUnitCode,
+            quantityStep: effectiveStep,
+            minimumQuantity: effectiveMin,
+            maximumQuantity: effectiveMax,
+            priceBasis: 'PER_BASE_UNIT' as const,
+            measurementVersion: 1,
+            unitName: canonicalUnitName,
+            isWeightBased: true,
+          };
+        })()
+      : {
+          measurementType: 'PIECE' as const,
+          baseUnitCode: 'piece' as const,
+          displayUnitCode: 'piece' as const,
+          quantityStep: 1,
+          minimumQuantity: 1,
+          maximumQuantity: null,
+          priceBasis: 'PER_BASE_UNIT' as const,
+          measurementVersion: 1,
+          unitName: 'حبة',
+          isWeightBased: false,
+        };
     if (editing) {
       const next = products.map((p) =>
         p.id === editing.id
@@ -394,9 +458,7 @@ export default function ProductsPage() {
               lastItemsCount: form.lastItemsCount,
               isArchived: form.isArchived,
               sortOrder: form.sortOrder,
-              quantityStep: effectiveStep,
-              unitName: effectiveUnit,
-              isWeightBased: effectiveWeight,
+              ...weightFields,
             }
           : p
       );
@@ -432,9 +494,7 @@ export default function ProductsPage() {
           lastItemsCount: form.isLastItems ? form.lastItemsCount : undefined,
           isArchived: form.isArchived,
           sortOrder: form.sortOrder ?? maxOrder + 1,
-          quantityStep: effectiveStep,
-          unitName: effectiveUnit,
-          isWeightBased: effectiveWeight,
+          ...weightFields,
         },
       ];
       setProducts(next);
@@ -465,6 +525,8 @@ export default function ProductsPage() {
       quantityStep: 1,
       unitName: 'حبة',
       isWeightBased: false,
+      minimumQuantity: 1,
+      maximumQuantity: null as number | null,
     });
     setSaving(false);
     addToast('تم الحفظ بنجاح', 'success');
@@ -511,8 +573,30 @@ export default function ProductsPage() {
       isArchived: p.isArchived ?? false,
       sortOrder: p.sortOrder ?? 0,
       quantityStep: (p as { quantityStep?: number }).quantityStep ?? 1,
-      unitName: (p as { unitName?: string }).unitName ?? 'حبة',
+      unitName: (() => {
+        // Prefer authoritative displayUnitCode; map API dual-emit غرام → form جرام.
+        const display = String(
+          (p as { displayUnitCode?: string }).displayUnitCode ?? ''
+        )
+          .trim()
+          .toLowerCase();
+        if (display === 'g') return 'جرام';
+        if (display === 'l' || display === 'ml') return 'لتر';
+        if (display === 'kg') return 'كيلو';
+        const raw = String((p as { unitName?: string }).unitName ?? '').trim();
+        if (raw === 'غرام' || raw === 'جرام' || raw === 'g') return 'جرام';
+        if (raw === 'لتر' || raw === 'مل' || raw === 'ml') return 'لتر';
+        if (raw === 'كيلو' || raw === 'كغم' || raw === 'kg') return 'كيلو';
+        return raw || 'حبة';
+      })(),
       isWeightBased: (p as { isWeightBased?: boolean }).isWeightBased ?? ((p as { quantityStep?: number }).quantityStep ?? 1) < 1,
+      minimumQuantity: Number((p as { minimumQuantity?: number | string }).minimumQuantity ?? (p as { quantityStep?: number }).quantityStep ?? 1) || 1,
+      maximumQuantity: (() => {
+        const raw = (p as { maximumQuantity?: number | string | null }).maximumQuantity;
+        if (raw == null || raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })(),
     });
     setDrawerOpen(true);
   };
@@ -544,6 +628,8 @@ export default function ProductsPage() {
       quantityStep: defaultWeight ? 0.25 : 1,
       unitName: defaultWeight ? 'كيلو' : 'حبة',
       isWeightBased: defaultWeight,
+      minimumQuantity: defaultWeight ? 0.25 : 1,
+      maximumQuantity: defaultWeight ? 1 : null,
     });
     setDrawerOpen(true);
   };
@@ -971,7 +1057,27 @@ export default function ProductsPage() {
                   setForm((f) => ({
                     ...f,
                     isWeightBased: checked,
-                    ...(checked && !['كيلو', 'جرام', 'لتر'].includes(f.unitName) ? { unitName: 'كيلو' as const, quantityStep: 0.25 } : {}),
+                    ...(checked
+                      ? {
+                          unitName: ['كيلو', 'جرام', 'لتر', 'غرام'].includes(f.unitName)
+                            ? (f.unitName === 'غرام' ? 'جرام' : f.unitName)
+                            : ('كيلو' as const),
+                          quantityStep: f.quantityStep < 1 ? f.quantityStep : 0.25,
+                          minimumQuantity:
+                            f.minimumQuantity > 0 && f.minimumQuantity < 1
+                              ? f.minimumQuantity
+                              : 0.25,
+                          maximumQuantity:
+                            f.maximumQuantity != null && f.maximumQuantity > 0
+                              ? f.maximumQuantity
+                              : 1,
+                        }
+                      : {
+                          unitName: 'حبة' as const,
+                          quantityStep: 1,
+                          minimumQuantity: 1,
+                          maximumQuantity: null,
+                        }),
                   }));
                 }}
                 className="rounded border-gray-300 text-primary focus:ring-primary"
@@ -998,8 +1104,49 @@ export default function ProductsPage() {
                     { value: '1', label: '1.0 (واحد)' },
                   ]}
                   value={String(form.quantityStep)}
-                  onChange={(e) => setForm((f) => ({ ...f, quantityStep: parseFloat(e.target.value) || 1 }))}
+                  onChange={(e) => {
+                    const step = parseFloat(e.target.value) || 1;
+                    setForm((f) => ({
+                      ...f,
+                      quantityStep: step,
+                      minimumQuantity: step,
+                      maximumQuantity:
+                        f.maximumQuantity != null && f.maximumQuantity >= step
+                          ? f.maximumQuantity
+                          : Math.max(step, 1),
+                    }));
+                  }}
                 />
+                <Input
+                  label="الحد الأدنى (بوحدة الأساس — كيلو/لتر)"
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  value={form.minimumQuantity}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      minimumQuantity: parseFloat(e.target.value) || f.quantityStep,
+                    }))
+                  }
+                />
+                <Input
+                  label="الحد الأقصى (بوحدة الأساس — كيلو/لتر) *"
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  value={form.maximumQuantity ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    setForm((f) => ({
+                      ...f,
+                      maximumQuantity: raw === '' ? null : parseFloat(raw) || null,
+                    }));
+                  }}
+                />
+                <p className="text-xs text-gray-500">
+                  مطلوب للمنتجات بالوزن. مثال: قفزة 0.25، أدنى 0.25، أقصى 1 → يظهر للعميل 250g / 500g / 750g / 1000g
+                </p>
               </>
             )}
           </div>

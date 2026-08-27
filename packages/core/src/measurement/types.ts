@@ -31,7 +31,7 @@ export interface ProductMeasurement {
   quantityStep: string;
   /** Base-unit minimum, normalized decimal string. */
   minimumQuantity: string;
-  /** Base-unit maximum, or null. */
+  /** Base-unit maximum. Required on WEIGHT/VOLUME catalog writes; null allowed for PIECE/PACKAGE and legacy reads. */
   maximumQuantity: string | null;
   priceBasis: PriceBasis;
   /** Reserved for future interpretation changes. Phase B copies into order-line snapshots. */

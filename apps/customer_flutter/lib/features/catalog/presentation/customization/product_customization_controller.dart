@@ -9,10 +9,26 @@ import 'customization_validation.dart';
 
 /// Holds modifier selection state and derived pricing (no UI).
 class ProductCustomizationController extends ChangeNotifier {
-  ProductCustomizationController(this.product);
+  ProductCustomizationController(this.product) {
+    initOrderQuantity();
+  }
 
   final Product product;
-  int quantity = 1;
+  double orderQuantity = 1;
+
+  bool get isWeightProduct => product.isWeightProduct;
+
+  /// Piece count for legacy UI; weight products use [orderQuantity] in base units.
+  int get quantity => isWeightProduct ? 1 : orderQuantity.round().clamp(1, 99);
+
+  void initOrderQuantity() {
+    final m = product.measurement;
+    if (m != null && m.isWeightProduct) {
+      orderQuantity = m.minimumQuantity > 0 ? m.minimumQuantity : m.quantityStep;
+    } else {
+      orderQuantity = 1;
+    }
+  }
 
   final Map<String, Set<String>> _selectedByGroup = {};
   final Map<String, Map<String, String>> _placementByGroup = {};
@@ -47,10 +63,11 @@ class ProductCustomizationController extends ChangeNotifier {
         _placementByGroup,
       );
 
-  double get lineTotal => customerUnitPrice * quantity;
+  double get lineTotal => isWeightProduct
+      ? customerUnitPrice * orderQuantity
+      : customerUnitPrice * orderQuantity;
 
-  bool get isComplete =>
-      isCustomizationComplete(product, _selectedByGroup);
+  bool get isComplete => isCustomizationComplete(product, _selectedByGroup);
 
   List<ProductOptionGroup> get missingRequired =>
       missingRequiredGroups(product, _selectedByGroup);
@@ -64,8 +81,46 @@ class ProductCustomizationController extends ChangeNotifier {
       );
 
   void setQuantity(int value) {
+    if (isWeightProduct) return;
     if (value < 1) return;
-    quantity = value;
+    orderQuantity = value.toDouble();
+    notifyListeners();
+  }
+
+  void setWeightQuantity(double value) {
+    final m = product.measurement;
+    if (m == null || !m.isWeightProduct) return;
+    final options = m.selectableQuantities();
+    final match = options.cast<double?>().firstWhere(
+          (q) => q != null && (q - value).abs() < 0.0001,
+          orElse: () => null,
+        );
+    if (match == null) return;
+    orderQuantity = match;
+    notifyListeners();
+  }
+
+  bool get canStepWeightDown {
+    final m = product.measurement;
+    if (m == null || !m.isWeightProduct) return false;
+    return m.canDecrementFrom(orderQuantity);
+  }
+
+  bool get canStepWeightUp {
+    final m = product.measurement;
+    if (m == null || !m.isWeightProduct) return false;
+    return m.canIncrementFrom(orderQuantity);
+  }
+
+  void stepWeightQuantity(int direction) {
+    final m = product.measurement;
+    if (m == null || !m.isWeightProduct) return;
+    final options = m.selectableQuantities();
+    if (options.isEmpty) return;
+    final idx = options.indexWhere((q) => (q - orderQuantity).abs() < 0.0001);
+    final nextIdx = (idx < 0 ? 0 : idx) + direction;
+    if (nextIdx < 0 || nextIdx >= options.length) return;
+    orderQuantity = options[nextIdx];
     notifyListeners();
   }
 

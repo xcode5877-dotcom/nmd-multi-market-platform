@@ -52,9 +52,8 @@ class CartPage extends StatelessWidget {
 
                   final total =
                       lines.fold<double>(0, (s, e) => s + e.lineTotal);
-                  final itemCount =
-                      lines.fold<int>(0, (s, e) => s + e.quantity);
                   final cart = context.read<CartCubit>();
+                  final itemCount = cart.itemCount;
 
                   return Column(
                     children: [
@@ -136,7 +135,7 @@ class _CartLineCard extends StatefulWidget {
 
   final CartLine line;
   final VoidCallback onRemove;
-  final ValueChanged<int> onQtyChanged;
+  final ValueChanged<double> onQtyChanged;
 
   @override
   State<_CartLineCard> createState() => _CartLineCardState();
@@ -240,7 +239,9 @@ class _CartLineCardState extends State<_CartLineCard>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  NmdFormat.money(line.unitPrice),
+                  line.isWeightLine
+                      ? '${NmdFormat.money(line.unitPrice)}/كغ'
+                      : NmdFormat.money(line.unitPrice),
                   textAlign: TextAlign.right,
                   style: NmdTypography.micro.copyWith(fontSize: 10),
                 ),
@@ -265,7 +266,7 @@ class _CartLineCardState extends State<_CartLineCard>
                         ),
                       ),
                       child: _CartQtyStepper(
-                        qty: line.quantity,
+                        line: line,
                         onChanged: widget.onQtyChanged,
                       ),
                     ),
@@ -295,15 +296,21 @@ class _CartLineCardState extends State<_CartLineCard>
 
 class _CartQtyStepper extends StatelessWidget {
   const _CartQtyStepper({
-    required this.qty,
+    required this.line,
     required this.onChanged,
   });
 
-  final int qty;
-  final ValueChanged<int> onChanged;
+  final CartLine line;
+  final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final isWeight = line.isWeightLine && line.measurement != null;
+    final options = isWeight ? line.measurement!.selectableQuantities() : const <double>[];
+    final idx = isWeight
+        ? options.indexWhere((q) => (q - line.quantity).abs() < 0.0001)
+        : -1;
+
     return Container(
       decoration: BoxDecoration(
         color: NmdColors.surfaceMuted.withValues(alpha: 0.85),
@@ -312,36 +319,67 @@ class _CartQtyStepper extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _qtyBtn(Icons.remove_rounded, () => onChanged(qty > 1 ? qty - 1 : 1)),
+          _qtyBtn(
+            Icons.remove_rounded,
+            isWeight ? idx > 0 : line.quantity > 1,
+            () {
+              if (isWeight) {
+                if (idx > 0) onChanged(options[idx - 1]);
+              } else {
+                onChanged(line.quantity > 1 ? line.quantity - 1 : 1);
+              }
+            },
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: NmdSpacing.xs),
             child: Text(
-              '$qty',
+              line.quantityDisplayLabel,
               style: NmdTypography.label.copyWith(
                 fontSize: 13,
                 color: NmdColors.brandPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          _qtyBtn(Icons.add_rounded, () => onChanged(qty + 1)),
+          _qtyBtn(
+            Icons.add_rounded,
+            isWeight ? idx >= 0 && idx < options.length - 1 : line.quantity < 99,
+            () {
+              if (isWeight) {
+                if (idx >= 0 && idx < options.length - 1) {
+                  onChanged(options[idx + 1]);
+                }
+              } else {
+                onChanged(line.quantity + 1);
+              }
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _qtyBtn(IconData icon, VoidCallback onTap) {
+  Widget _qtyBtn(IconData icon, bool enabled, VoidCallback onTap) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
+        onTap: enabled
+            ? () {
+                HapticFeedback.selectionClick();
+                onTap();
+              }
+            : null,
         borderRadius: NmdRadius.borderPill,
         child: SizedBox(
           width: 32,
           height: 32,
-          child: Icon(icon, size: 16, color: NmdColors.brandPrimary),
+          child: Icon(
+            icon,
+            size: 16,
+            color: enabled
+                ? NmdColors.brandPrimary
+                : NmdColors.brandPrimary.withValues(alpha: 0.35),
+          ),
         ),
       ),
     );

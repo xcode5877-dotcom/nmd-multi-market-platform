@@ -107,6 +107,8 @@ console.log('\nStrict write vs permissive read');
     isWeightBased: true,
     unitName: 'غرام',
     quantityStep: 0.25,
+    minimumQuantity: 0.25,
+    maximumQuantity: 1,
   });
   check(legacyOk.ok === true, 'legacy valid write accepted');
   if (legacyOk.ok) {
@@ -114,10 +116,24 @@ console.log('\nStrict write vs permissive read');
       legacyOk.config.measurementType === 'WEIGHT' &&
         legacyOk.config.baseUnitCode === 'kg' &&
         legacyOk.config.displayUnitCode === 'g' &&
-        legacyOk.config.quantityStep === '0.25',
-      'legacy normalized to WEIGHT/kg/g/0.25'
+        legacyOk.config.quantityStep === '0.25' &&
+        legacyOk.config.maximumQuantity === '1',
+      'legacy normalized to WEIGHT/kg/g/0.25/max1'
     );
   }
+
+  const weightMissingMax = normalizeAndValidateMeasurementForWrite({
+    measurementType: 'WEIGHT',
+    baseUnitCode: 'kg',
+    displayUnitCode: 'g',
+    quantityStep: '0.25',
+    minimumQuantity: '0.25',
+  });
+  check(
+    !weightMissingMax.ok &&
+      weightMissingMax.error.details?.field === 'maximumQuantity',
+    'write rejects WEIGHT without maximumQuantity'
+  );
 
   const missing = normalizeAndValidateMeasurementForWrite({ name: 'Tomato', basePrice: 7 });
   check(missing.ok === true && missing.config.measurementType === 'PIECE', 'missing fields → PIECE');
@@ -318,6 +334,8 @@ async function repoAtomicityTests(): Promise<void> {
           isWeightBased: true,
           unitName: 'كغم',
           quantityStep: 0.5,
+          minimumQuantity: 0.5,
+          maximumQuantity: 5,
         },
       ],
       optionGroups: [],
@@ -330,6 +348,7 @@ async function repoAtomicityTests(): Promise<void> {
         leg?.baseUnitCode === 'kg' &&
         leg?.displayUnitCode === 'kg' &&
         leg?.quantityStep === '0.5' &&
+        leg?.maximumQuantity === '5' &&
         leg?.isWeightBased === true,
       '5. legacy valid → authoritative persisted'
     );
@@ -580,6 +599,8 @@ async function httpSmoke(): Promise<void> {
           isWeightBased: true,
           unitName: 'كيلو',
           quantityStep: 0.5,
+          minimumQuantity: 0.5,
+          maximumQuantity: 5,
         },
       ],
       optionGroups: [],
@@ -595,7 +616,10 @@ async function httpSmoke(): Promise<void> {
     const legCat = (await legGet.json()) as { products?: Record<string, unknown>[] };
     const legP = (legCat.products ?? [])[0];
     check(
-      legP?.measurementType === 'WEIGHT' && legP?.baseUnitCode === 'kg' && legP?.quantityStep === '0.5',
+      legP?.measurementType === 'WEIGHT' &&
+        legP?.baseUnitCode === 'kg' &&
+        legP?.quantityStep === '0.5' &&
+        legP?.maximumQuantity === '5',
       'legacy PUT persisted authoritative fields'
     );
 
