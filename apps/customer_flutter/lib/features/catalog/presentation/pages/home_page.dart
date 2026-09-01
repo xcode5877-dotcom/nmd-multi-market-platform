@@ -18,7 +18,6 @@ import '../../../../core/navigation/safe_back_navigation.dart';
 import '../../../../core/debug/nmd_post_login_trace.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
-import '../../../contest/presentation/widgets/contest_popup_sheet.dart';
 import '../../application/home_cubit.dart';
 import '../../data/pillar_nav_item.dart';
 import '../widgets/home_store_card.dart';
@@ -120,7 +119,6 @@ class _HomePageState extends State<HomePage> {
   final _searchFocus = FocusNode();
   late Future<_HomeLayoutPayload> _layoutFuture;
   String _query = '';
-  bool _contestPopupAttempted = false;
 
   /// Last slug we synced tenants for (reset when market changes).
   String? _tenantSyncSlug;
@@ -380,21 +378,6 @@ class _HomePageState extends State<HomePage> {
     return (market['name'] ?? market['title'] ?? '').toString().trim();
   }
 
-  /// Web parity: `ContestPopUp` loads when `onMarketPage` (here: `/market/:slug` home).
-  /// Fires once right after layout payload is ready — no wait for tenant list (same as web query).
-  ///
-  /// Participation gate + `GET /contest/me` session cache: see
-  /// `showContestPopupIfNeeded` in contest_popup_sheet.dart (logged-in users
-  /// skip the sheet if already joined; guests always eligible).
-  void _scheduleContestPopupAfterLayoutReady() {
-    if (_contestPopupAttempted) return;
-    _contestPopupAttempted = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showContestPopupIfNeeded(context);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     _scheduleTenantSyncFromRoute(context);
@@ -473,7 +456,6 @@ class _HomePageState extends State<HomePage> {
                   _homeRenderedLogged = true;
                   nmdPostLoginTrace('HOME_SCREEN_RENDERED slug=${widget.slug}');
                 }
-                _scheduleContestPopupAfterLayoutReady();
                 return BlocBuilder<HomeCubit, HomeCubitState>(
                   builder: (context, cState) {
                     if (cState.tenantsStatus == TenantsStatus.failure) {

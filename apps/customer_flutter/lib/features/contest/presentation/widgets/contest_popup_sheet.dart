@@ -18,21 +18,12 @@ import 'contest_celebration_overlay.dart';
 
 final class ContestSessionMemory {
   static final Set<String> _closedOrSubmittedContestIds = <String>{};
-  static final Set<String> _presentedContestIds = <String>{};
 
   static bool isDismissed(String contestId) =>
       _closedOrSubmittedContestIds.contains(contestId);
 
-  static bool wasPresented(String contestId) =>
-      _presentedContestIds.contains(contestId);
-
   static void dismiss(String contestId) {
     _closedOrSubmittedContestIds.add(contestId);
-  }
-
-  /// Marks that the auto popup was shown once this session (even if dismissed without joining).
-  static void markPresented(String contestId) {
-    _presentedContestIds.add(contestId);
   }
 }
 
@@ -173,67 +164,47 @@ String? _parseContestBannerUrl(Map<String, dynamic> json) {
   return null;
 }
 
-Future<void> showContestPopupIfNeeded(BuildContext context) async {
-  final dio = context.read<Dio>();
+/// Opens the contest participation sheet when the user explicitly chooses a contest
+/// (feed campaign, deep link, rewards hub, etc.). Never call from passive Home navigation.
+Future<void> showContestParticipationSheet(
+  BuildContext context, {
+  required ActiveContestVm contest,
+}) async {
+  if (contest.id.isEmpty || contest.title.isEmpty) return;
+  if (ContestSessionMemory.isDismissed(contest.id)) return;
+
+  if (contest.participated) {
+    ContestParticipationSessionCache.markJoined(contest.id);
+    ContestSessionMemory.dismiss(contest.id);
+    return;
+  }
+
   final tokenStorage = context.read<TokenStorage>();
-  final api = StorefrontApi(dio);
-  final raw = await api.getActiveContest();
-  if (raw == null) return;
-  final vm = ActiveContestVm.fromJson(raw);
-  if (vm.id.isEmpty || vm.title.isEmpty) return;
-
-  if (ContestSessionMemory.isDismissed(vm.id) ||
-      ContestSessionMemory.wasPresented(vm.id)) {
-    return;
-  }
-
-  if (vm.participated) {
-    ContestParticipationSessionCache.markJoined(vm.id);
-    ContestSessionMemory.dismiss(vm.id);
-    return;
-  }
-
   final token = await tokenStorage.getCustomerToken();
   ContestParticipationSessionCache.syncTokenKey(token);
 
-  // Guest: show sheet; we cannot know participation without a customer token.
   if (token != null && token.isNotEmpty) {
     if (ContestParticipationSessionCache.isLoaded) {
-      if (ContestParticipationSessionCache.hasJoined(vm.id)) {
-        debugPrint(
-          '[ContestPopup] gate: cached joined contestId=${vm.id} — skip sheet',
-        );
-        return;
-      }
+      if (ContestParticipationSessionCache.hasJoined(contest.id)) return;
     } else {
       try {
+        final api = StorefrontApi(context.read<Dio>());
         final participations = await api.getMyContestParticipations();
         ContestParticipationSessionCache.seedFromParticipations(participations);
-        debugPrint(
-          '[ContestPopup] contest/me count=${participations.length} contestId=${vm.id} joined=${ContestParticipationSessionCache.hasJoined(vm.id)}',
-        );
-        if (ContestParticipationSessionCache.hasJoined(vm.id)) return;
+        if (ContestParticipationSessionCache.hasJoined(contest.id)) return;
       } catch (e) {
-        debugPrint(
-          '[ContestPopup] contest/me failed — skip auto popup: $e',
-        );
-        return;
+        debugPrint('[ContestSheet] contest/me failed during explicit open: $e');
       }
     }
   }
 
   if (!context.mounted) return;
-  ContestSessionMemory.markPresented(vm.id);
-  // Next frame: same pattern as web overlay after data is ready (avoids build-phase sheet).
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!context.mounted) return;
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ContestSheet(contest: vm),
-    );
-  });
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _ContestSheet(contest: contest),
+  );
 }
 
 class _ContestSheet extends StatefulWidget {
@@ -589,6 +560,8 @@ class _ContestSheetState extends State<_ContestSheet> {
             return 'تم الاشتراك مسبقًا';
           case 'LOGIN_REQUIRED':
             return 'سجّل الدخول للمتابعة';
+          case 'CONTEST_INACTIVE':
+            return 'المسابقة غير متاحة';
         }
         if (d['error'] != null) {
           final t = d['error']?.toString().trim() ?? '';
