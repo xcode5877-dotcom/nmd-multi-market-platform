@@ -27,11 +27,16 @@ import '../features/loyalty/application/coins_balance_cubit.dart';
 import '../features/rewards/application/rewards_cubit.dart';
 import '../features/rewards/presentation/pages/rewards_page.dart';
 import '../features/splash/presentation/pages/splash_page.dart';
+import '../core/support/support_hub_chrome.dart';
 import '../presentation/layouts/main_layout.dart';
 import 'theme/app_colors.dart';
 
 final GoRouter appRouter = GoRouter(
+  navigatorKey: SupportHubChrome.rootNavigatorKey,
   initialLocation: '/splash',
+  observers: [
+    SupportHubChrome.modalObserver,
+  ],
   routes: [
     GoRoute(
       path: '/splash',

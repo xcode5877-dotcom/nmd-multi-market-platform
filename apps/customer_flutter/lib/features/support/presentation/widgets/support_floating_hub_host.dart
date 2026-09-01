@@ -11,6 +11,7 @@ import '../../../../core/support/support_hub_chrome.dart';
 import '../../../../core/support/support_route_policy.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../widgets/nmd_bottom_nav.dart';
+import '../../../auth/presentation/widgets/auth_bottom_sheet.dart';
 import 'support_floating_capsule.dart';
 import 'support_hub_sheet.dart';
 
@@ -45,7 +46,6 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
   String? _impressedPath;
   bool _sheetOpen = false;
   String _path = '';
-  bool _rebuildScheduled = false;
 
   GoRouter get _router => widget.router;
 
@@ -58,6 +58,7 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
     _path = _readPath();
     _router.routerDelegate.addListener(_scheduleRebuild);
     widget.modalDepth.addListener(_scheduleRebuild);
+    customerAuthSheetOpen.addListener(_scheduleRebuild);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncPathAndRebuild();
@@ -82,6 +83,7 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
   void dispose() {
     _router.routerDelegate.removeListener(_scheduleRebuild);
     widget.modalDepth.removeListener(_scheduleRebuild);
+    customerAuthSheetOpen.removeListener(_scheduleRebuild);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -94,10 +96,7 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
   }
 
   void _scheduleRebuild() {
-    if (_rebuildScheduled) return;
-    _rebuildScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _rebuildScheduled = false;
       if (!mounted) return;
       _syncPathAndRebuild();
     });
@@ -163,10 +162,28 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
     );
   }
 
+  void _showTapFeedback(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _openHub(SupportConfig config, String path) async {
     if (_sheetOpen) return;
+    if (!config.supportEnabled) {
+      _showTapFeedback('خدمة المساعدة غير متاحة حالياً');
+      return;
+    }
+    if (!config.phoneEnabled && !config.whatsappEnabled) {
+      _showTapFeedback('لا توجد قنوات مساعدة متاحة حالياً');
+      return;
+    }
     final navContext = SupportHubChrome.navigatorContext;
-    if (navContext == null) return;
+    if (navContext == null) {
+      _showTapFeedback('تعذر فتح المساعدة. حاول مرة أخرى.');
+      return;
+    }
     _sheetOpen = true;
     if (mounted) setState(() {});
     try {
@@ -203,7 +220,9 @@ class _SupportFloatingHubHostState extends State<SupportFloatingHubHost>
     // Prefer the last synced path; fall back to a live read for the first frame.
     final path = _path.isNotEmpty ? _path : _readPath();
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final modalActive = widget.modalDepth.value > 0 || _sheetOpen;
+    final modalActive = widget.modalDepth.value > 0 ||
+        _sheetOpen ||
+        customerAuthSheetOpen.value;
     final config = _config ?? SupportConfig.safeDefault;
     final decision = SupportRoutePolicy.evaluate(
       path: path,

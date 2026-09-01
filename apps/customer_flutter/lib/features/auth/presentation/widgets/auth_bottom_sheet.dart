@@ -16,6 +16,16 @@ import '../bloc/auth_bloc.dart';
 
 bool _authSheetOpen = false;
 
+/// Notifies when the customer auth bottom sheet opens/closes (for global overlays).
+final ValueNotifier<bool> customerAuthSheetOpen = ValueNotifier<bool>(false);
+
+void _setAuthSheetOpen(bool open) {
+  _authSheetOpen = open;
+  if (customerAuthSheetOpen.value != open) {
+    customerAuthSheetOpen.value = open;
+  }
+}
+
 void _authSheetAudit(String message) {
   debugPrint('[AUTH-AUDIT] $message');
 }
@@ -26,22 +36,25 @@ void recoverStuckAuthSheetIfNeeded(BuildContext context) {
   final navigator = Navigator.maybeOf(context, rootNavigator: true);
   final hasModal = navigator?.canPop() ?? false;
   if (!hasModal) {
-    _authSheetOpen = false;
+    _setAuthSheetOpen(false);
     _authSheetAudit('recoverStuckAuthSheet: cleared stale open flag');
   }
 }
 
 @visibleForTesting
 void resetAuthSheetOpenForTest() {
-  _authSheetOpen = false;
+  _setAuthSheetOpen(false);
 }
 
 @visibleForTesting
 bool isAuthSheetOpenForTest() => _authSheetOpen;
 
+/// Whether the OTP/town auth modal is currently mounted.
+bool isCustomerAuthSheetOpen() => _authSheetOpen;
+
 @visibleForTesting
 void setAuthSheetOpenForTest(bool value) {
-  _authSheetOpen = value;
+  _setAuthSheetOpen(value);
 }
 
 Future<bool> showAuthBottomSheet(BuildContext context) async {
@@ -53,7 +66,7 @@ Future<bool> showAuthBottomSheet(BuildContext context) async {
     _authSheetAudit('showAuthBottomSheet blocked — sheet already open');
     return false;
   }
-  _authSheetOpen = true;
+  _setAuthSheetOpen(true);
   final authBloc = context.read<AuthBloc>();
   authBloc.add(const AuthResetRequested());
 
@@ -77,7 +90,7 @@ Future<bool> showAuthBottomSheet(BuildContext context) async {
     _authSheetAudit('showAuthBottomSheet error: $e\n$st');
     result = false;
   } finally {
-    _authSheetOpen = false;
+    _setAuthSheetOpen(false);
     _authSheetAudit('showAuthBottomSheet finally open=false');
   }
 
