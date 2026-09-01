@@ -241,6 +241,11 @@ import { logExpressRoutes } from './utils/list-express-routes.js';
 import { whatsAppFetch } from './utils/whatsapp-http.js';
 import { SUPPORTED_DELIVERY_TOWNS, isSupportedDeliveryTown } from './delivery-towns.js';
 import { registerContestDrawRoutes } from './contest-draws.js';
+import {
+  ContestNotFoundError,
+  contestDeleteUserMessage,
+  deleteOrArchiveContest,
+} from './contest-lifecycle.js';
 import { refreshOrderTotalsAfterItemEdit } from './order-totals.js';
 import { executeManageOrderTransaction, listOrderModifications } from './order-manage-tx.js';
 import {
@@ -3340,11 +3345,22 @@ app.put('/contests/:id', wrapAsync(async (req, res) => {
 app.delete('/contests/:id', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
   const { id } = req.params;
-  await prisma.contest.delete({ where: { id } }).catch((e: { code?: string }) => {
-    if (e.code === 'P2025') return null;
-    throw e;
-  });
-  res.status(204).end();
+  try {
+    const { outcome } = await deleteOrArchiveContest(prisma, id);
+    res.json({
+      outcome,
+      message: contestDeleteUserMessage(outcome),
+    });
+  } catch (e: unknown) {
+    if (e instanceof ContestNotFoundError) {
+      return res.status(404).json({ error: 'المسابقة غير موجودة' });
+    }
+    console.error('[contests] delete failed', id, e);
+    return res.status(409).json({
+      error: 'تعذّر حذف المسابقة. قد تكون مرتبطة بسجل سحوبات أو عملية جارية.',
+      code: 'CONTEST_DELETE_BLOCKED',
+    });
+  }
 }));
 
 /** Public catalog for customer app: active rewards, not expired, in stock. */
