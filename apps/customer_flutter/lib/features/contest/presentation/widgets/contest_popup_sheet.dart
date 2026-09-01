@@ -18,12 +18,21 @@ import 'contest_celebration_overlay.dart';
 
 final class ContestSessionMemory {
   static final Set<String> _closedOrSubmittedContestIds = <String>{};
+  static final Set<String> _presentedContestIds = <String>{};
 
   static bool isDismissed(String contestId) =>
       _closedOrSubmittedContestIds.contains(contestId);
 
+  static bool wasPresented(String contestId) =>
+      _presentedContestIds.contains(contestId);
+
   static void dismiss(String contestId) {
     _closedOrSubmittedContestIds.add(contestId);
+  }
+
+  /// Marks that the auto popup was shown once this session (even if dismissed without joining).
+  static void markPresented(String contestId) {
+    _presentedContestIds.add(contestId);
   }
 }
 
@@ -173,7 +182,16 @@ Future<void> showContestPopupIfNeeded(BuildContext context) async {
   final vm = ActiveContestVm.fromJson(raw);
   if (vm.id.isEmpty || vm.title.isEmpty) return;
 
-  if (ContestSessionMemory.isDismissed(vm.id)) return;
+  if (ContestSessionMemory.isDismissed(vm.id) ||
+      ContestSessionMemory.wasPresented(vm.id)) {
+    return;
+  }
+
+  if (vm.participated) {
+    ContestParticipationSessionCache.markJoined(vm.id);
+    ContestSessionMemory.dismiss(vm.id);
+    return;
+  }
 
   final token = await tokenStorage.getCustomerToken();
   ContestParticipationSessionCache.syncTokenKey(token);
@@ -196,12 +214,16 @@ Future<void> showContestPopupIfNeeded(BuildContext context) async {
         );
         if (ContestParticipationSessionCache.hasJoined(vm.id)) return;
       } catch (e) {
-        debugPrint('[ContestPopup] contest/me failed (show sheet anyway): $e');
+        debugPrint(
+          '[ContestPopup] contest/me failed — skip auto popup: $e',
+        );
+        return;
       }
     }
   }
 
   if (!context.mounted) return;
+  ContestSessionMemory.markPresented(vm.id);
   // Next frame: same pattern as web overlay after data is ready (avoids build-phase sheet).
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!context.mounted) return;
