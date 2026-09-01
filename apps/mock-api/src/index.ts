@@ -3048,31 +3048,7 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
   }
   const body = req.body as { contestId?: string; userAnswer?: string; scoreA?: number; scoreB?: number };
   const contestId = String(body?.contestId ?? '').trim();
-  const contest = await prisma.contest.findUnique({ where: { id: contestId } });
-  if (!contest || !contest.isActive) return res.status(404).json({ error: 'Contest not found or inactive' });
-  const now = new Date().toISOString();
-  if (contest.expiresAt && contest.expiresAt < now) return res.status(400).json({ error: 'Contest has expired' });
-
-  let userAnswer: string;
-  let scoreA: number | null = null;
-  let scoreB: number | null = null;
-  if (contest.isPrediction) {
-    const a = typeof body?.scoreA === 'number' ? body.scoreA : parseInt(String(body?.scoreA ?? ''), 10);
-    const b = typeof body?.scoreB === 'number' ? body.scoreB : parseInt(String(body?.scoreB ?? ''), 10);
-    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
-      return res.status(400).json({ error: 'scoreA and scoreB required (non-negative integers) for match prediction' });
-    }
-    scoreA = a;
-    scoreB = b;
-    userAnswer = `${scoreA}-${scoreB}`;
-  } else {
-    userAnswer = String(body?.userAnswer ?? '').trim();
-    if (!userAnswer) return res.status(400).json({ error: 'contestId and userAnswer required' });
-  }
-
-  const coinsCost = Math.max(0, (contest as { coinsCost?: number }).coinsCost ?? 0);
-  const phoneNorm = normalizePhoneForCoupon(customer.phone);
-  if (!phoneNorm && coinsCost > 0) return res.status(400).json({ error: 'Phone required' });
+  if (!contestId) return res.status(400).json({ error: 'contestId required' });
 
   const prismaCustomerId = await ensureCustomerInPrisma(customer);
 
@@ -3080,6 +3056,39 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const contest = await tx.contest.findUnique({ where: { id: contestId } });
+      if (!contest?.isActive) {
+        throw new ContestParticipateError('CONTEST_INACTIVE', 'Contest not found or inactive');
+      }
+      const now = new Date().toISOString();
+      if (contest.expiresAt && contest.expiresAt < now) {
+        throw new ContestParticipateError('CONTEST_EXPIRED', 'Contest has expired');
+      }
+
+      let userAnswer: string;
+      let scoreA: number | null = null;
+      let scoreB: number | null = null;
+      if (contest.isPrediction) {
+        const a = typeof body?.scoreA === 'number' ? body.scoreA : parseInt(String(body?.scoreA ?? ''), 10);
+        const b = typeof body?.scoreB === 'number' ? body.scoreB : parseInt(String(body?.scoreB ?? ''), 10);
+        if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
+          throw new ContestParticipateError('INVALID_PREDICTION', 'scoreA and scoreB required (non-negative integers) for match prediction');
+        }
+        scoreA = a;
+        scoreB = b;
+        userAnswer = `${scoreA}-${scoreB}`;
+      } else {
+        userAnswer = String(body?.userAnswer ?? '').trim();
+        if (!userAnswer) {
+          throw new ContestParticipateError('INVALID_ANSWER', 'contestId and userAnswer required');
+        }
+      }
+
+      const coinsCost = Math.max(0, (contest as { coinsCost?: number }).coinsCost ?? 0);
+      const phoneNorm = normalizePhoneForCoupon(customer.phone);
+      if (!phoneNorm && coinsCost > 0) {
+        throw new ContestParticipateError('PHONE_REQUIRED', 'Phone required');
+      }
       const dup = await tx.contestParticipation.findUnique({
         where: { customerId_contestId: { customerId: prismaCustomerId, contestId } },
       });
@@ -3166,14 +3175,14 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
         },
       });
 
-      return { participation, balanceAfter, isWinner };
+      return { participation, balanceAfter, isWinner, rewardCode: contest.rewardCode, coinsCost };
     });
 
     console.log('[CONTEST_PARTICIPATE]', {
       customerId: customer.id,
       contestId,
-      coinsCost,
-      balanceBefore: result.balanceAfter + coinsCost,
+      coinsCost: result.coinsCost,
+      balanceBefore: result.balanceAfter + result.coinsCost,
       balanceAfter: result.balanceAfter,
       status: 'PENDING',
     });
@@ -3184,7 +3193,7 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
       balance: result.balanceAfter,
       status: 'PENDING',
       isWinner: result.isWinner,
-      rewardCode: result.isWinner ? contest.rewardCode : undefined,
+      rewardCode: result.isWinner ? result.rewardCode : undefined,
       id: result.participation.id,
     });
   } catch (e: unknown) {
@@ -3193,16 +3202,18 @@ app.post('/contest/participate', wrapAsync(async (req, res) => {
         INSUFFICIENT_COINS: 'رصيدك غير كافٍ',
         ALREADY_PARTICIPATED: 'تم الاشتراك مسبقًا',
         LOGIN_REQUIRED: 'سجّل الدخول للمتابعة',
+        CONTEST_INACTIVE: 'المسابقة غير متاحة',
+        CONTEST_EXPIRED: 'انتهت المسابقة',
       };
+      const status = e.code === 'CONTEST_INACTIVE' ? 404 : 400;
       console.log('[CONTEST_PARTICIPATE]', {
         customerId: customer.id,
         contestId,
-        coinsCost,
         balanceBefore: (e.extra?.balance as number | undefined) ?? null,
         balanceAfter: null,
         status: e.code,
       });
-      return res.status(400).json({
+      return res.status(status).json({
         error: messageAr[e.code] ?? e.message,
         code: e.code,
         ...e.extra,
@@ -3346,10 +3357,10 @@ app.delete('/contests/:id', wrapAsync(async (req, res) => {
   if (!requireContestAdmin(req, res)) return;
   const { id } = req.params;
   try {
-    const { outcome } = await deleteOrArchiveContest(prisma, id);
+    const { outcome, reason } = await deleteOrArchiveContest(prisma, id);
     res.json({
       outcome,
-      message: contestDeleteUserMessage(outcome),
+      message: contestDeleteUserMessage(outcome, reason),
     });
   } catch (e: unknown) {
     if (e instanceof ContestNotFoundError) {

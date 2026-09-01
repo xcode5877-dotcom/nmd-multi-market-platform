@@ -8,6 +8,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type express from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { isPlatformSuperAdmin } from '@nmd/core';
+import { assertContestOpenForMutation } from './contest-lifecycle.js';
 
 export const DRAW_ALGORITHM_VERSION = 'contest-draw-v1';
 export const DRAW_RANDOM_METHOD = 'crypto.randomInt';
@@ -223,7 +224,7 @@ async function loadEligibleForContest(prisma: PrismaClient, contestId: string) {
   return { contest, ...pool };
 }
 
-async function performDraw(
+export async function performDraw(
   deps: ContestDrawDeps,
   contestId: string,
   performedBy: { userId: string; role: string },
@@ -253,6 +254,7 @@ async function performDraw(
     }
 
     const { contest, rawCount, eligible, duplicateGroups } = await loadEligibleForContest(prisma, contestId);
+    assertContestOpenForMutation(contest);
     if (eligible.length === 0) {
       const err = new Error('NO_ELIGIBLE_PARTICIPANTS') as Error & { code: string };
       err.code = 'NO_ELIGIBLE_PARTICIPANTS';
@@ -289,6 +291,8 @@ async function performDraw(
           });
         }
       } else {
+        const freshContest = await tx.contest.findUnique({ where: { id: contestId } });
+        assertContestOpenForMutation(freshContest);
         const raceConfirmed = await tx.contestDraw.findFirst({
           where: { contestId, status: 'CONFIRMED' },
         });
@@ -407,6 +411,12 @@ export function registerContestDrawRoutes(app: express.Express, deps: ContestDra
       if (err.code === 'CONTEST_NOT_FOUND') {
         return res.status(404).json({ error: 'Contest not found', code: 'CONTEST_NOT_FOUND' });
       }
+      if (err.code === 'CONTEST_INACTIVE') {
+        return res.status(409).json({
+          error: 'المسابقة غير متاحة للسحب (مؤرشفة)',
+          code: 'CONTEST_INACTIVE',
+        });
+      }
       if (err.code === 'NO_ELIGIBLE_PARTICIPANTS') {
         return res.status(400).json({ error: 'No eligible participants', code: 'NO_ELIGIBLE_PARTICIPANTS' });
       }
@@ -453,6 +463,12 @@ export function registerContestDrawRoutes(app: express.Express, deps: ContestDra
       }
       if (err.code === 'CONTEST_NOT_FOUND') {
         return res.status(404).json({ error: 'Contest not found', code: 'CONTEST_NOT_FOUND' });
+      }
+      if (err.code === 'CONTEST_INACTIVE') {
+        return res.status(409).json({
+          error: 'المسابقة غير متاحة لإعادة السحب (مؤرشفة)',
+          code: 'CONTEST_INACTIVE',
+        });
       }
       next(e);
     }
