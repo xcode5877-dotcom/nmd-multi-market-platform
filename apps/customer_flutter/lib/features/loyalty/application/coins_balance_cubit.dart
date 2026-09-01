@@ -66,6 +66,15 @@ class CoinsBalanceCubit extends Cubit<CoinsBalanceState> {
     );
   }
 
+  /// Clears cached balance after customer logout (guest state).
+  void clearForLogout() {
+    emit(const CoinsBalanceState(
+      balance: null,
+      loading: false,
+      isAuthenticated: false,
+    ));
+  }
+
   Future<void> _fetch({required bool bustCache}) async {
     emit(state.copyWith(loading: true));
     try {

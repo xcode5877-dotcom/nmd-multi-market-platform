@@ -52,7 +52,7 @@ class _NowMarketAppState extends State<NowMarketApp> {
     _authBloc = AuthBloc(_authRepository);
     _cartCubit = CartCubit();
     _customerProfileCubit = CustomerProfileCubit(_dio);
-    _coinsBalanceCubit = CoinsBalanceCubit(_dio, _tokenStorage);
+    _coinsBalanceCubit = CoinsBalanceCubit(_dio);
     CoinsBalanceRegistry.register(_coinsBalanceCubit);
     // Warm session before first tap (coalesced with splash restore).
     _authBloc.restoreSession().then((ok) {
