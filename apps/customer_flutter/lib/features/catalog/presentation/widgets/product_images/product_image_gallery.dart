@@ -95,25 +95,36 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
         ? const Color(0xFF141A22)
         : NmdColors.tintAliveSoft;
 
+    final heroBorderRadius = widget.isServices
+        ? ProductImageGallery.galleryRadius
+        : BorderRadius.zero;
+    final heroPadding = widget.isServices
+        ? const EdgeInsets.all(8)
+        : EdgeInsets.zero;
+    final galleryPadding = widget.isServices
+        ? const EdgeInsets.fromLTRB(12, 0, 12, 0)
+        : EdgeInsets.zero;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
           height: widget.height,
+          width: double.infinity,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            padding: galleryPadding,
             child: ClipRRect(
-              borderRadius: ProductImageGallery.galleryRadius,
+              borderRadius: heroBorderRadius,
               child: ColoredBox(
                 color: bg,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
                     if (urls.isEmpty)
-                      const ProductImageHero(
+                      ProductImageHero(
                         imageUrl: '',
-                        layoutWidth: 360,
-                        borderRadius: ProductImageGallery.galleryRadius,
+                        layoutWidth: layoutWidth,
+                        borderRadius: heroBorderRadius,
                       )
                     else if (!hasMultiple)
                       ProductImageHero(
@@ -124,8 +135,8 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
                         imageKey: widget.imageKey,
                         onTap: _openViewer,
                         backgroundColor: bg,
-                        borderRadius: ProductImageGallery.galleryRadius,
-                        padding: const EdgeInsets.all(8),
+                        borderRadius: heroBorderRadius,
+                        padding: heroPadding,
                       )
                     else
                       PageView.builder(
@@ -144,7 +155,8 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
                             imageKey: index == _activeIndex ? widget.imageKey : null,
                             onTap: _openViewer,
                             backgroundColor: bg,
-                            padding: const EdgeInsets.all(8),
+                            borderRadius: heroBorderRadius,
+                            padding: heroPadding,
                             semanticLabel:
                                 'صورة ${index + 1} من ${urls.length}',
                           );

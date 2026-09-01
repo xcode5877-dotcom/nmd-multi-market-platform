@@ -587,19 +587,16 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                   imageKey: _imageKey,
                   isServices: isServices,
                 )
-              : ClipPath(
-                  clipper: ProductImageCurvedClipper(),
-                  child: ProductImageGallery(
-                    imageUrls: imageUrls,
-                    heroTag: heroTag,
-                    initialIndex: heroImageIndex,
-                    height: productImageGalleryHeight(
-                      context,
-                      isServices: isServices,
-                    ),
-                    imageKey: _imageKey,
+              : ProductImageGallery(
+                  imageUrls: imageUrls,
+                  heroTag: heroTag,
+                  initialIndex: heroImageIndex,
+                  height: productImageGalleryHeight(
+                    context,
                     isServices: isServices,
                   ),
+                  imageKey: _imageKey,
+                  isServices: isServices,
                 ),
         ),
         SliverToBoxAdapter(
