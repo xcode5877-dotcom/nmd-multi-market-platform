@@ -241,8 +241,13 @@ export async function updateContest(
   return apiFetch<Contest>(`/contests/${id}`, { method: 'PUT', body: JSON.stringify(body) });
 }
 
-export async function deleteContest(id: string): Promise<void> {
-  return apiFetch<void>(`/contests/${id}`, { method: 'DELETE' });
+export type ContestDeleteResult = {
+  outcome: 'deleted' | 'archived';
+  message: string;
+};
+
+export async function deleteContest(id: string): Promise<ContestDeleteResult> {
+  return apiFetch<ContestDeleteResult>(`/contests/${id}`, { method: 'DELETE' });
 }
 
 export async function setContestResult(

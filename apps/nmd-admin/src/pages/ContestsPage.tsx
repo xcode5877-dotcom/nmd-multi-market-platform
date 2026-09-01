@@ -60,9 +60,14 @@ export default function ContestsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteContest,
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['contests'] });
-      addToast('تم الحذف', 'success');
+      queryClient.invalidateQueries({ queryKey: ['contest-draw-summary'] });
+      const msg =
+        result.outcome === 'archived'
+          ? result.message || 'تم أرشفة المسابقة (سجل السحوبات محفوظ)'
+          : result.message || 'تم حذف المسابقة';
+      addToast(msg, result.outcome === 'archived' ? 'info' : 'success');
     },
     onError: (e: Error) => addToast(e.message, 'error'),
   });
