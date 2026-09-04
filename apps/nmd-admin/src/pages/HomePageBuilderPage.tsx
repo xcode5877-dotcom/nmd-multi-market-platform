@@ -45,6 +45,7 @@ import {
   STORE_SECTION_SOURCE_LABELS,
   createHomePageBlock,
   homePageBlocksSnapshotKey,
+  isKnownHomePageBlockType,
   normalizeHomePageBlocksList,
   validateHomePageBlocksClient,
   type HomePageBlock,
@@ -52,6 +53,12 @@ import {
   type StoreSectionLayout,
   type StoreSectionSource,
 } from '../types/homePageBlock';
+import {
+  canSaveHomeBuilderLayout,
+  isHomeBuilderDirty,
+  shouldApplyHomeBuilderServerBlocks,
+  shouldConfirmEmptyHomeBuilderSave,
+} from '../lib/homeBuilderHydration';
 
 const BLOCK_ICONS: Record<HomePageBlockType, typeof Image> = {
   HERO_BANNERS: Image,
@@ -96,10 +103,19 @@ export default function HomePageBuilderPage() {
     queryFn: async () => normalizeMarketsList(await apiFetch<unknown>('/markets')),
   });
 
-  const { data: blocks = [], isLoading, refetch, isFetching } = useQuery({
+  const {
+    data: blocks,
+    isLoading,
+    isFetching,
+    isSuccess,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['home-page-blocks', marketSlug],
     queryFn: () => listMarketHomePageBlocks(marketSlug),
     enabled: !!marketSlug.trim(),
+    retry: 1,
   });
 
   const { data: layoutSections = [] } = useQuery({
@@ -141,31 +157,56 @@ export default function HomePageBuilderPage() {
     return m;
   }, [campaigns]);
 
+  const hydratedSlugRef = useRef<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Reset local editor when market changes — never carry blocks across tenants.
+  useEffect(() => {
+    hydratedSlugRef.current = null;
+    setHydrated(false);
+    setWorking([]);
+    setServerKey('');
+  }, [marketSlug]);
+
   const dirtyRef = useRef(false);
-  dirtyRef.current = homePageBlocksSnapshotKey(working) !== serverKey;
+  dirtyRef.current = isHomeBuilderDirty(working, serverKey, hydrated);
 
   useEffect(() => {
-    if (dirtyRef.current) return;
-    const sorted = normalizeHomePageBlocksList(blocks);
+    if (
+      !shouldApplyHomeBuilderServerBlocks({
+        querySuccess: isSuccess,
+        marketSlug,
+        hydratedSlug: hydratedSlugRef.current,
+        isDirty: dirtyRef.current,
+      })
+    ) {
+      return;
+    }
+    const sorted = normalizeHomePageBlocksList(blocks ?? []);
     setWorking(sorted);
     setServerKey(homePageBlocksSnapshotKey(sorted));
-  }, [blocks, marketSlug]);
+    hydratedSlugRef.current = marketSlug;
+    setHydrated(true);
+  }, [blocks, marketSlug, isSuccess]);
 
-  const dirty = homePageBlocksSnapshotKey(working) !== serverKey;
+  const dirty = isHomeBuilderDirty(working, serverKey, hydrated);
   const validationErrors = useMemo(() => validateHomePageBlocksClient(working), [working]);
 
   const saveMutation = useMutation({
-    mutationFn: (next: HomePageBlock[]) =>
-      saveMarketHomePageBlocks(
-        marketSlug,
-        next.map((b, i) => ({ ...b, sortOrder: i })),
-      ),
+    mutationFn: (next: HomePageBlock[]) => saveMarketHomePageBlocks(marketSlug, next),
     onSuccess: async (data) => {
       const sorted = normalizeHomePageBlocksList(data);
       queryClient.setQueryData(['home-page-blocks', marketSlug], sorted);
       setWorking(sorted);
       setServerKey(homePageBlocksSnapshotKey(sorted));
-      await refetch();
+      hydratedSlugRef.current = marketSlug;
+      setHydrated(true);
+      const verified = await refetch();
+      if (verified.isSuccess) {
+        const again = normalizeHomePageBlocksList(verified.data ?? []);
+        setWorking(again);
+        setServerKey(homePageBlocksSnapshotKey(again));
+      }
       addToast('تم حفظ ترتيب الصفحة الرئيسية', 'success');
     },
     onError: (e: Error) => addToast(e.message || 'فشل الحفظ', 'error'),
@@ -190,6 +231,7 @@ export default function HomePageBuilderPage() {
   };
 
   const duplicateBlock = (block: HomePageBlock) => {
+    if (!isKnownHomePageBlockType(block.type)) return;
     const copy = createHomePageBlock(block.type, {
       ...block,
       id: `block_${Date.now()}`,
@@ -266,11 +308,36 @@ export default function HomePageBuilderPage() {
   };
 
   const handleSave = () => {
+    if (!hydrated) {
+      addToast('انتظر تحميل الترتيب الحالي قبل الحفظ', 'error');
+      return;
+    }
     if (validationErrors.length > 0) {
       addToast(validationErrors[0], 'error');
       return;
     }
+    if (
+      shouldConfirmEmptyHomeBuilderSave({ hydrated, blockCount: working.length })
+    ) {
+      const ok = window.confirm(
+        'تحذير: القائمة فارغة. هل تريد حفظ ترتيب فارغ واستبدال التخطيط المحفوظ؟\nهذا الإجراء قد يخفي الصفحة الرئيسية عن الزبائن.',
+      );
+      if (!ok) return;
+    }
     saveMutation.mutate(working);
+  };
+
+  const handleRefresh = async () => {
+    if (dirty) {
+      const ok = window.confirm(
+        'هناك تغييرات غير محفوظة. هل تريد إعادة التحميل من الخادم وإهمالها؟',
+      );
+      if (!ok) return;
+      // Allow server overwrite after intentional discard.
+      hydratedSlugRef.current = null;
+      setHydrated(false);
+    }
+    await refetch();
   };
 
   const handleBannerUpload = async (file: File) => {
@@ -313,12 +380,23 @@ export default function HomePageBuilderPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => refetch()} disabled={isLoading || isFetching}>
+          <Button
+            variant="outline"
+            onClick={() => void handleRefresh()}
+            disabled={isLoading || isFetching}
+          >
             تحديث
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!dirty || saveMutation.isPending || validationErrors.length > 0}
+            disabled={
+              !canSaveHomeBuilderLayout({
+                hydrated,
+                isDirty: dirty,
+                savePending: saveMutation.isPending,
+                validationErrorCount: validationErrors.length,
+              })
+            }
           >
             <Save className="w-4 h-4 ms-1" />
             {saveMutation.isPending ? 'جاري الحفظ…' : 'حفظ الترتيب'}
@@ -353,16 +431,31 @@ export default function HomePageBuilderPage() {
             </Button>
           </div>
 
-          {isLoading ? (
+          {isLoading || (!hydrated && !isError && isFetching) ? (
+            <Card className="p-8 text-center text-gray-500">جاري التحميل…</Card>
+          ) : isError ? (
+            <Card className="p-8 text-center space-y-3">
+              <p className="text-red-600 font-medium">
+                تعذر تحميل ترتيب الصفحة الرئيسية
+              </p>
+              <p className="text-sm text-gray-600">
+                {(error instanceof Error ? error.message : null) ||
+                  'فشل الاتصال بالخادم. لن يتم تفعيل الحفظ حتى ينجح التحميل.'}
+              </p>
+              <Button onClick={() => void refetch()}>إعادة المحاولة</Button>
+            </Card>
+          ) : !hydrated ? (
             <Card className="p-8 text-center text-gray-500">جاري التحميل…</Card>
           ) : working.length === 0 ? (
             <Card className="p-8 text-center text-gray-500">
-              لا توجد بلوكات — أضف بلوكاً أو احفظ القالب الافتراضي بعد التحميل.
+              لا توجد بلوكات — أضف بلوكاً ثم احفظ عند الحاجة. لن يُنشأ قالب افتراضي تلقائياً.
             </Card>
           ) : (
             <ul className="space-y-3">
               {working.map((block, index) => {
-                const Icon = BLOCK_ICONS[block.type];
+                const Icon = isKnownHomePageBlockType(block.type)
+                  ? BLOCK_ICONS[block.type]
+                  : LayoutGrid;
                 return (
                   <li key={block.id}>
                     <Card
@@ -398,11 +491,14 @@ export default function HomePageBuilderPage() {
                             {displayBlockLabel(block, campaignById[String(block.config?.campaignId ?? '')]?.title)}
                           </p>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                            {HOME_PAGE_BLOCK_TYPE_LABELS[block.type]}
+                            {isKnownHomePageBlockType(block.type)
+                              ? HOME_PAGE_BLOCK_TYPE_LABELS[block.type]
+                              : `غير معروف (${block.type})`}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1 truncate">
                           {block.visible ? 'ظاهر للزبون' : 'مخفي'}
+                          {block.isUnknownType ? ' · يُحفظ كما هو' : ''}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1 shrink-0">
@@ -418,12 +514,16 @@ export default function HomePageBuilderPage() {
                             <ToggleLeft className="w-5 h-5 text-gray-400" />
                           )}
                         </button>
-                        <Button size="sm" variant="outline" onClick={() => openEdit(block)}>
-                          تعديل
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => duplicateBlock(block)}>
-                          <Copy className="w-4 h-4" />
-                        </Button>
+                        {isKnownHomePageBlockType(block.type) && (
+                          <Button size="sm" variant="outline" onClick={() => openEdit(block)}>
+                            تعديل
+                          </Button>
+                        )}
+                        {isKnownHomePageBlockType(block.type) && (
+                          <Button size="sm" variant="outline" onClick={() => duplicateBlock(block)}>
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" onClick={() => removeBlock(block.id)}>
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>

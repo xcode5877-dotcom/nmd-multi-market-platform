@@ -2,7 +2,7 @@ import type { FeedCampaign, HomeFeedSettings } from './types/feedCampaign';
 import type { ModifierIcon } from './types/modifierIcon';
 import { normalizeModifierIconsList } from './types/modifierIcon';
 import type { HomePageBlock } from './types/homePageBlock';
-import { normalizeHomePageBlocksList } from './types/homePageBlock';
+import { normalizeHomePageBlocksList, toHomePageBlocksSavePayload } from './types/homePageBlock';
 import {
   firstUploadUrl,
   normalizeFeedCampaignListFromApi,
@@ -506,7 +506,7 @@ export async function saveMarketHomePageBlocks(
   blocks: HomePageBlock[],
 ): Promise<HomePageBlock[]> {
   const slug = encodeURIComponent(marketSlug.trim());
-  const payload = blocks.map((b, i) => ({ ...b, sortOrder: i }));
+  const payload = toHomePageBlocksSavePayload(blocks);
   console.log(
     '[HOME_BUILDER_SAVE]',
     JSON.stringify({
