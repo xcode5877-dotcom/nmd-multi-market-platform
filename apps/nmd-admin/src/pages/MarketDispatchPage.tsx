@@ -6,6 +6,8 @@ import {
   buildWhatsAppUrl,
   buildWhatsAppMessage,
   formatTimeGregorian,
+  formatDateTimeGregorian,
+  formatRelativeTimeAr,
   matchesOrderSourceFilter,
   DEFAULT_ORDER_SOURCE_FILTER,
   type OrderSourceFilter,
@@ -605,6 +607,7 @@ export default function MarketDispatchPage() {
             <th className="px-4 py-2 text-start font-medium text-gray-700">السائق</th>
             <th className="px-4 py-2 text-start font-medium text-gray-700">الحالة</th>
             <th className="px-4 py-2 text-start font-medium text-gray-700">المدة / SLA</th>
+            <th className="px-4 py-2 text-start font-medium text-gray-700">وقت الطلب</th>
             <th className="px-4 py-2 text-start font-medium text-gray-700">جاهز في</th>
             <th className="px-4 py-2 text-start font-medium text-gray-700">إجراء</th>
           </tr>
@@ -702,6 +705,16 @@ export default function MarketDispatchPage() {
                 </td>
                 <td className="px-4 py-2">
                   <DurationAndSla order={o} />
+                </td>
+                <td className="px-4 py-2 text-gray-500">
+                  {o.createdAt ? (
+                    <div>
+                      <div className="text-xs">{formatDateTimeGregorian(o.createdAt)}</div>
+                      <div className="text-xs text-gray-400">{formatRelativeTimeAr(o.createdAt)}</div>
+                    </div>
+                  ) : (
+                    '-'
+                  )}
                 </td>
                 <td className="px-4 py-2 text-gray-500">{o.readyAt ? formatTimeGregorian(o.readyAt) : '-'}</td>
                 <td className="px-4 py-2 flex flex-wrap gap-1">

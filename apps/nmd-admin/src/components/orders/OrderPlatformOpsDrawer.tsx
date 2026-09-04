@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Drawer } from '@nmd/ui';
 import { MockApiClient } from '@nmd/mock';
-import { formatDateGregorian } from '@nmd/core';
+import { formatDateTimeGregorian, formatRelativeTimeAr } from '@nmd/core';
 import PlatformOrderOpsPanel from './PlatformOrderOpsPanel';
 import { canUsePlatformOrderOps, formatOrderStatusLabel } from '../../lib/platform-order-ops';
 
@@ -53,9 +53,24 @@ export default function OrderPlatformOpsDrawer({
               <span className="font-medium">{formatOrderStatusLabel(order.status)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">التاريخ</span>
-              <span>{order.createdAt ? formatDateGregorian(order.createdAt) : '—'}</span>
+              <span className="text-gray-500">وقت الطلب</span>
+              <span className="text-start">
+                {order.createdAt ? (
+                  <>
+                    <span className="block">{formatDateTimeGregorian(order.createdAt)}</span>
+                    <span className="text-xs text-gray-400">{formatRelativeTimeAr(order.createdAt)}</span>
+                  </>
+                ) : (
+                  '—'
+                )}
+              </span>
             </div>
+            {(order as { notes?: string }).notes?.trim() && (
+              <div className="pt-2 border-t border-gray-200">
+                <span className="text-gray-500 block mb-1">ملاحظات الزبون</span>
+                <p className="text-gray-800 whitespace-pre-wrap">{(order as { notes?: string }).notes}</p>
+              </div>
+            )}
           </div>
           <PlatformOrderOpsPanel
             order={order as Parameters<typeof PlatformOrderOpsPanel>[0]['order']}

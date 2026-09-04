@@ -7,7 +7,8 @@ import { MockApiClient } from '@nmd/mock';
 import { useState, useEffect } from 'react';
 import {
   formatPrice,
-  formatDateGregorian,
+  formatDateTimeGregorian,
+  formatRelativeTimeAr,
   type Category,
   filterOrdersForList,
   sortOrdersByNewest,
@@ -975,7 +976,16 @@ export default function TenantDetailPage() {
                               <div className="font-mono">{hasValidId ? idStr.slice(0, 8) : '—'}</div>
                               <OrderSourceBadge isExternal={(o as { isExternal?: boolean }).isExternal} />
                             </td>
-                            <td className="py-2">{formatDateGregorian(o.createdAt)}</td>
+                            <td className="py-2">
+                              {o.createdAt ? (
+                                <div>
+                                  <div>{formatDateTimeGregorian(o.createdAt)}</div>
+                                  <div className="text-xs text-gray-400">{formatRelativeTimeAr(o.createdAt)}</div>
+                                </div>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
                             <td className="py-2">{formatPrice(o.total)}</td>
                             <td className="py-2">
                               <span className={oExt.status === 'READY' ? 'text-green-600 font-medium' : ''}>

@@ -5,7 +5,8 @@ import { Card, Button, Modal, useToast, Input, Select, ConfirmDialog, Drawer, Or
 import { MockApiClient, type RegistryTenant } from '@nmd/mock';
 import {
   formatAddonNameWithPlacement,
-  formatDateGregorian,
+  formatDateTimeGregorian,
+  formatRelativeTimeAr,
   filterOrdersForList,
   sortOrdersByNewest,
   getOrderListCounts,
@@ -18,6 +19,7 @@ import { ArrowLeft, KeyRound, Upload, Trash2, Eye, Settings2 } from 'lucide-reac
 import { apiHeaders, apiFetch, apiUpload, listCategories } from '../api';
 import PlatformOrderOpsPanel from '../components/orders/PlatformOrderOpsPanel';
 import OrderPlatformOpsDrawer from '../components/orders/OrderPlatformOpsDrawer';
+import OrderManagementPanel from '../components/orders/OrderManagementPanel';
 import { canUsePlatformOrderOps, formatOrderStatusLabel } from '../lib/platform-order-ops';
 import MarketBannersTab from './MarketBannersTab';
 import MarketLayoutTab from './MarketLayoutTab';
@@ -630,7 +632,16 @@ export default function MarketDetailPage() {
                           <td className="px-4 py-3">
                             <span>{formatOrderStatusLabel(o.status)}</span>
                           </td>
-                          <td className="px-4 py-3 text-gray-500">{o.createdAt ? formatDateGregorian(o.createdAt) : '-'}</td>
+                          <td className="px-4 py-3 text-gray-500">
+                            {o.createdAt ? (
+                              <div>
+                                <div>{formatDateTimeGregorian(o.createdAt)}</div>
+                                <div className="text-xs text-gray-400">{formatRelativeTimeAr(o.createdAt)}</div>
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             {o.id && (
                               <div className="flex items-center gap-1">
@@ -1042,7 +1053,7 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants, userRole, marketI
   const currency = order?.currency ?? 'ر.س';
 
   return (
-    <Drawer open={!!orderId} onClose={onClose} title="تفاصيل الطلب" contentClassName="md:max-w-lg">
+    <Drawer open={!!orderId} onClose={onClose} title="تفاصيل الطلب" contentClassName="md:max-w-xl">
       {!orderId ? null : isLoading ? (
         <div className="py-8 text-center text-gray-500">جاري التحميل...</div>
       ) : isError || !order ? (
@@ -1062,8 +1073,17 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants, userRole, marketI
                 <span>{formatOrderStatusLabel(order.status)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">التاريخ</span>
-                <span>{order.createdAt ? formatDateGregorian(order.createdAt) : '—'}</span>
+                <span className="text-gray-600">وقت الطلب</span>
+                <span className="text-start">
+                  {order.createdAt ? (
+                    <>
+                      <span className="block">{formatDateTimeGregorian(order.createdAt)}</span>
+                      <span className="text-xs text-gray-400">{formatRelativeTimeAr(order.createdAt)}</span>
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </span>
               </div>
             </div>
           </section>
@@ -1187,6 +1207,15 @@ function OrderDetailsDrawer({ orderId, onClose, marketTenants, userRole, marketI
               <span>{storeName}</span>
             </div>
           </section>
+
+          <OrderManagementPanel
+            order={order}
+            userRole={userRole}
+            invalidateKeys={[
+              ...(marketId ? [['market-orders', marketId] as string[]] : []),
+              ['order', orderId!],
+            ]}
+          />
 
           {canUsePlatformOrderOps(userRole) && order.id && order.tenantId && (
             <PlatformOrderOpsPanel
