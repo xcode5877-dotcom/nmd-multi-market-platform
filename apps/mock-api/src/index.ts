@@ -7243,7 +7243,12 @@ app.get('/markets/by-slug/:slug/home-page-blocks', async (req, res) => {
     logHomePageBlocksGet(slugNorm, list, false);
     return res.json(Array.isArray(list) ? list : []);
   } catch (err) {
-    console.error('[HOME_PAGE_BLOCKS_API] GET failed — returning []', err);
+    console.error('[HOME_PAGE_BLOCKS_API] GET failed', err);
+    // Admin (?all=1) must not receive a silent empty layout — that looks like
+    // a legitimate empty editor and risks destructive overwrite on save.
+    if (all) {
+      return res.status(500).json({ error: 'Failed to load home page blocks' });
+    }
     return res.json([]);
   }
 });

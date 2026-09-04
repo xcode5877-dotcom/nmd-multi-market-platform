@@ -170,7 +170,8 @@ export type HomePageBlockType =
 
 export interface HomePageBlock {
   id: string;
-  type: HomePageBlockType;
+  /** Known types, or opaque newer types preserved for Admin round-trip. */
+  type: HomePageBlockType | string;
   title: string;
   visible: boolean;
   sortOrder: number;
@@ -919,17 +920,20 @@ export function coerceHomePageBlockList(val: unknown): HomePageBlock[] {
 }
 
 function normalizeHomePageBlock(raw: HomePageBlock): HomePageBlock {
-  const type = HOME_PAGE_BLOCK_TYPES.includes(raw.type as HomePageBlockType)
-    ? (raw.type as HomePageBlockType)
-    : 'STORE_SECTION';
+  const typeRaw = String((raw as { type?: unknown }).type ?? '').trim();
+  const type = (HOME_PAGE_BLOCK_TYPES as string[]).includes(typeRaw)
+    ? (typeRaw as HomePageBlockType)
+    : (typeRaw || 'STORE_SECTION');
   const cfg =
     raw.config != null && typeof raw.config === 'object' && !Array.isArray(raw.config)
       ? { ...(raw.config as Record<string, unknown>) }
       : {};
   return {
     id: String(raw.id ?? `block_${Date.now()}`).trim(),
-    type,
-    title: String(raw.title ?? '').trim() || defaultTitleForBlockType(type),
+    type: type as HomePageBlockType,
+    title: String(raw.title ?? '').trim() || defaultTitleForBlockType(
+      (HOME_PAGE_BLOCK_TYPES as string[]).includes(type) ? (type as HomePageBlockType) : 'STORE_SECTION',
+    ),
     visible: raw.visible !== false,
     sortOrder: Number.isFinite(raw.sortOrder) ? Number(raw.sortOrder) : 0,
     config: cfg,
@@ -1024,6 +1028,10 @@ export function buildLegacyHomePageBlocks(marketSlug: string): HomePageBlock[] {
 export function validateHomePageBlocks(blocks: HomePageBlock[]): string[] {
   const errors: string[] = [];
   for (const b of blocks) {
+    if (!(HOME_PAGE_BLOCK_TYPES as string[]).includes(String(b.type))) {
+      // Preserve unknown/newer types — do not fail the whole layout.
+      continue;
+    }
     const cfg = b.config ?? {};
     if (b.type === 'STORE_SECTION') {
       if (!b.title.trim()) errors.push(`قسم محلات بدون عنوان (${b.id})`);
