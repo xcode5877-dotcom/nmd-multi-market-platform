@@ -11,7 +11,17 @@ type StatementResponse = {
   config: { hourlyRate: number; orderCommissionPercent: number; deliveryFeeShare: number };
   outstandingBalance: number;
   totalSettled: number;
-  shifts: { id: string; date: string; startTime: string; endTime: string | null; hours: number | null; autoClosed: boolean }[];
+  shifts: {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string | null;
+    hours: number | null;
+    workedMinutes?: number | null;
+    status?: string;
+    durationLabel?: string;
+    autoClosed: boolean;
+  }[];
   earnings: { id: string; date: string; type: string; amount: number; referenceId?: string | null; description?: string | null }[];
   expenses: { id: string; date: string; category: string; amount: number; status: string; note?: string | null }[];
   bonuses: { id: string; date: string; amount: number; description?: string | null }[];
@@ -106,26 +116,47 @@ export default function DriverStatementPage() {
 
           <Card className="overflow-x-auto p-0">
             {tab === 'shifts' && (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="border-b bg-gray-50 text-gray-500">
                     <th className="p-3 text-right">التاريخ</th>
                     <th className="p-3 text-right">البداية</th>
                     <th className="p-3 text-right">النهاية</th>
-                    <th className="p-3 text-right">الساعات</th>
+                    <th className="p-3 text-right">ساعات العمل</th>
                     <th className="p-3 text-right">إغلاق تلقائي؟</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.shifts.map((s) => (
-                    <tr key={s.id} className="border-b">
-                      <td className="p-3">{s.date}</td>
-                      <td className="p-3" dir="ltr">{new Date(s.startTime).toLocaleTimeString('ar-IL', { hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="p-3" dir="ltr">{s.endTime ? new Date(s.endTime).toLocaleTimeString('ar-IL', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                      <td className="p-3">{s.hours != null ? s.hours.toFixed(1) : '—'}</td>
-                      <td className="p-3">{s.autoClosed ? 'نعم' : 'لا'}</td>
+                  {data.shifts.length === 0 && (
+                    <tr>
+                      <td className="p-4 text-center text-gray-500" colSpan={5}>
+                        لا توجد سجلات دوام
+                      </td>
                     </tr>
-                  ))}
+                  )}
+                  {data.shifts.map((s) => {
+                    const isActive = s.status === 'ACTIVE' || (!s.endTime && s.status !== 'INVALID_RANGE');
+                    const durationText =
+                      s.durationLabel ??
+                      (s.hours != null ? `${s.hours.toFixed(1)} س` : isActive ? 'قيد الدوام الآن' : '—');
+                    return (
+                      <tr key={s.id} className="border-b">
+                        <td className="p-3 whitespace-nowrap">{s.date}</td>
+                        <td className="p-3 whitespace-nowrap" dir="ltr">
+                          {new Date(s.startTime).toLocaleTimeString('ar-IL', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="p-3 whitespace-nowrap" dir="ltr">
+                          {s.endTime
+                            ? new Date(s.endTime).toLocaleTimeString('ar-IL', { hour: '2-digit', minute: '2-digit' })
+                            : 'قيد الدوام الآن'}
+                        </td>
+                        <td className={`p-3 whitespace-nowrap ${isActive ? 'text-emerald-700 font-medium' : ''}`}>
+                          {durationText}
+                        </td>
+                        <td className="p-3">{s.autoClosed ? 'نعم' : 'لا'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

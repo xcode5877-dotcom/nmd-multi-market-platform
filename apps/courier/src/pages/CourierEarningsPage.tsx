@@ -38,12 +38,20 @@ type Shift = {
   startTime: string;
   endTime?: string | null;
   durationMinutes?: number | null;
+  workedMinutes?: number | null;
+  hours?: number | null;
+  status?: string;
+  durationLabel?: string;
   autoClosed?: boolean;
 };
 
 type ActiveShiftResponse = {
   shift: Shift | null;
   shiftWarning?: string | null;
+};
+
+type ShiftsHistoryResponse = {
+  shifts: Shift[];
 };
 
 const PERIODS = [
@@ -117,11 +125,19 @@ export default function CourierEarningsPage() {
   const activeShift = activeShiftData?.shift ?? null;
   const shiftWarning = activeShiftData?.shiftWarning ?? summary?.shiftWarning ?? null;
 
+  const { data: shiftsHistory } = useQuery({
+    queryKey: ['courier-shifts-history'],
+    queryFn: () => apiFetch<ShiftsHistoryResponse>('/courier/shifts?limit=20'),
+    enabled: !!user,
+    refetchInterval: 30_000,
+  });
+
   const startShift = useMutation({
     mutationFn: () => apiFetch<Shift>('/courier/shifts/start', { method: 'POST' }),
     onSuccess: () => {
       setShiftMsg('تم بدء الدوام');
       qc.invalidateQueries({ queryKey: ['courier-shift-active'] });
+      qc.invalidateQueries({ queryKey: ['courier-shifts-history'] });
       qc.invalidateQueries({ queryKey: ['courier-earnings'] });
     },
     onError: (e: Error) => setShiftMsg(e.message),
@@ -132,6 +148,7 @@ export default function CourierEarningsPage() {
     onSuccess: () => {
       setShiftMsg('تم إنهاء الدوام');
       qc.invalidateQueries({ queryKey: ['courier-shift-active'] });
+      qc.invalidateQueries({ queryKey: ['courier-shifts-history'] });
       qc.invalidateQueries({ queryKey: ['courier-earnings'] });
     },
     onError: (e: Error) => setShiftMsg(e.message),
@@ -162,7 +179,14 @@ export default function CourierEarningsPage() {
           {onShift ? (
             <div className="space-y-3">
               <p className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
-                دوام نشط منذ {new Date(activeShift!.startTime).toLocaleTimeString('ar-IL', { hour: '2-digit', minute: '2-digit' })}
+                دوام نشط منذ{' '}
+                {new Date(activeShift!.startTime).toLocaleTimeString('ar-IL', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+              <p className="text-sm font-semibold text-slate-800 text-center">
+                {activeShift?.durationLabel ?? 'قيد الدوام الآن'}
               </p>
               <button
                 type="button"
@@ -192,6 +216,44 @@ export default function CourierEarningsPage() {
             </p>
           )}
         </div>
+
+        {!!shiftsHistory?.shifts?.length && (
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <h2 className="font-bold text-slate-800 mb-3">سجل الدوام</h2>
+            <ul className="space-y-2">
+              {shiftsHistory.shifts.slice(0, 10).map((s) => {
+                const isActive = s.status === 'ACTIVE' || !s.endTime;
+                return (
+                  <li
+                    key={s.id}
+                    className="flex items-start justify-between gap-3 text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-slate-700" dir="ltr">
+                        {new Date(s.startTime).toLocaleString('ar-IL', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        {s.endTime
+                          ? ` → ${new Date(s.endTime).toLocaleTimeString('ar-IL', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}`
+                          : ''}
+                      </p>
+                      {s.autoClosed && <p className="text-xs text-amber-700">إغلاق تلقائي</p>}
+                    </div>
+                    <p className={`shrink-0 font-semibold ${isActive ? 'text-emerald-700' : 'text-slate-900'}`}>
+                      {s.durationLabel ?? (isActive ? 'قيد الدوام الآن' : '—')}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         <div className="flex gap-2 p-1 bg-white rounded-xl border border-slate-200">
           {PERIODS.map((p) => (

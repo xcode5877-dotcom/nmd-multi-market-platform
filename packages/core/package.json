@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "verify:shift-duration": "tsx scripts/verify-shift-duration.ts"
   },
   "devDependencies": {
     "tsup": "^8.0.2",

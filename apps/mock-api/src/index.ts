@@ -112,6 +112,7 @@ import {
   getOrCreatePayrollConfig,
   getRecentAutoClosedShiftWarning,
   getTenantDriverCommissionOverrides,
+  listCourierShifts,
   parseDateRange,
   postCourierEarningsIfEligible,
   rejectExpense,
@@ -119,6 +120,7 @@ import {
   startShift,
   updatePayrollConfig,
 } from './courier-payroll.js';
+import { serializeCourierShift } from './courier-shift-api.js';
 import {
   computeOutstandingBalance,
   computePayrollHistoryTotals,
@@ -5259,7 +5261,7 @@ app.post('/courier/shifts/start', wrapAsync(async (req, res) => {
   if (!scope) return;
   try {
     const shift = await startShift(scope.courierId, scope.marketId);
-    res.status(201).json(shift);
+    res.status(201).json(serializeCourierShift(shift));
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === 'ACTIVE_SHIFT_EXISTS') {
@@ -5275,7 +5277,7 @@ app.post('/courier/shifts/end', wrapAsync(async (req, res) => {
   if (!scope) return;
   try {
     const shift = await endShift(scope.courierId);
-    res.json(shift);
+    res.json(serializeCourierShift(shift));
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === 'NO_ACTIVE_SHIFT') {
@@ -5291,7 +5293,20 @@ app.get('/courier/shifts/active', wrapAsync(async (req, res) => {
   if (!scope) return;
   const shift = await getActiveShift(scope.courierId);
   const shiftWarning = await getRecentAutoClosedShiftWarning(scope.courierId);
-  res.json({ shift: shift ?? null, shiftWarning });
+  res.json({
+    shift: shift ? serializeCourierShift(shift) : null,
+    shiftWarning,
+  });
+}));
+
+/** Recent shift history for the authenticated courier (scoped to own courierId). */
+app.get('/courier/shifts', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const limitRaw = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, Math.floor(limitRaw)), 200) : 50;
+  const rows = await listCourierShifts(scope.courierId, limit);
+  res.json({ shifts: rows.map((s) => serializeCourierShift(s)) });
 }));
 
 /** Driver earnings summary — period=today|week|month or from/to (YYYY-MM-DD). */

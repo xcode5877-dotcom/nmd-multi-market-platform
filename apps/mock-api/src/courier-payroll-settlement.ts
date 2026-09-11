@@ -3,6 +3,7 @@
  */
 
 import { prisma } from './db.js';
+import { serializeCourierShiftStatementRow } from './courier-shift-api.js';
 import {
   appendPayrollAudit,
   computeEarningsSummary,
@@ -237,14 +238,7 @@ export async function getDriverPayrollStatement(courierId: string) {
     },
     outstandingBalance,
     totalSettled,
-    shifts: shifts.map((s) => ({
-      id: s.id,
-      date: s.startTime.slice(0, 10),
-      startTime: s.startTime,
-      endTime: s.endTime,
-      hours: s.durationMinutes != null ? roundMoney(s.durationMinutes / 60) : null,
-      autoClosed: s.autoClosed,
-    })),
+    shifts: shifts.map((s) => serializeCourierShiftStatementRow(s)),
     earnings: ledger.map((e) => ({
       id: e.id,
       date: e.createdAt,

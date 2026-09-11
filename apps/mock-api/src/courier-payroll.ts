@@ -3,6 +3,7 @@
  * Append-only ledger, shift tracking, expense approval workflow.
  */
 
+import { resolveShiftWorkedMinutes } from '@nmd/core';
 import { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { computeOrderSettlementEconomics } from './settlement.js';
@@ -84,16 +85,24 @@ export async function getOrCreatePayrollConfig(courierId: string) {
   const existing = await prisma.courierPayrollConfig.findUnique({ where: { courierId } });
   if (existing) return existing;
   const now = nowIso();
-  return prisma.courierPayrollConfig.create({
-    data: {
-      courierId,
-      hourlyRate: 35,
-      deliveryFeeShare: 100,
-      orderCommissionPercent: 5,
-      isPayrollEnabled: true,
-      updatedAt: now,
-    },
-  });
+  try {
+    return await prisma.courierPayrollConfig.create({
+      data: {
+        courierId,
+        hourlyRate: 35,
+        deliveryFeeShare: 100,
+        orderCommissionPercent: 5,
+        isPayrollEnabled: true,
+        updatedAt: now,
+      },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      const raced = await prisma.courierPayrollConfig.findUnique({ where: { courierId } });
+      if (raced) return raced;
+    }
+    throw err;
+  }
 }
 
 export async function updatePayrollConfig(
@@ -159,12 +168,6 @@ export async function getTenantDriverCommissionOverrides(tenantId: string) {
     prisma.courierTenantCommissionOverride.findMany({ where: { tenantId } }),
   ]);
   return { tenantWide, perCourier };
-}
-
-function shiftCapEndMs(startTime: string, nowMs: number): number {
-  const startMs = new Date(startTime).getTime();
-  const capMs = startMs + MAX_SHIFT_MINUTES * 60_000;
-  return Math.min(nowMs, capMs);
 }
 
 /** Persist auto-close for open shifts exceeding 16h. Returns auto-closed shift if any. */
@@ -479,28 +482,43 @@ function effectiveShiftMinutes(
   to: string,
   nowMs: number
 ): number {
-  const startMs = new Date(shift.startTime).getTime();
-  if (!inDateRange(shift.startTime, from, to) && !(shift.endTime && inDateRange(shift.endTime, from, to))) {
+  const inPeriod =
+    inDateRange(shift.startTime, from, to) ||
+    (shift.endTime != null && inDateRange(shift.endTime, from, to));
+
+  if (!inPeriod) {
     if (shift.endTime) return 0;
     if (!inDateRange(shift.startTime, from, to)) return 0;
   }
 
-  if (shift.durationMinutes != null && shift.endTime) {
-    if (inDateRange(shift.startTime, from, to) || inDateRange(shift.endTime, from, to)) {
-      return shift.durationMinutes;
-    }
+  const resolved = resolveShiftWorkedMinutes({
+    startTime: shift.startTime,
+    endTime: shift.endTime,
+    durationMinutes: shift.durationMinutes,
+    nowMs,
+    maxMinutes: MAX_SHIFT_MINUTES,
+  });
+
+  if (resolved.status === 'MISSING_START' || resolved.status === 'INVALID_RANGE') {
     return 0;
   }
 
-  if (!shift.endTime) {
-    const day = shift.startTime.slice(0, 10);
-    if (day >= from && day <= to) {
-      const capEnd = shiftCapEndMs(shift.startTime, nowMs);
-      return Math.max(0, Math.round((capEnd - startMs) / 60_000));
-    }
+  if (resolved.status === 'ACTIVE') {
+    if (!inDateRange(shift.startTime, from, to)) return 0;
+    return resolved.workedMinutes ?? 0;
   }
 
-  return 0;
+  if (!inPeriod) return 0;
+  return resolved.workedMinutes ?? 0;
+}
+
+/** Shift history for a courier (newest first). */
+export async function listCourierShifts(courierId: string, limit = 100) {
+  return prisma.courierShift.findMany({
+    where: { courierId },
+    orderBy: { startTime: 'desc' },
+    take: limit,
+  });
 }
 
 export async function computeWorkedMinutes(courierId: string, from: string, to: string): Promise<number> {
