@@ -134,7 +134,7 @@ services:
       WHATSAPP_GATEWAY_URL: "http://whatsapp-service:3000"
       WA_API_KEY: "${WA_API_KEY:-your_secret_key_here}"
       FIREBASE_SERVICE_ACCOUNT_PATH: "/app/firebase-service-account.json"
-      API_KEY: "c522d724baaaf9a3213dcf17590f0fd8"
+      API_KEY: "e34806651cfc4e3b25170634dc989f11"
       # Platform service fee — customer-visible repricing (Phase 1). Rollback: set false and redeploy mock-api.
       PLATFORM_FEE_ENABLED: "true"
       # iOS force-update gate (public GET /app-config)

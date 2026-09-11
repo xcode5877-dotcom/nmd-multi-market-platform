@@ -4990,18 +4990,23 @@ function requireMarketDispatchAssignAuth(req: express.Request, res: express.Resp
   return false;
 }
 
-/** Courier API hard gate: require x-api-key on all /courier routes. */
+/** Courier API gate: allow shared API_KEY (server-to-server) OR authenticated COURIER JWT. */
 function requireCourierApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!API_KEY) {
-    return res.status(500).json({ error: 'Server API_KEY is not configured' });
-  }
   const fromHeader = String(req.get('x-api-key') ?? '').trim();
   const fromQuery = String((req.query.apiKey as string | undefined) ?? '').trim();
   const provided = fromHeader || fromQuery;
-  if (!provided || provided !== API_KEY) {
-    return res.status(401).json({ error: 'Unauthorized: invalid API key' });
+  if (API_KEY && provided && provided === API_KEY) {
+    return next();
   }
-  next();
+  const user = req.user as { role?: string; courierId?: string; marketId?: string } | undefined;
+  if (user?.role === 'COURIER' && user.courierId && user.marketId) {
+    return next();
+  }
+  // Legacy misconfiguration: if API_KEY unset, still require courier session (never open anonymously).
+  if (!API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: courier session required', code: 'COURIER_AUTH_REQUIRED' });
+  }
+  return res.status(401).json({ error: 'Unauthorized: invalid API key', code: 'COURIER_AUTH_REQUIRED' });
 }
 
 // Must run before any /courier route handlers.

@@ -1,6 +1,7 @@
 /**
  * Single source of truth for API base URL.
  * Set VITE_API_BASE_URL in .env.development (dev) or build env (production). No hardcoded localhost.
+ * Do NOT embed shared API keys — Courier routes authorize via session JWT.
  */
 export function getApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
@@ -9,11 +10,6 @@ export function getApiBaseUrl(): string {
   }
   // Same-origin production fallback — never return empty (empty caused blank Courier UI).
   return '/api';
-}
-
-export function getApiKey(): string {
-  const key = import.meta.env.VITE_API_KEY;
-  return key && typeof key === 'string' ? key.trim() : '';
 }
 
 const TOKEN_KEY = 'courier-access-token';
@@ -37,7 +33,6 @@ export type ApiFetchInit = Omit<RequestInit, 'body'> & { body?: unknown };
 
 export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  const apiKey = getApiKey();
   const token = getToken();
   const { body, ...rest } = init ?? {};
   let fetchBody: BodyInit | undefined;
@@ -56,7 +51,6 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   const headers: Record<string, string> = {
     ...(rest.headers as Record<string, string>),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(apiKey ? { 'x-api-key': apiKey } : {}),
   };
   if (needsJsonContentType) headers['Content-Type'] = 'application/json';
 

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
+import { CourierAttendancePanel } from '../components/CourierAttendancePanel';
 import { Package, List, MapPin, LogOut, Trophy, Award, Receipt, TrendingUp } from 'lucide-react';
 
 type CourierStats = {
@@ -42,9 +43,11 @@ export default function CourierDashboard() {
 
   const { data: leaderboardData } = useQuery({
     queryKey: ['leaderboard', user?.marketId],
-    queryFn: () => apiFetch<{ leaderboard: { courierId: string; name: string; pointsWeek: number; badgesWeek: string[]; rank: number }[]; myRank: number | null }>(
-      `/markets/${user!.marketId}/leaderboard?period=week`
-    ),
+    queryFn: () =>
+      apiFetch<{
+        leaderboard: { courierId: string; name: string; pointsWeek: number; badgesWeek: string[]; rank: number }[];
+        myRank: number | null;
+      }>(`/markets/${user!.marketId}/leaderboard?period=week`),
     enabled: !!user?.marketId,
     refetchInterval: 8000,
   });
@@ -72,6 +75,8 @@ export default function CourierDashboard() {
       )}
 
       <main className="p-4 max-w-md mx-auto space-y-4">
+        <CourierAttendancePanel enabled={!!user.courierId} compact defaultPeriod="all" showEarningsLink />
+
         {daily && (
           <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg text-white">
             <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
@@ -192,37 +197,42 @@ export default function CourierDashboard() {
               أدائي
             </h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {stats?.pointsToday != null && (
+              {stats.pointsToday != null && (
                 <div>
                   <p className="text-gray-500">النقاط اليوم</p>
                   <p className="font-semibold text-teal-600">{stats.pointsToday}</p>
                 </div>
               )}
-              {stats?.pointsWeek != null && (
+              {stats.pointsWeek != null && (
                 <div>
                   <p className="text-gray-500">النقاط الأسبوع</p>
                   <p className="font-semibold text-teal-600">{stats.pointsWeek}</p>
                 </div>
               )}
-              {stats?.avgTotalMin != null && (
+              {stats.avgTotalMin != null && (
                 <div>
                   <p className="text-gray-500">متوسط المدة</p>
                   <p className="font-medium">{stats.avgTotalMin} د</p>
                 </div>
               )}
-              {stats?.onTimeRate != null && (
+              {stats.onTimeRate != null && (
                 <div>
                   <p className="text-gray-500">ضمن SLA</p>
-                  <p className={`font-medium ${stats.onTimeRate >= 80 ? 'text-green-600' : stats.onTimeRate >= 50 ? 'text-amber-600' : 'text-gray-700'}`}>
+                  <p
+                    className={`font-medium ${stats.onTimeRate >= 80 ? 'text-green-600' : stats.onTimeRate >= 50 ? 'text-amber-600' : 'text-gray-700'}`}
+                  >
                     {stats.onTimeRate}%
                   </p>
                 </div>
               )}
             </div>
-            {(stats?.badgesWeek?.length ?? 0) > 0 && (
+            {(stats.badgesWeek?.length ?? 0) > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {stats.badgesWeek!.map((b) => (
-                  <span key={b} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium">
+                  <span
+                    key={b}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium"
+                  >
                     <Award className="w-3 h-3" />
                     {b}
                   </span>
