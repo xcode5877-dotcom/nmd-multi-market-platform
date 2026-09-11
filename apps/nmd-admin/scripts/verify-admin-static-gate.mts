@@ -30,6 +30,7 @@ const api = read((n) => n.startsWith('api-'));
 assert(md.includes('وقت الطلب'), 'order time visible');
 assert(md.includes('إدارة الطلب') && md.includes('REMOVE_ITEM') && md.includes('إضافة منتج'), 'order product actions visible');
 assert(ds.includes('durationLabel') && ds.includes('ساعات العمل'), 'driver hours statement UI');
+assert(ds.includes('الحالة المحاسبية') || ds.includes('accountingLabel'), 'accounting status column');
 assert(hb.includes('hydrate'), 'home builder hydration preserved');
 assert(api.includes('nmd-access-token') && api.includes('Authorization'), 'upload/auth token client present');
 assert(!api.includes('No token found in localStorage'), 'no legacy localStorage token error string');

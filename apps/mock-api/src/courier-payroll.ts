@@ -33,6 +33,7 @@ export const PAYROLL_AUDIT_ACTIONS = [
   'EXPENSE_APPROVED',
   'EXPENSE_REJECTED',
   'SETTLEMENT_CREATED',
+  'SHIFT_START_PERMISSION_CHANGED',
 ] as const;
 
 export type PayrollAuditAction = (typeof PAYROLL_AUDIT_ACTIONS)[number];
@@ -40,6 +41,9 @@ export type PayrollAuditAction = (typeof PAYROLL_AUDIT_ACTIONS)[number];
 export const MAX_SHIFT_HOURS = 16;
 export const MAX_SHIFT_MINUTES = MAX_SHIFT_HOURS * 60;
 export const SHIFT_AUTO_CLOSE_WARNING = 'تم إغلاق الدوام تلقائياً بعد 16 ساعة';
+
+/** Business calendar for payroll period boundaries and display day keys. */
+export const BUSINESS_TIMEZONE = 'Asia/Jerusalem';
 
 const ALL_TIME_FROM = '2000-01-01';
 
@@ -55,8 +59,20 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** YYYY-MM-DD in the configured business timezone. */
+export function businessDayKey(d: Date | string = new Date(), timeZone = BUSINESS_TIMEZONE): string {
+  const date = typeof d === 'string' ? new Date(d) : d;
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDayKey(new Date());
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -224,6 +240,18 @@ export async function getRecentAutoClosedShiftWarning(courierId: string): Promis
 }
 
 export async function startShift(courierId: string, marketId: string) {
+  const courier = await prisma.courier.findUnique({ where: { id: courierId } });
+  if (!courier || !courier.isActive) {
+    const err = new Error('Courier inactive or not found') as Error & { code?: string };
+    err.code = 'COURIER_INACTIVE';
+    throw err;
+  }
+  if (courier.canStartShift !== true) {
+    const err = new Error('Shift start not allowed') as Error & { code?: string };
+    err.code = 'SHIFT_START_NOT_ALLOWED';
+    throw err;
+  }
+
   await autoCloseStaleShifts(courierId);
   const active = await prisma.courierShift.findFirst({
     where: { courierId, endTime: null },
@@ -272,6 +300,34 @@ export async function endShift(courierId: string) {
     metadata: { shiftId: shift.id, durationMinutes },
   });
   return shift;
+}
+
+export async function setCourierCanStartShift(input: {
+  courierId: string;
+  canStartShift: boolean;
+  actorUserId: string;
+}) {
+  const existing = await prisma.courier.findUnique({ where: { id: input.courierId } });
+  if (!existing) {
+    const err = new Error('Courier not found') as Error & { code?: string };
+    err.code = 'COURIER_NOT_FOUND';
+    throw err;
+  }
+  const previous = existing.canStartShift === true;
+  const updated = await prisma.courier.update({
+    where: { id: input.courierId },
+    data: { canStartShift: input.canStartShift },
+  });
+  await appendPayrollAudit({
+    courierId: input.courierId,
+    userId: input.actorUserId,
+    action: 'SHIFT_START_PERMISSION_CHANGED',
+    metadata: {
+      previous,
+      next: input.canStartShift,
+    },
+  });
+  return updated;
 }
 
 async function findOrderLedgerEntry(
@@ -454,25 +510,33 @@ export async function postCourierEarningsIfEligible(order: Record<string, unknow
   });
 }
 
-export function parseDateRange(period?: string, from?: string, to?: string): { from: string; to: string } {
+export function parseDateRange(period?: string, from?: string, to?: string): { from: string; to: string; timezone: string; period: string } {
   const today = todayStr();
-  if (from && to) return { from, to };
+  if (from && to) {
+    return { from, to, timezone: BUSINESS_TIMEZONE, period: 'custom' };
+  }
   const p = String(period ?? 'today').toLowerCase();
+  if (p === 'all') {
+    return { from: ALL_TIME_FROM, to: today, timezone: BUSINESS_TIMEZONE, period: 'all' };
+  }
   if (p === 'week') {
     const start = new Date();
     start.setDate(start.getDate() - 6);
-    return { from: start.toISOString().slice(0, 10), to: today };
+    return { from: businessDayKey(start), to: today, timezone: BUSINESS_TIMEZONE, period: 'week' };
   }
   if (p === 'month') {
     const d = new Date();
-    const fromMonth = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-    return { from: fromMonth, to: today };
+    // First calendar day of current month in business TZ: derive from today's Y-M and day 01
+    const fromMonth = `${today.slice(0, 8)}01`;
+    void d;
+    return { from: fromMonth, to: today, timezone: BUSINESS_TIMEZONE, period: 'month' };
   }
-  return { from: today, to: today };
+  return { from: today, to: today, timezone: BUSINESS_TIMEZONE, period: 'today' };
 }
 
 function inDateRange(iso: string, from: string, to: string): boolean {
-  const day = iso.slice(0, 10);
+  const day = businessDayKey(iso);
+  if (!day) return false;
   return day >= from && day <= to;
 }
 

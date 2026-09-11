@@ -7,10 +7,21 @@ import { ArrowRight, User, Download } from 'lucide-react';
 import { adminPayrollFetch, openPayslipPdf } from '../../lib/adminPayrollFetch';
 
 type StatementResponse = {
-  courier: { id: string; name: string; phone?: string; marketId?: string };
+  courier: {
+    id: string;
+    name: string;
+    phone?: string;
+    marketId?: string;
+    canStartShift?: boolean;
+    isActive?: boolean;
+    isOnline?: boolean;
+    isAvailable?: boolean;
+  };
   config: { hourlyRate: number; orderCommissionPercent: number; deliveryFeeShare: number };
   outstandingBalance: number;
   totalSettled: number;
+  hoursTotalMinutes?: number;
+  hoursTotalLabel?: string;
   shifts: {
     id: string;
     date: string;
@@ -21,6 +32,8 @@ type StatementResponse = {
     status?: string;
     durationLabel?: string;
     autoClosed: boolean;
+    accountingStatus?: string;
+    accountingLabel?: string;
   }[];
   earnings: { id: string; date: string; type: string; amount: number; referenceId?: string | null; description?: string | null }[];
   expenses: { id: string; date: string; category: string; amount: number; status: string; note?: string | null }[];
@@ -87,12 +100,14 @@ export default function DriverStatementPage() {
                     <p className="font-semibold">₪{data.config.hourlyRate}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">نسبة العمولة</p>
-                    <p className="font-semibold">{data.config.orderCommissionPercent}%</p>
+                    <p className="text-gray-500">إجمالي ساعات الدوام</p>
+                    <p className="font-semibold text-teal-800">{data.hoursTotalLabel ?? '—'}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">إجمالي المُسوّى</p>
-                    <p className="font-semibold">{formatPrice(data.totalSettled)}</p>
+                    <p className="text-gray-500">بدء الدوام</p>
+                    <p className="font-semibold">
+                      {data.courier.canStartShift ? 'مسموح بدء الدوام' : 'بدء الدوام موقوف'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -116,20 +131,21 @@ export default function DriverStatementPage() {
 
           <Card className="overflow-x-auto p-0">
             {tab === 'shifts' && (
-              <table className="w-full text-sm min-w-[640px]">
+              <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="border-b bg-gray-50 text-gray-500">
                     <th className="p-3 text-right">التاريخ</th>
                     <th className="p-3 text-right">البداية</th>
                     <th className="p-3 text-right">النهاية</th>
                     <th className="p-3 text-right">ساعات العمل</th>
+                    <th className="p-3 text-right">الحالة المحاسبية</th>
                     <th className="p-3 text-right">إغلاق تلقائي؟</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.shifts.length === 0 && (
                     <tr>
-                      <td className="p-4 text-center text-gray-500" colSpan={5}>
+                      <td className="p-4 text-center text-gray-500" colSpan={6}>
                         لا توجد سجلات دوام
                       </td>
                     </tr>
@@ -153,6 +169,7 @@ export default function DriverStatementPage() {
                         <td className={`p-3 whitespace-nowrap ${isActive ? 'text-emerald-700 font-medium' : ''}`}>
                           {durationText}
                         </td>
+                        <td className="p-3 whitespace-nowrap">{s.accountingLabel ?? '—'}</td>
                         <td className="p-3">{s.autoClosed ? 'نعم' : 'لا'}</td>
                       </tr>
                     );

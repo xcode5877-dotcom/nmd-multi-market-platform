@@ -1144,6 +1144,17 @@ export class MockApiClient implements ApiClient {
     });
   }
 
+  /** Super Admin: enable/disable courier shift-start permission (attendance). */
+  async setCourierShiftStartPermission(
+    courierId: string,
+    canStartShift: boolean
+  ): Promise<{ id: string; canStartShift: boolean; marketId?: string }> {
+    return apiFetch(`/admin/drivers/${courierId}/shift-start-permission`, {
+      method: 'PATCH',
+      body: JSON.stringify({ canStartShift }),
+    });
+  }
+
   async getMarketCourierFinancialStats(
     marketId: string,
     courierId: string,

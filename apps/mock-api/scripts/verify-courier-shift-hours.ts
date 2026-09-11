@@ -41,7 +41,13 @@ async function cleanup(): Promise<void> {
 
 async function ensureCourier(id: string): Promise<void> {
   const existing = await prisma.courier.findUnique({ where: { id } });
-  if (existing) return;
+  if (existing) {
+    await prisma.courier.update({
+      where: { id },
+      data: { isActive: true, canStartShift: true },
+    });
+    return;
+  }
   await prisma.courier.create({
     data: {
       id,
@@ -52,6 +58,7 @@ async function ensureCourier(id: string): Promise<void> {
       isActive: true,
       isOnline: false,
       capacity: 1,
+      canStartShift: true,
     },
   });
 }
@@ -104,7 +111,7 @@ async function main(): Promise<void> {
       durationMinutes: null,
       autoClosed: false,
     },
-    Date.parse(startIso) + 45 * 60_000
+    { nowMs: Date.parse(startIso) + 45 * 60_000 }
   );
   assert(active.status === 'ACTIVE', 'active status');
   assert(active.workedMinutes === 45, 'active elapsed minutes');

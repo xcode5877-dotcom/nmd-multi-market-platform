@@ -15,7 +15,13 @@ import CourierNativeLayout from './components/CourierNativeLayout';
 function CourierGuard({ children }: { children: React.ReactNode }) {
   const { authStatus } = useAuth();
   const apiBaseUrl = getApiBaseUrl();
-  if (!apiBaseUrl) return <>{children}</>;
+  if (!apiBaseUrl) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-center text-red-700 bg-red-50">
+        تعذّر تهيئة عنوان الـ API. أعد تحميل الصفحة أو تواصل مع الإدارة.
+      </div>
+    );
+  }
   if (authStatus === 'loading') return <div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>;
   if (authStatus === 'guest') return <Navigate to="/login" replace />;
   return <>{children}</>;

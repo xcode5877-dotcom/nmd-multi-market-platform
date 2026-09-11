@@ -12,6 +12,8 @@ type DriverRow = {
   courierId: string;
   name: string;
   marketId: string;
+  canStartShift?: boolean;
+  isActive?: boolean;
   hourlyRate: number;
   hoursWorked: number;
   deliveryEarnings: number;
@@ -34,6 +36,8 @@ type PlatformSummary = {
 type PayrollResponse = {
   from: string;
   to: string;
+  timezone?: string;
+  period?: string;
   platformSummary: PlatformSummary;
   drivers: DriverRow[];
 };
@@ -53,6 +57,7 @@ const RANGE_OPTIONS = [
   { id: 'today', label: 'اليوم', period: 'today' },
   { id: 'week', label: 'الأسبوع', period: 'week' },
   { id: 'month', label: 'الشهر', period: 'month' },
+  { id: 'all', label: 'الكل', period: 'all' },
 ] as const;
 
 function getToken(): string | null {
@@ -306,6 +311,8 @@ export default function DriverPayrollFinancePage() {
       {data && (
         <p className="text-xs text-gray-500">
           الفترة المعروضة: {data.from} → {data.to}
+          {data.timezone ? ` · المنطقة الزمنية: ${data.timezone}` : ''}
+          {' · '}ساعات الفترة = مجموع مدد الورديات المؤهّلة (ليس تقديرًا من الواجهة)
         </p>
       )}
 
@@ -331,6 +338,7 @@ export default function DriverPayrollFinancePage() {
           <thead>
             <tr className="border-b text-right text-gray-500">
               <th className="p-3 font-medium">السائق</th>
+              <th className="p-3 font-medium">بدء الدوام</th>
               <th className="p-3 font-medium">ساعات</th>
               <th className="p-3 font-medium">أجر/س</th>
               <th className="p-3 font-medium">توصيل</th>
@@ -345,10 +353,10 @@ export default function DriverPayrollFinancePage() {
           <tbody>
             {isLoading &&
               Array.from({ length: 3 }).map((_, i) => (
-                <tr key={i}><td colSpan={10} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
+                <tr key={i}><td colSpan={11} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
               ))}
             {isError && (
-              <tr><td colSpan={10} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
+              <tr><td colSpan={11} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
             )}
             {(data?.drivers ?? []).map((d) => (
               <tr key={d.courierId} className="border-b hover:bg-gray-50">
@@ -356,6 +364,13 @@ export default function DriverPayrollFinancePage() {
                   <Link to={`/drivers/${d.courierId}`} className="text-teal-700 hover:underline">
                     {d.name}
                   </Link>
+                </td>
+                <td className="p-3 text-xs whitespace-nowrap">
+                  {d.canStartShift ? (
+                    <span className="text-emerald-700 font-medium">مسموح بدء الدوام</span>
+                  ) : (
+                    <span className="text-amber-800 font-medium">بدء الدوام موقوف</span>
+                  )}
                 </td>
                 <td className="p-3 tabular-nums">{d.hoursWorked.toFixed(1)}</td>
                 <td className="p-3 tabular-nums">₪{d.hourlyRate}</td>

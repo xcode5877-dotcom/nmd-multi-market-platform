@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Drawer, Button, Skeleton } from '@nmd/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Drawer, Button, Skeleton, useToast } from '@nmd/ui';
 import { Truck, KeyRound, Pencil, Trash2 } from 'lucide-react';
 import type { GlobalCourierRow } from '../../drivers/globalCourierTypes';
 import { DriverOnlineBadge } from './DriverOnlineBadge';
@@ -24,6 +24,8 @@ export function CourierDetailsDrawer({
   canWrite: boolean;
 }) {
   const api = useGlobalCouriersApi();
+  const { addToast } = useToast();
+  const qc = useQueryClient();
   const marketId = courier?.marketId;
   const courierId = courier?.id;
 
@@ -49,9 +51,19 @@ export function CourierDetailsDrawer({
     enabled: open && !!marketId && !!courierId,
   });
 
+  const permissionMutation = useMutation({
+    mutationFn: (canStartShift: boolean) => api.setCourierShiftStartPermission(courierId!, canStartShift),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['global-couriers'] });
+      addToast(res.canStartShift ? 'تم السماح ببدء الدوام' : 'تم إيقاف بدء الدوام', 'success');
+    },
+    onError: (e) => addToast(e instanceof Error ? e.message : 'فشل تحديث الإذن', 'error'),
+  });
+
   if (!courier) return null;
 
   const allowedCount = Array.isArray(courier.allowedStoreIds) ? courier.allowedStoreIds.length : 0;
+  const canStart = courier.canStartShift === true;
 
   return (
     <Drawer open={open} onClose={onClose} title={courier.name} contentClassName="w-full max-w-md">
@@ -59,6 +71,34 @@ export function CourierDetailsDrawer({
         <div className="flex flex-wrap items-center gap-2">
           <DriverOnlineBadge isOnline={courier.isOnline} isAvailable={courier.isAvailable} isActive={courier.isActive} />
           <span className="text-gray-500">{courier.marketName}</span>
+        </div>
+
+        <div className="p-3 rounded-lg border border-teal-100 bg-teal-50/50 space-y-2">
+          <p className="font-medium text-gray-900">إذن بدء الدوام</p>
+          <p className="text-xs text-gray-600">
+            {canStart ? 'مسموح بدء الدوام' : 'بدء الدوام موقوف'}
+            {' · '}منفصل عن الاتصال والتوفر وتعيين الطلبات
+          </p>
+          {canWrite && (
+            <Button
+              size="sm"
+              variant={canStart ? 'outline' : 'primary'}
+              disabled={permissionMutation.isPending}
+              onClick={() => {
+                if (canStart) {
+                  if (!window.confirm('إيقاف بدء الدوام لهذا السائق؟ لن يتمكن من بدء وردية جديدة.')) return;
+                  permissionMutation.mutate(false);
+                } else {
+                  permissionMutation.mutate(true);
+                }
+              }}
+            >
+              {canStart ? 'إيقاف بدء الدوام' : 'السماح ببدء الدوام'}
+            </Button>
+          )}
+          <Link to={`/drivers/${courier.id}`} className="block text-xs text-teal-700 hover:underline pt-1">
+            سجل الدوام والتفاصيل المالية ←
+          </Link>
         </div>
 
         <dl className="grid grid-cols-2 gap-2">

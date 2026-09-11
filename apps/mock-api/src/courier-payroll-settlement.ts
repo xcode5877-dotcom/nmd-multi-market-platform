@@ -3,7 +3,7 @@
  */
 
 import { prisma } from './db.js';
-import { serializeCourierShiftStatementRow } from './courier-shift-api.js';
+import { serializeCourierShiftStatementRow, loadCourierSettlementsForAccounting } from './courier-shift-api.js';
 import {
   appendPayrollAudit,
   computeEarningsSummary,
@@ -228,6 +228,11 @@ export async function getDriverPayrollStatement(courierId: string) {
   ]);
 
   const totalSettled = await getTotalSettledAmount(courierId);
+  const settlementWindows = await loadCourierSettlementsForAccounting(courierId);
+  const shiftRows = shifts.map((s) =>
+    serializeCourierShiftStatementRow(s, { settlements: settlementWindows })
+  );
+  const hoursTotalMinutes = shiftRows.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
 
   return {
     config: {
@@ -238,7 +243,13 @@ export async function getDriverPayrollStatement(courierId: string) {
     },
     outstandingBalance,
     totalSettled,
-    shifts: shifts.map((s) => serializeCourierShiftStatementRow(s)),
+    shifts: shiftRows,
+    hoursTotalMinutes,
+    hoursTotalLabel:
+      hoursTotalMinutes > 0
+        ? `${Math.floor(hoursTotalMinutes / 60)} ساعات` +
+          (hoursTotalMinutes % 60 ? ` و${hoursTotalMinutes % 60} دقيقة` : '')
+        : '0 دقيقة',
     earnings: ledger.map((e) => ({
       id: e.id,
       date: e.createdAt,

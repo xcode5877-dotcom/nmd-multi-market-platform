@@ -105,6 +105,7 @@ import {
   approveExpense,
   computeDriverEarningsPreview,
   computeEarningsSummary,
+  businessDayKey,
   endShift,
   extractOrderEarningsBase,
   EXPENSE_CATEGORIES,
@@ -116,11 +117,12 @@ import {
   parseDateRange,
   postCourierEarningsIfEligible,
   rejectExpense,
+  setCourierCanStartShift,
   setTenantDriverCommissionOverride,
   startShift,
   updatePayrollConfig,
 } from './courier-payroll.js';
-import { serializeCourierShift } from './courier-shift-api.js';
+import { loadCourierSettlementsForAccounting, serializeCourierShift } from './courier-shift-api.js';
 import {
   computeOutstandingBalance,
   computePayrollHistoryTotals,
@@ -5018,7 +5020,15 @@ app.get('/courier/me', async (req, res) => {
     role: 'COURIER',
     courierId: scope.courierId,
     marketId: scope.marketId,
-    courier: { id: courier.id, name: courier.name, phone: courier.phone, isOnline: courier.isOnline, isAvailable: courier.isAvailable },
+    courier: {
+      id: courier.id,
+      name: courier.name,
+      phone: courier.phone,
+      isOnline: courier.isOnline,
+      isAvailable: courier.isAvailable,
+      canStartShift: courier.canStartShift === true,
+      isActive: courier.isActive,
+    },
     market: { id: market.id, name: market.name },
   });
 });
@@ -5261,11 +5271,18 @@ app.post('/courier/shifts/start', wrapAsync(async (req, res) => {
   if (!scope) return;
   try {
     const shift = await startShift(scope.courierId, scope.marketId);
-    res.status(201).json(serializeCourierShift(shift));
+    const settlements = await loadCourierSettlementsForAccounting(scope.courierId);
+    res.status(201).json(serializeCourierShift(shift, { settlements }));
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === 'ACTIVE_SHIFT_EXISTS') {
       return res.status(409).json({ error: e.message, code: e.code });
+    }
+    if (e.code === 'SHIFT_START_NOT_ALLOWED') {
+      return res.status(403).json({ error: 'بدء الدوام غير مفعّل. تواصل مع الإدارة', code: e.code });
+    }
+    if (e.code === 'COURIER_INACTIVE') {
+      return res.status(403).json({ error: e.message, code: e.code });
     }
     throw err;
   }
@@ -5277,7 +5294,8 @@ app.post('/courier/shifts/end', wrapAsync(async (req, res) => {
   if (!scope) return;
   try {
     const shift = await endShift(scope.courierId);
-    res.json(serializeCourierShift(shift));
+    const settlements = await loadCourierSettlementsForAccounting(scope.courierId);
+    res.json(serializeCourierShift(shift, { settlements }));
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === 'NO_ACTIVE_SHIFT') {
@@ -5293,9 +5311,13 @@ app.get('/courier/shifts/active', wrapAsync(async (req, res) => {
   if (!scope) return;
   const shift = await getActiveShift(scope.courierId);
   const shiftWarning = await getRecentAutoClosedShiftWarning(scope.courierId);
+  const settlements = await loadCourierSettlementsForAccounting(scope.courierId);
+  const couriers = await repos.couriers.findAll();
+  const me = couriers.find((c) => c.id === scope.courierId);
   res.json({
-    shift: shift ? serializeCourierShift(shift) : null,
+    shift: shift ? serializeCourierShift(shift, { settlements }) : null,
     shiftWarning,
+    canStartShift: me?.canStartShift === true,
   });
 }));
 
@@ -5305,24 +5327,45 @@ app.get('/courier/shifts', wrapAsync(async (req, res) => {
   if (!scope) return;
   const limitRaw = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, Math.floor(limitRaw)), 200) : 50;
+  const period = String(req.query.period ?? 'all');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const range = parseDateRange(period, fromQ, toQ);
   const rows = await listCourierShifts(scope.courierId, limit);
-  res.json({ shifts: rows.map((s) => serializeCourierShift(s)) });
+  const settlements = await loadCourierSettlementsForAccounting(scope.courierId);
+  const serialized = rows.map((s) => serializeCourierShift(s, { settlements }));
+  const filtered = serialized.filter((s) => {
+    const day = businessDayKey(s.startTime);
+    return day >= range.from && day <= range.to;
+  });
+  const totalMinutes = filtered.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
+  res.json({
+    shifts: filtered,
+    from: range.from,
+    to: range.to,
+    timezone: range.timezone,
+    period: range.period,
+    hoursWorked: Math.round((totalMinutes / 60) * 100) / 100,
+    workedMinutes: totalMinutes,
+  });
 }));
 
-/** Driver earnings summary — period=today|week|month or from/to (YYYY-MM-DD). */
+/** Driver earnings summary — period=today|week|month|all or from/to (YYYY-MM-DD). */
 app.get('/courier/earnings', wrapAsync(async (req, res) => {
   const scope = requireCourier(req, res);
   if (!scope) return;
   const period = String(req.query.period ?? 'today');
   const fromQ = req.query.from ? String(req.query.from) : undefined;
   const toQ = req.query.to ? String(req.query.to) : undefined;
-  const { from, to } = parseDateRange(period, fromQ, toQ);
-  const summary = await computeEarningsSummary(scope.courierId, from, to);
+  const range = parseDateRange(period, fromQ, toQ);
+  const summary = await computeEarningsSummary(scope.courierId, range.from, range.to);
   const config = await getOrCreatePayrollConfig(scope.courierId);
   const shiftWarning = await getRecentAutoClosedShiftWarning(scope.courierId);
   const outstandingBalance = await computeOutstandingBalance(scope.courierId);
   res.json({
     ...summary,
+    timezone: range.timezone,
+    period: range.period,
     hourlyRate: config.hourlyRate,
     isPayrollEnabled: config.isPayrollEnabled,
     outstandingBalance,
@@ -9917,6 +9960,7 @@ app.post('/markets/:marketId/couriers', async (req, res) => {
     isOnline: false,
     capacity: 3,
     isAvailable: true,
+    canStartShift: false,
     deliveryCount: 0,
     allowedStoreIds,
   };
@@ -9963,7 +10007,17 @@ app.patch('/markets/:marketId/couriers/:courierId', async (req, res) => {
     return res.status(404).json({ error: 'Courier not found' });
   }
   const before = { ...couriers[idx] };
-  const body = req.body as Partial<Pick<Courier, 'name' | 'phone' | 'isActive' | 'isOnline' | 'isAvailable' | 'capacity'>> & { allowedStoreIds?: string[]; email?: string };
+  const body = req.body as Partial<Pick<Courier, 'name' | 'phone' | 'isActive' | 'isOnline' | 'isAvailable' | 'capacity'>> & {
+    allowedStoreIds?: string[];
+    email?: string;
+    canStartShift?: boolean;
+  };
+  if (typeof body.canStartShift === 'boolean') {
+    return res.status(400).json({
+      error: 'Use PATCH /admin/drivers/:courierId/shift-start-permission for attendance permission',
+      code: 'USE_SHIFT_PERMISSION_ENDPOINT',
+    });
+  }
   const normalizedAllowedStoreIds = Array.isArray(body.allowedStoreIds)
     ? [...new Set(body.allowedStoreIds.map((x) => String(x).trim()).filter(Boolean))]
     : undefined;
@@ -10226,6 +10280,7 @@ app.post('/tenants/:tenantId/couriers', async (req, res) => {
     isActive: true,
     isOnline: false,
     capacity: 3,
+    canStartShift: false,
   };
   const couriers = (await repos.couriers.findAll());
   couriers.push(courier);
@@ -11281,7 +11336,8 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
   const fromQ = req.query.from ? String(req.query.from) : undefined;
   const toQ = req.query.to ? String(req.query.to) : undefined;
   const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
-  const { from, to } = parseDateRange(period, fromQ, toQ);
+  const range = parseDateRange(period, fromQ, toQ);
+  const { from, to } = range;
 
   const couriers = (await repos.couriers.findAll()).filter((c) => !marketId || courierMarketId(c) === marketId);
   const courierIds = couriers.map((c) => c.id);
@@ -11297,6 +11353,8 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
           courierId: c.id,
           name: c.name,
           marketId: courierMarketId(c),
+          canStartShift: c.canStartShift === true,
+          isActive: c.isActive,
           hourlyRate: config.hourlyRate,
           hoursWorked: summary.hoursWorked,
           deliveryEarnings: summary.deliveryEarnings,
@@ -11312,7 +11370,7 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
     ),
     computePlatformPayrollSummary(courierIds),
   ]);
-  res.json({ from, to, platformSummary, drivers: rows });
+  res.json({ from, to, timezone: range.timezone, period: range.period, platformSummary, drivers: rows });
 }));
 
 /** Super Admin: per-store Now Market profit report (commission + delivery fees). Empty → zeros + []. */
@@ -11832,9 +11890,48 @@ app.get('/admin/drivers/:courierId/payroll-statement', wrapAsync(async (req, res
       name: courier.name,
       phone: courier.phone,
       marketId: courierMarketId(courier),
+      canStartShift: courier.canStartShift === true,
+      isActive: courier.isActive,
+      isOnline: courier.isOnline,
+      isAvailable: courier.isAvailable,
     },
     ...statement,
   });
+}));
+
+/**
+ * Platform admin: enable/disable shift-start permission (attendance).
+ * Distinct from isOnline / isAvailable / isActive.
+ */
+app.patch('/admin/drivers/:courierId/shift-start-permission', wrapAsync(async (req, res) => {
+  if (!req.user || !isPlatformAdmin(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden: platform admin only', code: 'FORBIDDEN' });
+  }
+  if (!requireWriteWithReason(req, res)) return;
+  const courierId = req.params.courierId;
+  const canStartShift = (req.body as { canStartShift?: unknown })?.canStartShift;
+  if (typeof canStartShift !== 'boolean') {
+    return res.status(400).json({ error: 'canStartShift boolean required' });
+  }
+  const couriers = await repos.couriers.findAll();
+  const courier = couriers.find((c) => c.id === courierId);
+  if (!courier) return res.status(404).json({ error: 'Courier not found' });
+  try {
+    const updated = await setCourierCanStartShift({
+      courierId,
+      canStartShift,
+      actorUserId: req.user.id,
+    });
+    res.json({
+      id: updated.id,
+      canStartShift: updated.canStartShift === true,
+      marketId: courierMarketId(courier),
+    });
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === 'COURIER_NOT_FOUND') return res.status(404).json({ error: e.message, code: e.code });
+    throw err;
+  }
 }));
 
 /** Super Admin: payroll settlement history. */

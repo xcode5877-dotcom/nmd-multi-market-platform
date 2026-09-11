@@ -276,6 +276,8 @@ export interface Courier {
   capacity: number;
   /** Available to take new orders (false when assigned to active delivery) */
   isAvailable?: boolean;
+  /** Super Admin attendance permission — required to start a shift (not the same as isOnline/isAvailable). */
+  canStartShift?: boolean;
   /** Total deliveries completed (incremented when order status = DELIVERED) */
   deliveryCount?: number;
   /** Driver "Coba" / float: initial cash given at shift start (default 300) */

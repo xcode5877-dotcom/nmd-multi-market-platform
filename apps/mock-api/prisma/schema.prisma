@@ -147,6 +147,8 @@ model Courier {
   capacity        Int      @default(1)
   isAvailable     Boolean?
   deliveryCount   Int?
+  /// Super Admin must enable before driver can start a shift. Distinct from isOnline/isAvailable.
+  canStartShift   Boolean  @default(false)
 }
 
 model Customer {

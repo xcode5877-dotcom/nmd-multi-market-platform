@@ -4,8 +4,11 @@
  */
 export function getApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
-  if (fromEnv && typeof fromEnv === 'string') return fromEnv.replace(/\/$/, '');
-  return '';
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim()) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  // Same-origin production fallback — never return empty (empty caused blank Courier UI).
+  return '/api';
 }
 
 const TOKEN_KEY = 'courier-access-token';

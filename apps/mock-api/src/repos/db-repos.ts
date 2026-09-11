@@ -366,6 +366,7 @@ export function createDbCouriersRepo(): CouriersRepo {
         isOnline: c.isOnline,
         capacity: c.capacity,
         isAvailable: c.isAvailable ?? undefined,
+        canStartShift: (c as { canStartShift?: boolean }).canStartShift ?? false,
         deliveryCount: c.deliveryCount ?? undefined,
         allowedStoreIds: c.allowedStoreIds ? (JSON.parse(c.allowedStoreIds) as string[]) : undefined,
       }));
@@ -386,6 +387,7 @@ export function createDbCouriersRepo(): CouriersRepo {
             isOnline: c.isOnline ?? false,
             capacity: c.capacity ?? 1,
             isAvailable: c.isAvailable ?? null,
+            canStartShift: c.canStartShift ?? false,
             deliveryCount: c.deliveryCount ?? null,
             allowedStoreIds: c.allowedStoreIds ? JSON.stringify(c.allowedStoreIds) : null,
           })),

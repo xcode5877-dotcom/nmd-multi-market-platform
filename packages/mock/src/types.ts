@@ -89,6 +89,8 @@ export interface MarketCourier {
   isOnline: boolean;
   capacity: number;
   isAvailable?: boolean;
+  /** Attendance: Super Admin must enable before courier can start a shift. */
+  canStartShift?: boolean;
   deliveryCount?: number;
   allowedStoreIds?: string[];
 }

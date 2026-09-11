@@ -69,6 +69,14 @@ export default function DriversCouriersPage() {
 
   const filtered = useMemo(() => filterGlobalCouriers(couriers, filters), [couriers, filters]);
 
+  useEffect(() => {
+    if (!detailsCourier) return;
+    const fresh = couriers.find((c) => c.id === detailsCourier.id && c.marketId === detailsCourier.marketId);
+    if (fresh && fresh.canStartShift !== detailsCourier.canStartShift) {
+      setDetailsCourier(fresh);
+    }
+  }, [couriers, detailsCourier]);
+
   const createMutation = useMutation({
     mutationFn: async (v: CourierFormValues) => {
       const created = await api.createMarketCourier(v.marketId, {
@@ -260,6 +268,7 @@ export default function DriversCouriersPage() {
                   <th className="px-3 py-2 font-medium text-gray-700">السائق</th>
                   <th className="px-3 py-2 font-medium text-gray-700">السوق</th>
                   <th className="px-3 py-2 font-medium text-gray-700">الحالة</th>
+                  <th className="px-3 py-2 font-medium text-gray-700">بدء الدوام</th>
                   <th className="px-3 py-2 font-medium text-gray-700">السعة</th>
                   <th className="px-3 py-2 font-medium text-gray-700">توصيلات</th>
                   <th className="px-3 py-2 font-medium text-gray-700">متاجر</th>
@@ -281,6 +290,13 @@ export default function DriversCouriersPage() {
                       <td className="px-3 py-3 text-gray-700">{c.marketName}</td>
                       <td className="px-3 py-3">
                         <DriverOnlineBadge isOnline={c.isOnline} isAvailable={c.isAvailable} isActive={c.isActive} />
+                      </td>
+                      <td className="px-3 py-3 text-xs whitespace-nowrap">
+                        {c.canStartShift ? (
+                          <span className="text-emerald-700 font-medium">مسموح بدء الدوام</span>
+                        ) : (
+                          <span className="text-amber-800 font-medium">بدء الدوام موقوف</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 tabular-nums">{c.capacity ?? 3}</td>
                       <td className="px-3 py-3 tabular-nums">{c.deliveryCount ?? 0}</td>
