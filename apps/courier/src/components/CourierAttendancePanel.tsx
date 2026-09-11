@@ -13,8 +13,6 @@ export type AttendanceShift = {
   status?: string;
   durationLabel?: string;
   autoClosed?: boolean;
-  accountingStatus?: string;
-  accountingLabel?: string;
 };
 
 type ActiveShiftResponse = {
@@ -161,7 +159,7 @@ export function CourierAttendancePanel({
         </h2>
         {showEarningsLink && (
           <Link to="/earnings" className="text-xs font-semibold text-teal-700 hover:underline">
-            تفاصيل الدخل ←
+            تفاصيل الدوام ←
           </Link>
         )}
       </div>
@@ -300,7 +298,7 @@ export function CourierAttendancePanel({
                           {s.endTime ? ` → ${formatClock(s.endTime)}` : ''}
                         </p>
                         {s.autoClosed && <p className="text-xs text-amber-700">إغلاق تلقائي</p>}
-                        {s.accountingLabel && <p className="text-xs text-slate-500">{s.accountingLabel}</p>}
+                        {s.status === 'INVALID_RANGE' && <p className="text-xs text-red-700">مدة غير صالحة</p>}
                       </div>
                       <p className={`shrink-0 font-semibold ${isActive ? 'text-emerald-700' : 'text-slate-900'}`}>
                         {s.durationLabel ?? (isActive ? 'قيد الدوام الآن' : '—')}

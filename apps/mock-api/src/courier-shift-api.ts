@@ -25,15 +25,16 @@ export const ACCOUNTING_STATUS_LABELS_AR: Record<AccountingStatus, string> = {
   UNKNOWN: 'بحاجة للمراجعة',
 };
 
+/** Current business contract: no active driver wage/payroll model. */
+export const DRIVER_WAGE_MODEL_ACTIVE = false;
+
 function roundHours(minutes: number): number {
   return Math.round((minutes / 60) * 100) / 100;
 }
 
 /**
- * Period-level settlements are the only payment artifacts in schema.
- * A completed shift is SETTLED when its business start day falls inside any
- * settlement periodStart..periodEnd for the same courier; otherwise UNACCOUNTED.
- * Active / invalid shifts are UNKNOWN.
+ * Period-level settlements are historical ledger artifacts.
+ * Not used as driver-wage "accounted" status while DRIVER_WAGE_MODEL_ACTIVE is false.
  */
 export function deriveShiftAccountingStatus(
   shift: { startTime: string; endTime: string | null },
@@ -54,6 +55,8 @@ export function serializeCourierShift(
   opts?: {
     nowMs?: number;
     settlements?: { periodStart: string; periodEnd: string }[];
+    /** When false (default), omit wage-accounting labels — attendance-only contract. */
+    includeAccounting?: boolean;
   }
 ) {
   const nowMs = opts?.nowMs ?? Date.now();
@@ -65,11 +68,10 @@ export function serializeCourierShift(
     maxMinutes: MAX_SHIFT_MINUTES,
   });
   const active = resolved.status === 'ACTIVE';
-  const accountingStatus = deriveShiftAccountingStatus(
-    shift,
-    opts?.settlements ?? [],
-    resolved.status
-  );
+  const includeAccounting = opts?.includeAccounting === true && DRIVER_WAGE_MODEL_ACTIVE;
+  const accountingStatus = includeAccounting
+    ? deriveShiftAccountingStatus(shift, opts?.settlements ?? [], resolved.status)
+    : undefined;
   return {
     id: shift.id,
     courierId: shift.courierId,
@@ -86,9 +88,14 @@ export function serializeCourierShift(
       invalid: resolved.status === 'INVALID_RANGE',
       incomplete: resolved.status === 'MISSING_START',
     }),
-    accountingStatus,
-    accountingLabel: ACCOUNTING_STATUS_LABELS_AR[accountingStatus],
+    ...(includeAccounting && accountingStatus
+      ? {
+          accountingStatus,
+          accountingLabel: ACCOUNTING_STATUS_LABELS_AR[accountingStatus],
+        }
+      : {}),
     timezone: BUSINESS_TIMEZONE,
+    domain: 'attendance' as const,
   };
 }
 
@@ -97,6 +104,7 @@ export function serializeCourierShiftStatementRow(
   opts?: {
     nowMs?: number;
     settlements?: { periodStart: string; periodEnd: string }[];
+    includeAccounting?: boolean;
   }
 ) {
   const base = serializeCourierShift(shift, opts);
@@ -110,9 +118,14 @@ export function serializeCourierShiftStatementRow(
     status: base.status,
     durationLabel: base.durationLabel,
     autoClosed: base.autoClosed,
-    accountingStatus: base.accountingStatus,
-    accountingLabel: base.accountingLabel,
     timezone: base.timezone,
+    domain: 'attendance' as const,
+    ...('accountingStatus' in base
+      ? {
+          accountingStatus: (base as { accountingStatus?: string }).accountingStatus,
+          accountingLabel: (base as { accountingLabel?: string }).accountingLabel,
+        }
+      : {}),
   };
 }
 

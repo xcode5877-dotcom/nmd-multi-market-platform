@@ -81,28 +81,31 @@ export default function CourierDashboard() {
           <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg text-white">
             <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-400" />
-              ملخص اليوم (الإجمالي − المصاريف)
+              تحصيل لصالح الشركة — اليوم
             </h3>
+            <p className="text-[11px] text-slate-400 mb-3">
+              المبالغ أدناه ملك للشركة عبرك (ليست أرباح السائق)
+            </p>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
-                <p className="text-slate-400">طلبات التطبيق</p>
+                <p className="text-slate-400">دخل طلبات التطبيق</p>
                 <p className="text-lg font-bold">₪{daily.appOrdersTotal.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-slate-400">طلبات خارجية</p>
+                <p className="text-slate-400">دخل الطلبات الخارجية</p>
                 <p className="text-lg font-bold">₪{daily.externalOrdersTotal.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-slate-400">إجمالي الوارد</p>
+                <p className="text-slate-400">إجمالي دخل الشركة</p>
                 <p className="text-lg font-bold text-emerald-300">₪{daily.gross.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-slate-400">مصاريف</p>
+                <p className="text-slate-400">مصاريف تشغيلية (مطالبات)</p>
                 <p className="text-lg font-bold text-amber-300">— ₪{daily.expensesTotal.toFixed(2)}</p>
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-600 flex justify-between items-center">
-              <span className="text-slate-300">صافي اليوم</span>
+              <span className="text-slate-300">صافي تشغيلي (شركة)</span>
               <span className="text-2xl font-black text-white">₪{daily.net.toFixed(2)}</span>
             </div>
           </div>

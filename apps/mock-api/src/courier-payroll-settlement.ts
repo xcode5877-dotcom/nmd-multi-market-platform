@@ -230,11 +230,15 @@ export async function getDriverPayrollStatement(courierId: string) {
   const totalSettled = await getTotalSettledAmount(courierId);
   const settlementWindows = await loadCourierSettlementsForAccounting(courierId);
   const shiftRows = shifts.map((s) =>
-    serializeCourierShiftStatementRow(s, { settlements: settlementWindows })
+    serializeCourierShiftStatementRow(s, { settlements: settlementWindows, includeAccounting: false })
   );
   const hoursTotalMinutes = shiftRows.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
 
   return {
+    domain: 'attendance',
+    driverWageModelActive: false,
+    legacyLedgerNote:
+      'Ledger/settlement rows are historical company/custody artifacts — not active driver wages.',
     config: {
       hourlyRate: config.hourlyRate,
       deliveryFeeShare: config.deliveryFeeShare,

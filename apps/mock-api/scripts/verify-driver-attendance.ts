@@ -135,8 +135,9 @@ async function main(): Promise<void> {
     durationMinutes: 306,
     autoClosed: false,
   });
-  assert(labeled.accountingLabel === 'غير محتسبة', 'Arabic UNACCOUNTED label');
+  assert(labeled.accountingLabel === undefined, 'default serialization omits wage accounting labels');
   assert(labeled.workedMinutes === 306, '306 minutes not rounded to zero');
+  assert((labeled as { domain?: string }).domain === 'attendance', 'shift domain is attendance');
 
   console.log('\n--- Mohammad Yasri class: period filter ---');
   // Fixture: August completed shift must appear in "all" and custom Aug window, not Sep week alone.
@@ -167,8 +168,8 @@ async function main(): Promise<void> {
 
   const statement = await getDriverPayrollStatement(TEST_A);
   assert(
-    statement.shifts.some((s) => s.workedMinutes === 306 && s.accountingLabel === 'غير محتسبة'),
-    'statement shows non-zero duration + accounting label'
+    statement.shifts.some((s) => s.workedMinutes === 306 && !('accountingLabel' in s && (s as { accountingLabel?: string }).accountingLabel)),
+    'statement shows non-zero duration without wage accounting label'
   );
   assert((statement.hoursTotalMinutes ?? 0) >= 306, 'statement hoursTotalMinutes includes shift');
 

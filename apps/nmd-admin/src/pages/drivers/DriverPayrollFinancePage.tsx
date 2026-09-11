@@ -260,13 +260,18 @@ export default function DriverPayrollFinancePage() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-semibold">فصل المجالات</p>
+        <p className="mt-1">ساعات العمل = دوام فقط. الأعمدة النقدية أدناه سجلات دفترية تاريخية ملك للشركة — ليست راتب السائق ولا أرباحه.</p>
+        <p className="mt-1">العهدة النقدية المحصّلة تُدار من «عهدة نقدية / تحصيل»، وليست تسوية راتب.</p>
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-teal-600" />
-            مالية السائقين
+            سجل دوام السائقين
           </h2>
-          <p className="text-sm text-gray-500 mt-1">تتبع الدخل والدوام — عرض فقط، بدون صرف رواتب</p>
+          <p className="text-sm text-gray-500 mt-1">ساعات العمل وصلاحية بدء الدوام — بدون راتب أو أرباح شخصية</p>
         </div>
         <Button size="sm" variant="outline" onClick={handleExportCsv} disabled={!data?.drivers?.length}>
           <Download className="w-4 h-4 ml-1" />
@@ -277,19 +282,19 @@ export default function DriverPayrollFinancePage() {
       {data?.platformSummary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="p-3 border-teal-100 bg-teal-50/50">
-            <p className="text-xs text-gray-500">صافي اليوم</p>
+            <p className="text-xs text-gray-500">دفتر قديم — صافي اليوم</p>
             <p className="text-lg font-bold">{formatPrice(data.platformSummary.today.netTotal)}</p>
           </Card>
           <Card className="p-3">
-            <p className="text-xs text-gray-500">صافي الأسبوع</p>
+            <p className="text-xs text-gray-500">دفتر قديم — صافي الأسبوع</p>
             <p className="text-lg font-bold">{formatPrice(data.platformSummary.week.netTotal)}</p>
           </Card>
           <Card className="p-3">
-            <p className="text-xs text-gray-500">صافي الشهر</p>
+            <p className="text-xs text-gray-500">دفتر قديم — صافي الشهر</p>
             <p className="text-lg font-bold">{formatPrice(data.platformSummary.month.netTotal)}</p>
           </Card>
           <Card className="p-3 border-amber-200 bg-amber-50/60">
-            <p className="text-xs text-gray-600">المستحق غير المدفوع</p>
+            <p className="text-xs text-gray-600">دفتر قديم — رصيد دفتري</p>
             <p className="text-lg font-bold text-amber-900">{formatPrice(data.platformSummary.outstandingBalance)}</p>
           </Card>
         </div>
@@ -319,12 +324,12 @@ export default function DriverPayrollFinancePage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
         {[
           { label: 'ساعات', value: totals.hours.toFixed(1) },
-          { label: 'أرباح توصيل', value: formatPrice(totals.delivery) },
-          { label: 'عمولات', value: formatPrice(totals.commission) },
-          { label: 'مكافآت', value: formatPrice(totals.bonuses) },
-          { label: 'مصاريف', value: formatPrice(totals.expenses) },
-          { label: 'صافي الفترة', value: formatPrice(totals.net) },
-          { label: 'مستحق غير مدفوع', value: formatPrice(totals.outstanding) },
+          { label: 'دفتر: توصيل (ليس راتب)', value: formatPrice(totals.delivery) },
+          { label: 'دفتر: عمولة (شركة)', value: formatPrice(totals.commission) },
+          { label: 'دفتر: مكافآت', value: formatPrice(totals.bonuses) },
+          { label: 'مطالبات مصاريف', value: formatPrice(totals.expenses) },
+          { label: 'دفتر: صافي (ليس راتب)', value: formatPrice(totals.net) },
+          { label: 'دفتر قديم', value: formatPrice(totals.outstanding) },
         ].map((c) => (
           <Card key={c.label} className="p-3">
             <p className="text-xs text-gray-500">{c.label}</p>
@@ -340,13 +345,13 @@ export default function DriverPayrollFinancePage() {
               <th className="p-3 font-medium">السائق</th>
               <th className="p-3 font-medium">بدء الدوام</th>
               <th className="p-3 font-medium">ساعات</th>
-              <th className="p-3 font-medium">أجر/س</th>
-              <th className="p-3 font-medium">توصيل</th>
-              <th className="p-3 font-medium">عمولة</th>
+              <th className="p-3 font-medium">تكوين قديم ₪/س</th>
+              <th className="p-3 font-medium">دفتر توصيل</th>
+              <th className="p-3 font-medium">دفتر عمولة</th>
               <th className="p-3 font-medium">مكافآت</th>
               <th className="p-3 font-medium">مصاريف</th>
-              <th className="p-3 font-medium">صافي</th>
-              <th className="p-3 font-medium">مستحق</th>
+              <th className="p-3 font-medium">دفتر صافي</th>
+              <th className="p-3 font-medium">دفتر قديم</th>
               <th className="p-3 font-medium" />
             </tr>
           </thead>

@@ -5375,6 +5375,10 @@ app.get('/courier/earnings', wrapAsync(async (req, res) => {
     isPayrollEnabled: config.isPayrollEnabled,
     outstandingBalance,
     shiftWarning,
+    domain: 'legacy_ledger',
+    driverWageModelActive: false,
+    legacyLedgerNote:
+      'Deprecated for Courier UI money display. Use GET /courier/attendance for worked time. Ledger amounts are not driver salary.',
   });
 }));
 
@@ -5419,6 +5423,65 @@ app.get('/courier/daily-summary', wrapAsync(async (req, res) => {
     expensesTotal,
     gross,
     net,
+    ownership: {
+      appOrdersTotal: 'COMPANY_REVENUE',
+      externalOrdersTotal: 'COMPANY_REVENUE',
+      gross: 'COMPANY_REVENUE',
+      expensesTotal: 'OPERATIONAL_EXPENSE_CLAIM',
+      net: 'COMPANY_REVENUE_MINUS_EXPENSE_CLAIMS',
+      note: 'Order totals attributed to completed deliveries are company revenue — not driver earnings.',
+    },
+    labelsAr: {
+      appOrdersTotal: 'دخل طلبات التطبيق',
+      externalOrdersTotal: 'دخل الطلبات الخارجية',
+      gross: 'إجمالي دخل الشركة',
+      expensesTotal: 'مصاريف تشغيلية (مطالبات)',
+      net: 'صافي تشغيلي (شركة)',
+    },
+  });
+}));
+
+/** Attendance-only summary for the authenticated courier (no monetary fields). */
+app.get('/courier/attendance', wrapAsync(async (req, res) => {
+  const scope = requireCourier(req, res);
+  if (!scope) return;
+  const period = String(req.query.period ?? 'all');
+  const fromQ = req.query.from ? String(req.query.from) : undefined;
+  const toQ = req.query.to ? String(req.query.to) : undefined;
+  const range = parseDateRange(period, fromQ, toQ);
+  const [active, shiftWarning, rows, couriers] = await Promise.all([
+    getActiveShift(scope.courierId),
+    getRecentAutoClosedShiftWarning(scope.courierId),
+    listCourierShifts(scope.courierId, 200),
+    repos.couriers.findAll(),
+  ]);
+  const me = couriers.find((c) => c.id === scope.courierId);
+  const serialized = rows.map((s) => serializeCourierShift(s));
+  const inPeriod = serialized.filter((s) => {
+    const day = businessDayKey(s.startTime);
+    return day >= range.from && day <= range.to;
+  });
+  const today = businessDayKey(new Date());
+  const todayMinutes = serialized
+    .filter((s) => businessDayKey(s.startTime) === today)
+    .reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
+  const periodMinutes = inPeriod.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
+  const allMinutes = serialized.reduce((sum, s) => sum + (s.workedMinutes ?? 0), 0);
+  res.json({
+    domain: 'attendance',
+    driverWageModelActive: false,
+    canStartShift: me?.canStartShift === true,
+    activeShift: active ? serializeCourierShift(active) : null,
+    shiftWarning,
+    workedMinutesToday: todayMinutes,
+    workedMinutesInPeriod: periodMinutes,
+    workedMinutesAllTime: allMinutes,
+    hoursWorked: Math.round((periodMinutes / 60) * 100) / 100,
+    from: range.from,
+    to: range.to,
+    timezone: range.timezone,
+    period: range.period,
+    shifts: inPeriod,
   });
 }));
 
@@ -11375,7 +11438,18 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
     ),
     computePlatformPayrollSummary(courierIds),
   ]);
-  res.json({ from, to, timezone: range.timezone, period: range.period, platformSummary, drivers: rows });
+  res.json({
+    from,
+    to,
+    timezone: range.timezone,
+    period: range.period,
+    platformSummary,
+    drivers: rows,
+    domain: 'attendance_with_legacy_ledger',
+    driverWageModelActive: false,
+    legacyLedgerNote:
+      'Monetary columns (delivery/commission/hourlyPay/outstanding) are legacy ledger projections — not approved driver salary.',
+  });
 }));
 
 /** Super Admin: per-store Now Market profit report (commission + delivery fees). Empty → zeros + []. */

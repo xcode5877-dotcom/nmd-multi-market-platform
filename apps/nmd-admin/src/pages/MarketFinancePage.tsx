@@ -149,6 +149,10 @@ export default function MarketFinancePage() {
       <div className="mb-4 px-4 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">
         Payments: CASH only
       </div>
+      <div className="mb-4 px-4 py-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-950 text-sm">
+        <p className="font-semibold">مالية الشركة</p>
+        <p className="mt-1">دخل طلبات التطبيق + دخل الطلبات الخارجية = دخل الشركة. النقد مع السائقين عهدة لصالح الشركة وليس راتب سائق.</p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         {RANGE_OPTIONS.map((r) => (

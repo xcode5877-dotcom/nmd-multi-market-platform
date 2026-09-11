@@ -42,11 +42,11 @@ type StatementResponse = {
 };
 
 const TABS = [
-  { id: 'shifts', label: 'الشفتات' },
-  { id: 'earnings', label: 'الأرباح' },
-  { id: 'expenses', label: 'المصاريف' },
-  { id: 'bonuses', label: 'المكافآت' },
-  { id: 'settlements', label: 'التسويات' },
+  { id: 'shifts', label: 'سجل الدوام' },
+  { id: 'earnings', label: 'دفتر قديم' },
+  { id: 'expenses', label: 'مطالبات مصاريف' },
+  { id: 'bonuses', label: 'مكافآت دفترية' },
+  { id: 'settlements', label: 'تسويات دفترية قديمة' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -72,9 +72,13 @@ export default function DriverStatementPage() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
+        <p className="font-semibold">سجل دوام السائق</p>
+        <p className="mt-1">التبويب الأساسي: ساعات العمل. التبويبات النقدية سجلات تاريخية محفوظة — ليست راتب سائق معتمد حالياً.</p>
+      </div>
       <Link to="/drivers/payroll-finance" className="inline-flex items-center gap-1 text-sm text-teal-700 hover:underline">
         <ArrowRight className="w-4 h-4" />
-        مالية السائقين
+        سجل دوام السائقين
       </Link>
 
       {isLoading && <Skeleton className="h-32 w-full" />}
@@ -88,19 +92,19 @@ export default function DriverStatementPage() {
                 <User className="w-6 h-6" />
               </div>
               <div className="flex-1">
-                <h2 className="text-xl font-bold text-gray-900">تفاصيل السائق — {data.courier.name}</h2>
+                <h2 className="text-xl font-bold text-gray-900">سجل دوام السائق — {data.courier.name}</h2>
                 {data.courier.phone && <p className="text-sm text-gray-500 mt-1" dir="ltr">{data.courier.phone}</p>}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
                   <div>
-                    <p className="text-gray-500">المستحق غير المدفوع</p>
+                    <p className="text-gray-500">دفتر قديم (ليس راتب)</p>
                     <p className="text-lg font-bold text-amber-800">{formatPrice(data.outstandingBalance)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">أجر الساعة</p>
+                    <p className="text-gray-500">تكوين قديم ₪/س</p>
                     <p className="font-semibold">₪{data.config.hourlyRate}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">إجمالي ساعات الدوام</p>
+                    <p className="text-gray-500">إجمالي الساعات</p>
                     <p className="font-semibold text-teal-800">{data.hoursTotalLabel ?? '—'}</p>
                   </div>
                   <div>
@@ -131,21 +135,20 @@ export default function DriverStatementPage() {
 
           <Card className="overflow-x-auto p-0">
             {tab === 'shifts' && (
-              <table className="w-full text-sm min-w-[720px]">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="border-b bg-gray-50 text-gray-500">
                     <th className="p-3 text-right">التاريخ</th>
                     <th className="p-3 text-right">البداية</th>
                     <th className="p-3 text-right">النهاية</th>
                     <th className="p-3 text-right">ساعات العمل</th>
-                    <th className="p-3 text-right">الحالة المحاسبية</th>
                     <th className="p-3 text-right">إغلاق تلقائي؟</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.shifts.length === 0 && (
                     <tr>
-                      <td className="p-4 text-center text-gray-500" colSpan={6}>
+                      <td className="p-4 text-center text-gray-500" colSpan={5}>
                         لا توجد سجلات دوام
                       </td>
                     </tr>
@@ -169,7 +172,6 @@ export default function DriverStatementPage() {
                         <td className={`p-3 whitespace-nowrap ${isActive ? 'text-emerald-700 font-medium' : ''}`}>
                           {durationText}
                         </td>
-                        <td className="p-3 whitespace-nowrap">{s.accountingLabel ?? '—'}</td>
                         <td className="p-3">{s.autoClosed ? 'نعم' : 'لا'}</td>
                       </tr>
                     );

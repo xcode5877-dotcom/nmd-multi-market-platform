@@ -29,6 +29,7 @@
     "verify:courier-shift-hours": "tsx scripts/verify-courier-shift-hours.ts",
     "verify:driver-attendance": "tsx scripts/verify-driver-attendance.ts",
     "verify:courier-auth-no-apikey": "tsx scripts/verify-courier-auth-no-apikey.ts",
+    "verify:domain-separation": "tsx scripts/verify-domain-separation.ts",
     "verify:driver-hours-ui": "tsx scripts/verify-driver-hours-ui.ts",
     "verify:driver-collections": "tsx scripts/verify-driver-collections.ts",
     "smoke:driver-collections-http": "tsx scripts/smoke-driver-collections-http.ts",

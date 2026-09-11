@@ -97,7 +97,7 @@ export function CourierDetailsDrawer({
             </Button>
           )}
           <Link to={`/drivers/${courier.id}`} className="block text-xs text-teal-700 hover:underline pt-1">
-            سجل الدوام والتفاصيل المالية ←
+            سجل دوام السائق ←
           </Link>
         </div>
 
@@ -138,7 +138,7 @@ export function CourierDetailsDrawer({
         )}
 
         <div>
-          <p className="font-medium text-gray-900 mb-2">المالية</p>
+          <p className="font-medium text-gray-900 mb-2">إيرادات تشغيلية عبر السائق (شركة)</p>
           {financeLoading ? (
             <Skeleton className="h-20 w-full" />
           ) : financeStats ? (

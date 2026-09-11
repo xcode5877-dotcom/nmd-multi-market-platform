@@ -147,7 +147,7 @@ function exportDriversCsv(rows: DriverSummary[]): void {
 function DashboardCards({ data }: { data?: Dashboard }) {
   const cards = [
     { label: 'إجمالي النقد مع السائقين', value: data?.cashInHandTotal ?? 0 },
-    { label: 'مستحق ناو ماركت', value: data?.platformLiabilityTotal ?? data?.pendingCollections ?? 0, tone: 'teal' },
+    { label: 'مبالغ محصلة لصالح ناو ماركت', value: data?.platformLiabilityTotal ?? data?.pendingCollections ?? 0, tone: 'teal' },
     { label: 'مستحق المطاعم مع السائقين', value: data?.restaurantLiabilityTotal ?? 0 },
     { label: 'إجمالي المطلوب تسويته', value: data?.outstandingAmount ?? data?.totalDriverLiability ?? 0, tone: 'amber' },
     { label: 'تمت تسويته اليوم', value: data?.settledAmountToday ?? data?.settledToday ?? 0, tone: 'emerald' },
@@ -279,7 +279,7 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
                 <p className="text-lg font-bold">{formatPrice(summary?.cashInHandTotal ?? 0)}</p>
               </div>
               <div>
-                <p className="text-gray-500">مستحق ناو ماركت</p>
+                <p className="text-gray-500">مبالغ محصلة لصالح ناو ماركت</p>
                 <p className="text-lg font-bold text-teal-800">
                   {formatPrice(summary?.platformLiabilityTotal ?? summary?.driverCollectionTotal ?? 0)}
                 </p>
@@ -310,7 +310,7 @@ function DriverDetailPanel({ courierId }: { courierId: string }) {
               </div>
             </div>
             <p className="text-xs text-gray-500">
-              التسوية الافتراضية: PLATFORM_ONLY (مستحق ناو ماركت فقط). إجمالي الطلب ليس مقياس التسوية.
+              التسوية الافتراضية: PLATFORM_ONLY (مبالغ محصلة لصالح ناو ماركت فقط). إجمالي الطلب ليس مقياس التسوية.
             </p>
           </Card>
 
@@ -572,7 +572,7 @@ export default function DriverCollectionsPage() {
             محاسبة تحصيل السائقين
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            V3: فصل النقد مع السائق / مستحق ناو ماركت / مستحق المطعم. التسوية الافتراضية PLATFORM_ONLY.
+            عهدة نقدية لصالح الشركة لدى السائق — ليست راتب أو أرباح السائق. V3: مبالغ محصلة لصالح ناو ماركت / مستحق المطعم. التسوية PLATFORM_ONLY.
             الطلبات المدفوعة أونلاين لا تنشئ ديناً وهمياً على السائق.
           </p>
         </div>

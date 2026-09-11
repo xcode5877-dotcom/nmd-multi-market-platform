@@ -4,12 +4,12 @@ import { LayoutDashboard, FileText, Wallet, Store, Package, UserCog, CircleDolla
 const SUB_LINKS = [
   { to: '/drivers', label: 'لوحة التوصيل', icon: LayoutDashboard, end: true },
   { to: '/drivers/couriers', label: 'إدارة السائقين', icon: UserCog, end: true },
-  { to: '/drivers/collections', label: 'تحصيل السائقين', icon: Banknote, end: false },
+  { to: '/drivers/collections', label: 'عهدة نقدية / تحصيل', icon: Banknote, end: false },
   { to: '/drivers/markets', label: 'الأسواق والتوصيل', icon: Store, end: true },
   { to: '/drivers/reports', label: 'التقارير', icon: FileText, end: true },
-  { to: '/drivers/finance', label: 'التسويات المالية', icon: Wallet, end: true },
-  { to: '/drivers/payroll-finance', label: 'مالية السائقين', icon: CircleDollarSign, end: true },
-  { to: '/drivers/payroll-history', label: 'سجل الرواتب', icon: FileText, end: true },
+  { to: '/drivers/finance', label: 'تسويات العهدة', icon: Wallet, end: true },
+  { to: '/drivers/payroll-finance', label: 'سجل دوام السائقين', icon: CircleDollarSign, end: true },
+  { to: '/drivers/payroll-history', label: 'سجلات دفترية قديمة', icon: FileText, end: true },
   { to: '/external-orders', label: 'الطلبات الخارجية', icon: Package, end: true },
 ] as const;
 

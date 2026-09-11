@@ -48,7 +48,7 @@ export default function DriverExpensesPage() {
       <header className="bg-teal-600 text-white px-4 py-4 shadow">
         <Link to="/earnings" className="text-sm text-teal-100 mb-1 inline-flex items-center gap-1">
           <ArrowRight className="w-4 h-4 rotate-180" />
-          الدخل
+          الدوام
         </Link>
         <h1 className="text-xl font-bold">مصاريف السيارة</h1>
         <p className="text-sm text-teal-100">تُرسل للموافقة — تُحسب فقط بعد الاعتماد</p>
