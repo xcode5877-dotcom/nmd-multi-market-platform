@@ -11,6 +11,11 @@ export function getApiBaseUrl(): string {
   return '/api';
 }
 
+export function getApiKey(): string {
+  const key = import.meta.env.VITE_API_KEY;
+  return key && typeof key === 'string' ? key.trim() : '';
+}
+
 const TOKEN_KEY = 'courier-access-token';
 
 export function getToken(): string | null {
@@ -32,6 +37,7 @@ export type ApiFetchInit = Omit<RequestInit, 'body'> & { body?: unknown };
 
 export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const baseUrl = getApiBaseUrl();
+  const apiKey = getApiKey();
   const token = getToken();
   const { body, ...rest } = init ?? {};
   let fetchBody: BodyInit | undefined;
@@ -50,6 +56,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   const headers: Record<string, string> = {
     ...(rest.headers as Record<string, string>),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(apiKey ? { 'x-api-key': apiKey } : {}),
   };
   if (needsJsonContentType) headers['Content-Type'] = 'application/json';
 
