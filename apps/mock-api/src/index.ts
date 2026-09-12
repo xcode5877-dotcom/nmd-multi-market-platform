@@ -135,21 +135,23 @@ import {
 } from './courier-payroll-settlement.js';
 import { buildSettlementPayslipHtml } from './courier-payroll-payslip.js';
 import {
+  computeCourierCompanyCollections,
+  resolveCollectionsRange,
+  toCourierCompanyCollectionsResponse,
+} from './courier-company-collections.js';
+import {
   aggregateDriverCollections,
   computeCollectionsDashboard,
   computeDriverCollectionAmount,
   createDriverCollectionSettlement,
   enrichOrderWithDriverCollection,
+  extractVerifiedExternalDeliveryFee,
   getDriverSettlementMode,
   listActiveShiftStarts,
   listCollectionSettlements,
   orderMatchesCollectionFilters,
   isDriverCollectionCountable,
 } from './driver-collections.js';
-import {
-  computeCourierCompanyCollections,
-  resolveCollectionsRange,
-} from './courier-company-collections.js';
 import { createRepos } from './repos/index.js';
 import type { OrderRecord } from './repos/types.js';
 import { prisma } from './db.js';
@@ -5410,13 +5412,14 @@ app.get('/courier/daily-summary', wrapAsync(async (req, res) => {
   const mine = (orders as Record<string, unknown>[]).filter(
     (o) => String(o.courierId ?? '') === scope.courierId
   );
-  const collections = computeCourierCompanyCollections(
+  const collectionsRaw = computeCourierCompanyCollections(
     mine,
     scope.courierId,
     range.from,
     range.to,
-    { period: range.period }
+    { period: range.period, includeNeedsReviewOrderIds: false }
   );
+  const collections = toCourierCompanyCollectionsResponse(collectionsRaw);
 
   const serializedShifts = shiftRows.map((s) => serializeCourierShift(s));
   const todayKey = businessDayKey(new Date());
@@ -10181,22 +10184,11 @@ app.post('/markets/:marketId/couriers/:courierId/change-password', async (req, r
 /** Global external manual orders report for Super Admin. */
 app.get('/admin/external-orders', wrapAsync(async (req, res) => {
   if (!isPlatformAdmin(req.user?.role)) return res.status(403).json({ error: 'Forbidden', code: 'SCOPE_VIOLATION' });
-  const rows = await prisma.order.findMany({
-    where: { isExternal: true },
-    select: {
-      id: true,
-      marketId: true,
-      tenantId: true,
-      manualStoreName: true,
-      courierId: true,
-      total: true,
-      externalDestination: true,
-      createdAt: true,
-      status: true,
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 2000,
-  });
+  const allOrders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const rows = allOrders
+    .filter((o) => o.isExternal === true || String(o.orderType ?? '').toUpperCase() === 'EXTERNAL')
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+    .slice(0, 2000);
   const [couriers, tenants, markets] = await Promise.all([
     prisma.courier.findMany({ select: { id: true, name: true, phone: true } }),
     prisma.tenant.findMany({ select: { id: true, name: true } }),
@@ -10206,24 +10198,33 @@ app.get('/admin/external-orders', wrapAsync(async (req, res) => {
   const tenantMap = new Map(tenants.map((t) => [t.id, t]));
   const marketMap = new Map(markets.map((m) => [m.id, m]));
   res.json(rows.map((o) => {
-    const c = o.courierId ? courierMap.get(o.courierId) : undefined;
-    const t = o.tenantId ? tenantMap.get(o.tenantId) : undefined;
-    const m = o.marketId ? marketMap.get(o.marketId) : undefined;
+    const courierId = o.courierId != null ? String(o.courierId) : null;
+    const tenantId = o.tenantId != null ? String(o.tenantId) : null;
+    const marketId = o.marketId != null ? String(o.marketId) : null;
+    const c = courierId ? courierMap.get(courierId) : undefined;
+    const t = tenantId ? tenantMap.get(tenantId) : undefined;
+    const m = marketId ? marketMap.get(marketId) : undefined;
+    const verifiedFee = extractVerifiedExternalDeliveryFee(o);
     return {
       id: o.id,
       createdAt: o.createdAt,
       status: o.status,
-      marketId: o.marketId,
-      marketName: m?.name ?? o.marketId ?? null,
-      courierId: o.courierId,
+      marketId,
+      marketName: m?.name ?? marketId,
+      courierId,
       courierName: c?.name ?? null,
       courierPhone: c?.phone ?? null,
-      tenantId: o.tenantId,
+      tenantId,
       tenantName: t?.name ?? null,
       manualStoreName: o.manualStoreName ?? null,
       storeDisplayName: t?.name ?? o.manualStoreName ?? 'Other',
       externalDestination: o.externalDestination ?? null,
-      deliveryFee: o.total ?? 0,
+      deliveryFee: verifiedFee,
+      deliveryFeeVerified: verifiedFee,
+      incomeStatus: verifiedFee == null ? 'MISSING_DELIVERY_FEE' : 'VERIFIED',
+      needsReview: verifiedFee == null,
+      /** Merchandise/total is not delivery income — exposed for ops only. */
+      orderTotalNotIncome: o.total ?? null,
       isExternal: true,
     };
   }));
@@ -10294,21 +10295,18 @@ app.get('/markets/:marketId/couriers/:courierId/stats', wrapAsync(async (req, re
   const courier = (await repos.couriers.findAll()).find((c) => c.id === courierId && courierMarketId(c) === marketId);
   if (!courier) return res.status(404).json({ error: 'Courier not found' });
 
-  const allOrders = (await repos.orders.findAll()) as { courierId?: string; marketId?: string; createdAt?: string; total?: number; isExternal?: boolean }[];
-  const inRange = (dt?: string) => {
-    if (!dt) return false;
-    if (from && dt < from) return false;
-    if (to && dt > `${to}T23:59:59.999Z`) return false;
-    return true;
-  };
-  const orders = allOrders.filter((o) => o.courierId === courierId && (o.marketId === marketId || !o.marketId) && inRange(o.createdAt));
-  let appRevenue = 0;
-  let externalRevenue = 0;
-  for (const o of orders) {
-    const amount = Number(o.total) || 0;
-    if (o.isExternal) externalRevenue += amount;
-    else appRevenue += amount;
-  }
+  const allOrders = (await repos.orders.findAll()) as Record<string, unknown>[];
+  const collections = computeCourierCompanyCollections(
+    allOrders.filter(
+      (o) =>
+        String(o.courierId ?? '') === courierId &&
+        (String(o.marketId ?? '') === marketId || !o.marketId)
+    ),
+    courierId,
+    from || '1970-01-01',
+    to || businessDayKey(new Date()),
+    { period: from || to ? 'custom' : 'all', includeNeedsReviewOrderIds: true }
+  );
   const expenses = await prisma.courierExpense.findMany({
     where: {
       courierId,
@@ -10325,16 +10323,20 @@ app.get('/markets/:marketId/couriers/:courierId/stats', wrapAsync(async (req, re
     select: { amount: true },
   });
   const expensesTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const net = appRevenue + externalRevenue - expensesTotal;
   res.json({
     courierId,
     marketId,
     from: from || null,
     to: to || null,
-    appRevenue,
-    externalRevenue,
+    appRevenue: collections.appDeliveryAndCommissionIncome,
+    externalRevenue: collections.externalDeliveryIncomeVerified,
+    externalDeliveryIncomeVerified: collections.externalDeliveryIncomeVerified,
+    externalOrdersMissingFeeCount: collections.externalOrdersMissingFeeCount,
+    hasIncompleteFinancialData: collections.hasIncompleteFinancialData,
+    needsReviewOrderIds: collections.needsReviewOrderIds ?? [],
     expenses: expensesTotal,
-    net,
+    net: Math.round((collections.companyGrossThroughCourier - expensesTotal) * 100) / 100,
+    companyCollections: collections,
   });
 }));
 
@@ -11452,7 +11454,7 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
           c.id,
           from,
           to,
-          { period: range.period }
+          { period: range.period, includeNeedsReviewOrderIds: true }
         );
         return {
           courierId: c.id,
@@ -11472,17 +11474,23 @@ app.get('/admin/driver-payroll', wrapAsync(async (req, res) => {
           ordersCount: summary.ordersCount,
           outstandingBalance,
           companyCollections: {
-            externalDeliveryIncome: companyCollections.externalDeliveryIncome,
+            externalDeliveryIncome: companyCollections.externalDeliveryIncomeVerified,
+            externalDeliveryIncomeVerified: companyCollections.externalDeliveryIncomeVerified,
             appDeliveryIncome: companyCollections.appDeliveryIncome,
             appCommissionIncome: companyCollections.appCommissionIncome,
             appDeliveryAndCommissionIncome: companyCollections.appDeliveryAndCommissionIncome,
             companyGrossThroughCourier: companyCollections.companyGrossThroughCourier,
             reconciledToCompany: companyCollections.reconciledToCompany,
             outstandingToCompany: companyCollections.outstandingToCompany,
+            externalOrdersMissingFeeCount: companyCollections.externalOrdersMissingFeeCount,
+            needsReviewCount: companyCollections.needsReviewCount,
+            hasIncompleteFinancialData: companyCollections.hasIncompleteFinancialData,
+            needsReviewOrderIds: companyCollections.needsReviewOrderIds ?? [],
             restaurantMerchandiseExcluded: true,
             driverWageAutoCalculation: false,
             labelsAr: companyCollections.labelsAr,
             ownershipNoteAr: companyCollections.ownershipNoteAr,
+            missingExternalFeeWarningAr: companyCollections.missingExternalFeeWarningAr,
           },
         };
       })
@@ -12024,7 +12032,7 @@ app.get('/admin/drivers/:courierId/payroll-statement', wrapAsync(async (req, res
     req.params.courierId,
     range.from,
     range.to,
-    { period: range.period }
+    { period: range.period, includeNeedsReviewOrderIds: true }
   );
   res.json({
     courier: {
@@ -12499,6 +12507,10 @@ app.post('/markets/:marketId/external-orders', wrapAsync(async (req, res) => {
     items: [],
     createdAt: now,
     paymentMethod: 'CASH',
+    /** Authoritative delivery fee snapshot — never infer income from total alone. */
+    platformDeliveryFee: fee,
+    deliveryFee: fee,
+    delivery: { fee },
   } as OrderRecord;
 
   await repos.orders.addOrderWithPayment(order, {

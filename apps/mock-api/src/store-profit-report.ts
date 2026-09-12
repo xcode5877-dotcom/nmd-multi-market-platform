@@ -193,11 +193,15 @@ export function extractOrderStoreProfit(order: Record<string, unknown>): StorePr
   return { totalSales, platformCommission, deliveryFee, nowMarketRevenue };
 }
 
-/** External orders: delivery profit only; commission is always zero. */
+/** External orders: verified delivery fee only — never Order.total / merchandise. */
 export function extractExternalOrderDeliveryProfit(order: Record<string, unknown>): number {
+  const settlement = order.settlement as { deliveryFee?: number } | undefined;
+  const fromSettlement = safeNum(settlement?.deliveryFee);
+  if (fromSettlement > 0) return roundMoney(fromSettlement);
+
   const fin = extractOrderStoreProfit(order);
   if (fin.deliveryFee > 0) return fin.deliveryFee;
-  return roundMoney(Math.max(0, safeNum(order.total)));
+  return 0;
 }
 
 export type OrderProfitBySource = {

@@ -33,6 +33,7 @@ assert(ds.includes('durationLabel') && ds.includes('ساعات العمل'), 'dr
 assert(ds.includes('سجل دوام') || ds.includes('ساعات العمل'), 'attendance-oriented statement copy');
 assert(ds.includes('التحصيل المالي') && ds.includes('دخل توصيل الطلبات الخارجية'), 'company collections on statement');
 assert(ds.includes('لا تمثل راتب السائق'), 'ownership disclaimer on statement');
+assert(ds.includes('بحاجة للمراجعة'), 'missing external fee review state');
 assert(hb.includes('hydrate'), 'home builder hydration preserved');
 assert(api.includes('nmd-access-token') && api.includes('Authorization'), 'upload/auth token client present');
 assert(!api.includes('No token found in localStorage'), 'no legacy localStorage token error string');

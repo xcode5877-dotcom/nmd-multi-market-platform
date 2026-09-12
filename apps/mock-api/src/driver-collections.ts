@@ -197,12 +197,37 @@ export function extractPlatformCommission(order: Record<string, unknown>): numbe
   }
 }
 
+/**
+ * Verified external/manual delivery fee only.
+ * Never uses Order.total, customer payable, restaurant payable, or inferred differences.
+ * @returns fee when an authoritative snapshot field proves it; otherwise null
+ */
+export function extractVerifiedExternalDeliveryFee(
+  order: Record<string, unknown>
+): number | null {
+  const settlement = order.settlement as { deliveryFee?: number } | undefined;
+  const pay = order.payment as
+    | { breakdown?: { deliveryFee?: number }; financials?: { deliveryFee?: number } }
+    | undefined;
+  const delivery = order.delivery as { fee?: number } | undefined;
+  const candidates = [
+    settlement?.deliveryFee,
+    pay?.breakdown?.deliveryFee,
+    pay?.financials?.deliveryFee,
+    order.platformDeliveryFee,
+    delivery?.fee,
+    order.deliveryFee,
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return roundMoney(n);
+  }
+  return null;
+}
+
 export function extractDeliveryFeeForCollection(order: Record<string, unknown>): number {
   if (isOrderExternal(order)) {
-    const { deliveryFee } = extractOrderEarningsBase(order);
-    if (deliveryFee > 0) return deliveryFee;
-    const total = Number(order.total);
-    return Number.isFinite(total) && total > 0 ? roundMoney(total) : 0;
+    return extractVerifiedExternalDeliveryFee(order) ?? 0;
   }
   return extractOrderEarningsBase(order).deliveryFee;
 }
@@ -318,7 +343,7 @@ export function computeDriverOrderAccounting(
 
   const platformRevenueAmount = countable
     ? isExternal
-      ? deliveryFee
+      ? extractVerifiedExternalDeliveryFee(order) ?? 0
       : roundMoney(deliveryFee + platformCommission)
     : 0;
 
@@ -329,12 +354,18 @@ export function computeDriverOrderAccounting(
 
   if (countable) {
     if (normalized === 'EXTERNAL_DELIVERY') {
-      driverCashInHand = deliveryFee;
-      driverPlatformLiabilityAmount = deliveryFee;
-      driverRestaurantLiabilityAmount = 0;
-      if (deliveryFee <= 0) {
+      const verifiedFee = extractVerifiedExternalDeliveryFee(order);
+      if (verifiedFee == null) {
         anomalyCode = 'MISSING_DELIVERY_FEE';
-        anomalyMessage = 'External order missing delivery fee';
+        anomalyMessage = 'External order missing verified delivery fee';
+        // Do not invent income/custody from Order.total or merchandise value.
+        driverCashInHand = 0;
+        driverPlatformLiabilityAmount = 0;
+        driverRestaurantLiabilityAmount = 0;
+      } else {
+        driverCashInHand = verifiedFee;
+        driverPlatformLiabilityAmount = verifiedFee;
+        driverRestaurantLiabilityAmount = 0;
       }
     } else if (normalized === 'CASH_ON_DELIVERY') {
       driverCashInHand = customerPayableAmount;

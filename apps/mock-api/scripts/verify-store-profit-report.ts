@@ -80,8 +80,11 @@ function runUnitTests(): void {
   assert(externalProfit.isExternal, 'external order flagged');
   assert(externalProfit.appCommissionProfit === 0, 'external commission always zero');
   assert(externalProfit.appDeliveryProfit === 0, 'external has no app delivery bucket');
-  assert(externalProfit.externalDeliveryProfit === 30, 'external delivery from order.total');
-  assert(externalProfit.nowMarketRevenue === 30, 'external total = delivery only');
+  assert(
+    externalProfit.externalDeliveryProfit === 0,
+    'external with only Order.total does not invent delivery income'
+  );
+  assert(externalProfit.nowMarketRevenue === 0, 'external missing verified fee → zero revenue');
 
   const externalWithSettlementCommission = extractOrderProfitBySource({
     status: 'DELIVERED',
@@ -98,7 +101,18 @@ function runUnitTests(): void {
     'external uses settlement deliveryFee'
   );
 
-  assert(extractExternalOrderDeliveryProfit({ isExternal: true, total: 18 }) === 18, 'external fallback total');
+  assert(
+    extractExternalOrderDeliveryProfit({ isExternal: true, total: 18 }) === 0,
+    'external never falls back to Order.total'
+  );
+  assert(
+    extractExternalOrderDeliveryProfit({
+      isExternal: true,
+      total: 99,
+      delivery: { fee: 18 },
+    }) === 18,
+    'external uses verified delivery.fee'
+  );
 
   console.log('\n--- Unit: computeStoreProfitReport ---');
 
@@ -176,6 +190,7 @@ function runUnitTests(): void {
       isExternal: true,
       createdAt: '2026-07-01T10:00:00.000Z',
       total: 60,
+      delivery: { fee: 60 },
     },
     {
       id: 'ext-2',
@@ -184,6 +199,15 @@ function runUnitTests(): void {
       isExternal: true,
       createdAt: '2026-07-02T11:00:00.000Z',
       total: 50,
+      platformDeliveryFee: 50,
+    },
+    {
+      id: 'ext-missing',
+      tenantId: 'qashtoota',
+      status: 'COMPLETED',
+      isExternal: true,
+      createdAt: '2026-07-03T11:00:00.000Z',
+      total: 999,
     },
   ];
 
@@ -197,11 +221,11 @@ function runUnitTests(): void {
   const q = qReport.stores[0];
   assert(q?.storeName === 'قشطوطة', 'Qashtoota store name');
   assert(q?.appOrderCount === 1, 'Qashtoota 1 app order');
-  assert(q?.externalOrderCount === 2, 'Qashtoota 2 external orders');
+  assert(q?.externalOrderCount === 3, 'Qashtoota 3 external orders (incl missing fee)');
   assert(q?.appCommissionProfit === 72, 'Qashtoota app commission');
   assert(q?.appDeliveryProfit === 180, 'Qashtoota app delivery');
   assert(q?.appTotalPlatformProfit === 252, 'Qashtoota app total');
-  assert(q?.externalDeliveryProfit === 110, 'Qashtoota external delivery (60+50)');
+  assert(q?.externalDeliveryProfit === 110, 'Qashtoota verified external delivery (60+50), not 999');
   assert(q?.externalTotalPlatformProfit === 110, 'Qashtoota external total');
   assert(q?.totalPlatformProfit === 362, 'Qashtoota combined total 362');
 

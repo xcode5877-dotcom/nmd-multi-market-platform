@@ -9,6 +9,10 @@ import { useState } from 'react';
 
 type DailySummary = {
   externalDeliveryIncome?: number;
+  externalDeliveryIncomeVerified?: number;
+  externalOrdersMissingFeeCount?: number;
+  hasIncompleteFinancialData?: boolean;
+  missingExternalFeeWarningAr?: string;
   appDeliveryIncome?: number;
   appCommissionIncome?: number;
   appIncomeSplitAvailable?: boolean;
@@ -82,6 +86,13 @@ export default function CourierEarningsPage() {
             {daily?.ownershipNoteAr ??
               'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق'}
           </p>
+          {(daily?.hasIncompleteFinancialData ||
+            (daily?.externalOrdersMissingFeeCount ?? 0) > 0) && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+              {daily?.missingExternalFeeWarningAr ??
+                'يوجد طلب خارجي بحاجة لمراجعة أجرة التوصيل'}
+            </p>
+          )}
 
           <div className="flex flex-wrap gap-2">
             {PERIODS.map((p) => (
@@ -107,7 +118,9 @@ export default function CourierEarningsPage() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <span className="text-slate-500">دخل توصيل الطلبات الخارجية</span>
-                <span className="font-bold tabular-nums">{money(daily.externalDeliveryIncome)}</span>
+                <span className="font-bold tabular-nums">
+                  {money(daily.externalDeliveryIncomeVerified ?? daily.externalDeliveryIncome)}
+                </span>
               </div>
               {splitOk ? (
                 <>

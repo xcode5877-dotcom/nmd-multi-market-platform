@@ -17,6 +17,10 @@ type CourierStats = {
 type DailySummary = {
   date?: string;
   externalDeliveryIncome?: number;
+  externalDeliveryIncomeVerified?: number;
+  externalOrdersMissingFeeCount?: number;
+  hasIncompleteFinancialData?: boolean;
+  missingExternalFeeWarningAr?: string;
   appDeliveryIncome?: number;
   appCommissionIncome?: number;
   appIncomeSplitAvailable?: boolean;
@@ -69,7 +73,11 @@ export default function CourierDashboard() {
   if (!user) return null;
 
   const splitOk = daily?.appIncomeSplitAvailable !== false;
-  const external = daily?.externalDeliveryIncome ?? daily?.externalOrdersTotal ?? 0;
+  const external =
+    daily?.externalDeliveryIncomeVerified ??
+    daily?.externalDeliveryIncome ??
+    daily?.externalOrdersTotal ??
+    0;
   const appDelivery = daily?.appDeliveryIncome ?? 0;
   const appCommission = daily?.appCommissionIncome ?? 0;
   const appCombined =
@@ -113,6 +121,13 @@ export default function CourierDashboard() {
               {daily.ownershipNoteAr ??
                 'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق'}
             </p>
+            {(daily.hasIncompleteFinancialData ||
+              (daily.externalOrdersMissingFeeCount ?? 0) > 0) && (
+              <p className="text-xs text-amber-300 bg-amber-950/40 border border-amber-700/50 rounded-lg px-2 py-1.5 mb-3">
+                {daily.missingExternalFeeWarningAr ??
+                  'يوجد طلب خارجي بحاجة لمراجعة أجرة التوصيل'}
+              </p>
+            )}
             <div className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <span className="text-slate-400">دخل توصيل الطلبات الخارجية</span>

@@ -26,11 +26,16 @@ type DriverRow = {
   outstandingBalance: number;
   companyCollections?: {
     externalDeliveryIncome: number;
+    externalDeliveryIncomeVerified?: number;
     appDeliveryIncome: number;
     appCommissionIncome: number;
     companyGrossThroughCourier: number;
     reconciledToCompany: number;
     outstandingToCompany: number;
+    externalOrdersMissingFeeCount?: number;
+    needsReviewCount?: number;
+    hasIncompleteFinancialData?: boolean;
+    needsReviewOrderIds?: string[];
   };
 };
 
@@ -254,12 +259,17 @@ export default function DriverPayrollFinancePage() {
           expenses: acc.expenses + d.expenses,
           net: acc.net + d.netTotal,
           outstanding: acc.outstanding + d.outstandingBalance,
-          extDelivery: acc.extDelivery + (d.companyCollections?.externalDeliveryIncome ?? 0),
+          extDelivery:
+            acc.extDelivery +
+            (d.companyCollections?.externalDeliveryIncomeVerified ??
+              d.companyCollections?.externalDeliveryIncome ??
+              0),
           appDelivery: acc.appDelivery + (d.companyCollections?.appDeliveryIncome ?? 0),
           appCommission: acc.appCommission + (d.companyCollections?.appCommissionIncome ?? 0),
           companyGross: acc.companyGross + (d.companyCollections?.companyGrossThroughCourier ?? 0),
           companyOutstanding:
             acc.companyOutstanding + (d.companyCollections?.outstandingToCompany ?? 0),
+          missingFee: acc.missingFee + (d.companyCollections?.externalOrdersMissingFeeCount ?? 0),
         }),
         {
           hours: 0,
@@ -274,6 +284,7 @@ export default function DriverPayrollFinancePage() {
           appCommission: 0,
           companyGross: 0,
           companyOutstanding: 0,
+          missingFee: 0,
         }
       ),
     [data]
@@ -350,14 +361,15 @@ export default function DriverPayrollFinancePage() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
         {[
           { label: 'ساعات العمل', value: totals.hours.toFixed(1) },
-          { label: 'دخل توصيل خارجي', value: formatPrice(totals.extDelivery) },
+          { label: 'دخل توصيل خارجي (موثّق)', value: formatPrice(totals.extDelivery) },
           { label: 'دخل توصيل التطبيق', value: formatPrice(totals.appDelivery) },
           { label: 'دخل نسبة التطبيق', value: formatPrice(totals.appCommission) },
           { label: 'الإجمالي لصالح الشركة', value: formatPrice(totals.companyGross) },
           { label: 'المطلوب تسليمه', value: formatPrice(totals.companyOutstanding) },
+          { label: 'بحاجة للمراجعة', value: String(totals.missingFee) },
         ].map((c) => (
           <Card key={c.label} className="p-3">
             <p className="text-xs text-gray-500">{c.label}</p>
@@ -374,6 +386,7 @@ export default function DriverPayrollFinancePage() {
               <th className="p-3 font-medium">بدء الدوام</th>
               <th className="p-3 font-medium">ساعات</th>
               <th className="p-3 font-medium">توصيل خارجي</th>
+              <th className="p-3 font-medium">مراجعة</th>
               <th className="p-3 font-medium">توصيل تطبيق</th>
               <th className="p-3 font-medium">نسبة التطبيق</th>
               <th className="p-3 font-medium">إجمالي شركة</th>
@@ -384,10 +397,10 @@ export default function DriverPayrollFinancePage() {
           <tbody>
             {isLoading &&
               Array.from({ length: 3 }).map((_, i) => (
-                <tr key={i}><td colSpan={9} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
+                <tr key={i}><td colSpan={10} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
               ))}
             {isError && (
-              <tr><td colSpan={9} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
+              <tr><td colSpan={10} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
             )}
             {(data?.drivers ?? []).map((d) => (
               <tr key={d.courierId} className="border-b hover:bg-gray-50">
@@ -405,7 +418,20 @@ export default function DriverPayrollFinancePage() {
                 </td>
                 <td className="p-3 tabular-nums">{d.hoursWorked.toFixed(1)}</td>
                 <td className="p-3 tabular-nums">
-                  {formatPrice(d.companyCollections?.externalDeliveryIncome ?? 0)}
+                  {formatPrice(
+                    d.companyCollections?.externalDeliveryIncomeVerified ??
+                      d.companyCollections?.externalDeliveryIncome ??
+                      0
+                  )}
+                </td>
+                <td className="p-3 text-xs">
+                  {(d.companyCollections?.externalOrdersMissingFeeCount ?? 0) > 0 ? (
+                    <span className="text-amber-800 font-medium">
+                      بحاجة للمراجعة ({d.companyCollections?.externalOrdersMissingFeeCount})
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </td>
                 <td className="p-3 tabular-nums">
                   {formatPrice(d.companyCollections?.appDeliveryIncome ?? 0)}

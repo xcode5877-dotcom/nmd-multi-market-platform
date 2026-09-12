@@ -2,13 +2,14 @@
  * Company money generated / held through a courier (not driver wages).
  *
  * Source of truth: V3 computeDriverOrderAccounting (delivery fee + platform commission).
- * Restaurant merchandise / customer GMV is excluded from company income lines.
+ * External income = verified deliveryFee only — never Order.total / merchandise.
  * Outstanding due uses PLATFORM_ONLY custody (cash liability), not online-retained revenue.
  */
 
 import { businessDayKey, BUSINESS_TIMEZONE, parseDateRange } from './courier-payroll.js';
 import {
   computeDriverOrderAccounting,
+  extractVerifiedExternalDeliveryFee,
   isDriverCollectionCountable,
 } from './driver-collections.js';
 
@@ -19,6 +20,9 @@ function roundMoney(n: number): number {
 export const OWNERSHIP_NOTE_AR =
   'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق';
 
+export const MISSING_EXTERNAL_FEE_WARNING_AR =
+  'يوجد طلب خارجي بحاجة لمراجعة أجرة التوصيل';
+
 export type CourierCompanyCollectionsSummary = {
   domain: 'company_collections_through_courier';
   period: string;
@@ -27,24 +31,33 @@ export type CourierCompanyCollectionsSummary = {
   timezone: string;
   currency: string;
   courierId: string;
-  /** External/manual delivery charge only (not goods value). */
+  /** Verified external delivery fees only (alias of externalDeliveryIncomeVerified). */
   externalDeliveryIncome: number;
+  externalDeliveryIncomeVerified: number;
   /** App-order delivery fee component. */
   appDeliveryIncome: number;
   /** App-order platform commission component. */
   appCommissionIncome: number;
   /** True when fee and commission are separately proven from order snapshots. */
   appIncomeSplitAvailable: boolean;
-  /** Combined app delivery + commission (always = appDelivery + appCommission when split available). */
+  /** Combined app delivery + commission. */
   appDeliveryAndCommissionIncome: number;
-  /** Sum of company-retained components through this courier (excludes restaurant merchandise). */
+  /** Sum of verified company-retained components (excludes restaurant merchandise + missing fees). */
   companyGrossThroughCourier: number;
   /** Cash/platform liability already handed to company (settlements). */
   reconciledToCompany: number;
-  /** Remaining company custody due from courier (PLATFORM_ONLY). */
+  /** Remaining company custody due from courier (PLATFORM_ONLY); excludes missing-fee externals. */
   outstandingToCompany: number;
-  /** Platform liability generated in period (cash due basis before reconcile). */
+  /** Platform liability generated in period from verified amounts only. */
   platformLiabilityGenerated: number;
+  externalOrdersMissingFeeCount: number;
+  needsReviewCount: number;
+  hasIncompleteFinancialData: boolean;
+  /**
+   * Order IDs needing review. Populated only when opts.includeNeedsReviewOrderIds is true (Admin).
+   * Never returned to Courier clients.
+   */
+  needsReviewOrderIds?: string[];
   restaurantMerchandiseExcluded: true;
   driverWageAutoCalculation: false;
   orderCounts: {
@@ -55,6 +68,7 @@ export type CourierCompanyCollectionsSummary = {
     onlinePaid: number;
   };
   ownershipNoteAr: string;
+  missingExternalFeeWarningAr: string;
   labelsAr: Record<string, string>;
 };
 
@@ -72,6 +86,7 @@ export function emptyCompanyCollectionsSummary(
     currency,
     courierId,
     externalDeliveryIncome: 0,
+    externalDeliveryIncomeVerified: 0,
     appDeliveryIncome: 0,
     appCommissionIncome: 0,
     appIncomeSplitAvailable: true,
@@ -80,6 +95,9 @@ export function emptyCompanyCollectionsSummary(
     reconciledToCompany: 0,
     outstandingToCompany: 0,
     platformLiabilityGenerated: 0,
+    externalOrdersMissingFeeCount: 0,
+    needsReviewCount: 0,
+    hasIncompleteFinancialData: false,
     restaurantMerchandiseExcluded: true,
     driverWageAutoCalculation: false,
     orderCounts: {
@@ -90,8 +108,10 @@ export function emptyCompanyCollectionsSummary(
       onlinePaid: 0,
     },
     ownershipNoteAr: OWNERSHIP_NOTE_AR,
+    missingExternalFeeWarningAr: MISSING_EXTERNAL_FEE_WARNING_AR,
     labelsAr: {
       externalDeliveryIncome: 'دخل توصيل الطلبات الخارجية',
+      externalDeliveryIncomeVerified: 'دخل توصيل الطلبات الخارجية (موثّق)',
       appDeliveryIncome: 'دخل التوصيل من طلبات التطبيق',
       appCommissionIncome: 'دخل نسبة التطبيق',
       appDeliveryAndCommissionIncome: 'دخل التوصيل والنسبة من طلبات التطبيق',
@@ -102,6 +122,7 @@ export function emptyCompanyCollectionsSummary(
       workedHours: 'ساعات العمل',
       collectionsSection: 'تحصيل اليوم',
       attendanceSection: 'الدوام',
+      needsReview: 'بحاجة للمراجعة',
     },
   };
 }
@@ -120,7 +141,12 @@ export function computeCourierCompanyCollections(
   courierId: string,
   from: string,
   to: string,
-  opts?: { period?: string; currency?: string }
+  opts?: {
+    period?: string;
+    currency?: string;
+    /** When true, include needsReviewOrderIds (Admin only). */
+    includeNeedsReviewOrderIds?: boolean;
+  }
 ): CourierCompanyCollectionsSummary {
   const range = {
     from,
@@ -129,6 +155,7 @@ export function computeCourierCompanyCollections(
     period: opts?.period ?? 'custom',
   };
   const out = emptyCompanyCollectionsSummary(courierId, range, opts?.currency ?? 'ILS');
+  const reviewIds: string[] = [];
 
   for (const order of orders) {
     if (String(order.courierId ?? '') !== courierId) continue;
@@ -139,16 +166,6 @@ export function computeCourierCompanyCollections(
     const acc = computeDriverOrderAccounting(order);
     out.orderCounts.completed += 1;
 
-    if (acc.isExternal) {
-      out.orderCounts.external += 1;
-      // Company amount = verified external delivery charge only (never goods value).
-      out.externalDeliveryIncome = roundMoney(out.externalDeliveryIncome + acc.deliveryFee);
-    } else {
-      out.orderCounts.app += 1;
-      out.appDeliveryIncome = roundMoney(out.appDeliveryIncome + acc.deliveryFee);
-      out.appCommissionIncome = roundMoney(out.appCommissionIncome + acc.platformCommission);
-    }
-
     if (
       acc.normalizedPaymentMethod === 'CASH_ON_DELIVERY' ||
       acc.normalizedPaymentMethod === 'EXTERNAL_DELIVERY'
@@ -157,6 +174,32 @@ export function computeCourierCompanyCollections(
     }
     if (acc.normalizedPaymentMethod === 'ONLINE_PAID') {
       out.orderCounts.onlinePaid += 1;
+    }
+
+    if (acc.isExternal) {
+      out.orderCounts.external += 1;
+      const verifiedFee = extractVerifiedExternalDeliveryFee(order);
+      if (verifiedFee == null) {
+        out.externalOrdersMissingFeeCount += 1;
+        out.needsReviewCount += 1;
+        out.hasIncompleteFinancialData = true;
+        if (order.id != null && String(order.id)) {
+          reviewIds.push(String(order.id));
+        }
+        // Authoritative settlement ledger may still record cash handed over.
+        if (acc.settlementStatus === 'SETTLED') {
+          out.reconciledToCompany = roundMoney(
+            out.reconciledToCompany + (acc.settledAmount || 0)
+          );
+        }
+        // Never invent income or outstanding from Order.total.
+        continue;
+      }
+      out.externalDeliveryIncome = roundMoney(out.externalDeliveryIncome + verifiedFee);
+    } else {
+      out.orderCounts.app += 1;
+      out.appDeliveryIncome = roundMoney(out.appDeliveryIncome + acc.deliveryFee);
+      out.appCommissionIncome = roundMoney(out.appCommissionIncome + acc.platformCommission);
     }
 
     out.platformLiabilityGenerated = roundMoney(
@@ -169,14 +212,25 @@ export function computeCourierCompanyCollections(
     out.outstandingToCompany = roundMoney(out.outstandingToCompany + acc.outstandingAmount);
   }
 
+  out.externalDeliveryIncomeVerified = out.externalDeliveryIncome;
   out.appDeliveryAndCommissionIncome = roundMoney(out.appDeliveryIncome + out.appCommissionIncome);
   out.companyGrossThroughCourier = roundMoney(
-    out.externalDeliveryIncome + out.appDeliveryAndCommissionIncome
+    out.externalDeliveryIncomeVerified + out.appDeliveryAndCommissionIncome
   );
-  // Split is always available from V3 extractors (fee vs platformFee/commission fields).
   out.appIncomeSplitAvailable = true;
+  if (opts?.includeNeedsReviewOrderIds) {
+    out.needsReviewOrderIds = reviewIds;
+  }
 
   return out;
+}
+
+/** Strip Admin-only identifiers before returning to a Courier client. */
+export function toCourierCompanyCollectionsResponse(
+  summary: CourierCompanyCollectionsSummary
+): Omit<CourierCompanyCollectionsSummary, 'needsReviewOrderIds'> {
+  const { needsReviewOrderIds: _ids, ...rest } = summary;
+  return rest;
 }
 
 export function resolveCollectionsRange(

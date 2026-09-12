@@ -24,12 +24,18 @@ type StatementResponse = {
   hoursTotalLabel?: string;
   companyCollections?: {
     externalDeliveryIncome: number;
+    externalDeliveryIncomeVerified?: number;
     appDeliveryIncome: number;
     appCommissionIncome: number;
     companyGrossThroughCourier: number;
     reconciledToCompany: number;
     outstandingToCompany: number;
+    externalOrdersMissingFeeCount?: number;
+    needsReviewCount?: number;
+    hasIncompleteFinancialData?: boolean;
+    needsReviewOrderIds?: string[];
     ownershipNoteAr?: string;
+    missingExternalFeeWarningAr?: string;
   };
   collectionsPeriod?: { from: string; to: string; timezone: string; period: string };
   shifts: {
@@ -145,8 +151,13 @@ export default function DriverStatementPage() {
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                 <div>
-                  <p className="text-gray-500">دخل توصيل الطلبات الخارجية</p>
-                  <p className="font-bold">{formatPrice(data.companyCollections.externalDeliveryIncome)}</p>
+                  <p className="text-gray-500">دخل توصيل الطلبات الخارجية (موثّق)</p>
+                  <p className="font-bold">
+                    {formatPrice(
+                      data.companyCollections.externalDeliveryIncomeVerified ??
+                        data.companyCollections.externalDeliveryIncome
+                    )}
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-500">دخل التوصيل من طلبات التطبيق</p>
@@ -173,6 +184,35 @@ export default function DriverStatementPage() {
                   </p>
                 </div>
               </div>
+              {(data.companyCollections.hasIncompleteFinancialData ||
+                (data.companyCollections.externalOrdersMissingFeeCount ?? 0) > 0) && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  <p className="font-semibold">بحاجة للمراجعة</p>
+                  <p className="mt-1">
+                    طلبات خارجية بلا أجرة توصيل موثّقة:{' '}
+                    {data.companyCollections.externalOrdersMissingFeeCount ??
+                      data.companyCollections.needsReviewCount ??
+                      0}
+                  </p>
+                  <p className="mt-1 text-xs">
+                    لا يُحتسب مبلغ ملفّق. صحّح أجرة التوصيل عبر مسار تعديل الطلب المعتمد والمراجع.
+                  </p>
+                  {(data.companyCollections.needsReviewOrderIds?.length ?? 0) > 0 && (
+                    <ul className="mt-2 text-xs font-mono space-y-1" dir="ltr">
+                      {data.companyCollections.needsReviewOrderIds!.map((id) => (
+                        <li key={id}>
+                          <Link
+                            to={`/markets/${data.courier.marketId ?? ''}`}
+                            className="text-teal-700 hover:underline"
+                          >
+                            {id}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </Card>
           )}
 
