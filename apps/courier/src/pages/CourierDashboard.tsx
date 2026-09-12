@@ -1,10 +1,13 @@
-import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
 import { CourierAttendancePanel } from '../components/CourierAttendancePanel';
-import { Package, List, MapPin, LogOut, Trophy, Award, Receipt, Banknote } from 'lucide-react';
+import { CourierCollectionsPanel } from '../components/CourierCollectionsPanel';
+import { Package, List, MapPin, LogOut, Trophy, Award, Receipt } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import type { CollectionsPeriod } from '../lib/collectionsSummary';
 
 type CourierStats = {
   pointsToday?: number;
@@ -14,49 +17,29 @@ type CourierStats = {
   onTimeRate?: number | null;
 };
 
-type DailySummary = {
-  date?: string;
-  externalDeliveryIncome?: number;
-  externalDeliveryIncomeVerified?: number;
-  externalOrdersMissingFeeCount?: number;
-  hasIncompleteFinancialData?: boolean;
-  missingExternalFeeWarningAr?: string;
-  appDeliveryIncome?: number;
-  appCommissionIncome?: number;
-  appIncomeSplitAvailable?: boolean;
-  appDeliveryAndCommissionIncome?: number;
-  companyGrossThroughCourier?: number;
-  reconciledToCompany?: number;
-  outstandingToCompany?: number;
-  ownershipNoteAr?: string;
-  labelsAr?: Record<string, string>;
-  /** legacy aliases */
-  appOrdersTotal?: number;
-  externalOrdersTotal?: number;
-  gross?: number;
-};
-
-function money(n: number | undefined): string {
-  return `₪${(Number(n) || 0).toFixed(2)}`;
+function parsePeriodParam(raw: string | null): CollectionsPeriod {
+  if (raw === 'week' || raw === 'month' || raw === 'all' || raw === 'today') return raw;
+  return 'today';
 }
 
 export default function CourierDashboard() {
   const { user, logout } = useAuth();
   const { isNativeApp } = useNativeBridge();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const period = parsePeriodParam(searchParams.get('period'));
+
+  const setPeriod = useCallback(
+    (p: CollectionsPeriod) => {
+      setSearchParams(p === 'today' ? {} : { period: p }, { replace: true });
+    },
+    [setSearchParams]
+  );
 
   const { data: stats } = useQuery({
     queryKey: ['courier-stats'],
     queryFn: () => apiFetch<CourierStats>('/courier/stats'),
     enabled: !!user,
     refetchInterval: 8000,
-  });
-
-  const { data: daily } = useQuery({
-    queryKey: ['courier-daily-summary', 'today'],
-    queryFn: () =>
-      apiFetch<DailySummary>('/courier/daily-summary?period=today'),
-    enabled: !!user,
-    refetchInterval: 15_000,
   });
 
   const { data: leaderboardData } = useQuery({
@@ -71,22 +54,6 @@ export default function CourierDashboard() {
   });
 
   if (!user) return null;
-
-  const splitOk = daily?.appIncomeSplitAvailable !== false;
-  const external =
-    daily?.externalDeliveryIncomeVerified ??
-    daily?.externalDeliveryIncome ??
-    daily?.externalOrdersTotal ??
-    0;
-  const appDelivery = daily?.appDeliveryIncome ?? 0;
-  const appCommission = daily?.appCommissionIncome ?? 0;
-  const appCombined =
-    daily?.appDeliveryAndCommissionIncome ??
-    daily?.appOrdersTotal ??
-    appDelivery + appCommission;
-  const gross = daily?.companyGrossThroughCourier ?? daily?.gross ?? external + appCombined;
-  const reconciled = daily?.reconciledToCompany ?? 0;
-  const outstanding = daily?.outstandingToCompany ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -111,64 +78,14 @@ export default function CourierDashboard() {
       <main className="p-4 max-w-md mx-auto space-y-4">
         <CourierAttendancePanel enabled={!!user.courierId} compact defaultPeriod="all" showEarningsLink />
 
-        {daily && (
-          <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg text-white">
-            <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
-              <Banknote className="w-4 h-4 text-emerald-400" />
-              تحصيل اليوم
-            </h3>
-            <p className="text-[11px] text-slate-400 mb-3">
-              {daily.ownershipNoteAr ??
-                'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق'}
-            </p>
-            {(daily.hasIncompleteFinancialData ||
-              (daily.externalOrdersMissingFeeCount ?? 0) > 0) && (
-              <p className="text-xs text-amber-300 bg-amber-950/40 border border-amber-700/50 rounded-lg px-2 py-1.5 mb-3">
-                {daily.missingExternalFeeWarningAr ??
-                  'يوجد طلب خارجي بحاجة لمراجعة أجرة التوصيل'}
-              </p>
-            )}
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-400">دخل توصيل الطلبات الخارجية</span>
-                <span className="font-bold tabular-nums">{money(external)}</span>
-              </div>
-              {splitOk ? (
-                <>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-400">دخل التوصيل من طلبات التطبيق</span>
-                    <span className="font-bold tabular-nums">{money(appDelivery)}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-400">دخل نسبة التطبيق</span>
-                    <span className="font-bold tabular-nums">{money(appCommission)}</span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-400">دخل التوصيل والنسبة من طلبات التطبيق</span>
-                  <span className="font-bold tabular-nums">{money(appCombined)}</span>
-                </div>
-              )}
-              <div className="flex justify-between gap-2 pt-2 border-t border-slate-600">
-                <span className="text-emerald-300">الإجمالي لصالح الشركة</span>
-                <span className="font-black text-emerald-300 tabular-nums">{money(gross)}</span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-400">تم تسليمه للشركة</span>
-                <span className="font-bold tabular-nums">{money(reconciled)}</span>
-              </div>
-              <div className="flex justify-between gap-2 pt-2 border-t border-slate-600">
-                <span className="text-amber-300 font-medium">المبلغ المطلوب تسليمه للشركة</span>
-                <span className="text-xl font-black text-amber-200 tabular-nums">{money(outstanding)}</span>
-              </div>
-              <div className="flex justify-between gap-2 text-xs">
-                <span className="text-slate-500">المتبقي للتسليم</span>
-                <span className="tabular-nums text-slate-300">{money(outstanding)}</span>
-              </div>
-            </div>
-          </div>
-        )}
+        <CourierCollectionsPanel
+          enabled={!!user}
+          courierId={user.courierId}
+          period={period}
+          onPeriodChange={setPeriod}
+          variant="dark"
+          title={period === 'today' ? 'تحصيل اليوم' : 'التحصيل المالي'}
+        />
 
         <div className="grid grid-cols-1 gap-3">
           <Link

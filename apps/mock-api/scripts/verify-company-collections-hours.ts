@@ -269,24 +269,32 @@ const ordersPage = fs.readFileSync(
   path.resolve(process.cwd(), '../courier/src/pages/CourierOrdersPage.tsx'),
   'utf8'
 );
+const collectionsPanel = fs.readFileSync(
+  path.resolve(process.cwd(), '../courier/src/components/CourierCollectionsPanel.tsx'),
+  'utf8'
+);
 const stmt = fs.readFileSync(
   path.resolve(process.cwd(), '../nmd-admin/src/pages/drivers/DriverStatementPage.tsx'),
   'utf8'
 );
-check('dashboard has تحصيل اليوم', dash.includes('تحصيل اليوم'));
-check('dashboard has دخل توصيل الطلبات الخارجية', dash.includes('دخل توصيل الطلبات الخارجية'));
-check('dashboard has دخل نسبة التطبيق', dash.includes('دخل نسبة التطبيق'));
-check('dashboard has المبلغ المطلوب تسليمه للشركة', dash.includes('المبلغ المطلوب تسليمه للشركة'));
+const ui = dash + earn + collectionsPanel;
+check('dashboard uses collections panel', dash.includes('CourierCollectionsPanel'));
+check('dashboard has تحصيل اليوم title path', dash.includes('تحصيل اليوم'));
+check('UI has دخل توصيل الطلبات الخارجية', ui.includes('دخل توصيل الطلبات الخارجية'));
+check('UI has دخل نسبة التطبيق', ui.includes('دخل نسبة التطبيق'));
+check('UI has المبلغ المطلوب تسليمه للشركة', ui.includes('المبلغ المطلوب تسليمه للشركة'));
 check(
   'courier review warning without order ids',
-  dash.includes('يوجد طلب خارجي بحاجة لمراجعة أجرة التوصيل') && !dash.includes('needsReviewOrderIds')
+  ui.includes('مراجعة أجرة التوصيل') && !dash.includes('needsReviewOrderIds')
 );
+check('UI has اعرض الكل for empty period', collectionsPanel.includes('اعرض الكل'));
+check('UI has error retry not silent zero', collectionsPanel.includes('تعذر تحميل البيانات'));
 check('admin review state visible', stmt.includes('بحاجة للمراجعة'));
 check('no أرباحي on dashboard', !dash.includes('أرباحي'));
 check('no صافي دخل السائق', !dash.includes('صافي دخل السائق') && !earn.includes('صافي دخل السائق'));
 check('order shows customer amount label', ordersPage.includes('المبلغ المطلوب من الزبون'));
 check('order shows restaurant amount label', ordersPage.includes('المبلغ المطلوب للمطعم'));
-check('ownership disclaimer present', dash.includes('لا تمثل راتب السائق') || earn.includes('لا تمثل راتب السائق'));
+check('ownership disclaimer present', ui.includes('لا تمثل راتب السائق'));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

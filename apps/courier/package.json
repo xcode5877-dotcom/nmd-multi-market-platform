@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx",
     "verify:static-gate": "tsx scripts/verify-courier-static-gate.mts",
-    "verify:attendance-ui": "tsx scripts/verify-courier-attendance-ui.mts"
+    "verify:attendance-ui": "tsx scripts/verify-courier-attendance-ui.mts",
+    "verify:zero-totals-ui": "tsx scripts/verify-courier-zero-totals-ui.mts"
   },
   "dependencies": {
     "@nmd/core": "workspace:*",

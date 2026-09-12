@@ -52,17 +52,42 @@ assert(!earn.includes('أرباحي'), 'earnings page has no أرباحي');
 assert(earn.includes('الدوام'), 'earnings route presents as الدوام');
 assert(earn.includes('التحصيل المالي') || earn.includes('دخل توصيل الطلبات الخارجية'), 'earnings has company collections');
 assert(
-  dash.includes('تحصيل اليوم') && dash.includes('دخل توصيل الطلبات الخارجية'),
+  dash.includes('تحصيل اليوم') || dash.includes('CourierCollectionsPanel'),
   'dashboard labels company collections'
 );
 assert(
-  dash.includes('لا تمثل راتب السائق') || earn.includes('لا تمثل راتب السائق'),
+  dash.includes('لا تمثل راتب السائق') ||
+    earn.includes('لا تمثل راتب السائق') ||
+    fsExistsPanelOwnership(),
   'dashboard ownership disclaimer'
 );
 assert(!panel.includes('accountingLabel'), 'attendance panel does not render accountingLabel');
 assert(panel.includes('تفاصيل الدوام') || !panel.includes('تفاصيل الدخل'), 'no تفاصيل الدخل link');
-assert(dash.includes('المبلغ المطلوب تسليمه للشركة'), 'outstanding due to company visible');
-assert(dash.includes('دخل نسبة التطبيق') || dash.includes('دخل التوصيل والنسبة'), 'app commission or combined visible');
+assert(
+  dash.includes('المبلغ المطلوب تسليمه للشركة') ||
+    readFileSync(resolve(root, 'components/CourierCollectionsPanel.tsx'), 'utf8').includes(
+      'المبلغ المطلوب تسليمه للشركة'
+    ),
+  'outstanding due to company visible'
+);
+assert(
+  dash.includes('دخل نسبة التطبيق') ||
+    dash.includes('دخل التوصيل والنسبة') ||
+    readFileSync(resolve(root, 'components/CourierCollectionsPanel.tsx'), 'utf8').includes(
+      'دخل نسبة التطبيق'
+    ),
+  'app commission or combined visible'
+);
+
+function fsExistsPanelOwnership(): boolean {
+  try {
+    return readFileSync(resolve(root, 'components/CourierCollectionsPanel.tsx'), 'utf8').includes(
+      'لا تمثل راتب السائق'
+    );
+  } catch {
+    return false;
+  }
+}
 
 console.log('\n--- Admin labels ---');
 const layout = readFileSync(
