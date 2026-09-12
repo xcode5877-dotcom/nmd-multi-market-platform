@@ -31,6 +31,8 @@ assert(md.includes('وقت الطلب'), 'order time visible');
 assert(md.includes('إدارة الطلب') && md.includes('REMOVE_ITEM') && md.includes('إضافة منتج'), 'order product actions visible');
 assert(ds.includes('durationLabel') && ds.includes('ساعات العمل'), 'driver hours statement UI');
 assert(ds.includes('سجل دوام') || ds.includes('ساعات العمل'), 'attendance-oriented statement copy');
+assert(ds.includes('التحصيل المالي') && ds.includes('دخل توصيل الطلبات الخارجية'), 'company collections on statement');
+assert(ds.includes('لا تمثل راتب السائق'), 'ownership disclaimer on statement');
 assert(hb.includes('hydrate'), 'home builder hydration preserved');
 assert(api.includes('nmd-access-token') && api.includes('Authorization'), 'upload/auth token client present');
 assert(!api.includes('No token found in localStorage'), 'no legacy localStorage token error string');

@@ -22,6 +22,16 @@ type StatementResponse = {
   totalSettled: number;
   hoursTotalMinutes?: number;
   hoursTotalLabel?: string;
+  companyCollections?: {
+    externalDeliveryIncome: number;
+    appDeliveryIncome: number;
+    appCommissionIncome: number;
+    companyGrossThroughCourier: number;
+    reconciledToCompany: number;
+    outstandingToCompany: number;
+    ownershipNoteAr?: string;
+  };
+  collectionsPeriod?: { from: string; to: string; timezone: string; period: string };
   shifts: {
     id: string;
     date: string;
@@ -73,8 +83,10 @@ export default function DriverStatementPage() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
-        <p className="font-semibold">سجل دوام السائق</p>
-        <p className="mt-1">التبويب الأساسي: ساعات العمل. التبويبات النقدية سجلات تاريخية محفوظة — ليست راتب سائق معتمد حالياً.</p>
+        <p className="font-semibold">الدوام + التحصيل المالي</p>
+        <p className="mt-1">
+          ساعات العمل منفصلة عن التحصيل. المبالغ أدناه لصالح الشركة عبر السائق — ليست راتبه.
+        </p>
       </div>
       <Link to="/drivers/payroll-finance" className="inline-flex items-center gap-1 text-sm text-teal-700 hover:underline">
         <ArrowRight className="w-4 h-4" />
@@ -96,27 +108,78 @@ export default function DriverStatementPage() {
                 {data.courier.phone && <p className="text-sm text-gray-500 mt-1" dir="ltr">{data.courier.phone}</p>}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
                   <div>
-                    <p className="text-gray-500">دفتر قديم (ليس راتب)</p>
-                    <p className="text-lg font-bold text-amber-800">{formatPrice(data.outstandingBalance)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">تكوين قديم ₪/س</p>
-                    <p className="font-semibold">₪{data.config.hourlyRate}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">إجمالي الساعات</p>
+                    <p className="text-gray-500">ساعات العمل</p>
                     <p className="font-semibold text-teal-800">{data.hoursTotalLabel ?? '—'}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">بدء الدوام</p>
+                    <p className="text-gray-500">صلاحية بدء الدوام</p>
                     <p className="font-semibold">
                       {data.courier.canStartShift ? 'مسموح بدء الدوام' : 'بدء الدوام موقوف'}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">السوق</p>
+                    <p className="font-semibold">{data.courier.marketId ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">حالة السائق</p>
+                    <p className="font-semibold">{data.courier.isActive ? 'نشط' : 'غير نشط'}</p>
                   </div>
                 </div>
               </div>
             </div>
           </Card>
+
+          {data.companyCollections && (
+            <Card className="p-5 space-y-3 border-emerald-100 bg-emerald-50/40">
+              <h3 className="font-bold text-gray-900">التحصيل المالي</h3>
+              <p className="text-xs text-gray-600">
+                {data.companyCollections.ownershipNoteAr ??
+                  'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق'}
+              </p>
+              {data.collectionsPeriod && (
+                <p className="text-xs text-gray-500">
+                  الفترة: {data.collectionsPeriod.from} → {data.collectionsPeriod.to}
+                  {data.collectionsPeriod.timezone ? ` · ${data.collectionsPeriod.timezone}` : ''}
+                </p>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <p className="text-gray-500">دخل توصيل الطلبات الخارجية</p>
+                  <p className="font-bold">{formatPrice(data.companyCollections.externalDeliveryIncome)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">دخل التوصيل من طلبات التطبيق</p>
+                  <p className="font-bold">{formatPrice(data.companyCollections.appDeliveryIncome)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">دخل نسبة التطبيق</p>
+                  <p className="font-bold">{formatPrice(data.companyCollections.appCommissionIncome)}</p>
+                </div>
+                <div>
+                  <p className="text-emerald-800">الإجمالي لصالح الشركة</p>
+                  <p className="font-black text-emerald-800">
+                    {formatPrice(data.companyCollections.companyGrossThroughCourier)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">تم تسليمه للشركة</p>
+                  <p className="font-bold">{formatPrice(data.companyCollections.reconciledToCompany)}</p>
+                </div>
+                <div>
+                  <p className="text-amber-800">المبلغ المطلوب تسليمه للشركة</p>
+                  <p className="font-black text-amber-900">
+                    {formatPrice(data.companyCollections.outstandingToCompany)}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2">
+            <h3 className="font-semibold text-gray-900 text-sm">الدوام</h3>
+            <p className="text-xs text-gray-500">ساعات العمل لحساب تعويض السائق لاحقاً — بدون خصم تلقائي من التحصيل</p>
+          </div>
 
           <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
             {TABS.map((t) => (

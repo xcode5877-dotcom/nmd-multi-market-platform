@@ -40,6 +40,10 @@ export type CourierOrder = {
   orderTotal?: number;
   paymentMethod?: 'CASH' | 'CARD';
   amountToCollect?: number;
+  customerAmountToCollect?: number;
+  restaurantAmountToSettle?: number;
+  driverRestaurantLiabilityAmount?: number;
+  restaurantShare?: number;
   cashChangeFor?: number;
   tenant?: { name?: string; phone?: string; address?: string; location?: { lat: number; lng: number }; categoryId?: string };
   customer?: { name?: string; phone?: string; deliveryAddress?: string; deliveryLocation?: { lat: number; lng: number }; deliveryZoneName?: string };
@@ -148,7 +152,15 @@ function OrderCard({
   const sym = CURRENCY_SYMBOL[curr] ?? curr;
   const total = order.orderTotal ?? (order as { total?: number }).total ?? 0;
   const method = order.paymentMethod ?? 'CASH';
-  const toCollect = order.amountToCollect ?? (method === 'CASH' ? total : 0);
+  const toCollect =
+    order.customerAmountToCollect ??
+    order.amountToCollect ??
+    (method === 'CASH' ? total : 0);
+  const restaurantDue =
+    order.restaurantAmountToSettle ??
+    order.driverRestaurantLiabilityAmount ??
+    order.restaurantShare ??
+    0;
 
   const preparationLabel = order.status === 'PREPARING' ? 'قيد التحضير' : 'جاهز وفي الانتظار';
 
@@ -249,8 +261,14 @@ function OrderCard({
           </div>
           {method === 'CASH' && toCollect > 0 && (
             <div className="flex justify-between text-sm mt-1 pt-1 border-t border-gray-200">
-              <span className="font-medium text-gray-800">المبلغ المستلم:</span>
+              <span className="font-medium text-gray-800">المبلغ المطلوب من الزبون:</span>
               <span className="font-bold text-teal-700">{sym}{toCollect}</span>
+            </div>
+          )}
+          {method === 'CASH' && restaurantDue > 0 && (
+            <div className="flex justify-between text-sm mt-1">
+              <span className="font-medium text-gray-800">المبلغ المطلوب للمطعم:</span>
+              <span className="font-bold text-amber-800">{sym}{restaurantDue}</span>
             </div>
           )}
         </div>

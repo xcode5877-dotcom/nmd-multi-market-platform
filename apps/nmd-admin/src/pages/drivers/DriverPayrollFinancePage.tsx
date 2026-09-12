@@ -24,6 +24,14 @@ type DriverRow = {
   netTotal: number;
   ordersCount: number;
   outstandingBalance: number;
+  companyCollections?: {
+    externalDeliveryIncome: number;
+    appDeliveryIncome: number;
+    appCommissionIncome: number;
+    companyGrossThroughCourier: number;
+    reconciledToCompany: number;
+    outstandingToCompany: number;
+  };
 };
 
 type PlatformSummary = {
@@ -246,8 +254,27 @@ export default function DriverPayrollFinancePage() {
           expenses: acc.expenses + d.expenses,
           net: acc.net + d.netTotal,
           outstanding: acc.outstanding + d.outstandingBalance,
+          extDelivery: acc.extDelivery + (d.companyCollections?.externalDeliveryIncome ?? 0),
+          appDelivery: acc.appDelivery + (d.companyCollections?.appDeliveryIncome ?? 0),
+          appCommission: acc.appCommission + (d.companyCollections?.appCommissionIncome ?? 0),
+          companyGross: acc.companyGross + (d.companyCollections?.companyGrossThroughCourier ?? 0),
+          companyOutstanding:
+            acc.companyOutstanding + (d.companyCollections?.outstandingToCompany ?? 0),
         }),
-        { hours: 0, delivery: 0, commission: 0, bonuses: 0, expenses: 0, net: 0, outstanding: 0 }
+        {
+          hours: 0,
+          delivery: 0,
+          commission: 0,
+          bonuses: 0,
+          expenses: 0,
+          net: 0,
+          outstanding: 0,
+          extDelivery: 0,
+          appDelivery: 0,
+          appCommission: 0,
+          companyGross: 0,
+          companyOutstanding: 0,
+        }
       ),
     [data]
   );
@@ -261,17 +288,19 @@ export default function DriverPayrollFinancePage() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <p className="font-semibold">فصل المجالات</p>
-        <p className="mt-1">ساعات العمل = دوام فقط. الأعمدة النقدية أدناه سجلات دفترية تاريخية ملك للشركة — ليست راتب السائق ولا أرباحه.</p>
-        <p className="mt-1">العهدة النقدية المحصّلة تُدار من «عهدة نقدية / تحصيل»، وليست تسوية راتب.</p>
+        <p className="font-semibold">فصل المجالات: التحصيل المالي ≠ الدوام ≠ راتب السائق</p>
+        <p className="mt-1">
+          التحصيل = دخل توصيل خارجي + توصيل تطبيق + نسبة التطبيق عبر السائق (لصالح الشركة). الدوام = ساعات العمل فقط بدون خصم راتب تلقائي.
+        </p>
+        <p className="mt-1">هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق.</p>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-teal-600" />
-            سجل دوام السائقين
+            دوام وتحصيل السائقين
           </h2>
-          <p className="text-sm text-gray-500 mt-1">ساعات العمل وصلاحية بدء الدوام — بدون راتب أو أرباح شخصية</p>
+          <p className="text-sm text-gray-500 mt-1">نفس أرقام التحصيل الظاهرة للسائق — لنفس الفترة والسوق</p>
         </div>
         <Button size="sm" variant="outline" onClick={handleExportCsv} disabled={!data?.drivers?.length}>
           <Download className="w-4 h-4 ml-1" />
@@ -321,15 +350,14 @@ export default function DriverPayrollFinancePage() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'ساعات', value: totals.hours.toFixed(1) },
-          { label: 'دفتر: توصيل (ليس راتب)', value: formatPrice(totals.delivery) },
-          { label: 'دفتر: عمولة (شركة)', value: formatPrice(totals.commission) },
-          { label: 'دفتر: مكافآت', value: formatPrice(totals.bonuses) },
-          { label: 'مطالبات مصاريف', value: formatPrice(totals.expenses) },
-          { label: 'دفتر: صافي (ليس راتب)', value: formatPrice(totals.net) },
-          { label: 'دفتر قديم', value: formatPrice(totals.outstanding) },
+          { label: 'ساعات العمل', value: totals.hours.toFixed(1) },
+          { label: 'دخل توصيل خارجي', value: formatPrice(totals.extDelivery) },
+          { label: 'دخل توصيل التطبيق', value: formatPrice(totals.appDelivery) },
+          { label: 'دخل نسبة التطبيق', value: formatPrice(totals.appCommission) },
+          { label: 'الإجمالي لصالح الشركة', value: formatPrice(totals.companyGross) },
+          { label: 'المطلوب تسليمه', value: formatPrice(totals.companyOutstanding) },
         ].map((c) => (
           <Card key={c.label} className="p-3">
             <p className="text-xs text-gray-500">{c.label}</p>
@@ -345,23 +373,21 @@ export default function DriverPayrollFinancePage() {
               <th className="p-3 font-medium">السائق</th>
               <th className="p-3 font-medium">بدء الدوام</th>
               <th className="p-3 font-medium">ساعات</th>
-              <th className="p-3 font-medium">تكوين قديم ₪/س</th>
-              <th className="p-3 font-medium">دفتر توصيل</th>
-              <th className="p-3 font-medium">دفتر عمولة</th>
-              <th className="p-3 font-medium">مكافآت</th>
-              <th className="p-3 font-medium">مصاريف</th>
-              <th className="p-3 font-medium">دفتر صافي</th>
-              <th className="p-3 font-medium">دفتر قديم</th>
-              <th className="p-3 font-medium" />
+              <th className="p-3 font-medium">توصيل خارجي</th>
+              <th className="p-3 font-medium">توصيل تطبيق</th>
+              <th className="p-3 font-medium">نسبة التطبيق</th>
+              <th className="p-3 font-medium">إجمالي شركة</th>
+              <th className="p-3 font-medium">مطلوب تسليمه</th>
+              <th className="p-3 font-medium">تفاصيل</th>
             </tr>
           </thead>
           <tbody>
             {isLoading &&
               Array.from({ length: 3 }).map((_, i) => (
-                <tr key={i}><td colSpan={11} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
+                <tr key={i}><td colSpan={9} className="p-3"><Skeleton className="h-8 w-full" /></td></tr>
               ))}
             {isError && (
-              <tr><td colSpan={11} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
+              <tr><td colSpan={9} className="p-6 text-center text-red-600">تعذّر تحميل البيانات</td></tr>
             )}
             {(data?.drivers ?? []).map((d) => (
               <tr key={d.courierId} className="border-b hover:bg-gray-50">
@@ -378,18 +404,26 @@ export default function DriverPayrollFinancePage() {
                   )}
                 </td>
                 <td className="p-3 tabular-nums">{d.hoursWorked.toFixed(1)}</td>
-                <td className="p-3 tabular-nums">₪{d.hourlyRate}</td>
-                <td className="p-3 tabular-nums">{formatPrice(d.deliveryEarnings)}</td>
-                <td className="p-3 tabular-nums">{formatPrice(d.commissionEarnings)}</td>
-                <td className="p-3 tabular-nums">{formatPrice(d.bonuses)}</td>
-                <td className="p-3 tabular-nums text-amber-800">{formatPrice(d.expenses)}</td>
-                <td className="p-3 tabular-nums font-bold">{formatPrice(d.netTotal)}</td>
-                <td className="p-3 tabular-nums text-amber-900 font-medium">{formatPrice(d.outstandingBalance)}</td>
+                <td className="p-3 tabular-nums">
+                  {formatPrice(d.companyCollections?.externalDeliveryIncome ?? 0)}
+                </td>
+                <td className="p-3 tabular-nums">
+                  {formatPrice(d.companyCollections?.appDeliveryIncome ?? 0)}
+                </td>
+                <td className="p-3 tabular-nums">
+                  {formatPrice(d.companyCollections?.appCommissionIncome ?? 0)}
+                </td>
+                <td className="p-3 tabular-nums font-bold text-emerald-800">
+                  {formatPrice(d.companyCollections?.companyGrossThroughCourier ?? 0)}
+                </td>
+                <td className="p-3 tabular-nums font-medium text-amber-900">
+                  {formatPrice(d.companyCollections?.outstandingToCompany ?? 0)}
+                </td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
                     <Button size="sm" variant="outline" onClick={() => { setSettleCourier(d); setSettleError(null); }}>
                       <Banknote className="w-3.5 h-3.5 ml-1" />
-                      تسوية
+                      تسوية دفترية
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setBonusCourier(d)}>
                       <Gift className="w-3.5 h-3.5 ml-1" />

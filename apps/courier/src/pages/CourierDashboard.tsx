@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { apiFetch } from '../api';
 import { CourierAttendancePanel } from '../components/CourierAttendancePanel';
-import { Package, List, MapPin, LogOut, Trophy, Award, Receipt, TrendingUp } from 'lucide-react';
+import { Package, List, MapPin, LogOut, Trophy, Award, Receipt, Banknote } from 'lucide-react';
 
 type CourierStats = {
   pointsToday?: number;
@@ -13,6 +13,28 @@ type CourierStats = {
   avgTotalMin?: number | null;
   onTimeRate?: number | null;
 };
+
+type DailySummary = {
+  date?: string;
+  externalDeliveryIncome?: number;
+  appDeliveryIncome?: number;
+  appCommissionIncome?: number;
+  appIncomeSplitAvailable?: boolean;
+  appDeliveryAndCommissionIncome?: number;
+  companyGrossThroughCourier?: number;
+  reconciledToCompany?: number;
+  outstandingToCompany?: number;
+  ownershipNoteAr?: string;
+  labelsAr?: Record<string, string>;
+  /** legacy aliases */
+  appOrdersTotal?: number;
+  externalOrdersTotal?: number;
+  gross?: number;
+};
+
+function money(n: number | undefined): string {
+  return `₪${(Number(n) || 0).toFixed(2)}`;
+}
 
 export default function CourierDashboard() {
   const { user, logout } = useAuth();
@@ -25,18 +47,10 @@ export default function CourierDashboard() {
     refetchInterval: 8000,
   });
 
-  const today = new Date().toISOString().slice(0, 10);
   const { data: daily } = useQuery({
-    queryKey: ['courier-daily-summary', today],
+    queryKey: ['courier-daily-summary', 'today'],
     queryFn: () =>
-      apiFetch<{
-        date: string;
-        appOrdersTotal: number;
-        externalOrdersTotal: number;
-        expensesTotal: number;
-        gross: number;
-        net: number;
-      }>(`/courier/daily-summary?date=${encodeURIComponent(today)}`),
+      apiFetch<DailySummary>('/courier/daily-summary?period=today'),
     enabled: !!user,
     refetchInterval: 15_000,
   });
@@ -53,6 +67,18 @@ export default function CourierDashboard() {
   });
 
   if (!user) return null;
+
+  const splitOk = daily?.appIncomeSplitAvailable !== false;
+  const external = daily?.externalDeliveryIncome ?? daily?.externalOrdersTotal ?? 0;
+  const appDelivery = daily?.appDeliveryIncome ?? 0;
+  const appCommission = daily?.appCommissionIncome ?? 0;
+  const appCombined =
+    daily?.appDeliveryAndCommissionIncome ??
+    daily?.appOrdersTotal ??
+    appDelivery + appCommission;
+  const gross = daily?.companyGrossThroughCourier ?? daily?.gross ?? external + appCombined;
+  const reconciled = daily?.reconciledToCompany ?? 0;
+  const outstanding = daily?.outstandingToCompany ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -79,34 +105,52 @@ export default function CourierDashboard() {
 
         {daily && (
           <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg text-white">
-            <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              تحصيل لصالح الشركة — اليوم
+            <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
+              <Banknote className="w-4 h-4 text-emerald-400" />
+              تحصيل اليوم
             </h3>
             <p className="text-[11px] text-slate-400 mb-3">
-              المبالغ أدناه ملك للشركة عبرك (ليست أرباح السائق)
+              {daily.ownershipNoteAr ??
+                'هذه المبالغ محصلة لصالح الشركة ولا تمثل راتب السائق'}
             </p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <p className="text-slate-400">دخل طلبات التطبيق</p>
-                <p className="text-lg font-bold">₪{daily.appOrdersTotal.toFixed(2)}</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-400">دخل توصيل الطلبات الخارجية</span>
+                <span className="font-bold tabular-nums">{money(external)}</span>
               </div>
-              <div>
-                <p className="text-slate-400">دخل الطلبات الخارجية</p>
-                <p className="text-lg font-bold">₪{daily.externalOrdersTotal.toFixed(2)}</p>
+              {splitOk ? (
+                <>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400">دخل التوصيل من طلبات التطبيق</span>
+                    <span className="font-bold tabular-nums">{money(appDelivery)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400">دخل نسبة التطبيق</span>
+                    <span className="font-bold tabular-nums">{money(appCommission)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-400">دخل التوصيل والنسبة من طلبات التطبيق</span>
+                  <span className="font-bold tabular-nums">{money(appCombined)}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2 pt-2 border-t border-slate-600">
+                <span className="text-emerald-300">الإجمالي لصالح الشركة</span>
+                <span className="font-black text-emerald-300 tabular-nums">{money(gross)}</span>
               </div>
-              <div>
-                <p className="text-slate-400">إجمالي دخل الشركة</p>
-                <p className="text-lg font-bold text-emerald-300">₪{daily.gross.toFixed(2)}</p>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-400">تم تسليمه للشركة</span>
+                <span className="font-bold tabular-nums">{money(reconciled)}</span>
               </div>
-              <div>
-                <p className="text-slate-400">مصاريف تشغيلية (مطالبات)</p>
-                <p className="text-lg font-bold text-amber-300">— ₪{daily.expensesTotal.toFixed(2)}</p>
+              <div className="flex justify-between gap-2 pt-2 border-t border-slate-600">
+                <span className="text-amber-300 font-medium">المبلغ المطلوب تسليمه للشركة</span>
+                <span className="text-xl font-black text-amber-200 tabular-nums">{money(outstanding)}</span>
               </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-600 flex justify-between items-center">
-              <span className="text-slate-300">صافي تشغيلي (شركة)</span>
-              <span className="text-2xl font-black text-white">₪{daily.net.toFixed(2)}</span>
+              <div className="flex justify-between gap-2 text-xs">
+                <span className="text-slate-500">المتبقي للتسليم</span>
+                <span className="tabular-nums text-slate-300">{money(outstanding)}</span>
+              </div>
             </div>
           </div>
         )}

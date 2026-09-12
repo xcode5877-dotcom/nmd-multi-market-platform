@@ -48,12 +48,21 @@ const dash = readFileSync(resolve(root, 'pages/CourierDashboard.tsx'), 'utf8');
 const panel = readFileSync(resolve(root, 'components/CourierAttendancePanel.tsx'), 'utf8');
 assert(!earn.includes('صافي الدخل'), 'earnings page has no صافي الدخل');
 assert(!earn.includes('أجر ساعي'), 'earnings page has no hourly wage');
-assert(!earn.includes('عمولة'), 'earnings page has no commission card');
+assert(!earn.includes('أرباحي'), 'earnings page has no أرباحي');
 assert(earn.includes('الدوام'), 'earnings route presents as الدوام');
-assert(dash.includes('دخل طلبات التطبيق') || dash.includes('تحصيل لصالح الشركة'), 'dashboard labels company revenue');
-assert(dash.includes('ليست أرباح السائق') || dash.includes('ملك للشركة'), 'dashboard ownership disclaimer');
+assert(earn.includes('التحصيل المالي') || earn.includes('دخل توصيل الطلبات الخارجية'), 'earnings has company collections');
+assert(
+  dash.includes('تحصيل اليوم') && dash.includes('دخل توصيل الطلبات الخارجية'),
+  'dashboard labels company collections'
+);
+assert(
+  dash.includes('لا تمثل راتب السائق') || earn.includes('لا تمثل راتب السائق'),
+  'dashboard ownership disclaimer'
+);
 assert(!panel.includes('accountingLabel'), 'attendance panel does not render accountingLabel');
 assert(panel.includes('تفاصيل الدوام') || !panel.includes('تفاصيل الدخل'), 'no تفاصيل الدخل link');
+assert(dash.includes('المبلغ المطلوب تسليمه للشركة'), 'outstanding due to company visible');
+assert(dash.includes('دخل نسبة التطبيق') || dash.includes('دخل التوصيل والنسبة'), 'app commission or combined visible');
 
 console.log('\n--- Admin labels ---');
 const layout = readFileSync(
