@@ -6,6 +6,7 @@
 import { isOrderExternal } from '@nmd/core';
 import { roundMoney } from './platform-fee.js';
 import { isSettlementEligibleStatus } from './settlement.js';
+import { extractVerifiedExternalDeliveryFee } from './driver-collections.js';
 
 export type StoreProfitDatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
@@ -193,15 +194,9 @@ export function extractOrderStoreProfit(order: Record<string, unknown>): StorePr
   return { totalSales, platformCommission, deliveryFee, nowMarketRevenue };
 }
 
-/** External orders: verified delivery fee only — never Order.total / merchandise. */
+/** External orders: verified delivery fee only (explicit snapshot or proven legacy total). */
 export function extractExternalOrderDeliveryProfit(order: Record<string, unknown>): number {
-  const settlement = order.settlement as { deliveryFee?: number } | undefined;
-  const fromSettlement = safeNum(settlement?.deliveryFee);
-  if (fromSettlement > 0) return roundMoney(fromSettlement);
-
-  const fin = extractOrderStoreProfit(order);
-  if (fin.deliveryFee > 0) return fin.deliveryFee;
-  return 0;
+  return extractVerifiedExternalDeliveryFee(order) ?? 0;
 }
 
 export type OrderProfitBySource = {

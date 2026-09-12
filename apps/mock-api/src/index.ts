@@ -145,7 +145,7 @@ import {
   computeDriverCollectionAmount,
   createDriverCollectionSettlement,
   enrichOrderWithDriverCollection,
-  extractVerifiedExternalDeliveryFee,
+  resolveExternalDeliveryFee,
   getDriverSettlementMode,
   listActiveShiftStarts,
   listCollectionSettlements,
@@ -10204,7 +10204,8 @@ app.get('/admin/external-orders', wrapAsync(async (req, res) => {
     const c = courierId ? courierMap.get(courierId) : undefined;
     const t = tenantId ? tenantMap.get(tenantId) : undefined;
     const m = marketId ? marketMap.get(marketId) : undefined;
-    const verifiedFee = extractVerifiedExternalDeliveryFee(o);
+    const resolved = resolveExternalDeliveryFee(o);
+    const verifiedFee = resolved.deliveryFeeAmount;
     return {
       id: o.id,
       createdAt: o.createdAt,
@@ -10221,10 +10222,16 @@ app.get('/admin/external-orders', wrapAsync(async (req, res) => {
       externalDestination: o.externalDestination ?? null,
       deliveryFee: verifiedFee,
       deliveryFeeVerified: verifiedFee,
+      deliveryFeeSource: resolved.deliveryFeeSource,
+      deliveryFeeConfidence: resolved.confidence,
       incomeStatus: verifiedFee == null ? 'MISSING_DELIVERY_FEE' : 'VERIFIED',
       needsReview: verifiedFee == null,
-      /** Merchandise/total is not delivery income — exposed for ops only. */
-      orderTotalNotIncome: o.total ?? null,
+      /**
+       * Ops visibility of Order.total. For LEGACY_EXTERNAL_TOTAL this equals the verified fee
+       * (creation contract); for other sources it must not be treated as merchandise income.
+       */
+      orderTotalNotIncome:
+        resolved.deliveryFeeSource === 'LEGACY_EXTERNAL_TOTAL' ? null : (o.total ?? null),
       isExternal: true,
     };
   }));

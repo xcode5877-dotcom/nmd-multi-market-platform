@@ -76,15 +76,28 @@ function runUnitTests(): void {
     total: 30,
     subtotal: 0,
     items: [],
+    source: 'external',
   });
   assert(externalProfit.isExternal, 'external order flagged');
   assert(externalProfit.appCommissionProfit === 0, 'external commission always zero');
   assert(externalProfit.appDeliveryProfit === 0, 'external has no app delivery bucket');
   assert(
-    externalProfit.externalDeliveryProfit === 0,
-    'external with only Order.total does not invent delivery income'
+    externalProfit.externalDeliveryProfit === 30,
+    'proven legacy external Order.total is delivery fee'
   );
-  assert(externalProfit.nowMarketRevenue === 0, 'external missing verified fee → zero revenue');
+  assert(externalProfit.nowMarketRevenue === 30, 'legacy external revenue = fee');
+
+  const externalMerchandise = extractOrderProfitBySource({
+    status: 'COMPLETED',
+    isExternal: true,
+    total: 180,
+    subtotal: 150,
+    items: [{ totalPrice: 150 }],
+  });
+  assert(
+    externalMerchandise.externalDeliveryProfit === 0,
+    'external with merchandise cannot use Order.total'
+  );
 
   const externalWithSettlementCommission = extractOrderProfitBySource({
     status: 'DELIVERED',
@@ -102,8 +115,23 @@ function runUnitTests(): void {
   );
 
   assert(
-    extractExternalOrderDeliveryProfit({ isExternal: true, total: 18 }) === 0,
-    'external never falls back to Order.total'
+    extractExternalOrderDeliveryProfit({
+      isExternal: true,
+      total: 99,
+      subtotal: 80,
+      items: [{ totalPrice: 80 }],
+    }) === 0,
+    'ambiguous external never falls back to Order.total'
+  );
+  assert(
+    extractExternalOrderDeliveryProfit({
+      isExternal: true,
+      total: 18,
+      subtotal: 0,
+      items: [],
+      source: 'external',
+    }) === 18,
+    'legacy external uses Order.total as fee'
   );
   assert(
     extractExternalOrderDeliveryProfit({
@@ -112,6 +140,16 @@ function runUnitTests(): void {
       delivery: { fee: 18 },
     }) === 18,
     'external uses verified delivery.fee'
+  );
+  assert(
+    extractOrderProfitBySource({
+      isExternal: false,
+      status: 'COMPLETED',
+      total: 100,
+      payment: { breakdown: { deliveryFee: 12, itemsTotal: 80 } },
+      delivery: { fee: 12 },
+    }).externalDeliveryProfit === 0,
+    'app order never uses total as external delivery income'
   );
 
   console.log('\n--- Unit: computeStoreProfitReport ---');
@@ -208,6 +246,8 @@ function runUnitTests(): void {
       isExternal: true,
       createdAt: '2026-07-03T11:00:00.000Z',
       total: 999,
+      subtotal: 900,
+      items: [{ productName: 'meal', quantity: 1, totalPrice: 900 }],
     },
   ];
 
@@ -221,7 +261,7 @@ function runUnitTests(): void {
   const q = qReport.stores[0];
   assert(q?.storeName === 'قشطوطة', 'Qashtoota store name');
   assert(q?.appOrderCount === 1, 'Qashtoota 1 app order');
-  assert(q?.externalOrderCount === 3, 'Qashtoota 3 external orders (incl missing fee)');
+  assert(q?.externalOrderCount === 3, 'Qashtoota 3 external orders (incl ambiguous merchandise)');
   assert(q?.appCommissionProfit === 72, 'Qashtoota app commission');
   assert(q?.appDeliveryProfit === 180, 'Qashtoota app delivery');
   assert(q?.appTotalPlatformProfit === 252, 'Qashtoota app total');

@@ -52,6 +52,8 @@ export default function ExternalOrdersAdminPage() {
                   <th className="px-3 py-2 text-start">المحل</th>
                   <th className="px-3 py-2 text-start">الوجهة</th>
                   <th className="px-3 py-2 text-start">رسوم التوصيل</th>
+                  <th className="px-3 py-2 text-start">المصدر</th>
+                  <th className="px-3 py-2 text-start">الحالة</th>
                 </tr>
               </thead>
               <tbody>
@@ -67,7 +69,17 @@ export default function ExternalOrdersAdminPage() {
                     </td>
                     <td className="px-3 py-2">{row.storeDisplayName ?? row.tenantName ?? row.manualStoreName ?? 'Other'}</td>
                     <td className="px-3 py-2">{row.externalDestination ?? '—'}</td>
-                    <td className="px-3 py-2 font-semibold">{Number(row.deliveryFee ?? 0).toFixed(2)} ₪</td>
+                    <td className="px-3 py-2 font-semibold">
+                      {row.deliveryFee == null ? '—' : `${Number(row.deliveryFee).toFixed(2)} ₪`}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{row.deliveryFeeSource ?? '—'}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {row.needsReview ? (
+                        <span className="text-amber-700">بحاجة لمراجعة أجرة التوصيل</span>
+                      ) : (
+                        <span className="text-emerald-700">موثّق</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

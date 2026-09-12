@@ -403,7 +403,13 @@ export interface ExternalOrderAdminRow {
   manualStoreName?: string | null;
   storeDisplayName?: string | null;
   externalDestination?: string | null;
-  deliveryFee?: number;
+  deliveryFee?: number | null;
+  deliveryFeeVerified?: number | null;
+  deliveryFeeSource?: string | null;
+  deliveryFeeConfidence?: string | null;
+  incomeStatus?: string | null;
+  needsReview?: boolean;
+  orderTotalNotIncome?: number | null;
   isExternal: true;
 }
 

@@ -192,7 +192,7 @@ export function computeCourierCompanyCollections(
             out.reconciledToCompany + (acc.settledAmount || 0)
           );
         }
-        // Never invent income or outstanding from Order.total.
+        // Ambiguous only — legacy-proven totals are resolved above via extractVerifiedExternalDeliveryFee.
         continue;
       }
       out.externalDeliveryIncome = roundMoney(out.externalDeliveryIncome + verifiedFee);

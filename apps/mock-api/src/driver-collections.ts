@@ -197,32 +197,141 @@ export function extractPlatformCommission(order: Record<string, unknown>): numbe
   }
 }
 
+export type ExternalDeliveryFeeSource =
+  | 'EXPLICIT_SETTLEMENT'
+  | 'EXPLICIT_PAYMENT_BREAKDOWN'
+  | 'EXPLICIT_PLATFORM_FIELD'
+  | 'EXPLICIT_DELIVERY_METADATA'
+  | 'LEGACY_EXTERNAL_TOTAL';
+
+export type ExternalDeliveryFeeConfidence = 'VERIFIED' | 'REVIEW_REQUIRED';
+
+export type ResolvedExternalDeliveryFee = {
+  deliveryFeeAmount: number | null;
+  deliveryFeeSource: ExternalDeliveryFeeSource | null;
+  confidence: ExternalDeliveryFeeConfidence;
+};
+
+function positiveMoney(v: unknown): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return roundMoney(n);
+}
+
+function externalMerchandiseSignals(order: Record<string, unknown>): {
+  itemCount: number | null;
+  itemsSum: number;
+  subtotal: number;
+  settlementMerchandise: number;
+} {
+  const items = order.items;
+  let itemCount: number | null = null;
+  let itemsSum = 0;
+  if (Array.isArray(items)) {
+    itemCount = items.length;
+    for (const it of items) {
+      if (!it || typeof it !== 'object') continue;
+      const row = it as { totalPrice?: unknown; basePrice?: unknown; quantity?: unknown };
+      const line =
+        positiveMoney(row.totalPrice) ??
+        roundMoney((Number(row.basePrice) || 0) * (Number(row.quantity) || 1));
+      if (Number.isFinite(line) && line > 0) itemsSum = roundMoney(itemsSum + line);
+    }
+  }
+  const subtotalRaw = Number(order.subtotal);
+  const subtotal = Number.isFinite(subtotalRaw) && subtotalRaw > 0 ? roundMoney(subtotalRaw) : 0;
+  const settlement = order.settlement as
+    | {
+        customerSales?: unknown;
+        merchantBaseSubtotal?: unknown;
+        merchantLiability?: unknown;
+        merchantPayout?: unknown;
+      }
+    | undefined;
+  let settlementMerchandise = 0;
+  if (settlement) {
+    for (const k of ['customerSales', 'merchantBaseSubtotal', 'merchantLiability', 'merchantPayout'] as const) {
+      const n = Number(settlement[k]);
+      if (Number.isFinite(n) && n > 0) settlementMerchandise = roundMoney(settlementMerchandise + n);
+    }
+  }
+  return { itemCount, itemsSum, subtotal, settlementMerchandise };
+}
+
 /**
- * Verified external/manual delivery fee only.
- * Never uses Order.total, customer payable, restaurant payable, or inferred differences.
- * @returns fee when an authoritative snapshot field proves it; otherwise null
+ * True when the order matches the historical market-dispatch external contract:
+ * UI "أجرة التوصيل" → API stores fee in Order.total with empty items / subtotal 0
+ * (explicit fee snapshot fields were added later in 8d0025c41).
  */
-export function extractVerifiedExternalDeliveryFee(
+export function isLegacyExternalDeliveryFeeContract(order: Record<string, unknown>): boolean {
+  if (!isOrderExternal(order)) return false;
+  const { itemCount, itemsSum, subtotal, settlementMerchandise } = externalMerchandiseSignals(order);
+  if (itemsSum > 0 || subtotal > 0 || settlementMerchandise > 0) return false;
+  if (itemCount != null && itemCount > 0) return false;
+  const total = positiveMoney(order.total);
+  return total != null;
+}
+
+/**
+ * Versioned external delivery-fee resolver.
+ * Never: deliveryFee ?? Order.total
+ * Never applies Order.total to app orders.
+ */
+export function resolveExternalDeliveryFee(
   order: Record<string, unknown>
-): number | null {
+): ResolvedExternalDeliveryFee {
+  if (!isOrderExternal(order)) {
+    return { deliveryFeeAmount: null, deliveryFeeSource: null, confidence: 'REVIEW_REQUIRED' };
+  }
+
   const settlement = order.settlement as { deliveryFee?: number } | undefined;
   const pay = order.payment as
     | { breakdown?: { deliveryFee?: number }; financials?: { deliveryFee?: number } }
     | undefined;
   const delivery = order.delivery as { fee?: number } | undefined;
-  const candidates = [
-    settlement?.deliveryFee,
-    pay?.breakdown?.deliveryFee,
-    pay?.financials?.deliveryFee,
-    order.platformDeliveryFee,
-    delivery?.fee,
-    order.deliveryFee,
+
+  const explicitCandidates: { value: unknown; source: ExternalDeliveryFeeSource }[] = [
+    { value: settlement?.deliveryFee, source: 'EXPLICIT_SETTLEMENT' },
+    { value: pay?.breakdown?.deliveryFee, source: 'EXPLICIT_PAYMENT_BREAKDOWN' },
+    { value: pay?.financials?.deliveryFee, source: 'EXPLICIT_PAYMENT_BREAKDOWN' },
+    { value: order.platformDeliveryFee, source: 'EXPLICIT_PLATFORM_FIELD' },
+    { value: order.deliveryFee, source: 'EXPLICIT_PLATFORM_FIELD' },
+    { value: delivery?.fee, source: 'EXPLICIT_DELIVERY_METADATA' },
   ];
-  for (const c of candidates) {
-    const n = Number(c);
-    if (Number.isFinite(n) && n > 0) return roundMoney(n);
+  for (const c of explicitCandidates) {
+    const n = positiveMoney(c.value);
+    if (n != null) {
+      return {
+        deliveryFeeAmount: n,
+        deliveryFeeSource: c.source,
+        confidence: 'VERIFIED',
+      };
+    }
   }
-  return null;
+
+  if (isLegacyExternalDeliveryFeeContract(order)) {
+    const legacy = positiveMoney(order.total);
+    if (legacy != null) {
+      return {
+        deliveryFeeAmount: legacy,
+        deliveryFeeSource: 'LEGACY_EXTERNAL_TOTAL',
+        confidence: 'VERIFIED',
+      };
+    }
+  }
+
+  return { deliveryFeeAmount: null, deliveryFeeSource: null, confidence: 'REVIEW_REQUIRED' };
+}
+
+/**
+ * Verified external/manual delivery fee only.
+ * Explicit snapshots first; else proven legacy external Order.total (= delivery fee).
+ * Never uses app Order.total / restaurant merchandise / inferred differences.
+ */
+export function extractVerifiedExternalDeliveryFee(
+  order: Record<string, unknown>
+): number | null {
+  return resolveExternalDeliveryFee(order).deliveryFeeAmount;
 }
 
 export function extractDeliveryFeeForCollection(order: Record<string, unknown>): number {
