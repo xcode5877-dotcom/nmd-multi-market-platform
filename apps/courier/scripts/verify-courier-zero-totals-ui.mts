@@ -78,11 +78,21 @@ check('panel sends period query', panel.includes('period=${encodeURIComponent(pe
 check('panel queryKey includes period', panel.includes("queryKey: ['courier-daily-summary'") && panel.includes('period'));
 check('panel has اعرض الكل', panel.includes('اعرض الكل') && panel.includes('الكل'));
 check('panel has لا توجد حركة اليوم', panel.includes('لا توجد حركة اليوم'));
+check('panel has لا توجد حركة ضمن هذه الفترة', panel.includes('لا توجد حركة ضمن هذه الفترة'));
+check('panel CTA is اعرض الكل button', panel.includes('>اعرض الكل<') || panel.includes('اعرض الكل'));
 check('panel has API error not zero', panel.includes('تعذر تحميل البيانات') && panel.includes('إعادة المحاولة'));
 check('panel has profile mismatch', panel.includes('تعذر ربط حساب السائق بملفه'));
 check('panel has verified empty copy', panel.includes('لا توجد مبالغ موثقة ضمن هذه الفترة'));
 check('panel has missing fee review', panel.includes('مراجعة أجرة التوصيل'));
 check('error path does not formatMoney(0) fallback alone', !panel.includes('Number(n) || 0'));
+
+const periodLib = fs.readFileSync(path.join(root, 'lib/collectionsPeriod.ts'), 'utf8');
+const layout = fs.readFileSync(path.join(root, 'components/CourierNativeLayout.tsx'), 'utf8');
+check('period persistence helper exists', periodLib.includes('courier-collections-period'));
+check('resolve prefers URL then storage', periodLib.includes('resolveCollectionsPeriod'));
+check('dashboard writes stored period', dash.includes('writeStoredCollectionsPeriod'));
+check('earnings writes stored period', earn.includes('writeStoredCollectionsPeriod'));
+check('nav preserves period via collectionsPeriodSearch', layout.includes('collectionsPeriodSearch'));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

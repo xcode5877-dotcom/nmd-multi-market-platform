@@ -6,8 +6,12 @@ import { CourierAttendancePanel } from '../components/CourierAttendancePanel';
 import { CourierCollectionsPanel } from '../components/CourierCollectionsPanel';
 import { Package, List, MapPin, LogOut, Trophy, Award, Receipt } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { CollectionsPeriod } from '../lib/collectionsSummary';
+import {
+  resolveCollectionsPeriod,
+  writeStoredCollectionsPeriod,
+} from '../lib/collectionsPeriod';
 
 type CourierStats = {
   pointsToday?: number;
@@ -17,19 +21,29 @@ type CourierStats = {
   onTimeRate?: number | null;
 };
 
-function parsePeriodParam(raw: string | null): CollectionsPeriod {
-  if (raw === 'week' || raw === 'month' || raw === 'all' || raw === 'today') return raw;
-  return 'today';
-}
-
 export default function CourierDashboard() {
   const { user, logout } = useAuth();
   const { isNativeApp } = useNativeBridge();
   const [searchParams, setSearchParams] = useSearchParams();
-  const period = parsePeriodParam(searchParams.get('period'));
+  const urlPeriod = searchParams.get('period');
+  const period = resolveCollectionsPeriod(urlPeriod);
+
+  /** Sync URL when restoring a stored non-today period so bottom-nav keeps it. */
+  useEffect(() => {
+    if (urlPeriod != null) {
+      writeStoredCollectionsPeriod(period);
+      return;
+    }
+    if (period !== 'today') {
+      setSearchParams({ period }, { replace: true });
+    } else {
+      writeStoredCollectionsPeriod('today');
+    }
+  }, [urlPeriod, period, setSearchParams]);
 
   const setPeriod = useCallback(
     (p: CollectionsPeriod) => {
+      writeStoredCollectionsPeriod(p);
       setSearchParams(p === 'today' ? {} : { period: p }, { replace: true });
     },
     [setSearchParams]

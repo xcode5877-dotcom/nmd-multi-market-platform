@@ -4,14 +4,13 @@ import { useNativeBridge } from '../contexts/NativeBridgeContext';
 import { CourierAttendancePanel } from '../components/CourierAttendancePanel';
 import { CourierCollectionsPanel } from '../components/CourierCollectionsPanel';
 import { ArrowRight } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { CollectionsPeriod } from '../lib/collectionsSummary';
 import type { AttendancePeriod } from '../components/CourierAttendancePanel';
-
-function parsePeriodParam(raw: string | null): CollectionsPeriod {
-  if (raw === 'week' || raw === 'month' || raw === 'all' || raw === 'today') return raw;
-  return 'today';
-}
+import {
+  resolveCollectionsPeriod,
+  writeStoredCollectionsPeriod,
+} from '../lib/collectionsPeriod';
 
 /**
  * Route /earnings kept for backward compatibility.
@@ -21,10 +20,24 @@ export default function CourierEarningsPage() {
   const { user } = useAuth();
   const { isNativeApp } = useNativeBridge();
   const [searchParams, setSearchParams] = useSearchParams();
-  const period = parsePeriodParam(searchParams.get('period'));
+  const urlPeriod = searchParams.get('period');
+  const period = resolveCollectionsPeriod(urlPeriod);
+
+  useEffect(() => {
+    if (urlPeriod != null) {
+      writeStoredCollectionsPeriod(period);
+      return;
+    }
+    if (period !== 'today') {
+      setSearchParams({ period }, { replace: true });
+    } else {
+      writeStoredCollectionsPeriod('today');
+    }
+  }, [urlPeriod, period, setSearchParams]);
 
   const setPeriod = useCallback(
     (p: CollectionsPeriod) => {
+      writeStoredCollectionsPeriod(p);
       setSearchParams({ period: p }, { replace: true });
     },
     [setSearchParams]

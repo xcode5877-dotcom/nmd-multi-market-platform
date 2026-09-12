@@ -191,19 +191,20 @@ export function CourierCollectionsPanel({
           )}
 
           {hasPrior && (
-            <div className={`${warnBox} mb-3 space-y-2`}>
-              <p>
-                {period === 'today'
-                  ? 'لا توجد حركة اليوم'
-                  : 'لا توجد مبالغ موثقة ضمن هذه الفترة'}
+            <div className={`${warnBox} mb-3 space-y-2`} data-testid="collections-prior-hint">
+              <p className="font-medium">
+                {period === 'today' ? 'لا توجد حركة اليوم' : 'لا توجد حركة ضمن هذه الفترة'}
               </p>
               <p>يوجد سجل سابق — اعرض الكل</p>
+              <p className={`text-[11px] ${muted}`}>
+                الفترة الحالية: {COLLECTIONS_PERIODS.find((p) => p.id === period)?.label ?? period}
+              </p>
               <button
                 type="button"
                 onClick={() => onPeriodChange('all')}
                 className="inline-flex px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold"
               >
-                الكل
+                اعرض الكل
               </button>
               <Link
                 to="/earnings?period=all"

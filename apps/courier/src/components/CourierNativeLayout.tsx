@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { List, MapPin, User, Home, Clock } from 'lucide-react';
+import { collectionsPeriodSearch } from '../lib/collectionsPeriod';
 
 const navItems = [
   { to: '/', end: true, label: 'الرئيسية', icon: Home },
@@ -11,7 +12,8 @@ const navItems = [
 
 export default function CourierNativeLayout() {
   const location = useLocation();
-  const search = location.search;
+  /** Keep collections period across tab switches even if the URL temporarily lacks ?period=. */
+  const search = collectionsPeriodSearch(location.search);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
