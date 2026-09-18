@@ -51,7 +51,7 @@ void main() {
     test('legacy WEIGHT null max exposes only 250g (0.25 kg base)', () {
       final m = ProductMeasurement.fromProductJson(_bandoraWeightNullMaxJson())!;
       expect(m.selectableQuantities(), [0.25]);
-      expect(m.formatQuantityLabel(0.25), '250g');
+      expect(m.formatQuantityLabel(0.25), '250 غرام');
       expect(m.canIncrementFrom(0.25), isFalse);
     });
 
@@ -62,7 +62,7 @@ void main() {
         m.selectableQuantities(),
         [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
       );
-      expect(m.formatQuantityLabel(0.5), '500g');
+      expect(m.formatQuantityLabel(0.5), '500 غرام');
 
       final ctrl = ProductCustomizationController(product);
       expect(ctrl.orderQuantity, 0.25);
@@ -99,7 +99,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('500g'));
+      await tester.tap(find.text('500 غرام'));
       await tester.pump();
       expect(selected, 0.25);
     });

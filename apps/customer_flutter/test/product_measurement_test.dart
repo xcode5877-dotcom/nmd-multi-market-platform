@@ -60,7 +60,7 @@ void main() {
       expect(options, [0.25, 0.5, 0.75, 1.0]);
       expect(
         options.map(m.formatQuantityLabel).toList(),
-        ['250g', '500g', '750g', '1000g'],
+        ['250 غرام', '500 غرام', '750 غرام', '1000 غرام'],
       );
     });
 
@@ -108,7 +108,7 @@ void main() {
       final m = ProductMeasurement.fromProductJson(_qaProductJson)!;
       expect(m.unitName, 'غرام');
       expect(m.selectableQuantities().first, 0.25);
-      expect(m.formatQuantityLabel(0.25), '250g');
+      expect(m.formatQuantityLabel(0.25), '250 غرام');
     });
 
     test('invalid / zero step falls back safely', () {
@@ -169,7 +169,7 @@ void main() {
       expect(m.selectableQuantities(), [0.25, 0.5, 0.75, 1.0]);
       expect(
         m.selectableQuantities().map(m.formatQuantityLabel).toList(),
-        ['250g', '500g', '750g', '1000g'],
+        ['250 غرام', '500 غرام', '750 غرام', '1000 غرام'],
       );
       expect(m.lineTotal(40, 0.5), 20);
     });
@@ -259,7 +259,7 @@ void main() {
       final line = cubit.state.single;
       expect(line.quantity, 0.5);
       expect(line.lineTotal, 50);
-      expect(line.quantityDisplayLabel, '500g');
+      expect(line.quantityDisplayLabel, '500 غرام');
       expect(line.isWeightLine, isTrue);
       expect(line.badgeCount, 1);
       expect(cubit.itemCount, 1);

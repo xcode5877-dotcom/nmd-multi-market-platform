@@ -83,14 +83,15 @@ class ProductMeasurement {
   String formatQuantityLabel(double quantityInBase) {
     if (displayUnitCode == 'g' && baseUnitCode == 'kg') {
       final grams = (quantityInBase * 1000).round();
-      return '${grams}g';
+      return '$grams غرام';
     }
-    if (displayUnitCode == 'kg') {
+    if (displayUnitCode == 'kg' || baseUnitCode == 'kg') {
       final rounded = _roundBaseQuantity(quantityInBase);
+      final unit = unitName.trim().isNotEmpty ? unitName.trim() : 'كغ';
       if (rounded == rounded.roundToDouble()) {
-        return '${rounded.toInt()}kg';
+        return '${rounded.toInt()} $unit';
       }
-      return '${rounded}kg';
+      return '$rounded $unit';
     }
     if (quantityInBase == quantityInBase.roundToDouble()) {
       return '${quantityInBase.toInt()} $unitName';
