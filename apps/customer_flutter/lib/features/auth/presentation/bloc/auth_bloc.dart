@@ -91,6 +91,54 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return fallback;
   }
 
+  String _otpSendUserMessage(String? raw) {
+    final t = (raw ?? '').trim().toLowerCase();
+    if (t.isEmpty) {
+      return 'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.';
+    }
+    if (t.contains('rate') || t.contains('too many') || t.contains('429')) {
+      return 'تم إرسال عدة طلبات. انتظر قليلاً ثم أعد المحاولة.';
+    }
+    if (t.contains('whatsapp') ||
+        t.contains('unavailable') ||
+        t.contains('not ready') ||
+        t.contains('not linked') ||
+        t.contains('session')) {
+      return 'خدمة واتساب غير متاحة مؤقتاً. حاول مرة أخرى بعد قليل.';
+    }
+    // Never surface internal stack/Prisma wording.
+    if (t.contains('prisma') || t.contains('docker') || t.contains('exception')) {
+      return 'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.';
+    }
+    if (raw != null && raw.trim().isNotEmpty && raw.length < 120) {
+      // Prefer short Arabic API messages when already customer-facing.
+      final original = raw.trim();
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(original)) return original;
+    }
+    return 'تعذر إرسال رمز التحقق حالياً. حاول مرة أخرى بعد قليل.';
+  }
+
+  String _otpSendExceptionMessage(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 429) {
+        return 'تم إرسال عدة طلبات. انتظر قليلاً ثم أعد المحاولة.';
+      }
+      if (status == 503 || status == 502) {
+        return 'خدمة واتساب غير متاحة مؤقتاً. حاول مرة أخرى بعد قليل.';
+      }
+      final data = error.response?.data;
+      if (data is Map) {
+        final code = data['code']?.toString().toUpperCase() ?? '';
+        if (code.contains('WHATSAPP') || code.contains('UNAVAILABLE')) {
+          return 'خدمة واتساب غير متاحة مؤقتاً. حاول مرة أخرى بعد قليل.';
+        }
+        return _otpSendUserMessage(data['error']?.toString());
+      }
+    }
+    return _readError(error, fallback: 'تعذر إرسال رمز التحقق حالياً.');
+  }
+
   static const _wrongOtpMessage = 'رمز التحقق غير صحيح، حاول مرة أخرى';
 
   String _otpVerificationError(Object error) {
@@ -114,6 +162,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthPhoneSubmitted event,
     Emitter<AuthState> emit,
   ) async {
+    if (state.loading) return;
+
     final phone = event.phone.trim();
     if (phone.isEmpty) {
       emit(state.copyWith(error: 'أدخل رقم الجوال'));
@@ -157,7 +207,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(
           state.copyWith(
             loading: false,
-            error: start.error ?? 'Failed to send OTP.',
+            error: _otpSendUserMessage(start.error),
           ),
         );
         return;
@@ -169,12 +219,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           phoneExists: check.exists,
           sentVia: start.sentVia,
           clearDevCode: true,
+          clearError: true,
         ),
       );
     } catch (e) {
       emit(state.copyWith(
         loading: false,
-        error: _readError(e, fallback: 'تعذر إرسال رمز التحقق حالياً.'),
+        error: _otpSendExceptionMessage(e),
       ));
     }
   }
@@ -183,6 +234,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthOtpContinue event,
     Emitter<AuthState> emit,
   ) async {
+    if (state.loading) return;
     final code = event.code.trim();
     if (code.length != 6) {
       emit(state.copyWith(error: 'أدخل الرمز الستّة أرقام'));
