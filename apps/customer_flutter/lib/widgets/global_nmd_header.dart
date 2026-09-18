@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/theme/app_colors.dart';
-import '../core/auth/ensure_customer_auth.dart';
+import '../core/auth/protected_customer_navigation.dart';
 import '../design_system/design_system.dart';
 import '../features/cart/presentation/widgets/global_cart_icon.dart';
 

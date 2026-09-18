@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import 'auth_failure.dart';
 import '../network/token_storage.dart';
@@ -68,50 +67,5 @@ Future<bool> ensureCustomerAuth(BuildContext context) async {
   return ok;
 }
 
-/// Account tab: logged-in users go to account; guests get the OTP sheet (then account on success).
-Future<void> openCustomerAccount(BuildContext context, String marketSlug) async {
-  nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_START marketSlug=$marketSlug');
-
-  final slug = GoRouterState.of(context).pathParameters['slug'] ?? marketSlug;
-  final trimmedSlug = slug.trim();
-  final target = '/market/$trimmedSlug/account';
-
-  GoRouter router;
-  try {
-    router = GoRouter.of(context);
-  } catch (e, st) {
-    nmdPostLoginTrace('ROUTER_LOOKUP_FAILED_ACCOUNT', '$e\n$st');
-    rethrow;
-  }
-
-  if (trimmedSlug.isEmpty) {
-    nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_SKIP_NO_MARKET_SLUG');
-    return;
-  }
-
-  if (await isCustomerSessionActive(context)) {
-    nmdPostLoginTrace('OPEN_CUSTOMER_ACCOUNT_SESSION_ACTIVE_NAV', target);
-    if (!context.mounted) {
-      nmdPostLoginTrace('NAVIGATING_TO_HOME_ACCOUNT_ROUTER_FALLBACK mounted=false');
-      router.go(target);
-      return;
-    }
-    context.go(target);
-    return;
-  }
-  if (!context.mounted) return;
-
-  nmdPostLoginTrace('SHOW_AUTH_BOTTOM_SHEET');
-  await showNmdAuthBottomSheet(context);
-
-  /// Always route to account once the sheet is closed so the UX never stalls.
-  /// On iPad, [context.mounted] can be false right after dismissal even though routing is OK.
-  if (!context.mounted) {
-    nmdPostLoginTrace('NAVIGATING_TO_ACCOUNT_ROUTER_FALLBACK mounted=false → $target');
-    router.go(target);
-    return;
-  }
-
-  nmdPostLoginTrace('NAVIGATING_TO_ACCOUNT', target);
-  context.go(target);
-}
+// Account navigation lives in protected_customer_navigation.dart
+// (openCustomerAccount → navigateToProtectedCustomerDestination).

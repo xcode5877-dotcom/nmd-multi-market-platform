@@ -12,6 +12,7 @@ import '../../../../api/resolve_image_url.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/auth_failure.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/auth/protected_customer_navigation.dart';
 import '../../../../core/network/guest_browsing_request.dart';
 import '../../../../core/debug/nmd_feed_trace.dart';
 import '../../../../core/navigation/safe_back_navigation.dart';

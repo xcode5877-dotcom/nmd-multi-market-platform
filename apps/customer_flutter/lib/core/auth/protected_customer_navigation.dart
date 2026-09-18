@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'customer_auth_launcher.dart';
+import 'ensure_customer_auth.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 
 /// Protected shell destinations that require a customer session before routing.
@@ -94,6 +95,14 @@ Future<void> navigateToProtectedCustomerDestination(
       return;
     }
 
+    // Token may exist while AuthBloc is still phone/otp — restore before OTP sheet.
+    final sessionOk = await isCustomerSessionActive(context);
+    if (sessionOk && context.mounted && isCustomerLoggedIn(context)) {
+      _navAudit('session restored — navigating to $target');
+      goTarget();
+      return;
+    }
+
     if (!context.mounted) {
       _navAudit('abort — unmounted before login');
       return;
@@ -106,9 +115,9 @@ Future<void> navigateToProtectedCustomerDestination(
       return;
     }
 
-    if (!context.mounted) {
-      _navAudit('login ok but unmounted — router.go $target');
-      router.go(target);
+    // Require AuthStep.done — sheet ok alone is not enough.
+    if (!context.mounted || !isCustomerLoggedIn(context)) {
+      _navAudit('login closed without AuthStep.done — stay on $routeBefore');
       return;
     }
 
