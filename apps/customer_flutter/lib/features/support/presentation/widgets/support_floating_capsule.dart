@@ -147,14 +147,9 @@ class _SupportFloatingCapsuleState extends State<SupportFloatingCapsule>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: NmdColors.brandPrimary.withValues(alpha: 0.28),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                       border: Border.all(
