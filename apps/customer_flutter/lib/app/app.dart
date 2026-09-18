@@ -15,8 +15,6 @@ import '../core/bootstrap/first_frame_controller.dart';
 import '../core/debug/boot_trace.dart';
 import '../core/debug/order_window_route_observer.dart';
 import '../core/push/push_notification_listener.dart';
-import '../core/support/support_hub_chrome.dart';
-import '../features/support/presentation/widgets/support_floating_hub_host.dart';
 import 'app_scroll_behavior.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
@@ -115,11 +113,8 @@ class _NowMarketAppState extends State<NowMarketApp> {
                     color: Colors.white,
                     child: Center(child: CircularProgressIndicator()),
                   );
-              return SupportFloatingHubHost(
-                router: appRouter,
-                modalDepth: SupportHubChrome.modalDepth,
-                child: content,
-              );
+              // R2: no floating support overlay — support lives in header/account.
+              return content;
             },
           ),
         ),

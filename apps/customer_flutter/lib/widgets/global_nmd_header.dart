@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../app/theme/app_colors.dart';
 import '../core/auth/protected_customer_navigation.dart';
+import '../core/support/open_customer_support.dart';
 import '../design_system/design_system.dart';
 import '../features/cart/presentation/widgets/global_cart_icon.dart';
 
-/// Sleek full-width teal bar (RTL): back · title · account + cart.
+/// Sleek full-width teal bar (RTL): back · title · support + account + cart.
 class GlobalNmdHeader extends StatelessWidget {
   const GlobalNmdHeader({
     super.key,
@@ -16,6 +17,7 @@ class GlobalNmdHeader extends StatelessWidget {
     this.onLeadingPressed,
     this.showProfile = true,
     this.showCart = true,
+    this.showSupport = true,
     this.cartIconKey,
   });
 
@@ -26,6 +28,7 @@ class GlobalNmdHeader extends StatelessWidget {
   final VoidCallback? onLeadingPressed;
   final bool showProfile;
   final bool showCart;
+  final bool showSupport;
   final GlobalKey? cartIconKey;
 
   static const double barBodyHeight = NmdSizes.appBarBody;
@@ -79,9 +82,24 @@ class GlobalNmdHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     textDirection: TextDirection.rtl,
                     children: [
+                      if (showSupport)
+                        IconButton(
+                          style: NmdAppHeader.plainIconStyle(),
+                          tooltip: 'المساعدة',
+                          onPressed: () => openCustomerSupport(
+                            context,
+                            source: 'header',
+                          ),
+                          icon: const Icon(
+                            Icons.headset_mic_outlined,
+                            size: NmdSizes.iconMd,
+                            color: Colors.white,
+                          ),
+                        ),
                       if (showProfile)
                         IconButton(
                           style: NmdAppHeader.plainIconStyle(),
+                          tooltip: 'حسابي',
                           onPressed: () =>
                               openCustomerAccount(context, marketSlug),
                           icon: const Icon(
