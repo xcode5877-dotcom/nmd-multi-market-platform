@@ -53,7 +53,8 @@ void main() {
         ),
       );
       expect(find.textContaining('المحل مغلق'), findsOneWidget);
-      expect(find.textContaining('الإضافة إلى السلة'), findsOneWidget);
+      expect(find.textContaining('تصفح الخيارات'), findsOneWidget);
+      expect(find.byKey(const Key('product_availability_compact_card')), findsOneWidget);
     });
   });
 

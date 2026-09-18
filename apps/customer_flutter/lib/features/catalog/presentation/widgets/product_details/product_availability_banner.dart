@@ -4,7 +4,7 @@ import '../../../../../design_system/design_system.dart';
 import '../../../domain/store_availability.dart';
 import 'product_details_layout_tokens.dart';
 
-/// Coherent product-page availability banner (closed store / unavailable product).
+/// Compact product-page availability card (closed store / unavailable product).
 class ProductAvailabilityBanner extends StatelessWidget {
   const ProductAvailabilityBanner({
     super.key,
@@ -21,23 +21,24 @@ class ProductAvailabilityBanner extends StatelessWidget {
     if (!closed && !productUnavailable) return const SizedBox.shrink();
 
     final title = closed
-        ? (storeAvailability?.bannerTitleAr ?? 'المحل مغلق حالياً')
+        ? 'المحل مغلق حاليا'
         : 'المنتج غير متوفر حالياً';
     final body = closed
-        ? (storeAvailability?.bannerBodyAr ?? '')
+        ? 'يمكنك تصفح الخيارات والعودة عند فتح المتجر'
         : 'لا يمكن إضافة هذا المنتج إلى السلة الآن.';
 
     return Semantics(
       liveRegion: true,
       label: '$title. $body',
       child: Container(
+        key: const Key('product_availability_compact_card'),
         width: double.infinity,
         padding: EdgeInsets.symmetric(
           horizontal: ProductDetailsLayoutTokens.blockGap,
-          vertical: ProductDetailsLayoutTokens.grid + 2,
+          vertical: ProductDetailsLayoutTokens.grid,
         ),
         decoration: BoxDecoration(
-          color: NmdColors.warningSoft.withValues(alpha: 0.55),
+          color: NmdColors.warningSoft.withValues(alpha: 0.45),
           borderRadius:
               BorderRadius.circular(ProductDetailsLayoutTokens.radiusSm),
           border: Border.all(
@@ -45,12 +46,12 @@ class ProductAvailabilityBanner extends StatelessWidget {
           ),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           textDirection: TextDirection.rtl,
           children: [
             Icon(
               Icons.storefront_outlined,
-              size: 20,
+              size: 18,
               color: NmdColors.warning.withValues(alpha: 0.9),
             ),
             SizedBox(width: ProductDetailsLayoutTokens.itemGap),
@@ -61,22 +62,26 @@ class ProductAvailabilityBanner extends StatelessWidget {
                   Text(
                     title,
                     textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: NmdTypography.label.copyWith(
                       fontWeight: FontWeight.w700,
+                      fontSize: 13,
                       color: NmdColors.textPrimary,
                     ),
                   ),
-                  if (body.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      body,
-                      textAlign: TextAlign.right,
-                      style: NmdTypography.bodySmall.copyWith(
-                        height: 1.45,
-                        color: NmdColors.textSecondary,
-                      ),
+                  const SizedBox(height: 2),
+                  Text(
+                    body,
+                    textAlign: TextAlign.right,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: NmdTypography.bodySmall.copyWith(
+                      height: 1.35,
+                      fontSize: 12,
+                      color: NmdColors.textSecondary,
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -88,12 +93,15 @@ class ProductAvailabilityBanner extends StatelessWidget {
 }
 
 /// Explains legacy weight products with a missing maximum (single selectable qty).
+///
+/// Only show when the public catalog payload truly has no valid maximum.
 class WeightConfigIncompleteNotice extends StatelessWidget {
   const WeightConfigIncompleteNotice({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const Key('weight_config_incomplete_notice'),
       width: double.infinity,
       padding: EdgeInsets.symmetric(
         horizontal: ProductDetailsLayoutTokens.blockGap,
