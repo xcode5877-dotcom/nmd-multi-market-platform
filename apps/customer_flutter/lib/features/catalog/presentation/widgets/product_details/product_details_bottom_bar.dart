@@ -65,74 +65,69 @@ class ProductDetailsBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          ProductDetailsLayoutTokens.pageHorizontal,
-          0,
-          ProductDetailsLayoutTokens.pageHorizontal,
-          PremiumDockLayout.gapAboveNav,
-        ),
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.bottomCenter,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: NmdColors.surfaceElevated.withValues(alpha: 0.97),
-              borderRadius: BorderRadius.circular(
-                ProductDetailsLayoutTokens.bottomBarRadius,
-              ),
-              border: Border.all(
-                color: NmdColors.borderSubtle.withValues(alpha: 0.65),
-              ),
-              boxShadow: ProductDetailsLayoutTokens.shadowDock,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        ProductDetailsLayoutTokens.pageHorizontal,
+        ProductDetailsLayoutTokens.grid,
+        ProductDetailsLayoutTokens.pageHorizontal,
+        ProductDetailsLayoutTokens.grid,
+      ),
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.bottomCenter,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: NmdColors.surfaceElevated.withValues(alpha: 0.97),
+            borderRadius: BorderRadius.circular(
+              ProductDetailsLayoutTokens.bottomBarRadius,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(
-                ProductDetailsLayoutTokens.bottomBarRadius,
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(ProductDetailsLayoutTokens.grid),
-                child: Row(
-                  textDirection: TextDirection.ltr,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (isWeightProduct)
-                      _WeightDockQuantity(
-                        label: weightQuantityLabel ?? '',
-                        enabled: quantityInteractionEnabled && !loading,
-                        canDecrement: canWeightDecrement,
-                        canIncrement: canWeightIncrement,
-                        onStep: onWeightStep,
-                      )
-                    else
-                      _QuantityStepper(
-                        quantity: quantity,
-                        enabled: quantityInteractionEnabled && !loading,
-                        onChanged: onQuantityChanged,
-                      ),
-                    Container(
-                      width: 1,
-                      height: ProductDetailsLayoutTokens.stepperHeight - 20,
-                      margin: EdgeInsets.symmetric(
-                        horizontal: ProductDetailsLayoutTokens.grid,
-                      ),
-                      color: NmdColors.borderSubtle.withValues(alpha: 0.45),
+            border: Border.all(
+              color: NmdColors.borderSubtle.withValues(alpha: 0.65),
+            ),
+            boxShadow: ProductDetailsLayoutTokens.shadowDock,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              ProductDetailsLayoutTokens.bottomBarRadius,
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(ProductDetailsLayoutTokens.grid),
+              child: Row(
+                textDirection: TextDirection.ltr,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (isWeightProduct)
+                    _WeightDockQuantity(
+                      label: weightQuantityLabel ?? '',
+                      enabled: quantityInteractionEnabled && !loading,
+                      canDecrement: canWeightDecrement,
+                      canIncrement: canWeightIncrement,
+                      onStep: onWeightStep,
+                    )
+                  else
+                    _QuantityStepper(
+                      quantity: quantity,
+                      enabled: quantityInteractionEnabled && !loading,
+                      onChanged: onQuantityChanged,
                     ),
-                    Expanded(
-                      child: _CtaButton(
-                        actionLabel: _ctaActionLabel,
-                        total: _total,
-                        loading: loading,
-                        enabled: _canTap,
-                        onPressed: onPressed,
-                      ),
+                  Container(
+                    width: 1,
+                    height: ProductDetailsLayoutTokens.stepperHeight - 20,
+                    margin: EdgeInsets.symmetric(
+                      horizontal: ProductDetailsLayoutTokens.grid,
                     ),
-                  ],
-                ),
+                    color: NmdColors.borderSubtle.withValues(alpha: 0.45),
+                  ),
+                  Expanded(
+                    child: _CtaButton(
+                      actionLabel: _ctaActionLabel,
+                      total: _total,
+                      loading: loading,
+                      enabled: _canTap,
+                      onPressed: onPressed,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -165,6 +160,7 @@ class _WeightDockQuantity extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StepIcon(
+            key: const Key('purchase_dock_qty_decrement'),
             icon: Icons.remove_rounded,
             enabled: enabled && canDecrement && onStep != null,
             onTap: () => onStep?.call(-1),
@@ -175,7 +171,7 @@ class _WeightDockQuantity extends StatelessWidget {
               duration: ProductDetailsLayoutTokens.motionFast,
               child: Text(
                 label,
-                key: ValueKey<String>(label),
+                key: ValueKey<String>('purchase_dock_qty_label_$label'),
                 textAlign: TextAlign.center,
                 style: NmdTypography.label.copyWith(
                   fontWeight: FontWeight.w700,
@@ -186,6 +182,7 @@ class _WeightDockQuantity extends StatelessWidget {
             ),
           ),
           _StepIcon(
+            key: const Key('purchase_dock_qty_increment'),
             icon: Icons.add_rounded,
             enabled: enabled && canIncrement && onStep != null,
             onTap: () => onStep?.call(1),
@@ -302,6 +299,7 @@ class _QuantityStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StepIcon(
+            key: const Key('purchase_dock_qty_decrement'),
             icon: Icons.remove_rounded,
             enabled: enabled && quantity > 1,
             onTap: () => onChanged(quantity - 1),
@@ -317,7 +315,7 @@ class _QuantityStepper extends StatelessWidget {
               ),
               child: Text(
                 '$quantity',
-                key: ValueKey<int>(quantity),
+                key: ValueKey<String>('purchase_dock_qty_label_$quantity'),
                 textAlign: TextAlign.center,
                 style: NmdTypography.label.copyWith(
                   fontWeight: FontWeight.w600,
@@ -327,6 +325,7 @@ class _QuantityStepper extends StatelessWidget {
             ),
           ),
           _StepIcon(
+            key: const Key('purchase_dock_qty_increment'),
             icon: Icons.add_rounded,
             enabled: enabled && quantity < 99,
             onTap: () => onChanged(quantity + 1),
@@ -339,6 +338,7 @@ class _QuantityStepper extends StatelessWidget {
 
 class _StepIcon extends StatelessWidget {
   const _StepIcon({
+    super.key,
     required this.icon,
     required this.enabled,
     required this.onTap,
@@ -361,8 +361,9 @@ class _StepIcon extends StatelessWidget {
             : null,
         borderRadius:
             BorderRadius.circular(ProductDetailsLayoutTokens.radiusSm),
-        child: Padding(
-          padding: EdgeInsets.all(ProductDetailsLayoutTokens.grid),
+        child: SizedBox(
+          width: 48,
+          height: 48,
           child: Icon(
             icon,
             size: ProductDetailsLayoutTokens.iconSm,

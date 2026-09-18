@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../api/models/pizza_placement.dart';
 import '../../../../api/models/product.dart';
+import '../../../../api/models/product_measurement.dart';
 import '../../../../features/cart/domain/cart_selected_option.dart';
 import 'customization_pricing.dart';
 import 'customization_selection_summary.dart';
@@ -15,8 +16,13 @@ class ProductCustomizationController extends ChangeNotifier {
 
   final Product product;
   double orderQuantity = 1;
+  ProductMeasurement? _measurementOverride;
 
-  bool get isWeightProduct => product.isWeightProduct;
+  ProductMeasurement? get effectiveMeasurement =>
+      _measurementOverride ?? product.measurement;
+
+  bool get isWeightProduct =>
+      effectiveMeasurement?.isWeightProduct == true || product.isWeightProduct;
 
   /// Piece count for legacy UI; weight products use [orderQuantity] in base units.
   int get quantity => isWeightProduct ? 1 : orderQuantity.round().clamp(1, 99);
@@ -87,8 +93,27 @@ class ProductCustomizationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reconcile quantity after a refreshed measurement payload (same product id).
+  void reconcileWithMeasurement(ProductMeasurement? m) {
+    _measurementOverride = m;
+    if (m != null && m.isWeightProduct) {
+      final options = m.selectableQuantities();
+      if (options.isEmpty) {
+        orderQuantity =
+            m.minimumQuantity > 0 ? m.minimumQuantity : m.quantityStep;
+      } else {
+        final idx =
+            options.indexWhere((q) => (q - orderQuantity).abs() < 0.0001);
+        orderQuantity = idx >= 0 ? options[idx] : options.first;
+      }
+    } else {
+      orderQuantity = orderQuantity.round().clamp(1, 99).toDouble();
+    }
+    notifyListeners();
+  }
+
   void setWeightQuantity(double value) {
-    final m = product.measurement;
+    final m = effectiveMeasurement;
     if (m == null || !m.isWeightProduct) return;
     final options = m.selectableQuantities();
     final match = options.cast<double?>().firstWhere(
@@ -101,19 +126,19 @@ class ProductCustomizationController extends ChangeNotifier {
   }
 
   bool get canStepWeightDown {
-    final m = product.measurement;
+    final m = effectiveMeasurement;
     if (m == null || !m.isWeightProduct) return false;
     return m.canDecrementFrom(orderQuantity);
   }
 
   bool get canStepWeightUp {
-    final m = product.measurement;
+    final m = effectiveMeasurement;
     if (m == null || !m.isWeightProduct) return false;
     return m.canIncrementFrom(orderQuantity);
   }
 
   void stepWeightQuantity(int direction) {
-    final m = product.measurement;
+    final m = effectiveMeasurement;
     if (m == null || !m.isWeightProduct) return;
     final options = m.selectableQuantities();
     if (options.isEmpty) return;

@@ -11,6 +11,7 @@ import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
+import '../../../../core/support/open_customer_support.dart';
 import '../../data/modifier_icon_library.dart';
 import '../../data/pillar_kind.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -21,7 +22,6 @@ import '../customization/product_customization_tier.dart';
 import '../customization/customization_step_plan.dart';
 import '../customization/customization_tokens.dart';
 import '../customization/product_customization_controller.dart';
-import '../widgets/floating_smart_cta.dart';
 import '../widgets/product_customization_surface.dart';
 import '../widgets/product_details/product_availability_banner.dart';
 import '../widgets/product_details/product_details_bottom_bar.dart';
@@ -184,7 +184,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         ? (customization?.orderQuantity ??
             product.measurement?.minimumQuantity ??
             1)
-        : 1.0;
+        : (customization?.quantity ?? 1).toDouble();
     cart.addOrIncrement(
       tenantId: widget.storeId,
       productId: product.id,
@@ -402,12 +402,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
               ? '${desc.substring(0, 220)}...'
               : desc;
 
-          return Scaffold(
-            backgroundColor: NmdColors.surfaceBase,
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (isServices)
+          if (isServices) {
+            return Scaffold(
+              backgroundColor: NmdColors.surfaceBase,
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
                   CinematicScrollChrome(
                     scrollController: _scrollController,
                     title: product.name,
@@ -433,36 +433,62 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       shownDesc: shownDesc,
                       shouldReadMore: shouldReadMore,
                     ),
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _productHeader(
-                        context,
-                        showCart: true,
-                        cartIconKey: _cartIconKey,
-                      ),
-                      Expanded(
-                        child: _buildProductScrollView(
-                          product: product,
-                          heroTag: heroTag,
-                          imageUrls: galleryUrls,
-                          heroImageIndex: heroIndex,
-                          isServices: isServices,
-                          storeClosed: storeClosed,
-                          storeAvailability: storeAvailability,
-                          customization: customization,
-                          tier: tier,
-                          desc: desc,
-                          shownDesc: shownDesc,
-                          shouldReadMore: shouldReadMore,
-                        ),
-                      ),
-                    ],
                   ),
-                if (!isServices)
-                  ListenableBuilder(
+                  CinematicServiceDock(
+                    onPressed: () async {
+                      final dio = context.read<Dio>();
+                      final auth = context.read<AuthBloc>().state;
+                      await launchWhatsAppInquiry(
+                        dio: dio,
+                        tenantId: payload.tenantIdForLeads,
+                        contact: payload.contact,
+                        tenantContact: payload.officeContact,
+                        serviceName: product.name,
+                        customerPhone:
+                            auth.step == AuthStep.done ? auth.phone : null,
+                        context: context,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Retail: Column shell — scroll body + persistent purchase dock
+          // above MainLayout bottom nav (never Positioned over content).
+          return Scaffold(
+            backgroundColor: NmdColors.surfaceBase,
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _productHeader(
+                  context,
+                  showCart: true,
+                  cartIconKey: _cartIconKey,
+                ),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: const Key('product_details_scroll'),
+                    child: _buildProductScrollView(
+                      product: product,
+                      heroTag: heroTag,
+                      imageUrls: galleryUrls,
+                      heroImageIndex: heroIndex,
+                      isServices: isServices,
+                      storeClosed: storeClosed,
+                      storeAvailability: storeAvailability,
+                      customization: customization,
+                      tier: tier,
+                      desc: desc,
+                      shownDesc: shownDesc,
+                      shouldReadMore: shouldReadMore,
+                    ),
+                  ),
+                ),
+                KeyedSubtree(
+                  key: const Key('product_purchase_dock'),
+                  child: ListenableBuilder(
                     listenable: customization,
                     builder: (context, _) {
                       final missingRequired =
@@ -477,53 +503,35 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       return AnimatedBuilder(
                         animation: _dockScale,
                         builder: (context, child) {
-                          if (isWeight) {
-                            return ProductDetailsBottomBar(
-                              unitPrice: customization.customerUnitPrice,
-                              quantity: 1,
-                              isWeightProduct: true,
-                              weightQuantityLabel: weightLabel,
-                              lineTotal: customization.lineTotal,
-                              canWeightDecrement:
-                                  customization.canStepWeightDown,
-                              canWeightIncrement:
-                                  customization.canStepWeightUp,
-                              onWeightStep: (dir) {
-                                customization.stepWeightQuantity(dir);
-                                setState(() {});
-                              },
-                              onQuantityChanged: (_) {},
-                              missingRequired: missingRequired,
-                              disabled:
-                                  storeClosed || !product.canAddToCart,
-                              quantityInteractionEnabled:
-                                  product.canAddToCart,
-                              disabledCtaLabel: storeClosed
-                                  ? storeAvailability.addToCartDisabledLabelAr
-                                  : (!product.canAddToCart
-                                      ? 'غير متوفر'
-                                      : null),
-                              scale: _dockScale.value,
-                              onPressed: () {
-                                if (missingRequired) {
-                                  _scrollToCustomization();
-                                  return;
-                                }
-                                _handleAddToCart(
-                                  product: product,
-                                  computedUnitPrice:
-                                      customization.customerUnitPrice,
-                                  merchantUnitPrice:
-                                      customization.merchantUnitPrice,
-                                  storeClosed: storeClosed,
-                                );
-                              },
-                            );
-                          }
-                          return FloatingSmartCta(
-                            price: customization.customerUnitPrice,
+                          return ProductDetailsBottomBar(
+                            unitPrice: customization.customerUnitPrice,
+                            quantity: isWeight
+                                ? 1
+                                : customization.quantity,
+                            isWeightProduct: isWeight,
+                            weightQuantityLabel: weightLabel,
+                            lineTotal: customization.lineTotal,
+                            canWeightDecrement:
+                                customization.canStepWeightDown,
+                            canWeightIncrement:
+                                customization.canStepWeightUp,
+                            onWeightStep: (dir) {
+                              customization.stepWeightQuantity(dir);
+                              setState(() {});
+                            },
+                            onQuantityChanged: (q) {
+                              customization.setQuantity(q);
+                              setState(() {});
+                            },
                             missingRequired: missingRequired,
-                            disabled: storeClosed || !product.canAddToCart,
+                            disabled:
+                                storeClosed || !product.canAddToCart,
+                            quantityInteractionEnabled: true,
+                            disabledCtaLabel: storeClosed
+                                ? storeAvailability.addToCartDisabledLabelAr
+                                : (!product.canAddToCart
+                                    ? 'غير متوفر'
+                                    : null),
                             scale: _dockScale.value,
                             onPressed: () {
                               if (missingRequired) {
@@ -543,24 +551,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                         },
                       );
                     },
-                  )
-                else
-                  CinematicServiceDock(
-                    onPressed: () async {
-                      final dio = context.read<Dio>();
-                      final auth = context.read<AuthBloc>().state;
-                      await launchWhatsAppInquiry(
-                        dio: dio,
-                        tenantId: payload.tenantIdForLeads,
-                        contact: payload.contact,
-                        tenantContact: payload.officeContact,
-                        serviceName: product.name,
-                        customerPhone:
-                            auth.step == AuthStep.done ? auth.phone : null,
-                        context: context,
-                      );
-                    },
                   ),
+                ),
               ],
             ),
           );
@@ -773,7 +765,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
           padding: EdgeInsets.only(
             bottom: isServices
                 ? PremiumMarketplaceDesignSystem.heroBookPillHeight + 28
-                : productCtaScrollInset(context),
+                : ProductDetailsBottomBar.scrollInset(context),
           ),
         ),
       ],
@@ -792,6 +784,20 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         onPressed: () => safeNmdBack(context, marketSlug: widget.marketSlug),
       ),
       actions: [
+        IconButton(
+          key: const Key('product_header_support'),
+          style: NmdAppHeader.plainIconStyle(),
+          tooltip: 'المساعدة',
+          onPressed: () => openCustomerSupport(
+            context,
+            source: 'product_header',
+          ),
+          icon: Icon(
+            Icons.headset_mic_outlined,
+            size: NmdSizes.iconMd,
+            color: NmdColors.textOnBrand,
+          ),
+        ),
         if (showCart)
           GlobalCartIcon(
             marketSlug: widget.marketSlug,
