@@ -41,12 +41,12 @@ void main() {
       expect(galleryBox.size.width, 360);
 
       final colored = tester.widgetList<ColoredBox>(find.byType(ColoredBox));
-      expect(colored.any((c) => c.color == NmdColors.tintAliveSoft), isTrue);
+      expect(colored.any((c) => c.color == NmdColors.surfaceElevated), isTrue);
 
       final image = tester.widget<CachedNetworkImage>(
         find.byType(CachedNetworkImage),
       );
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
     });
 
     testWidgets('services gallery keeps inset padding', (tester) async {
@@ -81,6 +81,10 @@ void main() {
         ).first,
       );
       expect(padding.padding, const EdgeInsets.fromLTRB(12, 0, 12, 0));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
+      expect(image.fit, BoxFit.contain);
     });
   });
 
@@ -109,29 +113,29 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('square asset uses contain without clipping', (tester) async {
+    testWidgets('square asset uses cover full-bleed', (tester) async {
       await pumpHero(tester, width: 360, height: 360);
       final image = tester.widget<CachedNetworkImage>(
         find.byType(CachedNetworkImage),
       );
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('portrait asset uses contain', (tester) async {
+    testWidgets('portrait asset uses cover', (tester) async {
       await pumpHero(tester, width: 360, height: 480);
       final image = tester.widget<CachedNetworkImage>(
         find.byType(CachedNetworkImage),
       );
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
     });
 
-    testWidgets('landscape asset uses contain', (tester) async {
+    testWidgets('landscape asset uses cover', (tester) async {
       await pumpHero(tester, width: 360, height: 220);
       final image = tester.widget<CachedNetworkImage>(
         find.byType(CachedNetworkImage),
       );
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
     });
   });
 }

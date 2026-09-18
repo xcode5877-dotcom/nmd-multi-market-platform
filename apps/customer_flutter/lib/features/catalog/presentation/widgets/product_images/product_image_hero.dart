@@ -6,7 +6,8 @@ import '../../../../../design_system/tokens/nmd_motion.dart';
 import 'product_image_preloader.dart';
 import 'product_image_shimmer.dart';
 
-/// Single gallery slide — always [BoxFit.contain], optional Hero for shared transition.
+/// Single gallery slide. Retail uses [BoxFit.cover] for full-bleed heroes;
+/// services may pass [BoxFit.contain] when inset padding is intentional.
 class ProductImageHero extends StatelessWidget {
   const ProductImageHero({
     super.key,
@@ -20,6 +21,8 @@ class ProductImageHero extends StatelessWidget {
     this.backgroundColor,
     this.borderRadius = BorderRadius.zero,
     this.padding = EdgeInsets.zero,
+    this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
   });
 
   final String imageUrl;
@@ -32,6 +35,8 @@ class ProductImageHero extends StatelessWidget {
   final Color? backgroundColor;
   final BorderRadius borderRadius;
   final EdgeInsets padding;
+  final BoxFit fit;
+  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +49,10 @@ class ProductImageHero extends StatelessWidget {
         ? ProductImageShimmer(borderRadius: borderRadius)
         : CachedNetworkImage(
             imageUrl: imageUrl,
-            fit: BoxFit.contain,
+            fit: fit,
+            alignment: alignment,
+            width: double.infinity,
+            height: double.infinity,
             memCacheWidth: memWidth,
             fadeInDuration: NmdMotion.normal,
             fadeOutDuration: NmdMotion.fast,

@@ -13,6 +13,7 @@ class ProductDetailsBottomBar extends StatelessWidget {
     required this.onQuantityChanged,
     required this.onPressed,
     this.disabled = false,
+    this.quantityInteractionEnabled = true,
     this.missingRequired = false,
     this.loading = false,
     this.scale = 1,
@@ -22,6 +23,7 @@ class ProductDetailsBottomBar extends StatelessWidget {
     this.onWeightStep,
     this.canWeightDecrement = false,
     this.canWeightIncrement = false,
+    this.disabledCtaLabel,
   });
 
   final double unitPrice;
@@ -29,6 +31,8 @@ class ProductDetailsBottomBar extends StatelessWidget {
   final ValueChanged<int> onQuantityChanged;
   final VoidCallback? onPressed;
   final bool disabled;
+  /// When false, steppers are inert; cart CTA still follows [disabled].
+  final bool quantityInteractionEnabled;
   final bool missingRequired;
   final bool loading;
   final double scale;
@@ -38,6 +42,7 @@ class ProductDetailsBottomBar extends StatelessWidget {
   final ValueChanged<int>? onWeightStep;
   final bool canWeightDecrement;
   final bool canWeightIncrement;
+  final String? disabledCtaLabel;
 
   bool get _canTap => !disabled && !loading && onPressed != null;
 
@@ -45,6 +50,9 @@ class ProductDetailsBottomBar extends StatelessWidget {
 
   String get _ctaActionLabel {
     if (loading) return '...';
+    if (disabled && disabledCtaLabel != null && disabledCtaLabel!.isNotEmpty) {
+      return disabledCtaLabel!;
+    }
     if (missingRequired && !disabled) return 'أكمل الاختيارات';
     return 'أضف إلى السلة';
   }
@@ -95,7 +103,7 @@ class ProductDetailsBottomBar extends StatelessWidget {
                     if (isWeightProduct)
                       _WeightDockQuantity(
                         label: weightQuantityLabel ?? '',
-                        enabled: !disabled && !loading,
+                        enabled: quantityInteractionEnabled && !loading,
                         canDecrement: canWeightDecrement,
                         canIncrement: canWeightIncrement,
                         onStep: onWeightStep,
@@ -103,7 +111,7 @@ class ProductDetailsBottomBar extends StatelessWidget {
                     else
                       _QuantityStepper(
                         quantity: quantity,
-                        enabled: !disabled && !loading,
+                        enabled: quantityInteractionEnabled && !loading,
                         onChanged: onQuantityChanged,
                       ),
                     Container(

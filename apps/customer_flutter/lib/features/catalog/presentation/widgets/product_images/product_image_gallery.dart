@@ -91,9 +91,10 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
     final urls = widget.imageUrls;
     final layoutWidth = MediaQuery.sizeOf(context).width;
     final hasMultiple = urls.length > 1;
+    // Retail: full-bleed cover (no letterbox gutters). Services: inset contain.
     final bg = widget.isServices
         ? const Color(0xFF141A22)
-        : NmdColors.tintAliveSoft;
+        : NmdColors.surfaceElevated;
 
     final heroBorderRadius = widget.isServices
         ? ProductImageGallery.galleryRadius
@@ -104,6 +105,8 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
     final galleryPadding = widget.isServices
         ? const EdgeInsets.fromLTRB(12, 0, 12, 0)
         : EdgeInsets.zero;
+    final imageFit =
+        widget.isServices ? BoxFit.contain : BoxFit.cover;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -125,6 +128,7 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
                         imageUrl: '',
                         layoutWidth: layoutWidth,
                         borderRadius: heroBorderRadius,
+                        fit: imageFit,
                       )
                     else if (!hasMultiple)
                       ProductImageHero(
@@ -137,6 +141,7 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
                         backgroundColor: bg,
                         borderRadius: heroBorderRadius,
                         padding: heroPadding,
+                        fit: imageFit,
                       )
                     else
                       PageView.builder(
@@ -157,6 +162,7 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
                             backgroundColor: bg,
                             borderRadius: heroBorderRadius,
                             padding: heroPadding,
+                            fit: imageFit,
                             semanticLabel:
                                 'صورة ${index + 1} من ${urls.length}',
                           );

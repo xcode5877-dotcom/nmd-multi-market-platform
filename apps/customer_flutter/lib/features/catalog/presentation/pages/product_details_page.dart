@@ -23,10 +23,12 @@ import '../customization/customization_tokens.dart';
 import '../customization/product_customization_controller.dart';
 import '../widgets/floating_smart_cta.dart';
 import '../widgets/product_customization_surface.dart';
+import '../widgets/product_details/product_availability_banner.dart';
 import '../widgets/product_details/product_details_bottom_bar.dart';
 import '../widgets/product_images/product_image_gallery.dart';
 import '../widgets/product_images/product_image_urls.dart';
 import '../widgets/weight_quantity_selector.dart';
+import '../../domain/store_availability.dart';
 import '../../../../widgets/app_error_view.dart';
 
 class ProductDetailsPage extends StatefulWidget {
@@ -130,12 +132,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
       rawProduct = null;
     }
     final galleryUrls = _resolveGalleryUrls(product.first, rawProduct);
+    final availability = StoreAvailability.fromTenantMap(tenant);
     return _ProductPagePayload(
       product: product.first,
       imageUrls: galleryUrls,
       heroImageIndex: productHeroImageIndex(galleryUrls, product.first.imageUrl),
-      storeStatus:
-          (tenant['operationalStatus']?.toString() ?? 'closed').toLowerCase(),
+      storeAvailability: availability,
       isServicesStore: isServicesStore,
       tenantIdForLeads: tenantIdForLeads,
       contact: const TenantContactInfo(),
@@ -378,7 +380,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
 
           final payload = snap.data!;
           final product = payload.product;
-          final storeClosed = payload.storeStatus == 'closed';
+          final storeAvailability = payload.storeAvailability;
+          final storeClosed = storeAvailability.isClosed;
           final isServices = payload.isServicesStore;
           _ensureCustomization(product);
           final customization = _customization!;
@@ -491,6 +494,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                               missingRequired: missingRequired,
                               disabled:
                                   storeClosed || !product.canAddToCart,
+                              quantityInteractionEnabled:
+                                  product.canAddToCart,
+                              disabledCtaLabel: storeClosed
+                                  ? storeAvailability.addToCartDisabledLabelAr
+                                  : (!product.canAddToCart
+                                      ? 'غير متوفر'
+                                      : null),
                               scale: _dockScale.value,
                               onPressed: () {
                                 if (missingRequired) {
@@ -651,11 +661,11 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                     if (!isServices &&
                         (storeClosed || !product.canAddToCart)) ...[
                       const SizedBox(height: CustomizationTokens.xs),
-                      NmdBadge(
-                        label: storeClosed
-                            ? 'المحل مغلق حالياً'
-                            : 'غير متوفر حالياً',
-                        tone: NmdBadgeTone.neutral,
+                      ProductAvailabilityBanner(
+                        storeAvailability:
+                            storeClosed ? storeAvailability : null,
+                        productUnavailable:
+                            !storeClosed && !product.canAddToCart,
                       ),
                     ],
                     if (desc.isNotEmpty) ...[
@@ -705,15 +715,24 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                         product.measurement != null)
                       _FadeInUpSection(
                         delayMs: 70,
-                        child: WeightQuantitySelector(
-                          measurement: product.measurement!,
-                          selectedQuantity: customization.orderQuantity,
-                          unitPricePerBase: customization.customerUnitPrice,
-                          enabled: !storeClosed && product.canAddToCart,
-                          onSelected: (q) {
-                            customization.setWeightQuantity(q);
-                            setState(() {});
-                          },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            WeightQuantitySelector(
+                              measurement: product.measurement!,
+                              selectedQuantity: customization.orderQuantity,
+                              unitPricePerBase: customization.customerUnitPrice,
+                              enabled: product.canAddToCart,
+                              onSelected: (q) {
+                                customization.setWeightQuantity(q);
+                                setState(() {});
+                              },
+                            ),
+                            if (product.measurement!.maximumQuantity == null) ...[
+                              const SizedBox(height: CustomizationTokens.xs),
+                              const WeightConfigIncompleteNotice(),
+                            ],
+                          ],
                         ),
                       ),
                     if (!isServices)
@@ -787,7 +806,7 @@ class _ProductPagePayload {
     required this.product,
     required this.imageUrls,
     required this.heroImageIndex,
-    required this.storeStatus,
+    required this.storeAvailability,
     required this.isServicesStore,
     required this.tenantIdForLeads,
     required this.contact,
@@ -797,7 +816,7 @@ class _ProductPagePayload {
   final Product product;
   final List<String> imageUrls;
   final int heroImageIndex;
-  final String storeStatus;
+  final StoreAvailability storeAvailability;
   final bool isServicesStore;
   final String tenantIdForLeads;
 
