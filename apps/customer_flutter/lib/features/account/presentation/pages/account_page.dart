@@ -182,13 +182,15 @@ class AccountPage extends StatelessWidget {
             padding: const EdgeInsetsDirectional.only(bottom: NmdSpacing.sm),
           ),
           _AccountTile(
-            title: 'مركز الدعم',
-            subtitle: 'واتساب، اتصال هاتفي، والأسئلة الشائعة',
-            icon: Icons.support_agent_rounded,
-            onTap: () => _openAfterAuth(
-              context,
-              (s) async => context.push(AppRoutes.help(s)),
-            ),
+            key: const Key('account_help_center_row'),
+            title: 'مركز المساعدة',
+            subtitle: 'كيف يمكننا مساعدتك؟',
+            icon: Icons.headset_mic_outlined,
+            onTap: () {
+              final s = GoRouterState.of(context).pathParameters['slug'] ?? '';
+              if (s.isEmpty) return;
+              context.push(AppRoutes.help(s));
+            },
           ),
           if (!loggedIn) ...[
             const SizedBox(height: NmdSpacing.md),
@@ -472,6 +474,7 @@ class _QuickActionCard extends StatelessWidget {
 
 class _AccountTile extends StatelessWidget {
   const _AccountTile({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.icon,
