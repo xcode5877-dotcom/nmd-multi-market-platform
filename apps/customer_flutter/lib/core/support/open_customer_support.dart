@@ -13,7 +13,13 @@ Future<void> openCustomerSupport(
   BuildContext context, {
   required String source,
 }) async {
-  final path = GoRouterState.of(context).uri.path;
+  final path = () {
+    try {
+      return GoRouterState.of(context).uri.path;
+    } catch (_) {
+      return '';
+    }
+  }();
   try {
     final dio = context.read<Dio>();
     final config = await SupportConfigRepository(dio).fetch();

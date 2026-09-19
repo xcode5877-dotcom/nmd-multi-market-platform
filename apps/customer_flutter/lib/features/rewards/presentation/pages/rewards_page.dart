@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/navigation/safe_back_navigation.dart';
+import '../../../../core/support/open_customer_support.dart';
 
 import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/errors/app_error_mapper.dart';
@@ -119,6 +120,14 @@ class _RewardsCinematicBody extends StatelessWidget {
                 ),
               ),
               actions: [
+                CinematicGlassIconButton(
+                  key: const Key('header_support_action'),
+                  icon: Icons.headset_mic_outlined,
+                  onPressed: () => openCustomerSupport(
+                    context,
+                    source: 'rewards_header',
+                  ),
+                ),
                 CinematicGlassIconButton(
                   icon: Icons.person_outline_rounded,
                   onPressed: () async {

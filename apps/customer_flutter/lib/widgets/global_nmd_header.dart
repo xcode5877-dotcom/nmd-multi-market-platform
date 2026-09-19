@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/theme/app_colors.dart';
 import '../core/auth/protected_customer_navigation.dart';
-import '../core/support/open_customer_support.dart';
+import '../core/support/header_support_action.dart';
 import '../design_system/design_system.dart';
 import '../features/cart/presentation/widgets/global_cart_icon.dart';
 
@@ -83,19 +83,7 @@ class GlobalNmdHeader extends StatelessWidget {
                     textDirection: TextDirection.rtl,
                     children: [
                       if (showSupport)
-                        IconButton(
-                          style: NmdAppHeader.plainIconStyle(),
-                          tooltip: 'المساعدة',
-                          onPressed: () => openCustomerSupport(
-                            context,
-                            source: 'header',
-                          ),
-                          icon: const Icon(
-                            Icons.headset_mic_outlined,
-                            size: NmdSizes.iconMd,
-                            color: Colors.white,
-                          ),
-                        ),
+                        const HeaderSupportAction(source: 'shell_header'),
                       if (showProfile)
                         IconButton(
                           style: NmdAppHeader.plainIconStyle(),

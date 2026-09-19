@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/support/header_support_action.dart';
 import '../../../../design_system/design_system.dart';
 import '../../application/cart_cubit.dart';
 import '../widgets/cart_modifier_lines.dart';
@@ -34,6 +35,9 @@ class CartPage extends StatelessWidget {
                   }
                 },
               ),
+              actions: const [
+                HeaderSupportAction(source: 'cart_header'),
+              ],
             ),
             Expanded(
               child: BlocBuilder<CartCubit, List<CartLine>>(

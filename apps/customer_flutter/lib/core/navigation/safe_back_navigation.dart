@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Pops when possible; otherwise navigates to a safe market or picker route.
+/// Pops when possible; otherwise navigates to a safe market route.
+///
+/// Never leaves the user on a blank stub. Prefer the known market home over
+/// `/main` whenever a market slug is available.
 void safeNmdBack(
   BuildContext context, {
   String? marketSlug,
@@ -23,15 +26,15 @@ void safeNmdBack(
     // Router not ready — fall through to go().
   }
 
-  if (preferMarketPicker) {
-    context.go('/main');
-    return;
-  }
   if (marketHome != null) {
     context.go(marketHome);
     return;
   }
-  context.go('/main');
+
+  // No market context — only then open the market picker (never a blank route).
+  if (preferMarketPicker || slug.isEmpty) {
+    context.go('/main');
+  }
 }
 
 String _resolveMarketSlug(BuildContext context, String? explicit) {

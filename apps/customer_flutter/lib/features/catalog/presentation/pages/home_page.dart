@@ -3,6 +3,7 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -11,12 +12,11 @@ import 'package:shimmer/shimmer.dart';
 import '../../../../api/resolve_image_url.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/auth_failure.dart';
-import '../../../../core/auth/ensure_customer_auth.dart';
 import '../../../../core/auth/protected_customer_navigation.dart';
 import '../../../../core/network/guest_browsing_request.dart';
 import '../../../../core/debug/nmd_feed_trace.dart';
-import '../../../../core/navigation/safe_back_navigation.dart';
 import '../../../../core/debug/nmd_post_login_trace.dart';
+import '../../../../core/support/header_support_action.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
 import '../../application/home_cubit.dart';
@@ -383,7 +383,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     _scheduleTenantSyncFromRoute(context);
 
-    return ColoredBox(
+    // Market Home is a root tab: system Back exits the app (never /main stub).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        SystemNavigator.pop();
+      },
+      child: ColoredBox(
       color: NmdColors.surfaceBase,
       child: Column(
         children: [
@@ -392,14 +399,9 @@ class _HomePageState extends State<HomePage> {
               'assets/branding/logo-nowmarket.svg',
               height: 26,
             ),
-            leading: NmdAppHeader.backLeading(
-              onPressed: () => safeNmdBack(
-                context,
-                marketSlug: widget.slug,
-                preferMarketPicker: true,
-              ),
-            ),
+            // Market Home root: no back arrow (system Back exits via PopScope).
             actions: [
+              const HeaderSupportAction(source: 'home_header'),
               NmdAppHeader.profileAction(
                 onPressed: () =>
                     openCustomerAccount(context, widget.slug),
@@ -800,6 +802,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+    ),
     );
   }
 

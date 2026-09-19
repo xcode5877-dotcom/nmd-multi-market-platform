@@ -11,7 +11,7 @@ import '../../../../api/storefront_api.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../features/cart/application/cart_cubit.dart';
 import '../../../cart/presentation/widgets/global_cart_icon.dart';
-import '../../../../core/support/open_customer_support.dart';
+import '../../../../core/support/header_support_action.dart';
 import '../../data/modifier_icon_library.dart';
 import '../../data/pillar_kind.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -27,7 +27,6 @@ import '../widgets/product_details/product_availability_banner.dart';
 import '../widgets/product_details/product_details_bottom_bar.dart';
 import '../widgets/product_images/product_image_gallery.dart';
 import '../widgets/product_images/product_image_urls.dart';
-import '../widgets/weight_quantity_selector.dart';
 import '../../domain/store_availability.dart';
 import '../../../../widgets/app_error_view.dart';
 
@@ -705,30 +704,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
                       ),
                     ],
                     const SizedBox(height: CustomizationTokens.sm),
+                    // Quantity is controlled exclusively by the fixed purchase dock.
+                    // Do not render a full selectable-weight grid here.
                     if (!isServices &&
                         product.isWeightProduct &&
-                        product.measurement != null)
-                      _FadeInUpSection(
+                        product.measurement != null &&
+                        product.measurement!.maximumQuantity == null)
+                      const _FadeInUpSection(
                         delayMs: 70,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            WeightQuantitySelector(
-                              measurement: product.measurement!,
-                              selectedQuantity: customization.orderQuantity,
-                              unitPricePerBase: customization.customerUnitPrice,
-                              enabled: product.canAddToCart,
-                              onSelected: (q) {
-                                customization.setWeightQuantity(q);
-                                setState(() {});
-                              },
-                            ),
-                            if (product.measurement!.maximumQuantity == null) ...[
-                              const SizedBox(height: CustomizationTokens.xs),
-                              const WeightConfigIncompleteNotice(),
-                            ],
-                          ],
-                        ),
+                        child: WeightConfigIncompleteNotice(),
                       ),
                     if (!isServices)
                       _FadeInUpSection(
@@ -784,20 +768,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage>
         onPressed: () => safeNmdBack(context, marketSlug: widget.marketSlug),
       ),
       actions: [
-        IconButton(
-          key: const Key('product_header_support'),
-          style: NmdAppHeader.plainIconStyle(),
-          tooltip: 'المساعدة',
-          onPressed: () => openCustomerSupport(
-            context,
-            source: 'product_header',
-          ),
-          icon: Icon(
-            Icons.headset_mic_outlined,
-            size: NmdSizes.iconMd,
-            color: NmdColors.textOnBrand,
-          ),
-        ),
+        const HeaderSupportAction(source: 'product_header'),
         if (showCart)
           GlobalCartIcon(
             marketSlug: widget.marketSlug,

@@ -5,7 +5,7 @@ import 'package:customer_flutter/api/models/product.dart';
 import 'package:customer_flutter/api/models/product_measurement.dart';
 import 'package:customer_flutter/features/cart/application/cart_cubit.dart';
 import 'package:customer_flutter/features/catalog/presentation/customization/product_customization_controller.dart';
-import 'package:customer_flutter/features/catalog/presentation/widgets/weight_quantity_selector.dart';
+import 'package:customer_flutter/features/catalog/presentation/widgets/product_details/product_details_bottom_bar.dart';
 
 /// بندورة @ سوق طلعت للخضار والفوكه — local catalog row (read-only reference).
 const _bandoraPieceJson = {
@@ -83,25 +83,39 @@ void main() {
       cart.close();
     });
 
-    testWidgets('closed merchant disables weight chips', (tester) async {
-      final product = Product.fromJson(_bandoraWeightConfiguredJson());
-      var selected = 0.25;
+    testWidgets('closed merchant keeps dock steppable but CTA disabled',
+        (tester) async {
+      var index = 0;
+      const labels = ['0.25 كغم', '0.5 كغم'];
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: WeightQuantitySelector(
-              measurement: product.measurement!,
-              selectedQuantity: selected,
-              enabled: false,
-              onSelected: (q) => selected = q,
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return ProductDetailsBottomBar(
+                  unitPrice: 88,
+                  quantity: 1,
+                  isWeightProduct: true,
+                  weightQuantityLabel: labels[index],
+                  disabled: true,
+                  disabledCtaLabel: 'المحل مغلق',
+                  quantityInteractionEnabled: true,
+                  canWeightDecrement: index > 0,
+                  canWeightIncrement: index < labels.length - 1,
+                  onWeightStep: (dir) => setState(() => index += dir),
+                  onQuantityChanged: (_) {},
+                  onPressed: () {},
+                );
+              },
             ),
           ),
         ),
       );
 
-      await tester.tap(find.text('500 غرام'));
-      await tester.pump();
-      expect(selected, 0.25);
+      expect(find.text('المحل مغلق'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('purchase_dock_qty_increment')));
+      await tester.pumpAndSettle();
+      expect(find.text('0.5 كغم'), findsOneWidget);
     });
 
     test('piece product keeps integer quantity', () {

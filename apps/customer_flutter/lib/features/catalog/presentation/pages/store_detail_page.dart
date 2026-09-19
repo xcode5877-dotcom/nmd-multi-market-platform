@@ -14,6 +14,7 @@ import '../../../../api/api_base.dart';
 import '../../../../api/models/product.dart';
 import '../../../../api/storefront_api.dart';
 import '../../../../core/auth/ensure_customer_auth.dart';
+import '../../../../core/support/header_support_action.dart';
 import '../../../../design_system/design_system.dart';
 import '../../../../design_system/premium/premium_marketplace_design_system.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -422,6 +423,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
         onPressed: () => safeNmdBack(context, marketSlug: widget.marketSlug),
       ),
       actions: [
+        const HeaderSupportAction(source: 'store_header'),
         NmdAppHeader.profileAction(
           onPressed: () async {
             final ok = await ensureCustomerAuth(context);

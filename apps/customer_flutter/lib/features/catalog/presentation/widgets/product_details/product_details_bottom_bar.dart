@@ -165,18 +165,26 @@ class _WeightDockQuantity extends StatelessWidget {
             enabled: enabled && canDecrement && onStep != null,
             onTap: () => onStep?.call(-1),
           ),
-          SizedBox(
-            width: ProductDetailsLayoutTokens.blockGap + 12,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 56, maxWidth: 88),
             child: AnimatedSwitcher(
               duration: ProductDetailsLayoutTokens.motionFast,
-              child: Text(
-                label,
-                key: ValueKey<String>('purchase_dock_qty_label_$label'),
-                textAlign: TextAlign.center,
-                style: NmdTypography.label.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: ProductDetailsLayoutTokens.typeLabel,
-                  color: NmdColors.brandPrimary,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    label,
+                    key: ValueKey<String>('purchase_dock_qty_label_$label'),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: NmdTypography.label.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: ProductDetailsLayoutTokens.typeLabel,
+                      color: NmdColors.brandPrimary,
+                    ),
+                  ),
                 ),
               ),
             ),
